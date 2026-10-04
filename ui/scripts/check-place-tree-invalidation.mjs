@@ -742,10 +742,56 @@ const DIRECT_CALL_MARKERS = [
   // place_id у членов. Перечень взят от серверных мутаций (groups_move,
   // groups_add_devices, groups_set_parent — все отдают changed_place_ids), а не от
   // экранов: groups.move( появится в странице раздела (план 41-23).
-  { marker: 'groups.move(', label: 'перенос группы (groups.move)' },
-  { marker: 'groups.addDevices(', label: 'добавление в состав (groups.addDevices)' },
-  { marker: 'groups.setParent(', label: 'вложение группы (groups.setParent)' },
+  // Маркеры групп объявлены как `module`+`exportName`+`method`, а НЕ литеральной
+  // подстрокой `groups.setParent(`. Причина — ревью фазы 41 (W-F01): `GroupsPage.svelte`
+  // импортирует `{ groups as groupsApi }`, литеральная подстрока такой вызов не видит, и
+  // удаление notifyPlaceContentChanged из `removeFromParent()` давало PASS. Локальное имя
+  // биндинга резолвится из импорта в КАЖДОМ файле, поэтому ловятся и алиас, и прямое имя.
+  {
+    module: '$lib/api/groups',
+    exportName: 'groups',
+    method: 'move',
+    label: 'перенос группы (groups.move)',
+  },
+  {
+    module: '$lib/api/groups',
+    exportName: 'groups',
+    method: 'addDevices',
+    label: 'добавление в состав (groups.addDevices)',
+  },
+  {
+    module: '$lib/api/groups',
+    exportName: 'groups',
+    method: 'setParent',
+    label: 'вложение группы (groups.setParent)',
+  },
 ];
+
+/**
+ * Локальное имя, под которым `exportName` из `modulePath` виден в этом файле.
+ *
+ * Возвращает `null`, когда модуль не импортирован (значит вызова тут быть не может)
+ * или импортирован без нужного экспорта. Поддерживает `{ x }`, `{ x as y }`,
+ * многострочный список и одинарные/двойные кавычки в пути.
+ */
+function resolveLocalName(code, modulePath, exportName) {
+  const quoted = modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const importRe = new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*['"]${quoted}['"]`, 'g');
+  let m;
+  while ((m = importRe.exec(code)) !== null) {
+    for (const rawSpec of m[1].split(',')) {
+      const spec = rawSpec.trim();
+      if (!spec) continue;
+      const asMatch = spec.match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/);
+      if (asMatch) {
+        if (asMatch[1] === exportName) return asMatch[2];
+        continue;
+      }
+      if (spec === exportName) return exportName;
+    }
+  }
+  return null;
+}
 
 function checkCompleteness(files, violations) {
   for (const filePath of files) {
@@ -805,7 +851,15 @@ function checkCompleteness(files, violations) {
       }
     }
 
-    for (const { marker, label } of DIRECT_CALL_MARKERS) {
+    for (const entry of DIRECT_CALL_MARKERS) {
+      const { label } = entry;
+      let marker = entry.marker;
+      if (!marker) {
+        const local = resolveLocalName(code, entry.module, entry.exportName);
+        // Модуль не импортирован в этом файле — вызова быть не может, идём дальше.
+        if (local === null) continue;
+        marker = `${local}.${entry.method}(`;
+      }
       for (const idx of indicesOf(code, marker)) {
         const enclosing = enclosingFunction(code, idx);
         if (enclosing === null) {

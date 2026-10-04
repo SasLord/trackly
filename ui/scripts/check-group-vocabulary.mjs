@@ -44,6 +44,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 const TAG = '[check-group-vocabulary]';
 
+// Словарь ПРЕЖНЕЙ свёртки одинаковых устройств. Корень «груп» рядом с любым из
+// этих слов означает старое понятие, а оно переименовано в «Свернуть одинаковые»
+// (GRD-06). Запрещено во всех файлах, включая те, что стоят в allowlist.
+const DENY_RE =
+  /[СсГг]?[гГ]руп\p{L}*(?:\s+\p{L}+){0,2}\s+(?:похож\p{L}*|одинаков\p{L}*|идентичн\p{L}*|дубл\p{L}*)|(?:похож\p{L}*|одинаков\p{L}*|идентичн\p{L}*|дубл\p{L}*)(?:\s+\p{L}+){0,2}\s+[СсГг]?[гГ]руп\p{L}*/gu;
+
 // Корни слова «группа» в пользовательских литералах.
 const ROOT_RE = /[Гг]руп|[Сс]груп/g;
 
@@ -98,7 +104,20 @@ export function stripComments(src) {
   return src
     .replace(/<!--[\s\S]*?-->/g, blank)
     .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[\s;{(,])\/\/[^\n]*/g, (m, pre) => pre + ' '.repeat(m.length - pre.length));
+    .replace(/(^|[\s;{(,])\/\/[^\n]*/g, (m, pre, offset, whole) => {
+      // Ревью фазы 41 (W-F02), вторая дыра: `//` ВНУТРИ строкового литерала
+      // съедал остаток строки вместе с надписью. Если до `//` на этой же строке
+      // нечётное число неэкранированных кавычек — мы внутри литерала, и это не
+      // комментарий. Автомата по кавычкам по-прежнему нет (в русских
+      // doc-комментариях есть апострофы), проверка строго построчная.
+      const lineStart = whole.lastIndexOf('\n', offset) + 1;
+      const before = whole.slice(lineStart, offset + pre.length);
+      for (const q of ['"', "'", '`']) {
+        const n = (before.match(new RegExp(`(?<!\\\\)\\${q}`, 'g')) ?? []).length;
+        if (n % 2 === 1) return m;
+      }
+      return pre + ' '.repeat(m.length - pre.length);
+    });
 }
 
 /**
@@ -108,9 +127,34 @@ export function stripComments(src) {
 export function scanSource(relPath, rawSrc, violations) {
   if (SKIP_FILES.has(relPath)) return;
   const entry = allowEntryFor(relPath);
-  if (entry && entry.markers === null) return;
+
+  // Deny-list и корневой скан могут указать на ОДНУ строку (например
+  // «Группировать похожие»), и сообщение у них побайтово одинаковое. Копим
+  // в локальный набор, чтобы одна плохая строка считалась за одно нарушение.
+  const found = new Set();
+  const report = (idx, src) => {
+    const line = src.slice(0, idx).split('\n').length;
+    const lineText = src.split('\n')[line - 1].trim();
+    found.add(`${relPath}:${line} ${lineText}`);
+  };
 
   const text = stripComments(rawSrc);
+
+  // Deny-list СТАРОГО понятия — проверяется ДО allowlist и до `markers: null`,
+  // то есть не гасится ни одним исключением. Ревью фазы 41 (W-F02): маркер
+  // allowlist создаёт ИНТЕРВАЛ, поэтому фраза, НАЧИНАЮЩАЯСЯ с разрешённого
+  // маркера, проходила целиком — «Группа похожих устройств» пролезала под
+  // маркером 'Группа' в ReportTable, «Группы похожих» — под 'Группы' в
+  // sidebar-config. Смысл гейта в том, что слово «группа» означает только новую
+  // сущность, значит связка корня со словарём прежней свёртки запрещена всегда.
+  DENY_RE.lastIndex = 0;
+  let deny;
+  while ((deny = DENY_RE.exec(text)) !== null) report(deny.index, text);
+
+  if (entry && entry.markers === null) {
+    for (const v of found) violations.push(v);
+    return;
+  }
   const spans = [];
   for (const marker of entry?.markers ?? []) {
     let from = 0;
@@ -127,10 +171,10 @@ export function scanSource(relPath, rawSrc, violations) {
   while ((m = ROOT_RE.exec(text)) !== null) {
     const idx = m.index;
     if (spans.some(([a, b]) => idx >= a && idx < b)) continue;
-    const line = text.slice(0, idx).split('\n').length;
-    const lineText = text.split('\n')[line - 1].trim();
-    violations.push(`${relPath}:${line} ${lineText}`);
+    report(idx, text);
   }
+
+  for (const v of found) violations.push(v);
 }
 
 function walk(dir, out) {
@@ -160,6 +204,44 @@ function scanRoot(root) {
 
 function runSelfTest() {
   const fixtures = [
+    // Фаза 41, ревью W-F02: три дыры, доказанные ревьюером на мутированной копии
+    // ui/src. Первые две — фраза, НАЧИНАЮЩАЯСЯ с разрешённого маркера (интервал
+    // allowlist накрывал её целиком). Третья — `//` внутри строкового литерала,
+    // съедавший остаток строки вместе с надписью.
+    {
+      name: 'негатив (W-F02): «Группа похожих устройств» в ReportTable — префикс разрешённого маркера',
+      file: 'src/features/reports/ReportTable.svelte',
+      src: '<span>Группа похожих устройств</span>',
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (W-F02): «Группы похожих» в sidebar-config — префикс разрешённого маркера',
+      file: 'src/features/layout/sidebar-config.ts',
+      src: "const label = 'Группы похожих';",
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (W-F02): старое понятие внутри features/groups (markers: null не гасит deny-list)',
+      file: 'src/features/groups/GroupsPage.svelte',
+      src: '<span>Свернуть одинаковые группы</span>',
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (W-F02): `//` внутри строкового литерала не прячет надпись',
+      file: 'src/features/devices/Foo.svelte',
+      // `//` здесь идёт ПОСЛЕ ПРОБЕЛА внутри литерала — именно такой случай
+      // stripComments раньше считал комментарием и съедал остаток строки.
+      // В `https://` слэши стоят после `:`, который в набор не входит, поэтому
+      // фикстура с URL была бы вакуумной: она проходит и со снятым гейтом.
+      src: "const label = 'Фильтр // Группировать похожие';",
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (W-F02): настоящий комментарий со старым понятием по-прежнему не нарушение',
+      file: 'src/features/devices/Foo.svelte',
+      src: '// Группировать похожие устройства — прежнее понятие, переименовано\nconst x = 1;',
+      expectViolations: 0,
+    },
     {
       name: 'негатив: «Группировать» вне allowlist',
       file: 'src/features/devices/Foo.svelte',
