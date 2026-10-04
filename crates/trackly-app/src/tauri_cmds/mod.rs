@@ -12,6 +12,7 @@ pub mod cartridges;
 pub mod dashboard;
 pub mod devices;
 pub mod fs_helpers;
+pub mod group_types;
 pub mod health;
 pub mod number_templates;
 pub mod organization;

@@ -199,6 +199,17 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::places::places_contents,
         crate::tauri_cmds::places::places_search,
         crate::tauri_cmds::places::places_move_subtree_contents,
+        // Phase 41 — Group types
+        crate::tauri_cmds::group_types::group_types_list,
+        crate::tauri_cmds::group_types::group_types_create,
+        crate::tauri_cmds::group_types::group_types_update,
+        crate::tauri_cmds::group_types::group_types_delete,
+        crate::tauri_cmds::group_types::group_type_properties_create,
+        crate::tauri_cmds::group_types::group_type_properties_update,
+        crate::tauri_cmds::group_types::group_type_properties_delete,
+        crate::tauri_cmds::group_types::group_type_properties_unarchive,
+        crate::tauri_cmds::group_types::group_type_properties_reorder,
+        crate::tauri_cmds::group_types::group_type_properties_empty_groups,
         // Phase 40 — Movement history timeline (Plan 10)
         crate::tauri_cmds::place_movements::place_movements_get_timeline,
         // Phase 40.2 Plan 05 — Numbering templates: Group A (CRUD, ManageSettings)
