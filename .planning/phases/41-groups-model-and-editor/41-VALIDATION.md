@@ -1,17 +1,17 @@
 ---
 phase: 41
 slug: groups-model-and-editor
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: executed
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-10-04
 ---
 
 # Phase 41 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution.
-> Источник: `41-RESEARCH.md` § Validation Architecture. Карта по задачам заполняется
-> планировщиком/исполнителем, когда появятся ID задач (см. ниже).
+> Источник: `41-RESEARCH.md` § Validation Architecture. Карта по задачам заполнена
+> планировщиком; статусы выставлены планом 41-26 (см. ниже).
 
 ---
 
@@ -53,114 +53,113 @@ created: 2026-10-04
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 41-01-T1 | 01 | 1 | GRP-01, GRP-05, GRP-06 | T-41-01-01..03 | аддитивный DDL, триггер code/behavior, PK членства | migration | `cargo test -p trackly-infra --test migration_idempotency` | ❌ создаётся задачей | ⬜ pending |
-| 41-01-T2 | 01 | 1 | GRP-01, GRP-05, GRP-10 | T-41-01-02 | run_up_to(44)->run без потери act_items; каскады/FK | infra | `cargo test -p trackly-infra --test groups_migration && cargo test -p trackly-infra --test per_record_invariants` | ❌ создаётся задачей | ⬜ pending |
-| 41-02-T1 | 02 | 1 | GRP-03 | T-41-02-02 | нормализация ip/mac/число в чистом домене | core unit | `cargo test -p trackly-core group_values` | ❌ создаётся задачей | ⬜ pending |
-| 41-02-T2 | 02 | 1 | GRP-09 | T-41-02-01 | Action::ManageGroupTypes admin-only; MutateGroups/ReadGroups admin+manager | core unit | `cargo test -p trackly-core auth && cargo check --workspace` | ❌ создаётся задачей | ⬜ pending |
-| 41-03-T1 | 03 | 1 | GRD-06 | T-41-03-01 | нет пользовательских строк «группа» для свёртки | UI/lint | `pnpm --dir ui svelte-check` | ❌ создаётся задачей | ⬜ pending |
-| 41-03-T2 | 03 | 1 | GRD-06 | T-41-03-01 | словарный гейт с --selftest | node-гейт | `node ui/scripts/check-group-vocabulary.mjs --selftest && node ui/scripts/check-group-vocabulary.mjs` | ❌ создаётся задачей | ⬜ pending |
-| 41-04-T1 | 04 | 2 | GRP-01 | T-41-04-02..03 | триггер -> Conflict; засев ON CONFLICT DO NOTHING | infra | `cargo test -p trackly-infra --test group_types_repo` | ❌ создаётся задачей | ⬜ pending |
-| 41-04-T2 | 04 | 2 | GRP-02, GRP-03 | T-41-04-04 | свойства, скрытие, reorder атомарно, нарушители | infra | `cargo test -p trackly-infra --test group_types_repo` | ❌ создаётся задачей | ⬜ pending |
-| 41-05-T1 | 05 | 2 | GRP-06 | T-41-05-02 | batch_id/entity_label, сигнатура record_movement_if_applicable не тронута | infra | `cargo test -p trackly-infra --test place_movements_batch_repo && cargo test -p trackly-infra place_movements` | ❌ создаётся задачей | ⬜ pending |
-| 41-05-T2 | 05 | 2 | GRP-06 | T-41-05-01 | DTO таймлайна: group_id/group_label; ReadPlaces гейт | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test place_movements_group_fields` | ❌ создаётся задачей | ⬜ pending |
-| 41-06-T1 | 06 | 3 | GRP-04, GRP-05 | T-41-06-01..03 | seq из колонки, PK членства, CTE цикла, teardown | infra | `cargo test -p trackly-infra --test groups_repo` | ❌ создаётся задачей | ⬜ pending |
-| 41-06-T2 | 06 | 3 | GRP-08 | T-41-06-04 | значения, USB-принтеры, счётчики дерева | infra | `cargo test -p trackly-infra --test groups_repo` | ❌ создаётся задачей | ⬜ pending |
-| 41-07-T1 | 07 | 3 | GRP-01, GRP-09 | T-41-07-01..03 | засев при старте, code/behavior неизменяемы (невакуумно), права | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service` | ❌ создаётся задачей | ⬜ pending |
-| 41-07-T2 | 07 | 3 | GRP-02, GRP-03 | T-41-07-04 | скрытие заполненного, запрет смены data_type, нарушители is_required | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service` | ❌ создаётся задачей | ⬜ pending |
-| 41-08-T1 | 08 | 4 | GRP-04, GRP-08 | T-41-08-01 | чтения групп, состав, поиск (кириллица), членство пачкой | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_service` | ❌ создаётся задачей | ⬜ pending |
-| 41-08-T2 | 08 | 4 | GRP-04, GRP-10 | T-41-08-02 | нумерация seq, одноимённые группы, delete без смены места | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_service` | ❌ создаётся задачей | ⬜ pending |
-| 41-09-T1 | 09 | 4 | GRP-09 | T-41-09-01 | 10 пар команда+роут типов, specta | build | `cargo test -p trackly-app --test export_bindings && cargo check -p trackly-app` | ❌ создаётся задачей | ⬜ pending |
-| 41-09-T2 | 09 | 4 | GRP-01, GRP-09 | T-41-09-02..04 | матрица 3 роли x 2 транспорта; неизменяемость по HTTP; полнота маршрутов | HTTP+tauri-path | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test role_endpoint_matrix group_types` | ❌ создаётся задачей | ⬜ pending |
-| 41-10-T1 | 10 | 5 | GRP-06 | T-41-10-05 | общий ru_plural, batch-каскад картриджей | app | `cargo test -p trackly-app --lib plural` | ❌ создаётся задачей | ⬜ pending |
-| 41-10-T2 | 10 | 5 | GRP-06, GRP-07 | T-41-10-01..03 | перенос атомарен (fault-injection), вложенная read-only | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_move` | ❌ создаётся задачей | ⬜ pending |
-| 41-10-T3 | 10 | 5 | GRP-06 | T-41-10-05 | 7 строк с одним batch_id, D-30 только audit_log, картриджи | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_movements_journal` | ❌ создаётся задачей | ⬜ pending |
-| 41-11-T1 | 11 | 6 | GRP-05 | T-41-11-01,04,05 | add/remove состава атомарно, D-21, release-примитив | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_membership` | ❌ создаётся задачей | ⬜ pending |
-| 41-11-T2 | 11 | 6 | GRP-05, GRP-06 | T-41-11-02,03,06 | вложенность: цикл, teardown, производное место, инвариант-обход | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_membership` | ❌ создаётся задачей | ⬜ pending |
-| 41-12-T1 | 12 | 7 | GRP-03 | T-41-12-01,02,06 | серверная нормализация, живость users/devices, обязательность, CAS | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_values_card values_` | ❌ создаётся задачей | ⬜ pending |
-| 41-12-T2 | 12 | 7 | GRP-08, GRP-09 | T-41-12-03 | user_options (id/full_name/login), карточка, дедуп принтеров | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_values_card` | ❌ создаётся задачей | ⬜ pending |
-| 41-13-T1 | 13 | 8 | GRP-09 | T-41-13-01 | 15 пар команда+роут групп, specta | build | `cargo test -p trackly-app --test export_bindings && cargo check -p trackly-app` | ❌ создаётся задачей | ⬜ pending |
-| 41-13-T2 | 13 | 8 | GRP-09, GRP-05, GRP-03 | T-41-13-01..04,06 | матрица прав групп x 2 транспорта; валидация по HTTP; полнота маршрутов | HTTP+tauri-path | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test role_endpoint_matrix groups_` | ❌ создаётся задачей | ⬜ pending |
-| 41-14-T1 | 14 | 8 | GRP-07 | T-41-14-01..03 | guard S1 (реальная смена vs повтор), release S8, S9 | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites` | ❌ создаётся задачей | ⬜ pending |
-| 41-14-T2 | 14 | 8 | GRP-07 | T-41-14-01 | devices_update по HTTP и Tauri-пути | HTTP+tauri-path | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites` | ❌ создаётся задачей | ⬜ pending |
-| 41-15-T1 | 15 | 8 | GRP-10 | T-41-15-04 | referencing_group_count, русское сообщение блокировки удаления места | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test places_delete_blocked` | ❌ создаётся задачей | ⬜ pending |
-| 41-15-T2 | 15 | 8 | GRP-07, GRP-06 | T-41-15-01..03 | массовый перенос двигает группу целиком без дублей журнала | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test places_move_groups` | ❌ создаётся задачей | ⬜ pending |
-| 41-16-T1 | 16 | 9 | GRP-07 | T-41-16-01,03 | release на 8 write-site'ах актов | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test acts_crud` | ❌ создаётся задачей | ⬜ pending |
-| 41-16-T2 | 16 | 9 | GRP-07 | T-41-16-01,03,04 | сценарии S3-S7 (фикстура: место члена != место акта) | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites` | ❌ создаётся задачей | ⬜ pending |
-| 41-16-T3 | 16 | 9 | GRP-07 | T-41-16-02 | счётный гейт исходников write-site'ов | gate | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites gate` | ❌ создаётся задачей | ⬜ pending |
-| 41-17-T1 | 17 | 8 | GRP-06 | T-41-17-03 | ReportRow batch_*, тип «Группа», причина пакета | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_report_batch` | ❌ создаётся задачей | ⬜ pending |
-| 41-17-T2 | 17 | 8 | GRP-06 | T-41-17-02 | печать/CSV — полный состав, шаблон не тронут | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_report_batch` | ❌ создаётся задачей | ⬜ pending |
-| 41-18-T1 | 18 | 9 | GRP-04 | T-41-18-02 | обёртка 25 команд против bindings.ts | UI/types | `pnpm --dir ui svelte-check` | ❌ создаётся задачей | ⬜ pending |
-| 41-18-T2 | 18 | 9 | GRP-02 | T-41-18-03 | чистые функции порядка, golden-фикстура + selftest | node-гейт | `node ui/scripts/check-reorder.mjs --selftest && node ui/scripts/check-reorder.mjs` | ❌ создаётся задачей | ⬜ pending |
-| 41-19-T1 | 19 | 10 | GRP-04, GRP-01 | T-41-19-04 | дерево типов и групп (ARIA, клавиатура, untrack) | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-19-T2 | 19 | 10 | GRP-01, GRP-04, GRP-10 | T-41-19-02 | модалки типа/группы/удаления без нативного select | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-20-T1 | 20 | 10 | GRP-02, GRP-03 | T-41-20-02 | таблица свойств, скрытие, попап нарушителей, disabled data_type | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-20-T2 | 20 | 10 | GRP-02 | T-41-20-03 | перестановка на pointer-events с откатом | UI/lint + human (оба транспорта) | `pnpm --dir ui svelte-check && pnpm --dir ui lint && node ui/scripts/check-reorder.mjs` | ❌ создаётся задачей | ⬜ pending |
-| 41-20-T3 | 20 | 10 | GRP-01, GRP-09 | T-41-20-01 | панель типа, manager только чтение | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-21-T1 | 21 | 10 | GRP-05 | T-41-21-06 | Dropdown getGroupSection аддитивно | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-21-T2 | 21 | 10 | GRP-05, GRP-06 | T-41-21-01,03 | таблица состава, строка-поиск (устройства+группы), вложенные строки | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-21-T3 | 21 | 10 | GRP-06 | T-41-21-03 | мультивыбор + реестр INV-7 (маркеры групп) | gate + human | `node ui/scripts/check-place-tree-invalidation.mjs` | ❌ создаётся задачей | ⬜ pending |
-| 41-22-T1 | 22 | 10 | GRP-08 | T-41-22-02 | чипсы пользователей (userOptions, основной) | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-22-T2 | 22 | 10 | GRP-08 | T-41-22-02 | единый список принтеров USB+ссылки | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-22-T3 | 22 | 10 | GRP-03, GRP-08 | T-41-22-01 | форма свойств: серверные ошибки по полю, нормализованные значения | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-23-T1 | 23 | 11 | GRP-06 | T-41-23-03,04 | GroupMoveModal (одно действие из двух точек), панель группы, история на MovementTimeline | UI/lint+gate | `pnpm --dir ui lint && node ui/scripts/check-place-tree-invalidation.mjs` | ❌ создаётся задачей | ⬜ pending |
-| 41-23-T2 | 23 | 11 | GRP-04, GRP-09 | T-41-23-01,02 | страница раздела, маршрут, сайдбар, роли | UI build + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint && pnpm --dir ui build` | ❌ создаётся задачей | ⬜ pending |
-| 41-23-T3 | 23 | 11 | GRP-04, GRP-09 | T-41-23-01 | гейт сайдбара и маршрутов раздела | node-гейт | `node ui/scripts/check-groups-section.mjs --selftest && node ui/scripts/check-groups-section.mjs` | ❌ создаётся задачей | ⬜ pending |
-| 41-24-T1 | 24 | 11 | GRP-07 | T-41-24-01 | PlacePicker disabled для члена группы с местом | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-24-T2 | 24 | 11 | GRP-06 | T-41-24-02 | таймлайн «в составе группы» + allowlist словарного гейта | UI/lint + human | `pnpm --dir ui lint && node ui/scripts/check-group-vocabulary.mjs --selftest` | ❌ создаётся задачей | ⬜ pending |
-| 41-25-T1 | 25 | 12 | GRP-06 | T-41-25-01,03 | свёртка пакета в отчёте, печать без правил свёртки | UI/lint + human (печать) | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ❌ создаётся задачей | ⬜ pending |
-| 41-25-T2 | 25 | 12 | GRP-06, GRP-07 | T-41-25-04 | модалка и тост массового переноса с группами | UI/lint + human | `pnpm --dir ui lint && node ui/scripts/check-place-tree-invalidation.mjs` | ❌ создаётся задачей | ⬜ pending |
-| 41-26-T1 | 26 | 13 | GRP-01..GRP-10 | T-41-26-02 | полный regress workspace один раз, clippy | full suite | `cargo clippy --workspace --all-targets -- -D warnings` | ❌ создаётся задачей | ⬜ pending |
-| 41-26-T2 | 26 | 13 | GRD-06, GRP-04 | T-41-26-01 | UI-гейты в порядке CI, privacy | CI-chain | `pnpm --dir ui lint && node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ❌ создаётся задачей | ⬜ pending |
-| 41-26-T3 | 26 | 13 | все | T-41-26-04 | заполнение карты и сбор живых проверок | doc | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ❌ создаётся задачей | ⬜ pending |
+| 41-01-T1 | 01 | 1 | GRP-01, GRP-05, GRP-06 | T-41-01-01..03 | аддитивный DDL, триггер code/behavior, PK членства | migration | `cargo test -p trackly-infra --test migration_idempotency` | ✅ создан | ✅ green |
+| 41-01-T2 | 01 | 1 | GRP-01, GRP-05, GRP-10 | T-41-01-02 | run_up_to(44)->run без потери act_items; каскады/FK | infra | `cargo test -p trackly-infra --test groups_migration && cargo test -p trackly-infra --test per_record_invariants` | ✅ создан | ✅ green |
+| 41-02-T1 | 02 | 1 | GRP-03 | T-41-02-02 | нормализация ip/mac/число в чистом домене | core unit | `cargo test -p trackly-core group_values` | ✅ создан | ✅ green |
+| 41-02-T2 | 02 | 1 | GRP-09 | T-41-02-01 | Action::ManageGroupTypes admin-only; MutateGroups/ReadGroups admin+manager | core unit | `cargo test -p trackly-core auth && cargo check --workspace` | ✅ создан | ✅ green |
+| 41-03-T1 | 03 | 1 | GRD-06 | T-41-03-01 | нет пользовательских строк «группа» для свёртки | UI/lint | `pnpm --dir ui svelte-check` | ✅ создан | ✅ green |
+| 41-03-T2 | 03 | 1 | GRD-06 | T-41-03-01 | словарный гейт с --selftest | node-гейт | `node ui/scripts/check-group-vocabulary.mjs --selftest && node ui/scripts/check-group-vocabulary.mjs` | ✅ создан | ✅ green |
+| 41-04-T1 | 04 | 2 | GRP-01 | T-41-04-02..03 | триггер -> Conflict; засев ON CONFLICT DO NOTHING | infra | `cargo test -p trackly-infra --test group_types_repo` | ✅ создан | ✅ green |
+| 41-04-T2 | 04 | 2 | GRP-02, GRP-03 | T-41-04-04 | свойства, скрытие, reorder атомарно, нарушители | infra | `cargo test -p trackly-infra --test group_types_repo` | ✅ создан | ✅ green |
+| 41-05-T1 | 05 | 2 | GRP-06 | T-41-05-02 | batch_id/entity_label, сигнатура record_movement_if_applicable не тронута | infra | `cargo test -p trackly-infra --test place_movements_batch_repo && cargo test -p trackly-infra place_movements` | ✅ создан | ✅ green |
+| 41-05-T2 | 05 | 2 | GRP-06 | T-41-05-01 | DTO таймлайна: group_id/group_label; ReadPlaces гейт | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test place_movements_group_fields` | ✅ создан | ✅ green |
+| 41-06-T1 | 06 | 3 | GRP-04, GRP-05 | T-41-06-01..03 | seq из колонки, PK членства, CTE цикла, teardown | infra | `cargo test -p trackly-infra --test groups_repo` | ✅ создан | ✅ green |
+| 41-06-T2 | 06 | 3 | GRP-08 | T-41-06-04 | значения, USB-принтеры, счётчики дерева | infra | `cargo test -p trackly-infra --test groups_repo` | ✅ создан | ✅ green |
+| 41-07-T1 | 07 | 3 | GRP-01, GRP-09 | T-41-07-01..03 | засев при старте, code/behavior неизменяемы (невакуумно), права | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service` | ✅ создан | ✅ green |
+| 41-07-T2 | 07 | 3 | GRP-02, GRP-03 | T-41-07-04 | скрытие заполненного, запрет смены data_type, нарушители is_required | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service` | ✅ создан | ✅ green |
+| 41-08-T1 | 08 | 4 | GRP-04, GRP-08 | T-41-08-01 | чтения групп, состав, поиск (кириллица), членство пачкой | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_service` | ✅ создан | ✅ green |
+| 41-08-T2 | 08 | 4 | GRP-04, GRP-10 | T-41-08-02 | нумерация seq, одноимённые группы, delete без смены места | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_service` | ✅ создан | ✅ green |
+| 41-09-T1 | 09 | 4 | GRP-09 | T-41-09-01 | 10 пар команда+роут типов, specta | build | `cargo test -p trackly-app --test export_bindings && cargo check -p trackly-app` | ✅ создан | ✅ green |
+| 41-09-T2 | 09 | 4 | GRP-01, GRP-09 | T-41-09-02..04 | матрица 3 роли x 2 транспорта; неизменяемость по HTTP; полнота маршрутов | HTTP+tauri-path | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test role_endpoint_matrix group_types` | ✅ создан | ✅ green |
+| 41-10-T1 | 10 | 5 | GRP-06 | T-41-10-05 | общий ru_plural, batch-каскад картриджей | app | `cargo test -p trackly-app --lib plural` | ✅ создан | ✅ green |
+| 41-10-T2 | 10 | 5 | GRP-06, GRP-07 | T-41-10-01..03 | перенос атомарен (fault-injection), вложенная read-only | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_move` | ✅ создан | ✅ green |
+| 41-10-T3 | 10 | 5 | GRP-06 | T-41-10-05 | 7 строк с одним batch_id, D-30 только audit_log, картриджи | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_movements_journal` | ✅ создан | ✅ green |
+| 41-11-T1 | 11 | 6 | GRP-05 | T-41-11-01,04,05 | add/remove состава атомарно, D-21, release-примитив | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_membership` | ✅ создан | ✅ green |
+| 41-11-T2 | 11 | 6 | GRP-05, GRP-06 | T-41-11-02,03,06 | вложенность: цикл, teardown, производное место, инвариант-обход | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_membership` | ✅ создан | ✅ green |
+| 41-12-T1 | 12 | 7 | GRP-03 | T-41-12-01,02,06 | серверная нормализация, живость users/devices, обязательность, CAS | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_values_card values_` | ✅ создан | ✅ green |
+| 41-12-T2 | 12 | 7 | GRP-08, GRP-09 | T-41-12-03 | user_options (id/full_name/login), карточка, дедуп принтеров | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_values_card` | ✅ создан | ✅ green |
+| 41-13-T1 | 13 | 8 | GRP-09 | T-41-13-01 | 15 пар команда+роут групп, specta | build | `cargo test -p trackly-app --test export_bindings && cargo check -p trackly-app` | ✅ создан | ✅ green |
+| 41-13-T2 | 13 | 8 | GRP-09, GRP-05, GRP-03 | T-41-13-01..04,06 | матрица прав групп x 2 транспорта; валидация по HTTP; полнота маршрутов | HTTP+tauri-path | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test role_endpoint_matrix groups_` | ✅ создан | ✅ green |
+| 41-14-T1 | 14 | 8 | GRP-07 | T-41-14-01..03 | guard S1 (реальная смена vs повтор), release S8, S9 | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites` | ✅ создан | ✅ green |
+| 41-14-T2 | 14 | 8 | GRP-07 | T-41-14-01 | devices_update по HTTP и Tauri-пути | HTTP+tauri-path | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites` | ✅ создан | ✅ green |
+| 41-15-T1 | 15 | 8 | GRP-10 | T-41-15-04 | referencing_group_count, русское сообщение блокировки удаления места | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test places_delete_blocked` | ✅ создан | ✅ green |
+| 41-15-T2 | 15 | 8 | GRP-07, GRP-06 | T-41-15-01..03 | массовый перенос двигает группу целиком без дублей журнала | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test places_move_groups` | ✅ создан | ✅ green |
+| 41-16-T1 | 16 | 9 | GRP-07 | T-41-16-01,03 | release на 8 write-site'ах актов | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test acts_crud` | ✅ создан | ✅ green |
+| 41-16-T2 | 16 | 9 | GRP-07 | T-41-16-01,03,04 | сценарии S3-S7 (фикстура: место члена != место акта) | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites` | ✅ создан | ✅ green |
+| 41-16-T3 | 16 | 9 | GRP-07 | T-41-16-02 | счётный гейт исходников write-site'ов | gate | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_write_sites gate` | ✅ создан | ✅ green |
+| 41-17-T1 | 17 | 8 | GRP-06 | T-41-17-03 | ReportRow batch_*, тип «Группа», причина пакета | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_report_batch` | ✅ создан | ✅ green |
+| 41-17-T2 | 17 | 8 | GRP-06 | T-41-17-02 | печать/CSV — полный состав, шаблон не тронут | app | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_report_batch` | ✅ создан | ✅ green |
+| 41-18-T1 | 18 | 9 | GRP-04 | T-41-18-02 | обёртка 25 команд против bindings.ts | UI/types | `pnpm --dir ui svelte-check` | ✅ создан | ✅ green |
+| 41-18-T2 | 18 | 9 | GRP-02 | T-41-18-03 | чистые функции порядка, golden-фикстура + selftest | node-гейт | `node ui/scripts/check-reorder.mjs --selftest && node ui/scripts/check-reorder.mjs` | ✅ создан | ✅ green |
+| 41-19-T1 | 19 | 10 | GRP-04, GRP-01 | T-41-19-04 | дерево типов и групп (ARIA, клавиатура, untrack) | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-19-T2 | 19 | 10 | GRP-01, GRP-04, GRP-10 | T-41-19-02 | модалки типа/группы/удаления без нативного select | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-20-T1 | 20 | 10 | GRP-02, GRP-03 | T-41-20-02 | таблица свойств, скрытие, попап нарушителей, disabled data_type | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-20-T2 | 20 | 10 | GRP-02 | T-41-20-03 | перестановка на pointer-events с откатом | UI/lint + human (оба транспорта) | `pnpm --dir ui svelte-check && pnpm --dir ui lint && node ui/scripts/check-reorder.mjs` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-20-T3 | 20 | 10 | GRP-01, GRP-09 | T-41-20-01 | панель типа, manager только чтение | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-21-T1 | 21 | 10 | GRP-05 | T-41-21-06 | Dropdown getGroupSection аддитивно | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-21-T2 | 21 | 10 | GRP-05, GRP-06 | T-41-21-01,03 | таблица состава, строка-поиск (устройства+группы), вложенные строки | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-21-T3 | 21 | 10 | GRP-06 | T-41-21-03 | мультивыбор + реестр INV-7 (маркеры групп) | gate + human | `node ui/scripts/check-place-tree-invalidation.mjs` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-22-T1 | 22 | 10 | GRP-08 | T-41-22-02 | чипсы пользователей (userOptions, основной) | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-22-T2 | 22 | 10 | GRP-08 | T-41-22-02 | единый список принтеров USB+ссылки | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-22-T3 | 22 | 10 | GRP-03, GRP-08 | T-41-22-01 | форма свойств: серверные ошибки по полю, нормализованные значения | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-23-T1 | 23 | 11 | GRP-06 | T-41-23-03,04 | GroupMoveModal (одно действие из двух точек), панель группы, история на MovementTimeline | UI/lint+gate | `pnpm --dir ui lint && node ui/scripts/check-place-tree-invalidation.mjs` | ✅ создан | ✅ green |
+| 41-23-T2 | 23 | 11 | GRP-04, GRP-09 | T-41-23-01,02 | страница раздела, маршрут, сайдбар, роли | UI build + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint && pnpm --dir ui build` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-23-T3 | 23 | 11 | GRP-04, GRP-09 | T-41-23-01 | гейт сайдбара и маршрутов раздела | node-гейт | `node ui/scripts/check-groups-section.mjs --selftest && node ui/scripts/check-groups-section.mjs` | ✅ создан | ✅ green |
+| 41-24-T1 | 24 | 11 | GRP-07 | T-41-24-01 | PlacePicker disabled для члена группы с местом | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-24-T2 | 24 | 11 | GRP-06 | T-41-24-02 | таймлайн «в составе группы» + allowlist словарного гейта | UI/lint + human | `pnpm --dir ui lint && node ui/scripts/check-group-vocabulary.mjs --selftest` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-25-T1 | 25 | 12 | GRP-06 | T-41-25-01,03 | свёртка пакета в отчёте, печать без правил свёртки | UI/lint + human (печать) | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-25-T2 | 25 | 12 | GRP-06, GRP-07 | T-41-25-04 | модалка и тост массового переноса с группами | UI/lint + human | `pnpm --dir ui lint && node ui/scripts/check-place-tree-invalidation.mjs` | ✅ создан | ✅ green (авто); 👤 живая проверка открыта |
+| 41-26-T1 | 26 | 13 | GRP-01..GRP-10 | T-41-26-02 | полный regress workspace один раз, clippy | full suite | `cargo clippy --workspace --all-targets -- -D warnings` | ✅ (прогон) | ✅ green |
+| 41-26-T2 | 26 | 13 | GRD-06, GRP-04 | T-41-26-01 | UI-гейты в порядке CI, privacy | CI-chain | `pnpm --dir ui lint && node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ✅ создан | ✅ green |
+| 41-26-T3 | 26 | 13 | все | T-41-26-04 | заполнение карты и сбор живых проверок | doc | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ✅ создан | ✅ green |
 
-**Заполнено планировщиком 2026-10-04** (26 планов, 59 задач). Статусы и «File Exists» обновляет план 41-26 по факту прогонов.
-Карта не остаётся пустой при закрытии фазы — это зафиксированный повторяющийся дефект прошлых фаз (40.4, 40.5).
+**Заполнена планом 41-26 по факту прогонов 2026-10-04** (26 планов, 59 задач): «File Exists» и «Status» выставлены после зелёных прогонов, перечисленных в разделе «Результаты прогонов». Статус «green» означает ТОЛЬКО автоматическую проверку из колонки «Automated Command»; в строках с пометкой «живая проверка открыта» рантайм и вид в приложении не проверены (см. «Живые проверки для пользователя»).
 Файлы тестов в плане именуются по факту: `group_types_repo` (типы, триггер), `groups_repo` (группы, PK, CTE), `groups_membership`, `groups_move`, `groups_values_card`, `group_report_batch`, `places_move_groups` — вместо обобщённых `groups_service move_/card_/values_` из таблицы ниже.
 
 ### Phase Requirements → Test Map (из RESEARCH.md)
 
 | Req | Layer | Target | File |
 |-----|-------|--------|------|
-| 1 — `code`/`behavior` неизменяемы | infra (триггер БД) + app + dual-transport | `group_types_repo` (триггер), `groups_types_service`, `role_endpoint_matrix group_types` | ❌ Wave 0 |
-| 2 — идемпотентный засев | app service | `groups_types_service seed_` | ❌ Wave 0 |
-| 3 — свойства 6 типов, порядок, `show_on_map` | app service + DTO round-trip | `groups_types_service properties_` | ❌ Wave 0 |
-| 4 — защита заполненных свойств (3 отдельных теста) | app service + прямой `SELECT` значений | `groups_types_service protect_` | ❌ Wave 0 |
-| 5 — валидация значений на сервере | core таблица-тест + оба транспорта | `trackly-core group_values`, `groups_values_card values_`, `role_endpoint_matrix groups_` (HTTP 400) | ❌ Wave 0 |
-| 6 — раздел и права видимости | UI-гейт + серверный 403 | `check-groups-section.mjs` | ❌ Wave 0 |
-| 7 — `seq` и нумерация (+ гонка) | app service + `UNIQUE(type_id,seq)` | `groups_service numbering_` (план 08) | ❌ Wave 0 |
-| 8 — членство, циклы, `teardown` | infra (PK, CTE) + app (сообщения) | `groups_repo`, `groups_membership` | ❌ Wave 0 |
-| 9 — протаскивание места **атомарно** | infra+app, фикстура сбоя на 4-м устройстве | `groups_move` (move_, move_atomic_), `places_move_groups` | ❌ Wave 0 |
-| 10 — журнал пакета, отчёт, таймлайн, `ALTER` | app + infra-миграция `run_up_to(44)` | `group_movements_journal`, `place_movements_batch_repo`, `place_movements_group_fields`, `group_report_batch`, `groups_migration` | ❌ Wave 0 |
-| 11 — запрет индивидуального перемещения | app таблица-драйвер S1–S9 + счётный гейт исходника | `group_write_sites` | ❌ Wave 0 |
-| 12 — карточка группы, дедупликация принтеров | app service | `groups_values_card` (card_, user_options_) | ❌ Wave 0 |
-| 13 — матрица 3 роли × (тип, группа) × 2 транспорта | HTTP-сессии + `build_*` + тест полноты маршрутов | `role_endpoint_matrix` Cases 76+ | ❌ Wave 0 (расширение) |
-| 14 — переименование свёртки | UI-гейт словаря с `--selftest` | `check-group-vocabulary.mjs` | ❌ Wave 0 |
-| — `Action`-матрица | core unit | `trackly-core auth` | ✅ дописать |
-| — `per_record_invariants` новых таблиц | infra | `per_record_invariants` | ✅ дописать |
-| — INV-7 реестр новых producer'ов | UI-гейт | `check-place-tree-invalidation.mjs` | ✅ дописать |
-| — чистые функции `reorder.ts` | node-гейт-фикстура | `check-reorder.mjs` | ❌ Wave 0 |
+| 1 — `code`/`behavior` неизменяемы | infra (триггер БД) + app + dual-transport | `group_types_repo` (триггер), `groups_types_service`, `role_endpoint_matrix group_types` | ✅ создан |
+| 2 — идемпотентный засев | app service | `groups_types_service seed_` | ✅ создан |
+| 3 — свойства 6 типов, порядок, `show_on_map` | app service + DTO round-trip | `groups_types_service properties_` | ✅ создан |
+| 4 — защита заполненных свойств (3 отдельных теста) | app service + прямой `SELECT` значений | `groups_types_service protect_` | ✅ создан |
+| 5 — валидация значений на сервере | core таблица-тест + оба транспорта | `trackly-core group_values`, `groups_values_card values_`, `role_endpoint_matrix groups_` (HTTP 400) | ✅ создан |
+| 6 — раздел и права видимости | UI-гейт + серверный 403 | `check-groups-section.mjs` | ✅ создан |
+| 7 — `seq` и нумерация (+ гонка) | app service + `UNIQUE(type_id,seq)` | `groups_service numbering_` (план 08) | ✅ создан |
+| 8 — членство, циклы, `teardown` | infra (PK, CTE) + app (сообщения) | `groups_repo`, `groups_membership` | ✅ создан |
+| 9 — протаскивание места **атомарно** | infra+app, фикстура сбоя на 4-м устройстве | `groups_move` (move_, move_atomic_), `places_move_groups` | ✅ создан |
+| 10 — журнал пакета, отчёт, таймлайн, `ALTER` | app + infra-миграция `run_up_to(44)` | `group_movements_journal`, `place_movements_batch_repo`, `place_movements_group_fields`, `group_report_batch`, `groups_migration` | ✅ создан |
+| 11 — запрет индивидуального перемещения | app таблица-драйвер S1–S9 + счётный гейт исходника | `group_write_sites` | ✅ создан |
+| 12 — карточка группы, дедупликация принтеров | app service | `groups_values_card` (card_, user_options_) | ✅ создан |
+| 13 — матрица 3 роли × (тип, группа) × 2 транспорта | HTTP-сессии + `build_*` + тест полноты маршрутов | `role_endpoint_matrix` Cases 76+ | ✅ создан (расширен) |
+| 14 — переименование свёртки | UI-гейт словаря с `--selftest` | `check-group-vocabulary.mjs` | ✅ создан |
+| — `Action`-матрица | core unit | `trackly-core auth` | ✅ дописан |
+| — `per_record_invariants` новых таблиц | infra | `per_record_invariants` | ✅ дописан |
+| — INV-7 реестр новых producer'ов | UI-гейт | `check-place-tree-invalidation.mjs` | ✅ дописан |
+| — чистые функции `reorder.ts` | node-гейт-фикстура | `check-reorder.mjs` | ✅ создан |
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `crates/trackly-core/src/domain/group_values.rs` — таблицы-тесты ip/mac/number/text (Req 5)
-- [ ] `crates/trackly-infra/tests/groups_migration.rs` — V045/V046, `run_up_to(44)` без потери данных (Req 10)
-- [ ] `crates/trackly-infra/tests/group_types_repo.rs` — триггер code/behavior, засев, свойства (Req 1–4)
-- [ ] `crates/trackly-infra/tests/groups_repo.rs` — PK членства, CTE цикла/состава, seq, значения, принтеры (Req 7, 8, 12); атомарность переноса доказана на уровне сервиса в `groups_move` (Req 9)
-- [ ] `crates/trackly-infra/tests/place_movements_batch_repo.rs` — batch_id, entity_label, group_id (Req 10)
-- [ ] `crates/trackly-app/tests/groups_types_service.rs` — Req 1–4 + засев
-- [ ] `crates/trackly-app/tests/groups_service.rs` — Req 7 (нумерация), чтения, CRUD (Req 12 частично)
-- [ ] `crates/trackly-app/tests/groups_membership.rs` — Req 8 (членство, вложенность, инвариант места)
-- [ ] `crates/trackly-app/tests/groups_move.rs` — Req 9 (перенос, атомарность)
-- [ ] `crates/trackly-app/tests/groups_values_card.rs` — Req 5, 12 (значения, карточка, принтеры)
-- [ ] `crates/trackly-app/tests/places_move_groups.rs`, `group_report_batch.rs`, `place_movements_group_fields.rs` — D-23, отчёт, DTO таймлайна (Req 9, 10)
-- [ ] `crates/trackly-app/tests/group_write_sites.rs` — Req 11, сценарии S1–S9, счётный гейт `act_service.rs`
-- [ ] `crates/trackly-app/tests/group_movements_journal.rs` — Req 10 (журнал, отчёт, таймлайн)
-- [ ] `crates/trackly-app/tests/role_endpoint_matrix.rs` — Cases 76+ (Req 13) + тест полноты маршрутов
-- [ ] `ui/scripts/check-group-vocabulary.mjs` (+ `--selftest`), `check-groups-section.mjs`, `check-reorder.mjs`; подключить в цепочку `lint` в `ui/package.json`
-- [ ] Расширить: `auth.rs::tests`, `per_record_invariants.rs` (списки таблиц), `check-place-tree-invalidation.mjs` (реестр INV-7)
-- [ ] Framework install: **не требуется**
+- [x] `crates/trackly-core/src/domain/group_values.rs` — таблицы-тесты ip/mac/number/text (Req 5)
+- [x] `crates/trackly-infra/tests/groups_migration.rs` — V045/V046, `run_up_to(44)` без потери данных (Req 10)
+- [x] `crates/trackly-infra/tests/group_types_repo.rs` — триггер code/behavior, засев, свойства (Req 1–4)
+- [x] `crates/trackly-infra/tests/groups_repo.rs` — PK членства, CTE цикла/состава, seq, значения, принтеры (Req 7, 8, 12); атомарность переноса доказана на уровне сервиса в `groups_move` (Req 9)
+- [x] `crates/trackly-infra/tests/place_movements_batch_repo.rs` — batch_id, entity_label, group_id (Req 10)
+- [x] `crates/trackly-app/tests/groups_types_service.rs` — Req 1–4 + засев
+- [x] `crates/trackly-app/tests/groups_service.rs` — Req 7 (нумерация), чтения, CRUD (Req 12 частично)
+- [x] `crates/trackly-app/tests/groups_membership.rs` — Req 8 (членство, вложенность, инвариант места)
+- [x] `crates/trackly-app/tests/groups_move.rs` — Req 9 (перенос, атомарность)
+- [x] `crates/trackly-app/tests/groups_values_card.rs` — Req 5, 12 (значения, карточка, принтеры)
+- [x] `crates/trackly-app/tests/places_move_groups.rs`, `group_report_batch.rs`, `place_movements_group_fields.rs` — D-23, отчёт, DTO таймлайна (Req 9, 10)
+- [x] `crates/trackly-app/tests/group_write_sites.rs` — Req 11, сценарии S1–S9, счётный гейт `act_service.rs`
+- [x] `crates/trackly-app/tests/group_movements_journal.rs` — Req 10 (журнал, отчёт, таймлайн)
+- [x] `crates/trackly-app/tests/role_endpoint_matrix.rs` — Cases 76+ (Req 13) + тест полноты маршрутов
+- [x] `ui/scripts/check-group-vocabulary.mjs` (+ `--selftest`), `check-groups-section.mjs`, `check-reorder.mjs`; подключить в цепочку `lint` в `ui/package.json`
+- [x] Расширить: `auth.rs::tests`, `per_record_invariants.rs` (списки таблиц), `check-place-tree-invalidation.mjs` (реестр INV-7)
+- [x] Framework install: **не требуется**
 
 ---
 
@@ -197,13 +196,171 @@ created: 2026-10-04
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Per-Task Verification Map заполнена (не остаётся заглушкой)
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] Живые проверки собраны и отданы пользователю ДО `/gsd-verify-work`
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Per-Task Verification Map заполнена (не остаётся заглушкой)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 60s
+- [x] Живые проверки собраны и отданы пользователю ДО `/gsd-verify-work` (список ниже; САМИ проверки — не пройдены, ждут человека)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** автоматическая граница фазы закрыта 2026-10-04 (план 41-26). Живые проверки НЕ пройдены и остаются за пользователем — `nyquist_compliant: true` описывает только автоматическую выборку, не приёмку рантайма и вида.
+
+---
+
+## Результаты прогонов (план 41-26, 2026-10-04, коммит-основа 1380f9c4)
+
+Все прогоны выполнены последовательно, по одному `cargo` за раз; env `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1`, префикс `DEVELOPER_DIR=/Library/Developer/CommandLineTools`.
+
+### Целевые цели (каждая целиком, код выхода 0)
+
+| Слой | Цель — результат |
+|------|------------------|
+| core | `trackly-core` — 149 passed, 0 failed |
+| infra | `groups_migration` 4 · `group_types_repo` 14 · `groups_repo` 18 · `place_movements_batch_repo` 6 · `per_record_invariants` 3 · `migration_idempotency` 2 — все 0 failed |
+| app, новые | `groups_types_service` 26 · `groups_service` 15 · `groups_move` 10 · `group_movements_journal` 5 · `groups_membership` 14 · `groups_values_card` 19 · `group_write_sites` 23 · `group_report_batch` 10 · `places_move_groups` 6 · `place_movements_group_fields` 5 · `role_endpoint_matrix` 12 (с `--skip login_remember_persistent_cookie`) — все 0 failed |
+| app, регресс write-site'ов целиком | `acts_crud` 10 · `acts_returns` 20 · `acts_update` 17 · `acts_update_return` 20 · `acts_undo` 6 · `acts_clone_handover` 12 · `acts_changed_place_ids` 5 · `acts_place_snapshot` 4 · `acts_e2e_smoke` 4 · `place_movements_bulk_move` 5 · `place_movements_write_sites_devices` 6 · `place_movements_write_sites_cartridges` 3 · `place_movements_timeline` 6 · `places_contents` 5 · `places_delete_blocked` 11 · `places_service_crud` 4 · `devices_crud` 19 · `report_movements` 18 · `report_csv_export` 2 · `html_report_render` 8 · `html_header_parity` 5 · `cartridges_lifecycle` 36 — все 0 failed |
+
+`role_endpoint_matrix` включает группы: `group_types_role_matrix_{http,tauri_path}`, `groups_role_matrix_{http,tauri_path}`, `group_types_http_immutability_not_vacuous`, `group_types_http_protect_rules`, `groups_http_server_side_validation`, `groups_http_membership_and_nesting_rules`, `groups_manager_can_create_group_not_type`, а также тесты полноты маршрутов `group_types_http_route_completeness` и `groups_http_route_completeness`.
+
+### Полный прогон workspace (один раз)
+
+`cargo test --workspace --no-fail-fast -- --test-threads=1 --skip login_remember_persistent_cookie` — код выхода 0; **156 тестовых бинарей, 1604 passed, 0 failed, 5 ignored**; длительность около 8 минут (инкрементальная сборка, не 80). Совпадает с прогоном оркестратора на c2c31640 (1604) — после него изменялись только документы.
+
+### Цепочка CI-гейтов, в порядке CI
+
+| Шаг | Результат |
+|-----|-----------|
+| `cargo test -p trackly-app --test export_bindings` | 1 passed |
+| `pnpm --dir ui svelte-check` | 309 файлов, **0 ERRORS, 68 WARNINGS** (база восстановлена; ранее случившийся ERROR в `MovementTimelineSection.svelte` — фикстура без `batch_id` после регенерации `bindings.ts` планом 41-05 — исправлен в 17d26df2) |
+| `pnpm --dir ui lint` | код 0: eslint, prettier, все `check-*.mjs`; `check-group-vocabulary` — 20 фикстур selftest, 212 файлов; `check-reorder` — selftest ловит 3 мутанта, 22 кейса; `check-groups-section` — 6 фикстур selftest, 0 нарушений; `check-place-tree-invalidation` — 0 нарушений (маркеры `groups.move(`, `groups.addDevices(`, `groups.setParent(` добавлены планом 41-21, гейт расширен, не ослаблен) |
+| `pnpm --dir ui build` | код 0 (хук `prebuild` прогнал `export_bindings`); `ui/dist` пересобран |
+| `cargo clippy --workspace --all-targets -- -D warnings` | код 0 |
+| `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | PASS, 0 нарушений |
+| `cargo fmt` на файлах фазы (69 `.rs`, изменённых с 0b7239b8^) | чисто; единственный дифф — в `crates/trackly-app/src/dto/act.rs`, который фаза не меняла (см. «Заранее существовавшие условия») |
+
+### Чистота дерева и мутаций
+
+`git status --short` пуст; `git diff HEAD` и `grep` по `crates`/`migrations` не находят следов мутационных проверок (`ON CONFLICT(code) DO UPDATE`, `DO UPDATE SET name = excluded.name`, `WHEN 0` в хвосте строки).
+
+### Гейт write-site'ов `devices.place_id` (план 41-16)
+
+`crates/trackly-app/tests/group_write_sites.rs`: реестр — `act_service.rs` 8 вызовов записи, `place_service.rs` 1, `group_place.rs` 1, плюс скан `crates/*/src`, падающий на любом незарегистрированном писателе; для `act_service.rs` проверяется парность — у каждого из 8 write-site'ов свой `release` нужного вида в окне после него. Оркестратор независимо подтвердил ровно 8 реальных write-site'ов и 8 вызовов release.
+
+Реестр S1–S10 закрыт: S1/S8/S9 — план 41-14, S2 — 41-15, S3–S7 — 41-16. Вне границ с названной причиной: S10 (создание/массовое/CSV — новое устройство не может быть членом группы), собственный путь группы `group_place.rs`, неиспользуемый нетранзакционный `DeviceRepository::update`, обновления `deleted_at_utc`.
+
+### Приватность
+
+Скрипт-гейт зелёный. Дополнительно, вручную, просмотрен весь `git diff 0b7239b8^..HEAD` (141 файл, около 30 тыс. добавленных строк: `.planning/phases/41-*`, `crates/*/tests`, `crates/*/src`, миграции, `ui/src`, `ui/scripts/fixtures`) регулярными выражениями на ФИО (инициалы, «Фамилия Имя»), e-mail, телефоны, IP, MAC, ИНН/КПП/ОГРН/ОКПО, адреса, организационно-правовые формы. Найдено только вымышленное: ФИО «Иванов И.И.», «Петров П.П.», «Сидоров С.С.», «Иванова И.И.», «Иванова А.А.», «Иванкин К.К.»; адреса 10.0.0.x, 192.168.1.10, 1.2.3.4, 0.0.0.0, 255.255.255.255; MAC `00:1b:44:11:3a:b7`, `aa:bb:cc:dd:ee:ff`, `00:00:00:00:00:01`. E-mail, телефонов, реквизитов, адресов, названий организаций — не найдено. Удалять было нечего. Граница гарантии: просмотрен диф фазы, а не вся история репозитория.
+
+---
+
+## Покрытие требований автоматикой
+
+| Требование | Чем покрыто (машинно) | Остаётся человеку |
+|------------|----------------------|-------------------|
+| GRP-01 неизменяемые `code`/`behavior` | триггер БД (`group_types_repo`), сервис, HTTP-тест с отличающимся `code` (`group_types_http_immutability_not_vacuous`) | панель типа, права manager (H20-3) |
+| GRP-02 свойства типа, порядок | `groups_types_service`, `check-reorder` (22 кейса, 3 мутанта) | жест перетаскивания (H20-2, сценарий А) |
+| GRP-03 скрытие, типы данных, нормализация | `groups_types_service protect_*`, `group_values` (core), `groups_values_card values_*`, HTTP 400 | формы и попап нарушителей (H20-1, H22-3) |
+| GRP-04 раздел «Группы», нумерация | `groups_service numbering_*`, `check-groups-section` | страница на обоих транспортах (H19-1, H23-1) |
+| GRP-05 членство, вложенность | `groups_repo`, `groups_membership` (PK, CTE цикла, teardown) | состав, мультивыбор (H21-1…3) |
+| GRP-06 место группы, журнал пакета | `groups_move` (атомарность с fault-injection), `group_movements_journal`, `group_report_batch`, `places_move_groups` | модалка, тост, отчёт, печать (H23-1, H24-2, H25-1, H25-2, сценарий Б) |
+| GRP-07 запрет индивидуального перемещения | `group_write_sites` (S1–S9 + счётный гейт) | заблокированный PlacePicker (H24-1) |
+| GRP-08 карточка группы | `groups_values_card`, `groups_repo` | чипсы пользователей, принтеры (H22-1, H22-2) |
+| GRP-09 права на обоих транспортах | `role_endpoint_matrix` (3 роли x 2 транспорта + полнота маршрутов), `Action`-матрица в core | видимость по ролям (H20-3, H23-2) |
+| GRP-10 удаление группы | освобождение устройств, неизменный `devices.place_id`, вложенные группы становятся корнями, число освобождаемых для подтверждения — `groups_service`, `places_delete_blocked` | текст модалки удаления (H19-2) |
+| GRD-06 переименование «Свернуть…» | `check-group-vocabulary` (20 фикстур) | — |
+
+**GRP-10 — ЧАСТИЧНО, сознательно.** В `REQUIREMENTS.md` отмечен `[~]`, трассировка «Phase 41 + 41.1». Фаза 41 даёт освобождение устройств при удалении группы, неизменное `devices.place_id`, превращение вложенных групп в корневые и число освобождаемых для подтверждения. Вторая половина — «удаление устройства-якоря запрещено, пока существует группа» — требует `groups.anchor_device_id`, которого миграция V045 не создаёт; она переносится в фазу 41.1. GRP-10 НЕ считать выполненным.
+
+Остальные галочки `[x]` в `REQUIREMENTS.md` означают «автоматическая граница пройдена», а не «принято в живом приложении».
+
+---
+
+## Заранее существовавшие условия (НЕ регрессии фазы 41)
+
+- **Зависающий тест** `login_remember_persistent_cookie` в `trackly-app` — зависает и при запуске пакета, и при `--workspace`. Все прогоны выше идут с `-- --skip login_remember_persistent_cookie`. Фазой 41 не вводился и не менялся; CI-шаг `cargo test` в `ci-fast.yml` флага `--skip` не содержит — это отдельный долг проекта.
+- **Дрейф `cargo fmt --check`** в `crates/trackly-app/src/dto/act.rs` и нескольких тестовых файлах. Фаза 41 их не трогала (`git diff 0b7239b8^..HEAD` по `act.rs` пуст); файлы фазы форматированы корректно. Не «чинился» — вне границ плана.
+- **Нужен настоящий `ui/dist`** (`pnpm --dir ui build`) для тестов `trackly-app`; при линковке с кодом 69 — `DEVELOPER_DIR=/Library/Developer/CommandLineTools`.
+- **Хук `prebuild`** у `pnpm run build` запускает `cargo test -p trackly-app --test export_bindings` — это cargo-шаг (план 41-21 об этом сообщил).
+
+---
+
+## Что проверено машиной, а что НЕТ
+
+**Машиной проверено:** схема и миграции (V045/V046, `run_up_to(44)` без потери `act_items`); триггеры; домен значений свойств; атомарность переноса группы; журнал пакета, отчёт, CSV и печатный состав на уровне данных; закрытый реестр write-site'ов `devices.place_id`; права на обоих транспортах; типы `bindings.ts` против обёртки из 25 команд; словарный гейт, реестр инвалидации INV-7, наличие раздела в сайдбаре и маршрутах, чистые функции перестановки против golden-фикстуры; clippy, svelte-check, eslint/prettier, сборка SPA; отсутствие известных токенов приватности.
+
+**Машиной НЕ проверено — нужен человек в настоящем приложении (Tauri WKWebView и LAN-браузер):** рантайм и вид всего раздела «Группы». Компиляционные гейты не видят ошибок рун (в том числе `effect_update_depth_exceeded`), жестов, вёрстки, скролл-регионов, фокус-колец, многостраничной печати и асимметрии «десктоп vs браузер». Планы 41-19 … 41-25 записали каждый свой список UNVERIFIED и оставили `human-check` открытыми. План 41-23 прогнал смонтированную страницу в Playwright WebKit против поддельного бэкенда (около 12 сценариев, без ошибок консоли и без `effect_update_depth_exceeded`) — полезный сигнал, но по правилу проекта это НЕ верификация: вёрстка и ответы настоящего сервера остаются непроверенными. Исполнитель этого плана живые проверки не запускал и не закрывал.
+
+---
+
+## Отклонения от UI-SPEC и планов, зафиксированные в сводках
+
+| Отклонение | Источник | Статус |
+|------------|----------|--------|
+| Шеврон пакета лежит в ячейке «Предмет» обычной `TableRow`, а не в `TableRow group` с colspan (UI-SPEC §14.1) | 41-25 | принято планировщиком (решение плана) |
+| Hit-test строк перетаскивания через `button.drag-handle[data-prop-id]` -> `closest('tr')`, обработчики на div-обёртке вокруг `Table` | 41-20 | принято планировщиком (прямо предусмотрено планом) — проверить жестом (H20-2) |
+| «Место» в модалке мультивыбора — `PlacePicker`, а не Dropdown | 41-21 | принято планировщиком (так предписано планом) |
+| Пометка «уже в группе «…»» выводится в мета-слот Dropdown, а не отдельным caption-стилем | 41-21 | требует решения пользователя при просмотре (H21-3) |
+| Выбранный узел группы хранится страницей (`trackly:groups:selected`), а не деревом | 41-19 | принято планировщиком (план 23 поручает странице) |
+| Тексты удаления для 0 и 1 устройства («Устройств в составе нет.», «освободится») | 41-19 | принято: копирайт, сверить в H19-2 |
+| Тост после «Скрыть»: «Свойство скрыто» или «Свойство удалено» по исходу сервера | 41-20 | принято (исправление ошибки плана) |
+| Проп `showInitialPlacementNote` в `MovementTimeline` (вне `files_modified` плана 23) | 41-23 | принято (по умолчанию `true`, прочие потребители не меняются) |
+| Эффект «статус На складе» отключён для заблокированного члена группы | 41-24 | принято (Rule 2) |
+| Текст в `GroupTypePanel` «Код и поведение типа изменить нельзя. Название и набор свойств — можно.» для manager звучит как разрешение, которого нет | deferred-items, 41-23 | **требует решения пользователя** (копирайт, UI-SPEC 9.1) |
+| Пустой блок «Перемещений ещё не было…» в `MovementTimeline` остаётся устройство-ориентированным (для группы свой блок в `GroupPanel`) | deferred-items, 41-23 | принято планировщиком |
+| Строчное «группировать» в `PlaceContents.svelte` проходит словарный гейт (ширина маркера `'групп'`; «Группировать» и «сгруппировать» ловятся) | 41-24/41-25 | известный задокументированный пробел гейта |
+
+---
+
+## Живые проверки для пользователя (до /gsd-verify-work)
+
+Это список к РУЧНОМУ прохождению. Исполнитель плана 41-26 ни одну из них не запускал и не отмечал пройденной. Запускать на ОБОИХ транспортах: десктоп — `cargo tauri dev` с ветки/дерева, где лежит изменение (исправления в стороннем worktree в работающее приложение не попадают, пока не слиты в `main`); LAN-браузер — после `pnpm --dir ui build`. По возможности — Windows WebView2. В каждом пункте дополнительно смотреть консоль: не должно быть `effect_update_depth_exceeded`.
+
+**Предусловия, общие для списка.** Свойства типа «АРМ» — «Пользователи», «Подключённые принтеры», «Хост», «IP», «MAC» — засеваются по умолчанию (D-31); добавлять их руками НЕ нужно. «Хост» засеян необязательным. Встроенные типы: «АРМ», «Системный блок», «Разбор». Нужна dev-БД с тестовыми данными (не боевая) и минимум два пользователя помимо текущего.
+
+### План 41-19 — дерево и модалки (2 пункта)
+
+- [ ] **H19-1 · GroupTree.** Раздел «Группы» (после плана 23): дерево показывает три встроенных типа, раскрывается стрелками, у групп видны счётчики и бейдж «Без места»; ActionMenu строки подписан «Действия: …». Ожидание: ↑ ↓ Home End → ← работают; поиск «Поиск группы» раскрывает ветки; одинаково в Tauri и в браузере.
+- [ ] **H19-2 · GroupTypeFormModal, GroupFormModal, GroupDeleteModal.** Под admin: «Создать тип» -> поля «Название» и «Поведение»; создать тип «Тест»; «Переименовать» в меню узла — поля «Поведение» нет; «Создать группу» (PageHeader) — без названия имя «{тип} #N»; удалить группу через меню узла — показано число освобождаемых устройств; выпадающие списки — компонент Dropdown, не нативный select. Тексты сверить с UI-SPEC §9.4, §17.4, §17.5. Отдельно: путь переименования типа шлёт тело без ключей `code`/`behavior` (приведение типа в `GroupTypeFormModal`; на рантайме не запускался).
+
+### План 41-20 — свойства типа (3 пункта)
+
+- [ ] **H20-1 · GroupTypePropertiesTable, PropertyRequiredViolatorsPopup.** Под admin, тип «АРМ»: добавить НОВОЕ свойство «Резервный адрес» (тип «IP-адрес»; имена засеянных свойств заняты); включить «Обязательное» при существующей группе без значения. Ожидание: PropertyRequiredViolatorsPopup со списком группы и кнопкой «Открыть»; чекбокс остаётся снятым; у свойства с заполненными значениями Dropdown «Тип данных» disabled с подписью «заполнено в N группах»; «Скрыть» просит подтверждение; скрытое свойство исчезает и возвращается с бейджем «Скрыто» при «Показать скрытые».
+- [ ] **H20-2 · Перестановка свойств.** В панели типа «АРМ» (минимум 3 свойства) перетащить свойство за ручку «⠿»; затем начать перетаскивание и нажать Esc; затем «Выше»/«Ниже» из меню; перезагрузить страницу. Ожидание: призрак и индикатор вставки; порядок сохраняется после перезагрузки; Esc и `pointercancel` возвращают прежний порядок без запроса; клик по чекбоксу «На карте» не запускает драг; озвучивается «перемещено на позицию N из M». (HTML5 DnD в WKWebView не работает — урок фазы 39.)
+- [ ] **H20-3 · Панель типа по ролям.** Выбрать узел «АРМ» под admin и отдельной сессией под manager. Ожидание: admin видит «Показать скрытые» и строку добавления; manager — только чтение (Код/Поведение/Встроенный/Быстрое действие видны, контролов правки нет); нет двойного скролла. Заодно решить вопрос копирайта про строку «Код и поведение типа изменить нельзя…» для manager.
+
+### План 41-21 — состав группы (3 пункта)
+
+- [ ] **H21-1 · DropdownSection и существующие потребители Dropdown.** «Витрина компонентов» (admin) -> DropdownSection, демонстрация «Комбобокс с заголовками секций»: видны заголовки секций, ↑↓ перескакивают их. Затем форма акта (ActFormItemsTable) и пикер принтера выглядят и работают как раньше.
+- [ ] **H21-2 · GroupContentsTable.** Группа -> вкладка «Состав»: в строке-поиске часть названия устройства — секции «Устройства» и «Группы»; выбрать устройство; выбрать другую группу (вложение); раскрыть шевроном вложенную строку; в меню ⋯ — «Вывести из состава». Ожидание: добавление без перезагрузки, поле очищается и держит фокус; «Вывести из состава» без подтверждения; занятое устройство -> Toast-ошибка с именем группы; счётчики дерева «Места» обновляются.
+- [ ] **H21-3 · GroupAddDevicesModal.** «Добавить несколько…» -> отметить 3 устройства, одно уже в другой группе. Ожидание: занятое серое с подсказкой «Уже в группе «…»» и не отмечается; «Выбрано: 2», «Добавить (2)»; после добавления счётчики в дереве групп и в «Места» обновились.
+
+### План 41-22 — карточка группы (3 пункта)
+
+- [ ] **H22-1 · SC7 «из коробки», GroupUsersField.** На ЧИСТОЙ dev-БД (создана заново; админ свойства типа «АРМ» не добавлял и не менял) под manager создать группу типа «АРМ» и открыть карточку, вкладка «Свойства»: поля «Пользователи» (GroupUsersField) и «Подключённые принтеры» (GroupPrintersList) видны СРАЗУ. Добавить двух пользователей через «Добавить пользователя», второго отметить звёздочкой. Ожидание: поиск находит по ФИО и логину (в том числе кириллицей другого регистра) даже под manager; звёздочка переносится (основной один); «×» убирает чипс; звёздочка и «×» достижимы Tab и нажимаются Enter/Space.
+- [ ] **H22-2 · GroupPrintersList, USB-связь.** USB-связь в интерфейсе НЕ создаётся (поле `usb_host_device_id` только отображается в карточке принтера). Подготовка на ЛОКАЛЬНОЙ dev-БД SQL-командой: `UPDATE printers SET usb_host_device_id = <id устройства-члена группы> WHERE device_id = <id принтера>` (id из `SELECT id, name FROM devices`). Затем карточка группы «АРМ» -> GroupPrintersList; затем добавить тот же принтер ссылкой. Ожидание: USB-принтер появляется сам с Badge «USB» без меню ⋯; после добавления ссылкой строка остаётся ОДНА, Badge «USB», но появляется ⋯ с «Убрать ссылку»; сетевой принтер только ссылкой — Badge «Ссылка». Если данные подготовить нельзя — пометить «не проверено: USB-связь не создаётся в UI», а не «пройдено».
+- [ ] **H22-3 · GroupPropertiesForm.** Предусловия по шагам: (1) если у типа «АРМ» уже есть группы — заполнить «Хост» в карточке каждой (включение «Обязательное» сервер отклоняет, пока есть группы с пустым «Хост»; на чистой БД без групп шаг пропускается); (2) под admin в панели типа «АРМ» включить «Обязательное» у засеянного «Хост»; (3) создать НОВУЮ группу «АРМ» — «Хост» пуст. В её карточке: в «IP» ввести `2001:DB8:0:0:0:0:0:1`, в «MAC» — `AA-BB-CC-DD-EE-FF`, «Сохранить»; затем в «IP» `01.2.3.4` и сохранить; для обязательного «Хост» оставить пусто и сохранить. Ожидание: после первого сохранения `2001:db8::1` и `aa:bb:cc:dd:ee:ff` (пришли с сервера); невалидный IP — ошибка под полем (FormField), не Toast; пустое обязательное — «Заполните обязательное свойство «…».» под нужным полем; «Сохранить» неактивна без изменений; «Отмена» возвращает значения.
+
+### План 41-23 — сборка раздела (2 пункта)
+
+- [ ] **H23-1 · GroupsPage, GroupPanel, GroupMoveModal.** Под admin: «Группы» в сайдбаре между «Устройства» и «Акты»; создать группу «Создать группу» (PageHeader); выбрать в дереве GroupTree -> GroupPanel с вкладками «Состав»/«Свойства»/«История»; «Перенести…» из меню узла и затем кнопкой в панели. Ожидание: обе точки входа открывают один GroupMoveModal; тост «Перенесено: группа и N устройств»; дерево и счётчики обновились; вёрстка 35/65 как в «Места»; единственный скролл-регион внутри панели; одинаково в Tauri и браузере.
+- [ ] **H23-2 · Роли и AccessDenied.** Под manager (отдельная сессия): раздел виден, можно создать группу и добавлять в состав, но GroupTypePanel без контролов правки и нет кнопки «Создать тип». Под employee — пункта нет в сайдбаре, по `#/groups` вручную — «Доступ запрещён».
+
+### План 41-24 — место и история (2 пункта)
+
+- [ ] **H24-1 · DeviceFormBody / PlacePicker.** «Устройства» -> форма правки устройства-члена группы «АРМ #3» с местом; затем члена группы без места; затем вне групп. Ожидание: у члена с местом PlacePicker неактивен, под ним «Место задаётся группой «АРМ #3»» со ссылкой, клик ведёт в «Группы» и выделяет группу; у члена без места и вне групп место редактируется как обычно; сохранение прочих полей члена группы проходит без ошибки.
+- [ ] **H24-2 · MovementTimeline.** В «Группы» впервые «Перенести…» группу «АРМ #3» (создана БЕЗ места, несколько устройств) на место, затем ещё раз; в «Места» открыть попап устройства (PlaceEntityViewModal, вкладка истории — MovementTimeline); затем вкладка «История» самой группы (GroupPanel). Ожидание: строка таймлайна устройства — «в составе группы «АРМ #3»», имя — ссылка в «Группы»; в «Истории» группы — «перенос группы»; прежние строки («вручную», «актом №…») как раньше.
+
+### План 41-25 — отчёт и массовый перенос (2 пункта)
+
+- [ ] **H25-1 · ReportTable, печать.** Создать группу БЕЗ места, добавить устройства, впервые перенести на место (D-21: строки группы в журнале нет), затем перенести ещё раз; «Отчёты» -> «Перемещения» за период; раскрыть и свернуть строку пакета шевроном; применить фильтр «тип устройства»; напечатать отчёт из десктопа и из LAN-браузера. Ожидание: пакет — ОДНА свёрнутая строка «АРМ #3 (N устройств)» с датой/откуда/куда/причиной «перенос группы»; шеврон раскрывает строки устройств; при фильтре и для пакета первого размещения показывается тот же заголовок пакета; на БУМАГЕ — ВСЕ строки пакета независимо от раскрытия на экране, шевронов нет, многостраничность не ломается (расхождение «экран vs бумага» сознательное, D-27).
+- [ ] **H25-2 · PlaceContents.** Место «Склад А» с группой «АРМ #3» (место «Склад А») и парой одиночных устройств: «Места» -> «Склад А» -> «Перенести всё содержимое в…». Ожидание: в модалке «Перенести содержимое в другое место?» после прежнего текста — «Вместе с содержимым переедут 1 группа и весь их состав.»; после подтверждения тост «Перенесено: N устройств и 1 группа»; группа и все её устройства в новом месте (раздел «Группы»), одиночные тоже; для места без групп модалка и тост прежние; счётчики дерева «Мест» обновились.
+
+Итого 17 пунктов: 2 + 3 + 3 + 3 + 2 + 2 + 2.
+
+### Два сквозных сценария
+
+- [ ] **S-А · Перетаскивание свойства.** GroupTypePropertiesTable: перетащить свойство, отменить Esc/`pointercancel`, пройти тем же порядком клавиатурой («Выше»/«Ниже») — на Tauri и в LAN-браузере, по возможности на WebView2 (покрывается H20-2; здесь — как единый проход на всех трёх движках).
+- [ ] **S-Б · Перенос группы до печати.** GroupMoveModal -> тост «Перенесено: группа и N устройств» -> счётчики «Мест» -> отчёт «Перемещения» (ReportTable, раскрытие пакета) -> печать полного состава (покрывается H23-1, H25-1; здесь — одним сквозным проходом).
