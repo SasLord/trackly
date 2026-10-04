@@ -210,6 +210,22 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::group_types::group_type_properties_unarchive,
         crate::tauri_cmds::group_types::group_type_properties_reorder,
         crate::tauri_cmds::group_types::group_type_properties_empty_groups,
+        // Phase 41 — Groups
+        crate::tauri_cmds::groups::groups_list,
+        crate::tauri_cmds::groups::groups_get,
+        crate::tauri_cmds::groups::groups_card,
+        crate::tauri_cmds::groups::groups_composition,
+        crate::tauri_cmds::groups::groups_search,
+        crate::tauri_cmds::groups::groups_for_devices,
+        crate::tauri_cmds::groups::groups_user_options,
+        crate::tauri_cmds::groups::groups_create,
+        crate::tauri_cmds::groups::groups_update,
+        crate::tauri_cmds::groups::groups_delete,
+        crate::tauri_cmds::groups::groups_set_parent,
+        crate::tauri_cmds::groups::groups_add_devices,
+        crate::tauri_cmds::groups::groups_remove_devices,
+        crate::tauri_cmds::groups::groups_move,
+        crate::tauri_cmds::groups::groups_set_values,
         // Phase 40 — Movement history timeline (Plan 10)
         crate::tauri_cmds::place_movements::place_movements_get_timeline,
         // Phase 40.2 Plan 05 — Numbering templates: Group A (CRUD, ManageSettings)
