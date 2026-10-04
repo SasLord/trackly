@@ -12,7 +12,7 @@
 //! отсутствие циклов вложенности, запрет вложения в группу «Разбор».
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
-use trackly_core::domain::groups::{GroupNew, GroupRow};
+use trackly_core::domain::groups::{GroupNew, GroupRow, GroupValueRow, PrinterRefRow};
 use trackly_core::error::AppError;
 use trackly_core::ports::groups::GroupRepository;
 
@@ -437,6 +437,208 @@ impl SqliteGroupRepository {
         .concat();
         tx.execute(&sql, rusqlite::params![root, place, now_utc])
             .map_err(map_rusqlite)
+    }
+}
+
+fn printer_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRefRow> {
+    Ok(PrinterRefRow {
+        device_id: row.get(0)?,
+        name: row.get(1)?,
+        inventory_number: row.get(2)?,
+        serial_number: row.get(3)?,
+    })
+}
+
+impl SqliteGroupRepository {
+    /// Значения свойств группы, `ORDER BY property_id, position`.
+    pub fn list_values(
+        &self,
+        conn: &Connection,
+        group_id: i64,
+    ) -> Result<Vec<GroupValueRow>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT group_id, property_id, position, value_text, value_ref, is_primary
+                 FROM group_property_values
+                 WHERE group_id = ?1
+                 ORDER BY property_id, position, id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params![group_id], |r| {
+                let is_primary: i64 = r.get(5)?;
+                Ok(GroupValueRow {
+                    group_id: r.get(0)?,
+                    property_id: r.get(1)?,
+                    position: r.get(2)?,
+                    value_text: r.get(3)?,
+                    value_ref: r.get(4)?,
+                    is_primary: is_primary != 0,
+                })
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Атомарно заменить значения `(group_id, property_id)`: удалить прежние
+    /// строки и вставить новые. Пустой набор -> строк нет («пусто» = отсутствие
+    /// строки). `group_id`/`property_id` берутся из аргументов, а не из строк.
+    /// Нарушение частичных индексов (два `is_primary`, повтор ссылки) -> `Conflict`,
+    /// при этом прежние значения остаются на месте (откат к savepoint).
+    pub fn replace_property_values_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        group_id: i64,
+        property_id: i64,
+        values: &[GroupValueRow],
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        tx.execute_batch("SAVEPOINT gpv_replace")
+            .map_err(map_rusqlite)?;
+        let result = (|| -> Result<(), AppError> {
+            tx.execute(
+                "DELETE FROM group_property_values WHERE group_id = ?1 AND property_id = ?2",
+                rusqlite::params![group_id, property_id],
+            )
+            .map_err(map_rusqlite)?;
+            for v in values {
+                tx.execute(
+                    "INSERT INTO group_property_values
+                       (group_id, property_id, position, value_text, value_ref, is_primary,
+                        updated_at_utc)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        group_id,
+                        property_id,
+                        v.position,
+                        v.value_text,
+                        v.value_ref,
+                        v.is_primary as i64,
+                        now_utc
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => tx
+                .execute_batch("RELEASE gpv_replace")
+                .map_err(map_rusqlite),
+            Err(e) => {
+                // Откат к savepoint и его снятие; исходная ошибка важнее ошибки отката.
+                let _ = tx.execute_batch("ROLLBACK TO gpv_replace; RELEASE gpv_replace");
+                Err(e)
+            }
+        }
+    }
+
+    /// Принтеры, USB-привязанные к устройствам состава группы (включая вложенные
+    /// группы): производные, ручной записи нет (GRP-08, D-12). Только живые
+    /// устройства — и принтер, и хост. Дедупликацию с явными ссылками делает сервис.
+    pub fn usb_printers_for_group(
+        &self,
+        conn: &Connection,
+        group_id: i64,
+    ) -> Result<Vec<PrinterRefRow>, AppError> {
+        let sql = [
+            SUBTREE_CTE,
+            " SELECT d.id, d.name, d.inventory_number, d.serial_number
+              FROM printers p
+              JOIN devices d ON d.id = p.device_id AND d.deleted_at_utc IS NULL
+              WHERE p.usb_host_device_id IN (
+                SELECT gd.device_id FROM group_devices gd
+                JOIN sub ON gd.group_id = sub.id
+                JOIN devices h ON h.id = gd.device_id AND h.deleted_at_utc IS NULL
+              )
+              ORDER BY d.name, d.id",
+        ]
+        .concat();
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params![group_id], printer_ref_from_row)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Живые устройства, на которые группа ссылается через значения свойств
+    /// `property_ids` (тип `device_refs`). Одно устройство — одна строка.
+    pub fn ref_devices_for_group(
+        &self,
+        conn: &Connection,
+        group_id: i64,
+        property_ids: &[i64],
+    ) -> Result<Vec<PrinterRefRow>, AppError> {
+        if property_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Только `?`-заглушки по числу элементов: ввод в текст SQL не попадает.
+        let placeholders = vec!["?"; property_ids.len()].join(",");
+        let sql = [
+            "SELECT DISTINCT d.id, d.name, d.inventory_number, d.serial_number
+             FROM group_property_values v
+             JOIN devices d ON d.id = v.value_ref AND d.deleted_at_utc IS NULL
+             WHERE v.group_id = ?1 AND v.value_ref IS NOT NULL AND v.property_id IN (",
+            &placeholders,
+            ") ORDER BY d.name, d.id",
+        ]
+        .concat();
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let params = std::iter::once(group_id).chain(property_ids.iter().copied());
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params), printer_ref_from_row)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Для каждой живой группы — число живых устройств состава ВКЛЮЧАЯ вложенные
+    /// группы. Один рекурсивный запрос по индексам `idx_groups_parent` /
+    /// `idx_group_devices_group`, не N+1. `(group_id, device_count)`, `ORDER BY group_id`.
+    pub fn tree_counts(&self, conn: &Connection) -> Result<Vec<(i64, i64)>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "WITH RECURSIVE closure(root, id) AS (
+                    SELECT id, id FROM groups WHERE deleted_at_utc IS NULL
+                    UNION ALL
+                    SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id
+                    WHERE g.deleted_at_utc IS NULL
+                 )
+                 SELECT c.root, COUNT(d.id)
+                 FROM closure c
+                 LEFT JOIN group_devices gd ON gd.group_id = c.id
+                 LEFT JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+                 GROUP BY c.root
+                 ORDER BY c.root",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Число живых групп по типам: `(type_id, group_count)`, `ORDER BY type_id`.
+    pub fn group_counts_by_type(&self, conn: &Connection) -> Result<Vec<(i64, i64)>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT type_id, COUNT(*) FROM groups
+                 WHERE deleted_at_utc IS NULL GROUP BY type_id ORDER BY type_id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
     }
 }
 

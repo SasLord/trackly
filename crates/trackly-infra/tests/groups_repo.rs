@@ -2,7 +2,7 @@
 //! GRP-04/05/06/08/10). Вымышленные имена и данные; фикстуры вставляются прямым SQL.
 
 use rusqlite::{params, Connection};
-use trackly_core::domain::groups::{GroupNew, GroupRow};
+use trackly_core::domain::groups::{GroupNew, GroupRow, GroupValueRow};
 use trackly_core::error::AppError;
 use trackly_core::ports::groups::GroupRepository;
 use trackly_infra::repos::SqliteGroupRepository;
@@ -535,4 +535,382 @@ fn reads_groups_for_devices_children_and_list() {
         .collect();
     assert_eq!(kids, vec![b.id, c.id]);
     assert!(repo.direct_child_groups(&conn, b.id).unwrap().is_empty());
+}
+
+// ---- Задача 2: значения, производные принтеры, счётчики дерева ----------------
+
+fn insert_property(conn: &Connection, type_id: i64, name: &str, data_type: &str) -> i64 {
+    conn.execute(
+        "INSERT INTO group_type_properties (type_id, name, data_type, created_at_utc, updated_at_utc)
+         VALUES (?1, ?2, ?3, ?4, ?4)",
+        params![type_id, name, data_type, NOW],
+    )
+    .expect("insert property");
+    conn.last_insert_rowid()
+}
+
+fn insert_printer(conn: &Connection, device_id: i64, usb_host: Option<i64>) {
+    conn.execute(
+        "INSERT INTO printers (device_id, usb_host_device_id, created_at_utc, updated_at_utc)
+         VALUES (?1, ?2, ?3, ?3)",
+        params![device_id, usb_host, NOW],
+    )
+    .expect("insert printer");
+}
+
+fn text_value(group: i64, property: i64, position: i64, text: &str) -> GroupValueRow {
+    GroupValueRow {
+        group_id: group,
+        property_id: property,
+        position,
+        value_text: Some(text.to_string()),
+        value_ref: None,
+        is_primary: false,
+    }
+}
+
+fn ref_value(group: i64, property: i64, position: i64, r: i64, primary: bool) -> GroupValueRow {
+    GroupValueRow {
+        group_id: group,
+        property_id: property,
+        position,
+        value_text: None,
+        value_ref: Some(r),
+        is_primary: primary,
+    }
+}
+
+#[test]
+fn replace_values_swaps_set_and_empty_clears() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let p_text = insert_property(&conn, t, "Примечание", "text");
+    let p_other = insert_property(&conn, t, "Кабинет", "text");
+    let g = make_group(&mut conn, &repo, t, "АРМ #1", None);
+
+    let tx = conn.transaction().unwrap();
+    repo.replace_property_values_in_tx(
+        &tx,
+        g.id,
+        p_text,
+        &[text_value(g.id, p_text, 0, "старое")],
+        NOW,
+    )
+    .unwrap();
+    repo.replace_property_values_in_tx(
+        &tx,
+        g.id,
+        p_other,
+        &[text_value(g.id, p_other, 0, "101")],
+        NOW,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+
+    let tx = conn.transaction().unwrap();
+    repo.replace_property_values_in_tx(
+        &tx,
+        g.id,
+        p_text,
+        &[text_value(g.id, p_text, 0, "новое")],
+        NOW + 1,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+    let vals = repo.list_values(&conn, g.id).unwrap();
+    assert_eq!(vals.len(), 2, "чужое свойство не затронуто");
+    let text = vals.iter().find(|v| v.property_id == p_text).unwrap();
+    assert_eq!(text.value_text.as_deref(), Some("новое"));
+    assert_eq!(
+        vals.iter()
+            .find(|v| v.property_id == p_other)
+            .unwrap()
+            .value_text
+            .as_deref(),
+        Some("101")
+    );
+
+    // Пустой набор -> строки нет.
+    let tx = conn.transaction().unwrap();
+    repo.replace_property_values_in_tx(&tx, g.id, p_text, &[], NOW + 2)
+        .unwrap();
+    tx.commit().unwrap();
+    let vals = repo.list_values(&conn, g.id).unwrap();
+    assert_eq!(vals.len(), 1);
+    assert_eq!(vals[0].property_id, p_other);
+}
+
+#[test]
+fn list_values_orders_by_property_then_position() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let p1 = insert_property(&conn, t, "Пользователи", "users");
+    let p2 = insert_property(&conn, t, "Устройства", "device_refs");
+    let g = make_group(&mut conn, &repo, t, "АРМ #1", None);
+    insert_device(&conn, 1, "А");
+    insert_device(&conn, 2, "Б");
+    insert_device(&conn, 3, "В");
+
+    let tx = conn.transaction().unwrap();
+    // Вставляем в «неправильном» порядке: сначала p2, позиции вразнобой.
+    repo.replace_property_values_in_tx(
+        &tx,
+        g.id,
+        p2,
+        &[
+            ref_value(g.id, p2, 1, 3, false),
+            ref_value(g.id, p2, 0, 2, true),
+        ],
+        NOW,
+    )
+    .unwrap();
+    repo.replace_property_values_in_tx(&tx, g.id, p1, &[ref_value(g.id, p1, 0, 1, true)], NOW)
+        .unwrap();
+    tx.commit().unwrap();
+
+    let got: Vec<(i64, i64, Option<i64>)> = repo
+        .list_values(&conn, g.id)
+        .unwrap()
+        .iter()
+        .map(|v| (v.property_id, v.position, v.value_ref))
+        .collect();
+    assert_eq!(
+        got,
+        vec![(p1, 0, Some(1)), (p2, 0, Some(2)), (p2, 1, Some(3))]
+    );
+}
+
+#[test]
+fn two_primary_values_conflict_and_old_values_survive() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let p = insert_property(&conn, t, "Пользователи", "users");
+    let g = make_group(&mut conn, &repo, t, "АРМ #1", None);
+    insert_device(&conn, 1, "А");
+    insert_device(&conn, 2, "Б");
+    insert_device(&conn, 3, "В");
+
+    let tx = conn.transaction().unwrap();
+    repo.replace_property_values_in_tx(&tx, g.id, p, &[ref_value(g.id, p, 0, 1, true)], NOW)
+        .unwrap();
+    tx.commit().unwrap();
+
+    let tx = conn.transaction().unwrap();
+    let err = repo
+        .replace_property_values_in_tx(
+            &tx,
+            g.id,
+            p,
+            &[
+                // Первые две вставки проходят, третья нарушает uq_gpv_primary: без отката
+                // к savepoint в БД остались бы две строки вместо одной прежней.
+                ref_value(g.id, p, 0, 2, false),
+                ref_value(g.id, p, 1, 1, true),
+                ref_value(g.id, p, 2, 3, true),
+            ],
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert!(matches!(err, AppError::Conflict { .. }), "{err:?}");
+    // Savepoint откатил частичную замену: прежнее значение на месте, транзакция жива.
+    let vals = repo.list_values(&tx, g.id).unwrap();
+    assert_eq!(vals.len(), 1, "частичная замена откатана");
+    assert_eq!(vals[0].value_ref, Some(1));
+    assert!(vals[0].is_primary);
+    tx.commit().unwrap();
+}
+
+#[test]
+fn values_cascade_when_group_deleted() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let p = insert_property(&conn, t, "Примечание", "text");
+    let g1 = make_group(&mut conn, &repo, t, "АРМ #1", None);
+    let g2 = make_group(&mut conn, &repo, t, "АРМ #2", None);
+    let tx = conn.transaction().unwrap();
+    repo.replace_property_values_in_tx(&tx, g1.id, p, &[text_value(g1.id, p, 0, "а")], NOW)
+        .unwrap();
+    repo.replace_property_values_in_tx(&tx, g2.id, p, &[text_value(g2.id, p, 0, "б")], NOW)
+        .unwrap();
+    repo.delete_group_in_tx(&tx, g1.id).unwrap();
+    tx.commit().unwrap();
+    assert!(repo.list_values(&conn, g1.id).unwrap().is_empty());
+    assert_eq!(repo.list_values(&conn, g2.id).unwrap().len(), 1);
+}
+
+fn ids(rows: &[trackly_core::domain::groups::PrinterRefRow]) -> Vec<i64> {
+    rows.iter().map(|r| r.device_id).collect()
+}
+
+#[test]
+fn usb_printers_come_from_composition_including_nested_group() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let root = make_group(&mut conn, &repo, t, "Корень", None);
+    let nested = make_group(&mut conn, &repo, t, "Вложенная", None);
+    let stranger = make_group(&mut conn, &repo, t, "Чужая", None);
+    set_parent(&mut conn, &repo, nested.id, Some(root.id)).unwrap();
+    // Хосты: 1 — в корне, 2 — во вложенной, 3 — в чужой группе, 4 — вне групп.
+    for (id, name) in [
+        (1, "Хост корня"),
+        (2, "Хост вложенной"),
+        (3, "Хост чужой"),
+        (4, "Хост без группы"),
+    ] {
+        insert_device(&conn, id, name);
+    }
+    add_device(&mut conn, &repo, root.id, 1);
+    add_device(&mut conn, &repo, nested.id, 2);
+    add_device(&mut conn, &repo, stranger.id, 3);
+    // Принтеры: 11 -> хост 1 (корень), 12 -> хост 2 (вложенная), 13 -> хост 3 (чужая),
+    // 14 -> хост 4 (вне групп), 15 — без USB-хоста (сетевой).
+    for (id, name, host) in [
+        (11, "Принтер А", Some(1)),
+        (12, "Принтер Б", Some(2)),
+        (13, "Принтер В", Some(3)),
+        (14, "Принтер Г", Some(4)),
+        (15, "Принтер Д", None),
+    ] {
+        insert_device(&conn, id, name);
+        insert_printer(&conn, id, host);
+    }
+
+    let found = repo.usb_printers_for_group(&conn, root.id).unwrap();
+    assert_eq!(
+        ids(&found),
+        vec![11, 12],
+        "корень + вложенная, без чужой группы"
+    );
+    assert_eq!(found[0].name, "Принтер А");
+    assert_eq!(found[0].inventory_number.as_deref(), Some("ИНВ-000011"));
+    assert_eq!(
+        ids(&repo.usb_printers_for_group(&conn, nested.id).unwrap()),
+        vec![12]
+    );
+    assert_eq!(
+        ids(&repo.usb_printers_for_group(&conn, stranger.id).unwrap()),
+        vec![13]
+    );
+
+    // Мягко удалённый принтер исключается; мягко удалённый хост выпадает из состава.
+    soft_delete_device(&conn, 11);
+    assert_eq!(
+        ids(&repo.usb_printers_for_group(&conn, root.id).unwrap()),
+        vec![12]
+    );
+    soft_delete_device(&conn, 2);
+    assert!(repo
+        .usb_printers_for_group(&conn, root.id)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn ref_devices_follow_device_refs_and_overlap_with_usb() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let p_refs = insert_property(&conn, t, "Принтеры", "device_refs");
+    let p_users = insert_property(&conn, t, "Пользователи", "users");
+    let g = make_group(&mut conn, &repo, t, "АРМ #1", None);
+    for (id, name) in [
+        (1, "Хост"),
+        (11, "Принтер А"),
+        (12, "Принтер Б"),
+        (13, "Принтер В"),
+    ] {
+        insert_device(&conn, id, name);
+    }
+    add_device(&mut conn, &repo, g.id, 1);
+    insert_printer(&conn, 11, Some(1)); // USB-привязан
+    insert_printer(&conn, 12, None);
+
+    let tx = conn.transaction().unwrap();
+    // 11 — и USB, и явная ссылка; 12 — только ссылка; 13 — ссылка, затем мягко удалён.
+    repo.replace_property_values_in_tx(
+        &tx,
+        g.id,
+        p_refs,
+        &[
+            ref_value(g.id, p_refs, 0, 11, true),
+            ref_value(g.id, p_refs, 1, 12, false),
+            ref_value(g.id, p_refs, 2, 13, false),
+        ],
+        NOW,
+    )
+    .unwrap();
+    // Ссылка свойства, которое вызывающий не запрашивает, в ответ не попадает.
+    repo.replace_property_values_in_tx(
+        &tx,
+        g.id,
+        p_users,
+        &[ref_value(g.id, p_users, 0, 1, true)],
+        NOW,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+    soft_delete_device(&conn, 13);
+
+    let refs = repo.ref_devices_for_group(&conn, g.id, &[p_refs]).unwrap();
+    assert_eq!(ids(&refs), vec![11, 12]);
+    assert!(repo
+        .ref_devices_for_group(&conn, g.id, &[])
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        ids(&repo
+            .ref_devices_for_group(&conn, g.id, &[p_refs, p_users])
+            .unwrap()),
+        vec![11, 12, 1],
+        "несколько свойств, порядок по имени («Хост» после принтеров)"
+    );
+
+    // Принтер 11 виден обоими источниками — дедупликация на стороне сервиса (план 12).
+    let usb = repo.usb_printers_for_group(&conn, g.id).unwrap();
+    assert_eq!(ids(&usb), vec![11]);
+    assert!(ids(&refs).contains(&11));
+}
+
+#[test]
+fn tree_counts_include_nested_and_group_counts_by_type() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t1 = insert_type(&conn, "rack", "Стойка", "container");
+    let t2 = insert_type(&conn, "workstation", "АРМ", "container");
+    let root = make_group(&mut conn, &repo, t1, "Корень", None);
+    let nested = make_group(&mut conn, &repo, t2, "Вложенная", None);
+    let deep = make_group(&mut conn, &repo, t2, "Глубокая", None);
+    let empty = make_group(&mut conn, &repo, t2, "Пустая", None);
+    set_parent(&mut conn, &repo, nested.id, Some(root.id)).unwrap();
+    set_parent(&mut conn, &repo, deep.id, Some(nested.id)).unwrap();
+    for id in 1..=7 {
+        insert_device(&conn, id, &format!("Устройство {id}"));
+    }
+    for id in 1..=2 {
+        add_device(&mut conn, &repo, root.id, id);
+    }
+    for id in 3..=5 {
+        add_device(&mut conn, &repo, nested.id, id);
+    }
+    add_device(&mut conn, &repo, deep.id, 6);
+    add_device(&mut conn, &repo, deep.id, 7);
+    soft_delete_device(&conn, 7);
+
+    let counts = repo.tree_counts(&conn).unwrap();
+    let get = |id: i64| counts.iter().find(|(g, _)| *g == id).map(|(_, c)| *c);
+    assert_eq!(get(deep.id), Some(1), "7 мягко удалено");
+    assert_eq!(get(nested.id), Some(4), "3 свои + 1 глубокая");
+    assert_eq!(get(root.id), Some(6), "2 свои + 4 вложенных");
+    assert_eq!(get(empty.id), Some(0), "пустая группа присутствует с нулём");
+    assert_eq!(counts.len(), 4, "по строке на группу, без дублей");
+
+    assert_eq!(
+        repo.group_counts_by_type(&conn).unwrap(),
+        vec![(t1, 1), (t2, 3)]
+    );
 }
