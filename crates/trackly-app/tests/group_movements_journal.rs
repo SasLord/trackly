@@ -1,17 +1,16 @@
-//! Phase 41 Plan 10: перенос группы (`GroupService::move_group`) — протаскивание
-//! места на состав включая вложенные группы, атомарность, вложенная группа read-only,
-//! CAS по версии, права. Реальный `AppCtx` на временном каталоге; имена вымышленные.
+//! Phase 41 Plan 10: журнал пакета группового переноса — 7 строк с общим `batch_id`,
+//! история устройства и группы, событие D-30 (`audit_log` вместо строки журнала),
+//! картриджи принтера-члена и первое размещение группы без места.
+//! Реальный `AppCtx` на временном каталоге; имена вымышленные.
 //!
-//! Префиксы тестов: `move_`, `move_atomic_`, `move_rights_`.
+//! Префикс тестов: `journal_`.
 
 use rusqlite::params;
 
 use trackly_app::context::AppCtx;
-use trackly_app::dto::auth::UserNew;
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
 use trackly_app::dto::number_template::NumberFieldInput;
-use trackly_core::auth::{Identity, Role};
-use trackly_core::error::AppError;
+use trackly_core::auth::Identity;
 use trackly_infra::error_conversions::map_rusqlite;
 
 async fn build_ctx_in(dir: &std::path::Path) -> anyhow::Result<AppCtx> {
@@ -28,32 +27,6 @@ async fn make_test_ctx() -> (AppCtx, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let ctx = build_ctx_in(dir.path()).await.expect("build ctx");
     (ctx, dir)
-}
-
-async fn create_identity(ctx: &AppCtx, login: &str, full_name: &str, role: Role) -> Identity {
-    let role_str = match role {
-        Role::Admin => "admin",
-        Role::Manager => "manager",
-        Role::Employee => "employee",
-    };
-    let dto = ctx
-        .auth
-        .create_user(
-            UserNew {
-                login: login.to_string(),
-                full_name: full_name.to_string(),
-                password: "password123".to_string(),
-                role: role_str.to_string(),
-                email: None,
-            },
-            &Identity::trusted_admin(),
-        )
-        .await
-        .expect("create test user");
-    Identity {
-        user_id: Some(dto.id),
-        role,
-    }
 }
 
 fn admin() -> Identity {
@@ -80,6 +53,18 @@ async fn opt_i64(ctx: &AppCtx, sql: &'static str, p: Vec<rusqlite::types::Value>
         })
         .await
         .expect("opt query")
+}
+
+async fn scalar_string(ctx: &AppCtx, sql: &'static str, p: Vec<rusqlite::types::Value>) -> String {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(sql, rusqlite::params_from_iter(p), |r| {
+                r.get::<_, String>(0)
+            })
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("string query")
 }
 
 fn int(v: i64) -> rusqlite::types::Value {
@@ -244,39 +229,29 @@ async fn device_place(ctx: &AppCtx, id: i64) -> Option<i64> {
     .await
 }
 
-async fn group_place(ctx: &AppCtx, id: i64) -> Option<i64> {
-    opt_i64(
+fn text(v: &str) -> rusqlite::types::Value {
+    rusqlite::types::Value::Text(v.to_string())
+}
+
+/// Единственное значение `batch_id` среди строк журнала источника `group`.
+async fn single_group_batch(ctx: &AppCtx) -> String {
+    let distinct = scalar_i64(
         ctx,
-        "SELECT place_id FROM groups WHERE id = ?1",
-        vec![int(id)],
+        "SELECT COUNT(DISTINCT batch_id) FROM place_movements WHERE source = 'group'",
+        vec![],
+    )
+    .await;
+    assert_eq!(distinct, 1, "у пакета ровно один batch_id");
+    scalar_string(
+        ctx,
+        "SELECT DISTINCT batch_id FROM place_movements WHERE source = 'group'",
+        vec![],
     )
     .await
 }
 
-/// Снимок всего, что перенос обязан откатывать целиком.
-async fn state_snapshot(
-    ctx: &AppCtx,
-    f: &Fixture,
-) -> (Vec<Option<i64>>, Vec<Option<i64>>, i64, i64) {
-    let mut groups = Vec::new();
-    for g in [f.root, f.nested] {
-        groups.push(group_place(ctx, g).await);
-    }
-    let mut devs = Vec::new();
-    for d in &f.devices {
-        devs.push(device_place(ctx, *d).await);
-    }
-    let movements = scalar_i64(ctx, "SELECT COUNT(*) FROM place_movements", vec![]).await;
-    let audit = scalar_i64(ctx, "SELECT COUNT(*) FROM audit_log", vec![]).await;
-    (groups, devs, movements, audit)
-}
-
-// ---------------------------------------------------------------------------
-// move_
-// ---------------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_propagates_to_all_devices_including_nested() {
+async fn journal_7_rows() {
     let (ctx, _dir) = make_test_ctx().await;
     let f = seed_fixture(&ctx).await;
     let v = group_version(&ctx, f.root).await;
@@ -287,102 +262,23 @@ async fn move_propagates_to_all_devices_including_nested() {
         .await
         .expect("move");
 
-    for d in &f.devices {
-        assert_eq!(device_place(&ctx, *d).await, Some(f.place_b));
-    }
-    assert_eq!(group_place(&ctx, f.root).await, Some(f.place_b));
-    assert_eq!(group_place(&ctx, f.nested).await, Some(f.place_b));
-    assert_eq!(out.moved_devices, 6);
-    assert_eq!(out.moved_nested_groups, 1);
-    assert_eq!(out.summary, "группа и 6 устройств");
-    assert!(out.changed_place_ids.contains(&f.place_a));
-    assert!(out.changed_place_ids.contains(&f.place_b));
-    assert_eq!(out.changed_place_ids.len(), 2, "без дублей");
-    assert!(out.batch_id.is_some());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_summary_uses_singular_plural_forms() {
-    let (ctx, _dir) = make_test_ctx().await;
-    let arm = type_id_by_code(&ctx, "workstation").await;
-    let a = seed_place(&ctx, "room", "Склад А", None).await;
-    let b = seed_place(&ctx, "room", "Склад Б", None).await;
-    let g = seed_group(&ctx, arm, "АРМ #1", 1, Some(a), None).await;
-    seed_device(&ctx, "Ноутбук", "INV-S-1", "SN-S-1", Some(a), Some(g)).await;
-    let v = group_version(&ctx, g).await;
-    let out = ctx
-        .groups
-        .move_group(&admin(), g, v, b)
-        .await
-        .expect("move");
-    assert_eq!(out.summary, "группа и 1 устройство");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_nested_group_is_rejected_and_db_untouched() {
-    let (ctx, _dir) = make_test_ctx().await;
-    let f = seed_fixture(&ctx).await;
-    let before = state_snapshot(&ctx, &f).await;
-    let v = group_version(&ctx, f.nested).await;
-
-    let err = ctx
-        .groups
-        .move_group(&admin(), f.nested, v, f.place_b)
-        .await
-        .expect_err("вложенную нельзя переносить");
-    match err {
-        AppError::Validation { message, .. } => {
-            assert!(message.contains("АРМ #3"), "имя корня в тексте: {message}");
-        }
-        other => panic!("ожидали Validation, получили {other:?}"),
-    }
-    assert_eq!(state_snapshot(&ctx, &f).await, before);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_group_without_place_assigns_place_and_propagates() {
-    let (ctx, _dir) = make_test_ctx().await;
-    let arm = type_id_by_code(&ctx, "workstation").await;
-    let a = seed_place(&ctx, "room", "Склад А", None).await;
-    let b = seed_place(&ctx, "room", "Склад Б", None).await;
-    let g = seed_group(&ctx, arm, "АРМ #7", 7, None, None).await;
-    let with_place = seed_device(
-        &ctx,
-        "Системный блок",
-        "INV-N-1",
-        "SN-N-1",
-        Some(a),
-        Some(g),
-    )
-    .await;
-    let without_place = seed_device(&ctx, "Монитор", "INV-N-2", "SN-N-2", None, Some(g)).await;
-    let v = group_version(&ctx, g).await;
-
-    let out = ctx
-        .groups
-        .move_group(&admin(), g, v, b)
-        .await
-        .expect("move");
-
-    assert_eq!(group_place(&ctx, g).await, Some(b));
-    assert_eq!(device_place(&ctx, with_place).await, Some(b));
-    assert_eq!(device_place(&ctx, without_place).await, Some(b));
-    assert_eq!(out.moved_devices, 2);
+    let batch = single_group_batch(&ctx).await;
+    assert_eq!(out.batch_id.as_deref(), Some(batch.as_str()));
     assert_eq!(
         scalar_i64(
             &ctx,
-            "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'group'",
-            vec![]
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1",
+            vec![text(&batch)]
         )
         .await,
-        0,
-        "NULL -> место: строки группы нет"
+        7,
+        "1 строка группы + 6 строк устройств"
     );
     assert_eq!(
         scalar_i64(
             &ctx,
-            "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'device' AND entity_id = ?1",
-            vec![int(with_place)]
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND entity_type = 'group'",
+            vec![text(&batch)]
         )
         .await,
         1
@@ -390,8 +286,54 @@ async fn move_group_without_place_assigns_place_and_propagates() {
     assert_eq!(
         scalar_i64(
             &ctx,
-            "SELECT COUNT(*) FROM place_movements WHERE entity_id = ?1",
-            vec![int(without_place)]
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND entity_type = 'device'",
+            vec![text(&batch)]
+        )
+        .await,
+        6
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND source = 'group'",
+            vec![text(&batch)]
+        )
+        .await,
+        7
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(DISTINCT entity_label) FROM place_movements WHERE batch_id = ?1",
+            vec![text(&batch)]
+        )
+        .await,
+        1
+    );
+    assert_eq!(
+        scalar_string(
+            &ctx,
+            "SELECT DISTINCT entity_label FROM place_movements WHERE batch_id = ?1",
+            vec![text(&batch)]
+        )
+        .await,
+        "АРМ #3"
+    );
+    // group_id — id перенесённой (корневой) группы в КАЖДОЙ строке, вложенная строк не пишет
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND group_id = ?2",
+            vec![text(&batch), int(f.root)]
+        )
+        .await,
+        7
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'group' AND entity_id = ?1",
+            vec![int(f.nested)]
         )
         .await,
         0
@@ -399,13 +341,125 @@ async fn move_group_without_place_assigns_place_and_propagates() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_printer_member_carries_attached_cartridge() {
+async fn journal_device_history() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let f = seed_fixture(&ctx).await;
+    let v = group_version(&ctx, f.root).await;
+    ctx.groups
+        .move_group(&admin(), f.root, v, f.place_b)
+        .await
+        .expect("move");
+
+    let nested_device = f.devices[5];
+    let tl = ctx
+        .place_movements
+        .get_timeline(&admin(), "device", nested_device)
+        .await
+        .expect("timeline device");
+    assert_eq!(tl.len(), 1);
+    assert_eq!(tl[0].group_label.as_deref(), Some("АРМ #3"));
+    assert_eq!(tl[0].group_id, Some(f.root));
+    assert!(tl[0].batch_id.is_some());
+    assert_eq!(tl[0].source, "group");
+    assert_eq!(tl[0].from_place_id, f.place_a);
+    assert_eq!(tl[0].to_place_id, f.place_b);
+
+    let tl_group = ctx
+        .place_movements
+        .get_timeline(&admin(), "group", f.root)
+        .await
+        .expect("timeline group");
+    assert_eq!(tl_group.len(), 1, "у группы только своя строка");
+    assert_eq!(tl_group[0].entity_type, "group");
+    assert_eq!(tl_group[0].entity_id, f.root);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn journal_null_place_d30() {
     let (ctx, _dir) = make_test_ctx().await;
     let arm = type_id_by_code(&ctx, "workstation").await;
     let a = seed_place(&ctx, "room", "Склад А", None).await;
     let b = seed_place(&ctx, "room", "Склад Б", None).await;
-    let g = seed_group(&ctx, arm, "АРМ #8", 8, Some(a), None).await;
-    let printer = seed_device(&ctx, "Принтер", "INV-P-1", "SN-P-1", Some(a), Some(g)).await;
+    let g = seed_group(&ctx, arm, "АРМ #5", 5, Some(a), None).await;
+    let with_place = seed_device(
+        &ctx,
+        "Системный блок",
+        "INV-D-1",
+        "SN-D-1",
+        Some(a),
+        Some(g),
+    )
+    .await;
+    let without_place = seed_device(&ctx, "Монитор", "INV-D-2", "SN-D-2", None, Some(g)).await;
+    let v = group_version(&ctx, g).await;
+
+    ctx.groups
+        .move_group(&admin(), g, v, b)
+        .await
+        .expect("move");
+
+    assert_eq!(device_place(&ctx, without_place).await, Some(b));
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE entity_id = ?1",
+            vec![int(without_place)]
+        )
+        .await,
+        0,
+        "у устройства без места строки журнала нет"
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'device' AND entity_id = ?1 \
+             AND action = 'custom:group_place_assigned'",
+            vec![int(without_place)]
+        )
+        .await,
+        1
+    );
+    let payload = scalar_string(
+        &ctx,
+        "SELECT payload_json FROM audit_log WHERE action = 'custom:group_place_assigned'",
+        vec![],
+    )
+    .await;
+    let payload: serde_json::Value = serde_json::from_str(&payload).expect("json");
+    assert_eq!(payload["group_id"], g);
+    assert_eq!(payload["place_id"], b);
+    // у устройства с местом аудита D-30 нет
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'custom:group_place_assigned' \
+             AND entity_id = ?1",
+            vec![int(with_place)]
+        )
+        .await,
+        0
+    );
+    // пакет: 1 группа + 1 устройство с местом
+    let batch = single_group_batch(&ctx).await;
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1",
+            vec![text(&batch)]
+        )
+        .await,
+        2
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn journal_cartridge_batch() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let a = seed_place(&ctx, "room", "Склад А", None).await;
+    let b = seed_place(&ctx, "room", "Склад Б", None).await;
+    let g = seed_group(&ctx, arm, "АРМ #6", 6, Some(a), None).await;
+    let printer = seed_device(&ctx, "Принтер", "INV-C-1", "SN-C-1", Some(a), Some(g)).await;
     ctx.writer
         .execute(move |conn| {
             conn.execute(
@@ -435,7 +489,7 @@ async fn move_printer_member_carries_attached_cartridge() {
         .create(CartridgeCreateDto {
             model_id: model,
             number_input: NumberFieldInput {
-                value: "C-MOVE-00001".into(),
+                value: "C-JRNL-00001".into(),
                 template_id: None,
                 confirm_mismatch: false,
                 confirm_script_mix: false,
@@ -459,6 +513,7 @@ async fn move_printer_member_carries_attached_cartridge() {
         })
         .await
         .expect("attach");
+    let before_rows = scalar_i64(&ctx, "SELECT COUNT(*) FROM place_movements", vec![]).await;
 
     let v = group_version(&ctx, g).await;
     ctx.groups
@@ -466,145 +521,93 @@ async fn move_printer_member_carries_attached_cartridge() {
         .await
         .expect("move");
 
+    let batch = single_group_batch(&ctx).await;
     assert_eq!(
-        opt_i64(
+        scalar_i64(
             &ctx,
-            "SELECT place_id FROM cartridges WHERE id = ?1",
-            vec![int(cartridge)]
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND entity_type = 'cartridge' \
+             AND entity_id = ?2 AND source = 'group' AND group_id = ?3 AND entity_label = 'АРМ #6'",
+            vec![text(&batch), int(cartridge), int(g)]
         )
         .await,
-        Some(b)
+        1,
+        "строка картриджа в том же пакете"
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1",
+            vec![text(&batch)]
+        )
+        .await,
+        3,
+        "группа + принтер + картридж"
+    );
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT COUNT(*) FROM place_movements", vec![]).await,
+        before_rows + 3
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_stale_version_is_rejected_and_db_untouched() {
+async fn journal_first_assignment() {
     let (ctx, _dir) = make_test_ctx().await;
-    let f = seed_fixture(&ctx).await;
-    let v = group_version(&ctx, f.root).await;
-    let before = state_snapshot(&ctx, &f).await;
-
-    let err = ctx
-        .groups
-        .move_group(&admin(), f.root, v - 1, f.place_b)
-        .await
-        .expect_err("устаревшая версия");
-    assert!(
-        matches!(err, AppError::OptimisticLockMismatch { .. }),
-        "{err:?}"
-    );
-    assert_eq!(state_snapshot(&ctx, &f).await, before);
-
-    ctx.groups
-        .move_group(&admin(), f.root, v, f.place_b)
-        .await
-        .expect("актуальная версия проходит");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_missing_target_place_is_rejected_and_db_untouched() {
-    let (ctx, _dir) = make_test_ctx().await;
-    let f = seed_fixture(&ctx).await;
-    let v = group_version(&ctx, f.root).await;
-    let before = state_snapshot(&ctx, &f).await;
-
-    let err = ctx
-        .groups
-        .move_group(&admin(), f.root, v, 999_999)
-        .await
-        .expect_err("нет такого места");
-    assert!(
-        matches!(err, AppError::Validation { .. } | AppError::NotFound { .. }),
-        "{err:?}"
-    );
-    assert_eq!(state_snapshot(&ctx, &f).await, before);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_to_same_place_writes_nothing() {
-    let (ctx, _dir) = make_test_ctx().await;
-    let f = seed_fixture(&ctx).await;
-    let v = group_version(&ctx, f.root).await;
-    let before = state_snapshot(&ctx, &f).await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let a = seed_place(&ctx, "room", "Склад А", None).await;
+    let b = seed_place(&ctx, "room", "Склад Б", None).await;
+    let g = seed_group(&ctx, arm, "АРМ #9", 9, None, None).await;
+    let d1 = seed_device(
+        &ctx,
+        "Системный блок",
+        "INV-F-1",
+        "SN-F-1",
+        Some(a),
+        Some(g),
+    )
+    .await;
+    let d2 = seed_device(&ctx, "Монитор", "INV-F-2", "SN-F-2", Some(a), Some(g)).await;
+    let v = group_version(&ctx, g).await;
 
     let out = ctx
         .groups
-        .move_group(&admin(), f.root, v, f.place_a)
+        .move_group(&admin(), g, v, b)
         .await
-        .expect("move to same place");
-    assert_eq!(out.moved_devices, 0);
-    assert!(out.changed_place_ids.is_empty());
-    assert_eq!(out.summary, "группа");
-    assert_eq!(state_snapshot(&ctx, &f).await, before);
+        .expect("move");
+
     assert_eq!(
-        group_version(&ctx, f.root).await,
-        v,
-        "версия группы не растёт"
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'group'",
+            vec![]
+        )
+        .await,
+        0,
+        "NULL -> место: строки группы нет"
     );
-}
-
-// ---------------------------------------------------------------------------
-// move_atomic_
-// ---------------------------------------------------------------------------
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_atomic_failure_on_fourth_device_rolls_back_everything() {
-    let (ctx, _dir) = make_test_ctx().await;
-    let f = seed_fixture(&ctx).await;
-    let v = group_version(&ctx, f.root).await;
-    let fourth = f.devices[3];
-    ctx.writer
-        .execute(move |conn| {
-            conn.execute_batch(&format!(
-                "CREATE TRIGGER fail_fourth BEFORE UPDATE OF place_id ON devices \
-                 WHEN NEW.id = {fourth} BEGIN SELECT RAISE(ABORT, 'boom'); END;"
-            ))
-            .map_err(map_rusqlite)
-        })
-        .await
-        .expect("trigger");
-    let before = state_snapshot(&ctx, &f).await;
-
-    let res = ctx.groups.move_group(&admin(), f.root, v, f.place_b).await;
-    let err = res.expect_err("сбой на 4-м устройстве должен вернуть ошибку");
-    assert!(
-        format!("{err:?}").contains("boom"),
-        "ошибка должна быть от триггера, а не от иной причины: {err:?}"
+    let batch = single_group_batch(&ctx).await;
+    assert_eq!(out.batch_id.as_deref(), Some(batch.as_str()));
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND group_id = ?2 \
+             AND entity_label = 'АРМ #9' AND entity_type = 'device'",
+            vec![text(&batch), int(g)]
+        )
+        .await,
+        2,
+        "строки устройств несут batch_id, group_id и имя группы без строки-заголовка"
     );
-
-    let after = state_snapshot(&ctx, &f).await;
-    assert_eq!(after.0, before.0, "groups.place_id");
-    assert_eq!(after.1, before.1, "devices.place_id");
-    assert_eq!(after.2, before.2, "place_movements");
-    assert_eq!(after.3, before.3, "audit_log");
-    // фикстура различает «до» и «после»: место «Б» нигде не появилось
-    assert!(after.1.iter().all(|p| *p == Some(f.place_a)));
-}
-
-// ---------------------------------------------------------------------------
-// move_rights_
-// ---------------------------------------------------------------------------
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn move_rights_employee_forbidden_manager_allowed() {
-    let (ctx, _dir) = make_test_ctx().await;
-    let f = seed_fixture(&ctx).await;
-    let v = group_version(&ctx, f.root).await;
-    let employee = create_identity(&ctx, "emp1", "Петров П.П.", Role::Employee).await;
-    let manager = create_identity(&ctx, "mgr1", "Иванов И.И.", Role::Manager).await;
-    let before = state_snapshot(&ctx, &f).await;
-
-    let err = ctx
-        .groups
-        .move_group(&employee, f.root, v, f.place_b)
-        .await
-        .expect_err("employee");
-    assert!(matches!(err, AppError::Forbidden));
-    assert_eq!(state_snapshot(&ctx, &f).await, before);
-
-    ctx.groups
-        .move_group(&manager, f.root, v, f.place_b)
-        .await
-        .expect("manager");
-    assert_eq!(group_place(&ctx, f.root).await, Some(f.place_b));
+    for d in [d1, d2] {
+        let tl = ctx
+            .place_movements
+            .get_timeline(&admin(), "device", d)
+            .await
+            .expect("timeline");
+        assert_eq!(tl.len(), 1);
+        assert_eq!(tl[0].group_id, Some(g));
+        assert_eq!(tl[0].group_label.as_deref(), Some("АРМ #9"));
+        assert_eq!(tl[0].batch_id.as_deref(), Some(batch.as_str()));
+        assert_eq!(tl[0].from_place_id, a);
+        assert_eq!(tl[0].to_place_id, b);
+    }
 }
