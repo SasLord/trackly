@@ -35,9 +35,9 @@ use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
 use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AuthService, BackupService, CartridgeService,
-    DashboardService, DeviceService, GroupTypeService, NumberTemplateService, OrgDbService,
-    OrganizationService, PlaceMovementService, PlaceService, PrinterService, ReportService,
-    RequestService, TemplateService,
+    DashboardService, DeviceService, GroupService, GroupTypeService, NumberTemplateService,
+    OrgDbService, OrganizationService, PlaceMovementService, PlaceService, PrinterService,
+    ReportService, RequestService, TemplateService,
 };
 use trackly_infra::ad::{
     directory::RealAdDirectory, directory_mock::MockAdDirectory, mock::MockAdClient,
@@ -119,6 +119,8 @@ pub struct AppCtx {
     /// (Admin-only) / `ReadGroups`; seeds the three built-in types at startup.
     /// Added in Phase 41 Plan 07.
     pub group_types: Arc<GroupTypeService>,
+    /// Group service — groups: reads and CRUD (Phase 41 Plan 08), `ReadGroups`/`MutateGroups`.
+    pub groups: Arc<GroupService>,
     /// Place-movement timeline read service — HST-02, `ReadPlaces`-gated
     /// (Admin|Manager per D-12). Added in Phase 40 Plan 10.
     pub place_movements: Arc<PlaceMovementService>,
@@ -342,6 +344,13 @@ impl AppCtx {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+        // Phase 41 Plan 08: group service (reads + CRUD). Needs only writer/readers/clock.
+        let groups = Arc::new(GroupService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
+
         // Phase 40 Plan 10: place-movement timeline read service. Read-only, no
         // writer dependency — mirrors PlaceService's ordering-independence note.
         let place_movements = Arc::new(PlaceMovementService::new(readers.clone()));
@@ -472,6 +481,7 @@ impl AppCtx {
             backup,
             places,
             group_types,
+            groups,
             place_movements,
             number_templates,
         })

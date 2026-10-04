@@ -133,6 +133,11 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let groups = Arc::new(crate::services::GroupService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let place_movements = Arc::new(crate::services::PlaceMovementService::new(readers.clone()));
         let number_templates = Arc::new(crate::services::NumberTemplateService::new(
             writer.clone(),
@@ -144,6 +149,7 @@ mod tests {
             readers,
             places,
             group_types,
+            groups,
             place_movements,
             number_templates,
             paths: paths_arc,

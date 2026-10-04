@@ -12,7 +12,9 @@
 //! отсутствие циклов вложенности, запрет вложения в группу «Разбор».
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
-use trackly_core::domain::groups::{GroupNew, GroupRow, GroupValueRow, PrinterRefRow};
+use trackly_core::domain::groups::{
+    GroupNew, GroupRow, GroupValueRow, MemberDeviceRow, PrinterRefRow,
+};
 use trackly_core::error::AppError;
 use trackly_core::ports::groups::GroupRepository;
 
@@ -619,6 +621,87 @@ impl SqliteGroupRepository {
             .map_err(map_rusqlite)?;
         let rows = stmt
             .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Прямые живые устройства группы (без вложенных групп) со столбцами таблицы
+    /// состава (D-05), `ORDER BY name, id`. Путь места — из `place_full_paths`;
+    /// сокращение пути считает сервис (единственный владелец формулы).
+    pub fn member_devices(
+        &self,
+        conn: &Connection,
+        group_id: i64,
+    ) -> Result<Vec<MemberDeviceRow>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT d.id, COALESCE(dt.name, ''), d.name, d.inventory_number,
+                        d.serial_number, d.place_id, pfp.full_path, ds.name
+                 FROM group_devices gd
+                 JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+                 LEFT JOIN device_types dt ON dt.id = d.type_id
+                 LEFT JOIN device_statuses ds ON ds.id = d.status_id
+                 LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
+                 WHERE gd.group_id = ?1
+                 ORDER BY d.name, d.id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params![group_id], |r| {
+                Ok(MemberDeviceRow {
+                    device_id: r.get(0)?,
+                    type_name: r.get(1)?,
+                    name: r.get(2)?,
+                    inventory_number: r.get(3)?,
+                    serial_number: r.get(4)?,
+                    place_id: r.get(5)?,
+                    place_path: r.get(6)?,
+                    status_name: r.get(7)?,
+                })
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Для каждой живой группы — число её ПРЯМЫХ живых устройств (без вложенных):
+    /// `(group_id, count)`; группы без устройств в выдачу не попадают.
+    pub fn direct_device_counts(&self, conn: &Connection) -> Result<Vec<(i64, i64)>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT gd.group_id, COUNT(d.id)
+                 FROM group_devices gd
+                 JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL
+                 JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+                 GROUP BY gd.group_id
+                 ORDER BY gd.group_id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Полный путь места каждой живой группы, у которой место задано:
+    /// `(group_id, full_path)`.
+    pub fn group_place_paths(&self, conn: &Connection) -> Result<Vec<(i64, String)>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT g.id, pfp.full_path
+                 FROM groups g
+                 JOIN place_full_paths pfp ON pfp.place_id = g.place_id
+                 WHERE g.deleted_at_utc IS NULL
+                 ORDER BY g.id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
             .map_err(map_rusqlite)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(map_rusqlite)?;

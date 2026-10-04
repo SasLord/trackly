@@ -232,6 +232,21 @@ pub struct PrinterRefRow {
     pub serial_number: Option<String>,
 }
 
+/// Строка прямого устройства в составе группы (D-05): столбцы таблицы «Содержимое места».
+/// Сериализации нет: транспортный DTO строится в trackly-app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberDeviceRow {
+    pub device_id: i64,
+    pub type_name: String,
+    pub name: String,
+    pub inventory_number: Option<String>,
+    pub serial_number: Option<String>,
+    pub place_id: Option<i64>,
+    /// Полный путь места из `place_full_paths`; `None`, если у устройства нет места.
+    pub place_path: Option<String>,
+    pub status_name: Option<String>,
+}
+
 /// Название: trim, пустое — «Укажите название.», длиннее `NAME_MAX_CHARS` — ошибка.
 pub fn validate_name(raw: &str, field: &str) -> Result<String, AppError> {
     let s = raw.trim();

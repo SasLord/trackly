@@ -146,6 +146,11 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         readers.clone(),
         clock.clone(),
     ));
+    let groups = Arc::new(trackly_app::services::GroupService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let place_movements = Arc::new(trackly_app::services::PlaceMovementService::new(
         readers.clone(),
     ));
@@ -159,6 +164,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         readers,
         places,
         group_types,
+        groups,
         place_movements,
         number_templates,
         paths: paths_arc,

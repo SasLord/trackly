@@ -1,0 +1,111 @@
+//! DTO групп устройств (Phase 41) — транспортные контракты для `GroupService`,
+//! общие для Tauri-команд и HTTP.
+//!
+//! Snake_case JSON, без `rename_all`. Токен `type_behavior` выходит строкой:
+//! доменный enum не имеет serde/specta.
+
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+/// Группа: поля для дерева, шапки карточки и подтверждения удаления.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    #[specta(type = i32)]
+    pub type_id: i64,
+    pub type_code: String,
+    pub type_name: String,
+    pub type_behavior: String,
+    pub name: String,
+    #[specta(type = i32)]
+    pub seq: i64,
+    /// `None` — «Без места» (D-21).
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i64>,
+    /// Полный путь места; `None`, если места нет.
+    pub place_path: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub parent_group_id: Option<i64>,
+    /// Корень цепочки вложенности (для корневой группы — она сама, D-20).
+    #[specta(type = i32)]
+    pub root_group_id: i64,
+    pub root_group_name: String,
+    #[specta(type = i32)]
+    pub version: i64,
+    /// Устройства группы ВКЛЮЧАЯ вложенные группы.
+    #[specta(type = i32)]
+    pub device_count: i64,
+    /// Только прямые устройства — число в подтверждении удаления.
+    #[specta(type = i32)]
+    pub direct_device_count: i64,
+    #[specta(type = i32)]
+    pub nested_group_count: i64,
+}
+
+/// Создание группы. `name = None` — имя по умолчанию «{тип} #{seq}».
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupCreateDto {
+    #[specta(type = i32)]
+    pub type_id: i64,
+    pub name: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i32>,
+}
+
+/// Строка устройства в составе группы (столбцы `PlaceContents`, D-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupMemberDeviceDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub type_name: String,
+    pub name: String,
+    pub inventory_number: Option<String>,
+    pub serial_number: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i64>,
+    pub place_path: Option<String>,
+    /// Сокращённый путь считает сервер (`compute_place_path_short_with_conn`).
+    pub place_path_short: Option<String>,
+    pub status_name: Option<String>,
+}
+
+/// Состав группы: прямые устройства и прямые вложенные группы (D-03).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupCompositionDto {
+    pub devices: Vec<GroupMemberDeviceDto>,
+    pub child_groups: Vec<GroupDto>,
+}
+
+/// Кандидат во вложенные группы (D-04).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupSearchHitDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    pub name: String,
+    pub type_name: String,
+    #[specta(type = i32)]
+    pub device_count: i64,
+    pub has_parent: bool,
+}
+
+/// Членство устройства в группе (D-01/D-19).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct DeviceMembershipDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    #[specta(type = i32)]
+    pub group_id: i64,
+    pub group_name: String,
+    /// `true`, если у группы задано место: только тогда действует запрет
+    /// индивидуального перемещения (D-21).
+    pub group_has_place: bool,
+}
+
+/// Итог удаления группы.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupDeleteResultDto {
+    /// Сколько устройств освободилось (только прямые члены удалённой группы).
+    #[specta(type = i32)]
+    pub released_devices: i32,
+}
