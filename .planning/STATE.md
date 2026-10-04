@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T00:08:36.430Z"
-last_activity: 2026-10-04 -- Phase 41 planning complete
+last_updated: "2026-10-04T00:11:13.210Z"
+last_activity: 2026-10-04 -- Phase 41 execution started
 progress:
   total_phases: 20
   completed_phases: 9
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41 — Группы: модель и редактор
+**Current focus:** Phase 41 — groups-model-and-editor
 
 ## Current Position
 
-Phase: 41
-Plan: Not started
-Status: Ready to execute
+Phase: 41 (groups-model-and-editor) — EXECUTING
+Plan: 1 of 26
+Status: Executing Phase 41
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
 Остаточный GAP 1 (ревью WR-01) закрыт: пост-проверка семьи убрана из do_return, единственный гейт
@@ -113,7 +113,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-04 -- Phase 41 planning complete
+Last activity: 2026-10-04 -- Phase 41 execution started
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
