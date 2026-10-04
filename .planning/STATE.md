@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T04:13:45.419Z"
+last_updated: "2026-10-04T04:33:19.475Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 120
+  completed_plans: 121
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 2 of 26
+Plan: 3 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -512,6 +512,7 @@ Last activity: 2026-10-04
 | Phase 40.5 P13 | 25m | 2 tasks | 2 files |
 | Phase 40.5 P14 | 95m | 2 tasks | 1 files |
 | Phase 41 P01 | 1h | 2 tasks | 5 files |
+| Phase 41 P02 | 40min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1157,6 +1158,8 @@ Recent decisions affecting current work:
 - [Phase 40.5]: 40.5-13 D-20/WR-01: пост-проверка семьи снята из do_return; аллокатор — единственный гейт нового номера; D-18 живёт только в каскаде переименования
 - [Phase 40.5-14]: D-12: живую проверку (7 пунктов, вкл. GAP 1.4) проходит человек; исполнитель ничего не отметил
 - [Phase 41-01]: group_id в place_movements — снимок без FK в каждой строке групповой записи; триггер неизменяемости только на UPDATE OF code, behavior
+- [Phase 41]: 41-02: ManageGroupTypes Admin-only; MutateGroups/ReadGroups Admin|Manager; MutatePlaces не используется для групп
+- [Phase 41]: 41-02: причина перемещения source=group в отчёте — «группой», уточнение названием группы — в сервисе групп
 
 ### Pending Todos
 
@@ -1356,7 +1359,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T04:13:40.878Z
+Last session: 2026-10-04T04:33:15.044Z
 Stopped at: Phase 41 UI-SPEC approved
 Resume file: None
 
