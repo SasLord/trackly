@@ -3,7 +3,7 @@
 //! Инвентарь ОТ СЕРВЕРНЫХ МУТАЦИЙ (не от экранов; урок фазы 40.1):
 //!   S1  `DeviceService::update`                      — guard «место задаёт группа» (этот файл)
 //!   S2  `PlaceService::move_subtree_contents`        — план 15
-//!   S3-S7 `ActService` (create/update/undo/…)         — план 16 (файл расширяется им)
+//!   S3-S7 `ActService` (create/update/do_return/update_return/undo) — план 16 (этот файл)
 //!   S8  `DeviceService::delete_soft`                 — освобождение членства (этот файл)
 //!   S9  `cartridges_sqlite.rs` backfill места принтера — сознательно БЕЗ guard'а (этот файл)
 //!   S10 create / bulk / CSV                          — без изменений: новое устройство не член группы
@@ -12,7 +12,7 @@
 //! (повтор текущего места против реальной смены), поэтому тест не вакуумен.
 //! Реальный `AppCtx` на временном каталоге; имена вымышленные.
 //!
-//! Префиксы: `s1_table_`, `s1_http_`, `s1_tauri_path_`, `s8_`, `s9_`.
+//! Префиксы: `s1_table_`, `s1_http_`, `s1_tauri_path_`, `s8_`, `s9_`, `s3_`..`s7_`.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -24,6 +24,10 @@ use tower_sessions::session::{Id, Record};
 use tower_sessions::SessionStore;
 
 use trackly_app::context::AppCtx;
+use trackly_app::dto::act::{
+    ActCreateDto, ActDto, ActItemNewDto, ActNumberEditInput, ActReturnDto, ActReturnItemDto,
+    ActUpdateDto, ActUpdateItemDto, ActUpdateReturnDto,
+};
 use trackly_app::dto::auth::UserNew;
 use trackly_app::dto::cartridge::{
     CartridgeCreateDto, CartridgeModelCreateDto, CartridgeTransitionPayload,
@@ -1018,4 +1022,555 @@ async fn s8_http_delete_releases_membership() {
     assert_eq!(ids, vec![keep], "удалённого устройства в составе нет");
     assert_eq!(member_rows(ctx, gone).await, 0);
     assert_eq!(release_audit_count(ctx, gone).await, 1);
+}
+
+// ===========================================================================
+// Plan 41-16: S3-S7 — акты выводят устройство из состава группы (D-22)
+// ===========================================================================
+//
+// Фикстуры различают «до/после»: у устройства-члена место (Склад А) ОТЛИЧНО от
+// места акта (Склад Б), остальные члены группы остаются на месте группы.
+// Для restore-путей («убрали из акта», правка возврата, undo) группа «Склад Б»
+// принимает устройство ПОСЛЕ акта (так и выглядит реальный порядок: устройство
+// уже на месте акта, в группу его добавили позже), а снимок хранит третье место.
+
+/// Выданное в акте устройство, ставшее членом группы после акта (прямая вставка
+/// в `group_devices`; место устройства не меняется).
+async fn join_group(ctx: &AppCtx, device_id: i64, group_id: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+                 VALUES (?1, ?2, 1700000100)",
+                params![device_id, group_id],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("join group");
+}
+
+fn act_number(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.into(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
+
+async fn handover_act(ctx: &AppCtx, number: &str, devices: &[i64], place: i64) -> ActDto {
+    ctx.acts
+        .create(
+            &admin(),
+            ActCreateDto {
+                number_input: act_number(number),
+                giver_name: "Иванов И.И.".into(),
+                receiver_name: "Петров П.П.".into(),
+                place_id: Some(place),
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: devices
+                    .iter()
+                    .map(|&id| ActItemNewDto {
+                        device_id: id,
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    })
+                    .collect(),
+            },
+        )
+        .await
+        .expect("create handover")
+        .expect_created("create handover")
+}
+
+async fn update_handover(ctx: &AppCtx, act: &ActDto, devices: &[i64]) -> ActDto {
+    ctx.acts
+        .update(
+            &admin(),
+            ActUpdateDto {
+                id: act.id,
+                expected_version: act.version,
+                number_input: ActNumberEditInput {
+                    value: act.number_raw.clone(),
+                    confirm_script_mix: false,
+                },
+                giver_name: act.giver_name.clone(),
+                receiver_name: act.receiver_name.clone(),
+                place_id: act.place_id,
+                notes: act.notes.clone(),
+                deadline_utc: act.deadline_utc,
+                handover_date_utc: None,
+                items: devices
+                    .iter()
+                    .map(|&id| ActUpdateItemDto {
+                        device_id: id,
+                        complectation_at_time: None,
+                    })
+                    .collect(),
+            },
+        )
+        .await
+        .expect("update handover")
+        .expect_created("update handover")
+}
+
+fn return_items(handover: &ActDto, devices: &[i64]) -> Vec<ActReturnItemDto> {
+    devices
+        .iter()
+        .map(|&did| {
+            let it = handover
+                .items
+                .iter()
+                .find(|i| i.device_id == did)
+                .expect("устройство есть в акте выдачи");
+            ActReturnItemDto {
+                act_item_id: it.id,
+                device_id: did,
+                device_ids: vec![did],
+                quantity: 1,
+                condition_override: None,
+                place_id_override: None,
+            }
+        })
+        .collect()
+}
+
+async fn return_act(
+    ctx: &AppCtx,
+    handover: &ActDto,
+    devices: &[i64],
+    condition: &str,
+    place: i64,
+) -> ActDto {
+    ctx.acts
+        .do_return(
+            &admin(),
+            handover.id,
+            ActReturnDto {
+                bulk_condition: Some(condition.into()),
+                bulk_place_id: Some(place),
+                apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
+                items: return_items(handover, devices),
+            },
+        )
+        .await
+        .expect("do_return")
+}
+
+async fn update_return_act(
+    ctx: &AppCtx,
+    handover: &ActDto,
+    ret: &ActDto,
+    devices: &[i64],
+    condition: &str,
+    place: i64,
+) -> ActDto {
+    ctx.acts
+        .update_return(
+            &admin(),
+            ActUpdateReturnDto {
+                id: ret.id,
+                expected_version: ret.version,
+                giver_name: ret.giver_name.clone(),
+                receiver_name: ret.receiver_name.clone(),
+                place_id: ret.place_id,
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: ret.handover_date_utc,
+                bulk_condition: Some(condition.into()),
+                bulk_place_id: Some(place),
+                apply_to_all: true,
+                items: return_items(handover, devices),
+            },
+        )
+        .await
+        .expect("update_return")
+}
+
+/// Единственная запись `custom:group_member_released` устройства: `(group_id, act_id)`.
+async fn release_payload(ctx: &AppCtx, device_id: i64) -> (i64, i64) {
+    assert_eq!(
+        release_audit_count(ctx, device_id).await,
+        1,
+        "ожидалась ровно одна запись о выводе из состава"
+    );
+    let raw = text_of(
+        ctx,
+        "SELECT payload_json FROM audit_log \
+         WHERE action = 'custom:group_member_released' AND entity_id = ?1",
+        vec![int(device_id)],
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("payload json");
+    (
+        v["group_id"].as_i64().expect("group_id"),
+        v["act_id"].as_i64().expect("act_id"),
+    )
+}
+
+/// Состав группы по `group_devices`: сортированный список device_id.
+async fn group_member_ids(ctx: &AppCtx, group_id: i64) -> Vec<i64> {
+    ctx.writer
+        .execute(move |conn| {
+            let mut st = conn
+                .prepare("SELECT device_id FROM group_devices WHERE group_id = ?1 ORDER BY 1")
+                .map_err(map_rusqlite)?;
+            let rows = st
+                .query_map(params![group_id], |r| r.get::<_, i64>(0))
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
+        })
+        .await
+        .expect("members")
+}
+
+// --- S3: create (handover) -------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s3_handover_releases() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_a = seed_place(&ctx, "Склад А").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_a)).await;
+    let target = seed_device(&ctx, 1, "Монитор 1", "INV-S3-T", Some(place_a), Some(g)).await;
+    let mate = seed_device(
+        &ctx,
+        1,
+        "Системный блок 1",
+        "INV-S3-M",
+        Some(place_a),
+        Some(g),
+    )
+    .await;
+    let outsider = seed_device(&ctx, 1, "Ноутбук 1", "INV-S3-O", Some(place_a), None).await;
+    assert_ne!(place_a, place_b);
+
+    let act = handover_act(&ctx, "S3-1", &[target, outsider], place_b).await;
+
+    assert_eq!(device_place(&ctx, target).await, Some(place_b));
+    assert_eq!(member_rows(&ctx, target).await, 0, "вышел из состава");
+    let (gid, aid) = release_payload(&ctx, target).await;
+    assert_eq!((gid, aid), (g, act.id), "payload {{group_id, act_id}}");
+    assert_eq!(
+        group_member_ids(&ctx, g).await,
+        vec![mate],
+        "остальные члены остались в составе"
+    );
+    assert_eq!(device_place(&ctx, mate).await, Some(place_a));
+    // Контроль: устройство вне групп — акт прошёл как раньше, записей нет.
+    assert_eq!(device_place(&ctx, outsider).await, Some(place_b));
+    assert_eq!(release_audit_count(&ctx, outsider).await, 0);
+    assert_eq!(release_audit_count(&ctx, mate).await, 0);
+}
+
+// --- S4: update (added / removed) ------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s4a_update_added_releases() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_a = seed_place(&ctx, "Склад А").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_a)).await;
+    let target = seed_device(&ctx, 1, "Монитор 1", "INV-S4A-T", Some(place_a), Some(g)).await;
+    let mate = seed_device(
+        &ctx,
+        1,
+        "Системный блок 1",
+        "INV-S4A-M",
+        Some(place_a),
+        Some(g),
+    )
+    .await;
+    let base = seed_device(&ctx, 1, "Ноутбук 1", "INV-S4A-B", Some(place_a), None).await;
+    let extra = seed_device(&ctx, 1, "Ноутбук 2", "INV-S4A-E", Some(place_a), None).await;
+
+    let act = handover_act(&ctx, "S4A-1", &[base], place_b).await;
+    assert_eq!(
+        member_rows(&ctx, target).await,
+        1,
+        "до правки — член группы"
+    );
+
+    let _ = update_handover(&ctx, &act, &[base, target, extra]).await;
+
+    assert_eq!(device_place(&ctx, target).await, Some(place_b));
+    assert_eq!(member_rows(&ctx, target).await, 0);
+    let (gid, aid) = release_payload(&ctx, target).await;
+    assert_eq!((gid, aid), (g, act.id));
+    assert_eq!(group_member_ids(&ctx, g).await, vec![mate]);
+    assert_eq!(device_place(&ctx, mate).await, Some(place_a));
+    // Контроль: добавленное устройство вне групп.
+    assert_eq!(device_place(&ctx, extra).await, Some(place_b));
+    assert_eq!(release_audit_count(&ctx, extra).await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s4b_update_removed_releases_if_locked() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    // Группа живёт на месте акта: устройство вступило в неё ПОСЛЕ акта.
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_b)).await;
+    let x = seed_device(&ctx, 1, "Монитор 1", "INV-S4B-X", Some(place_c), None).await;
+    let y = seed_device(&ctx, 1, "Монитор 2", "INV-S4B-Y", Some(place_c), None).await;
+    let z = seed_device(&ctx, 1, "Монитор 3", "INV-S4B-Z", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S4B-1", &[x, y, z], place_b).await;
+    join_group(&ctx, x, g).await;
+    assert_eq!(device_place(&ctx, x).await, Some(place_b));
+
+    let _ = update_handover(&ctx, &act, &[z]).await;
+
+    // x: restore из снимка (Склад В) и выход из состава; y — не член, без записей.
+    assert_eq!(device_place(&ctx, x).await, Some(place_c));
+    assert_eq!(member_rows(&ctx, x).await, 0);
+    let (gid, aid) = release_payload(&ctx, x).await;
+    assert_eq!((gid, aid), (g, act.id));
+    assert_eq!(device_place(&ctx, y).await, Some(place_c));
+    assert_eq!(release_audit_count(&ctx, y).await, 0);
+}
+
+/// D-21: у группы без места нет «запирающего» членства — restore не трогает состав.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s4b_update_removed_keeps_membership_of_dormant_group() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    let dormant = seed_group(&ctx, arm, "АРМ без места", 7, None).await;
+    let x = seed_device(&ctx, 1, "Монитор 1", "INV-S4D-X", Some(place_c), None).await;
+    let z = seed_device(&ctx, 1, "Монитор 2", "INV-S4D-Z", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S4D-1", &[x, z], place_b).await;
+    join_group(&ctx, x, dormant).await;
+
+    let _ = update_handover(&ctx, &act, &[z]).await;
+
+    assert_eq!(
+        device_place(&ctx, x).await,
+        Some(place_c),
+        "restore отработал"
+    );
+    assert_eq!(
+        member_rows(&ctx, x).await,
+        1,
+        "состав спящей группы не тронут"
+    );
+    assert_eq!(release_audit_count(&ctx, x).await, 0);
+}
+
+// --- S5: do_return ---------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s5_return_releases() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    let place_d = seed_place(&ctx, "Склад Г").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_b)).await;
+    let x = seed_device(&ctx, 1, "Монитор 1", "INV-S5-X", Some(place_c), None).await;
+    let y = seed_device(&ctx, 1, "Монитор 2", "INV-S5-Y", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S5-1", &[x, y], place_b).await;
+    join_group(&ctx, x, g).await;
+    assert_eq!(device_place(&ctx, x).await, Some(place_b));
+
+    let ret = return_act(&ctx, &act, &[x, y], "Хорошее", place_d).await;
+
+    assert_eq!(device_place(&ctx, x).await, Some(place_d));
+    assert_eq!(member_rows(&ctx, x).await, 0);
+    let (gid, aid) = release_payload(&ctx, x).await;
+    assert_eq!((gid, aid), (g, ret.id), "act_id — акт возврата");
+    // Контроль: устройство вне групп вернулось как раньше.
+    assert_eq!(device_place(&ctx, y).await, Some(place_d));
+    assert_eq!(release_audit_count(&ctx, y).await, 0);
+}
+
+// --- S6: update_return (added / edited / removed) --------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s6_update_return_added_releases() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    let place_d = seed_place(&ctx, "Склад Г").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_b)).await;
+    let d1 = seed_device(&ctx, 1, "Монитор 1", "INV-S6A-1", Some(place_c), None).await;
+    let d2 = seed_device(&ctx, 1, "Монитор 2", "INV-S6A-2", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S6A-1", &[d1, d2], place_b).await;
+    let ret = return_act(&ctx, &act, &[d1], "Хорошее", place_d).await;
+    join_group(&ctx, d2, g).await; // d2 ещё не возвращён, стоит на Складе Б
+    assert_eq!(device_place(&ctx, d2).await, Some(place_b));
+
+    let _ = update_return_act(&ctx, &act, &ret, &[d1, d2], "Хорошее", place_d).await;
+
+    assert_eq!(device_place(&ctx, d2).await, Some(place_d));
+    assert_eq!(member_rows(&ctx, d2).await, 0);
+    let (gid, aid) = release_payload(&ctx, d2).await;
+    assert_eq!((gid, aid), (g, ret.id));
+    assert_eq!(release_audit_count(&ctx, d1).await, 0, "d1 не член группы");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s6_update_return_edited_releases() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    let place_d = seed_place(&ctx, "Склад Г").await;
+    let place_e = seed_place(&ctx, "Склад Д").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_d)).await;
+    let d1 = seed_device(&ctx, 1, "Монитор 1", "INV-S6B-1", Some(place_c), None).await;
+    let d2 = seed_device(&ctx, 1, "Монитор 2", "INV-S6B-2", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S6B-1", &[d1, d2], place_b).await;
+    let ret = return_act(&ctx, &act, &[d1, d2], "Хорошее", place_d).await;
+    join_group(&ctx, d1, g).await;
+    assert_eq!(device_place(&ctx, d1).await, Some(place_d));
+
+    // Правка возврата меняет и состояние, и место обоих (retained_with_change).
+    let _ = update_return_act(&ctx, &act, &ret, &[d1, d2], "Требует ремонта", place_e).await;
+
+    assert_eq!(device_place(&ctx, d1).await, Some(place_e));
+    assert_eq!(member_rows(&ctx, d1).await, 0);
+    let (gid, aid) = release_payload(&ctx, d1).await;
+    assert_eq!((gid, aid), (g, ret.id));
+    assert_eq!(device_place(&ctx, d2).await, Some(place_e));
+    assert_eq!(release_audit_count(&ctx, d2).await, 0, "d2 не член группы");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s6_update_return_removed_releases_if_locked() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    let place_d = seed_place(&ctx, "Склад Г").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_d)).await;
+    let d1 = seed_device(&ctx, 1, "Монитор 1", "INV-S6C-1", Some(place_c), None).await;
+    let d2 = seed_device(&ctx, 1, "Монитор 2", "INV-S6C-2", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S6C-1", &[d1, d2], place_b).await;
+    let ret = return_act(&ctx, &act, &[d1, d2], "Хорошее", place_d).await;
+    join_group(&ctx, d2, g).await;
+    assert_eq!(device_place(&ctx, d2).await, Some(place_d));
+
+    // d2 убран из возврата: restore снимка (в работе, Склад Б) + выход из состава.
+    let _ = update_return_act(&ctx, &act, &ret, &[d1], "Хорошее", place_d).await;
+
+    assert_eq!(device_place(&ctx, d2).await, Some(place_b));
+    assert_eq!(member_rows(&ctx, d2).await, 0);
+    let (gid, aid) = release_payload(&ctx, d2).await;
+    assert_eq!((gid, aid), (g, ret.id));
+    assert_eq!(release_audit_count(&ctx, d1).await, 0);
+    assert_eq!(device_place(&ctx, d1).await, Some(place_d));
+}
+
+// --- S7: undo при удалении акта --------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s7_undo_releases_if_locked() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_b)).await;
+    let x = seed_device(&ctx, 1, "Монитор 1", "INV-S7-X", Some(place_c), None).await;
+    let y = seed_device(&ctx, 1, "Монитор 2", "INV-S7-Y", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S7-1", &[x, y], place_b).await;
+    join_group(&ctx, x, g).await;
+    assert_eq!(device_place(&ctx, x).await, Some(place_b));
+
+    ctx.acts
+        .delete_soft(act.id, act.version)
+        .await
+        .expect("delete_soft handover");
+
+    assert_eq!(device_place(&ctx, x).await, Some(place_c), "restore снимка");
+    assert_eq!(member_rows(&ctx, x).await, 0);
+    let (gid, aid) = release_payload(&ctx, x).await;
+    assert_eq!((gid, aid), (g, act.id));
+    assert_eq!(device_place(&ctx, y).await, Some(place_c));
+    assert_eq!(release_audit_count(&ctx, y).await, 0);
+}
+
+/// Членство НЕ восстанавливается: бывший член группы, выведенный актом, после
+/// удаления акта возвращается на старое место, но в состав не возвращается.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s7_undo_does_not_restore_membership() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_a = seed_place(&ctx, "Склад А").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_a)).await;
+    let y = seed_device(&ctx, 1, "Монитор 1", "INV-S7N-Y", Some(place_a), Some(g)).await;
+    let mate = seed_device(
+        &ctx,
+        1,
+        "Системный блок 1",
+        "INV-S7N-M",
+        Some(place_a),
+        Some(g),
+    )
+    .await;
+    let act = handover_act(&ctx, "S7N-1", &[y], place_b).await;
+    assert_eq!(member_rows(&ctx, y).await, 0, "акт вывел из состава");
+    assert_eq!(release_audit_count(&ctx, y).await, 1);
+
+    ctx.acts
+        .delete_soft(act.id, act.version)
+        .await
+        .expect("delete_soft handover");
+
+    assert_eq!(
+        device_place(&ctx, y).await,
+        Some(place_a),
+        "место вернулось"
+    );
+    assert_eq!(member_rows(&ctx, y).await, 0, "членство не восстановлено");
+    assert_eq!(
+        release_audit_count(&ctx, y).await,
+        1,
+        "undo не пишет второго вывода: членства уже не было"
+    );
+    assert_eq!(group_member_ids(&ctx, g).await, vec![mate]);
+}
+
+/// Undo акта возврата — тот же helper, ветка `ActType::Return`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn s7_undo_return_releases_if_locked() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let place_b = seed_place(&ctx, "Склад Б").await;
+    let place_c = seed_place(&ctx, "Склад В").await;
+    let place_d = seed_place(&ctx, "Склад Г").await;
+    let g = seed_group(&ctx, arm, "АРМ #3", 3, Some(place_d)).await;
+    let x = seed_device(&ctx, 1, "Монитор 1", "INV-S7R-X", Some(place_c), None).await;
+    let act = handover_act(&ctx, "S7R-1", &[x], place_b).await;
+    let ret = return_act(&ctx, &act, &[x], "Хорошее", place_d).await;
+    join_group(&ctx, x, g).await;
+    assert_eq!(device_place(&ctx, x).await, Some(place_d));
+
+    ctx.acts
+        .delete_soft(ret.id, ret.version)
+        .await
+        .expect("delete_soft return");
+
+    assert_eq!(
+        device_place(&ctx, x).await,
+        Some(place_b),
+        "назад в акт выдачи"
+    );
+    assert_eq!(member_rows(&ctx, x).await, 0);
+    let (gid, aid) = release_payload(&ctx, x).await;
+    assert_eq!((gid, aid), (g, ret.id));
 }
