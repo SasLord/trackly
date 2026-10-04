@@ -29,7 +29,9 @@
 //! cycle-check+UPDATE / subtree-stats+DELETE compound operations) — this service
 //! calls them as a single unit, then separately audit-logs the result.
 
+use crate::services::group_place::{move_group_in_tx, GroupMoveDeps};
 use crate::services::plural::ru_plural;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use rusqlite::OptionalExtension;
@@ -708,8 +710,51 @@ impl PlaceService {
 
                 let items = places_repo.list_subtree_contents(&tx, root_id, true)?;
 
+                // Phase 41 (D-23, GRP-07, Pitfall 2): the device of a group whose
+                // ROOT group has a place must not move on its own — the single-device
+                // ban stays intact — and a bulk move must not be blocked by it
+                // either. Such a group travels as a whole through
+                // `move_group_in_tx` (same outer transaction, one batch per root
+                // group, deduplicated by root), the rest of its members ride along.
+                // Its devices are therefore EXCLUDED from the single-device loop
+                // below, otherwise every one of them would get two journal rows
+                // (one `manual`, one `group`). A group WITHOUT a place (D-21,
+                // «запрет спит») does not lock anything: its device is moved as an
+                // ordinary one and the group itself stays without a place.
+                let group_deps = GroupMoveDeps::new();
+                let mut devices_riding_with_group: HashSet<i64> = HashSet::new();
+                let mut group_roots: Vec<i64> = Vec::new();
+                for item in &items {
+                    if !matches!(item.kind.as_str(), "device" | "printer") {
+                        continue;
+                    }
+                    let Some(member_group) =
+                        group_deps.groups.group_of_device_in_tx(&tx, item.id)?
+                    else {
+                        continue;
+                    };
+                    let root = group_deps
+                        .groups
+                        .root_group_id_in_tx(&tx, member_group.id)?;
+                    let root_row = group_deps.groups.get_group_in_tx(&tx, root)?;
+                    if root_row.place_id.is_some() {
+                        devices_riding_with_group.insert(item.id);
+                        if !group_roots.contains(&root) {
+                            group_roots.push(root);
+                        }
+                    }
+                }
+
                 let mut moved = 0usize;
                 for item in &items {
+                    // The returned total keeps counting every content item, so the
+                    // meaning of the `usize` for bindings/UI does not change.
+                    if devices_riding_with_group.contains(&item.id)
+                        && matches!(item.kind.as_str(), "device" | "printer")
+                    {
+                        moved += 1;
+                        continue;
+                    }
                     match item.kind.as_str() {
                         "device" | "printer" => {
                             let before = devices_repo.get_in_tx(&tx, item.id)?;
@@ -786,6 +831,21 @@ impl PlaceService {
                         _ => {}
                     }
                     moved += 1;
+                }
+
+                // D-23: whole groups travel after the single items. No CAS on the
+                // group version (a bulk move has none); any error propagates and
+                // rolls back the whole transaction, groups and single devices alike.
+                for group_root in &group_roots {
+                    move_group_in_tx(
+                        &tx,
+                        &group_deps,
+                        *group_root,
+                        None,
+                        target_place_id,
+                        user_id,
+                        now,
+                    )?;
                 }
 
                 tx.commit().map_err(map_rusqlite)?;
