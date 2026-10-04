@@ -2,7 +2,9 @@
 //! GRP-01/02/03). Вымышленные имена и данные.
 
 use rusqlite::{params, Connection};
-use trackly_core::domain::groups::{GroupBehavior, GroupTypeNew, GroupTypePatch};
+use trackly_core::domain::groups::{
+    GroupBehavior, GroupTypeNew, GroupTypePatch, PropertyDataType, PropertyNew, PropertyPatch,
+};
 use trackly_core::error::AppError;
 use trackly_core::ports::group_types::GroupTypeRepository;
 use trackly_infra::repos::SqliteGroupTypeRepository;
@@ -347,4 +349,373 @@ fn seed_does_not_overwrite_admin_rename() {
         )
         .unwrap();
     assert_eq!(n, 1);
+}
+
+// ---- свойства -------------------------------------------------------------
+
+fn make_type(conn: &mut Connection, code: &str) -> i64 {
+    SqliteGroupTypeRepository
+        .create_type(conn, &new_type(code, code, GroupBehavior::Container), NOW)
+        .unwrap()
+}
+
+fn prop(type_id: i64, name: &str, data_type: PropertyDataType) -> PropertyNew {
+    PropertyNew {
+        type_id,
+        name: name.to_string(),
+        data_type,
+        is_required: false,
+        show_on_map: false,
+    }
+}
+
+fn make_prop(conn: &mut Connection, type_id: i64, name: &str) -> i64 {
+    SqliteGroupTypeRepository
+        .create_property(conn, &prop(type_id, name, PropertyDataType::Text), NOW)
+        .unwrap()
+}
+
+fn make_group(conn: &Connection, type_id: i64, seq: i64, name: &str) -> i64 {
+    conn.execute(
+        "INSERT INTO groups (type_id, name, seq, created_at_utc, updated_at_utc)
+         VALUES (?1, ?2, ?3, ?4, ?4)",
+        params![type_id, name, seq, NOW],
+    )
+    .unwrap();
+    conn.last_insert_rowid()
+}
+
+fn sort_orders(conn: &Connection, type_id: i64) -> Vec<(i64, i64)> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, sort_order FROM group_type_properties
+             WHERE type_id = ?1 ORDER BY id",
+        )
+        .unwrap();
+    stmt.query_map(params![type_id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap()
+}
+
+#[test]
+fn create_property_appends_after_hidden_and_duplicate_name_conflicts() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupTypeRepository;
+    let t = make_type(&mut conn, "rack");
+    let p0 = make_prop(&mut conn, t, "Хост");
+    let p1 = make_prop(&mut conn, t, "IP");
+    assert_eq!(repo.get_property(&conn, p0).unwrap().sort_order, 0);
+    assert_eq!(repo.get_property(&conn, p1).unwrap().sort_order, 1);
+
+    // Скрытое свойство хранит место: новое идёт после него.
+    repo.archive_property(&mut conn, p1, NOW + 1).unwrap();
+    let p2 = make_prop(&mut conn, t, "MAC");
+    let row = repo.get_property(&conn, p2).unwrap();
+    assert_eq!(row.sort_order, 2);
+    assert_eq!(row.version, 1);
+    assert_eq!(row.data_type, "text");
+
+    // Живой дубликат имени.
+    let dup = repo.create_property(&mut conn, &prop(t, "Хост", PropertyDataType::Ip), NOW);
+    assert!(matches!(dup, Err(AppError::Conflict { .. })), "{dup:?}");
+
+    // То же имя в другом типе — можно.
+    let t2 = make_type(&mut conn, "desk");
+    repo.create_property(&mut conn, &prop(t2, "Хост", PropertyDataType::Text), NOW)
+        .unwrap();
+
+    // Скрытое имя освобождается, а возврат скрытого при занятом имени — Conflict.
+    let again = repo
+        .create_property(&mut conn, &prop(t, "IP", PropertyDataType::Ip), NOW)
+        .unwrap();
+    assert!(again > p2);
+    let blocked = repo.unarchive_property(&mut conn, p1, NOW + 2);
+    assert!(
+        matches!(blocked, Err(AppError::Conflict { .. })),
+        "{blocked:?}"
+    );
+    assert!(repo
+        .get_property(&conn, p1)
+        .unwrap()
+        .archived_at_utc
+        .is_some());
+}
+
+#[test]
+fn list_properties_hides_archived_unless_requested() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupTypeRepository;
+    let t = make_type(&mut conn, "rack");
+    let a = make_prop(&mut conn, t, "А");
+    let b = make_prop(&mut conn, t, "Б");
+    let c = make_prop(&mut conn, t, "В");
+    repo.archive_property(&mut conn, b, NOW + 1).unwrap();
+
+    let live: Vec<i64> = repo
+        .list_properties(&conn, t, false)
+        .unwrap()
+        .iter()
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(live, vec![a, c]);
+    let all: Vec<i64> = repo
+        .list_properties(&conn, t, true)
+        .unwrap()
+        .iter()
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(all, vec![a, b, c]);
+
+    // Другой тип не подмешивается.
+    let t2 = make_type(&mut conn, "desk");
+    make_prop(&mut conn, t2, "Г");
+    assert_eq!(repo.list_properties(&conn, t, true).unwrap().len(), 3);
+
+    // Возврат из скрытия.
+    repo.unarchive_property(&mut conn, b, NOW + 2).unwrap();
+    assert!(repo
+        .get_property(&conn, b)
+        .unwrap()
+        .archived_at_utc
+        .is_none());
+    assert_eq!(repo.list_properties(&conn, t, false).unwrap().len(), 3);
+}
+
+#[test]
+fn update_property_cas_and_fields() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupTypeRepository;
+    let t = make_type(&mut conn, "rack");
+    let p = make_prop(&mut conn, t, "Хост");
+
+    let upd = repo
+        .update_property(
+            &mut conn,
+            p,
+            1,
+            &PropertyPatch {
+                name: Some("Имя хоста".into()),
+                data_type: Some(PropertyDataType::Ip),
+                is_required: Some(true),
+                show_on_map: Some(true),
+            },
+            NOW + 9,
+        )
+        .unwrap();
+    assert_eq!(upd.name, "Имя хоста");
+    assert_eq!(upd.data_type, "ip");
+    assert!(upd.is_required && upd.show_on_map);
+    assert_eq!(upd.version, 2);
+    assert_eq!(upd.updated_at_utc, NOW + 9);
+
+    // Пустой патч ничего не меняет, кроме версии.
+    let same = repo
+        .update_property(&mut conn, p, 2, &PropertyPatch::default(), NOW)
+        .unwrap();
+    assert_eq!(same.name, "Имя хоста");
+    assert!(same.is_required);
+
+    let stale = repo.update_property(&mut conn, p, 1, &PropertyPatch::default(), NOW);
+    assert!(
+        matches!(
+            stale,
+            Err(AppError::OptimisticLockMismatch {
+                expected: 1,
+                actual: 3,
+                ..
+            })
+        ),
+        "{stale:?}"
+    );
+    let missing = repo.update_property(&mut conn, 9_999, 1, &PropertyPatch::default(), NOW);
+    assert!(
+        matches!(missing, Err(AppError::NotFound { .. })),
+        "{missing:?}"
+    );
+
+    // Переименование в занятое живое имя.
+    make_prop(&mut conn, t, "Модель");
+    let clash = repo.update_property(
+        &mut conn,
+        p,
+        3,
+        &PropertyPatch {
+            name: Some("Модель".into()),
+            ..Default::default()
+        },
+        NOW,
+    );
+    assert!(matches!(clash, Err(AppError::Conflict { .. })), "{clash:?}");
+}
+
+#[test]
+fn delete_property_hard_cascades_values() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupTypeRepository;
+    let t = make_type(&mut conn, "rack");
+    let p = make_prop(&mut conn, t, "Хост");
+    let g = make_group(&conn, t, 1, "Стойка #1");
+    conn.execute(
+        "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+         VALUES (?1, ?2, 'host-a', ?3)",
+        params![g, p, NOW],
+    )
+    .unwrap();
+
+    repo.delete_property_hard(&mut conn, p).unwrap();
+    let left: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM group_property_values WHERE property_id = ?1",
+            params![p],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(left, 0, "значения удаляются каскадом");
+    assert!(matches!(
+        repo.get_property(&conn, p),
+        Err(AppError::NotFound { .. })
+    ));
+    assert!(matches!(
+        repo.delete_property_hard(&mut conn, p),
+        Err(AppError::NotFound { .. })
+    ));
+}
+
+#[test]
+fn filled_group_count_counts_distinct_groups_not_rows() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupTypeRepository;
+    let t = make_type(&mut conn, "rack");
+    let p = make_prop(&mut conn, t, "Принтеры");
+    assert_eq!(repo.filled_group_count(&conn, p).unwrap(), 0);
+
+    let g1 = make_group(&conn, t, 1, "АРМ #1");
+    let g2 = make_group(&conn, t, 2, "АРМ #2");
+    let _g3 = make_group(&conn, t, 3, "АРМ #3");
+    // Три строки значения у двух групп (две ссылки у g1): ответ 2, не 3.
+    for (g, r, primary) in [(g1, 11, 1), (g1, 12, 0), (g2, 11, 1)] {
+        conn.execute(
+            "INSERT INTO group_property_values
+               (group_id, property_id, value_ref, is_primary, updated_at_utc)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![g, p, r, primary, NOW],
+        )
+        .unwrap();
+    }
+    let rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM group_property_values WHERE property_id = ?1",
+            params![p],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 3);
+    assert_eq!(repo.filled_group_count(&conn, p).unwrap(), 2);
+}
+
+#[test]
+fn groups_missing_required_finds_only_groups_without_value() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupTypeRepository;
+    let t = make_type(&mut conn, "rack");
+    let other_t = make_type(&mut conn, "desk");
+    let p_text = make_prop(&mut conn, t, "Хост");
+    let p_ref = make_prop(&mut conn, t, "Пользователи");
+
+    let missing = make_group(&conn, t, 3, "АРМ #3");
+    let with_text = make_group(&conn, t, 1, "АРМ #1");
+    let with_ref = make_group(&conn, t, 2, "АРМ #2");
+    let _foreign = make_group(&conn, other_t, 1, "Стол #1");
+    conn.execute(
+        "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+         VALUES (?1, ?2, 'host-a', ?3)",
+        params![with_text, p_text, NOW],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO group_property_values
+           (group_id, property_id, value_ref, is_primary, updated_at_utc)
+         VALUES (?1, ?2, 42, 1, ?3)",
+        params![with_ref, p_ref, NOW],
+    )
+    .unwrap();
+
+    // Текстовое свойство: нарушители — группы без текста (#2 и #3), по seq.
+    let v = repo.groups_missing_required(&conn, t, p_text).unwrap();
+    assert_eq!(
+        v,
+        vec![
+            (with_ref, "АРМ #2".to_string()),
+            (missing, "АРМ #3".to_string())
+        ]
+    );
+    // Свойство-ссылка: с value_ref группа не нарушитель, с текстом по другому свойству — нарушитель.
+    let v = repo.groups_missing_required(&conn, t, p_ref).unwrap();
+    assert_eq!(
+        v,
+        vec![
+            (with_text, "АРМ #1".to_string()),
+            (missing, "АРМ #3".to_string())
+        ]
+    );
+}
+
+#[test]
+fn reorder_properties_assigns_positions_atomically() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupTypeRepository;
+    let t = make_type(&mut conn, "rack");
+    let other_t = make_type(&mut conn, "desk");
+    let p1 = make_prop(&mut conn, t, "А");
+    let p2 = make_prop(&mut conn, t, "Б");
+    let p3 = make_prop(&mut conn, t, "В");
+    let foreign = make_prop(&mut conn, other_t, "Г");
+    let before = sort_orders(&conn, t);
+    assert_eq!(before, vec![(p1, 0), (p2, 1), (p3, 2)]);
+    let foreign_before = sort_orders(&conn, other_t);
+
+    // Чужой id: отказ, порядок прежний.
+    let bad = repo.reorder_properties(&mut conn, t, &[p3, p1, foreign], NOW);
+    assert!(
+        matches!(&bad, Err(AppError::Validation { field, .. }) if field == "ordered_ids"),
+        "{bad:?}"
+    );
+    assert_eq!(sort_orders(&conn, t), before);
+    assert_eq!(sort_orders(&conn, other_t), foreign_before);
+
+    // Неполный список и дубликат.
+    assert!(matches!(
+        repo.reorder_properties(&mut conn, t, &[p3, p1], NOW),
+        Err(AppError::Validation { .. })
+    ));
+    assert!(matches!(
+        repo.reorder_properties(&mut conn, t, &[p1, p1, p2], NOW),
+        Err(AppError::Validation { .. })
+    ));
+    assert_eq!(sort_orders(&conn, t), before);
+
+    // Верный порядок.
+    repo.reorder_properties(&mut conn, t, &[p3, p1, p2], NOW + 3)
+        .unwrap();
+    assert_eq!(sort_orders(&conn, t), vec![(p1, 1), (p2, 2), (p3, 0)]);
+    let listed: Vec<i64> = repo
+        .list_properties(&conn, t, false)
+        .unwrap()
+        .iter()
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(listed, vec![p3, p1, p2]);
+
+    // Скрытое свойство в сортировке не участвует.
+    repo.archive_property(&mut conn, p2, NOW + 4).unwrap();
+    repo.reorder_properties(&mut conn, t, &[p1, p3], NOW + 5)
+        .unwrap();
+    let listed: Vec<i64> = repo
+        .list_properties(&conn, t, false)
+        .unwrap()
+        .iter()
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(listed, vec![p1, p3]);
 }
