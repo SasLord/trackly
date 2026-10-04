@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T06:01:01.940Z"
+last_updated: "2026-10-04T06:27:43.516Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 124
+  completed_plans: 125
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 6 of 26
+Plan: 7 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -516,6 +516,7 @@ Last activity: 2026-10-04
 | Phase 41 P03 | 25min | 2 tasks | 8 files |
 | Phase 41 P04 | ~40min | 2 tasks | 5 files |
 | Phase 41 P05 | 45m | 2 tasks | 5 files |
+| Phase 41 P06 | ~50min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1165,6 +1166,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-02: причина перемещения source=group в отчёте — «группой», уточнение названием группы — в сервисе групп
 - [Phase 41]: [41-04] reorder_properties не бампит version свойств (только updated_at_utc), чтобы не рвать CAS открытого редактора
 - [Phase 41]: 41-05: record_batch_movement_if_applicable рядом с неизменённым record_movement_if_applicable; group_id/group_label в DTO читаются из колонок журнала
+- [Phase 41]: 41-06: locked_group_for_device фильтрует place_id IS NOT NULL (D-21 на уровне запроса); цикл проверяется раньше teardown; замена значений свойств в SAVEPOINT
 
 ### Pending Todos
 
@@ -1364,8 +1366,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T06:00:57.854Z
-Stopped at: Completed 41-04-PLAN.md
+Last session: 2026-10-04T06:27:43.507Z
+Stopped at: Completed 41-06-PLAN.md
 Resume file: None
 
 None
