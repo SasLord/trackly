@@ -1574,3 +1574,207 @@ async fn s7_undo_return_releases_if_locked() {
     let (gid, aid) = release_payload(&ctx, x).await;
     assert_eq!((gid, aid), (g, ret.id));
 }
+
+// ===========================================================================
+// Plan 41-16: счётный гейт write-site'ов `devices.place_id`
+// ===========================================================================
+//
+// Урок фазы 40.1 / V042: полноту перечня write-site'ов нельзя держать в голове
+// и закрывать точечной правкой — нужен сплошной заход ОТ СЕРВЕРНЫХ МУТАЦИЙ и
+// гейт, который краснеет при новом месте записи. Репозиторий пишет
+// `devices.place_id` ровно тремя методами (`update_status_and_place_in_tx`,
+// `update_full_in_tx`, `restore_from_snapshot_in_tx`) плюс каскад картриджа
+// (S9, см. тест выше). Гейт считает ВЫЗОВЫ этих трёх методов по исходникам.
+//
+// Как добавить новый write-site: (1) решить, должен ли он выводить устройство
+// из состава группы (акт — да, D-22; перенос группой — нет, это и есть «место
+// задаёт группа»); (2) добавить явный вызов `release_device_in_tx` /
+// `release_if_locked_device_in_tx` на сайте; (3) написать сценарий в этом файле;
+// (4) только после этого поднять константу в реестре ниже.
+
+const WRITE_SITE_CALLS: [&str; 3] = [
+    "update_status_and_place_in_tx(",
+    "update_full_in_tx(",
+    "restore_from_snapshot_in_tx(",
+];
+const RELEASE_CALLS: [&str; 2] = ["release_device_in_tx(", "release_if_locked_device_in_tx("];
+
+/// Реестр: файл (относительно корня репозитория) -> число вызовов трёх методов.
+/// act_service.rs: 8 = S3 create, S4 update (added, removed), S5 do_return,
+/// S6 update_return (removed, added, edited), S7 undo. place_service.rs: 1 = S2
+/// (одиночные устройства массового переноса). group_place.rs: 1 = свой путь
+/// группы (`apply_group_place_to_device_in_tx`). Определения методов
+/// (`pub fn ...` в devices_sqlite.rs) в счёт не входят.
+const WRITE_SITE_REGISTRY: [(&str, usize); 3] = [
+    ("crates/trackly-app/src/services/act_service.rs", 8),
+    ("crates/trackly-app/src/services/place_service.rs", 1),
+    ("crates/trackly-app/src/services/group_place.rs", 1),
+];
+
+/// Число вызовов `needles` в исходнике: строки-комментарии (`//`, `///`, `//!`),
+/// хвосты `// ...` и определения (`fn `) не считаются.
+fn count_calls(src: &str, needles: &[&str]) -> usize {
+    src.lines()
+        .map(|line| {
+            let code = line.split("//").next().unwrap_or("");
+            if code.contains("fn ") {
+                return 0;
+            }
+            needles.iter().map(|n| code.matches(n).count()).sum()
+        })
+        .sum()
+}
+
+fn rust_sources_under_crates() -> Vec<(String, String)> {
+    fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
+        for entry in std::fs::read_dir(dir).expect("read_dir") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let rel = path
+                    .strip_prefix(root)
+                    .expect("strip_prefix")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let text = std::fs::read_to_string(&path).expect("read source");
+                out.push((rel, text));
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = root.canonicalize().expect("repo root");
+    let mut out = Vec::new();
+    for krate in std::fs::read_dir(root.join("crates")).expect("crates dir") {
+        let src = krate.expect("crate entry").path().join("src");
+        if src.is_dir() {
+            walk(&src, &root, &mut out);
+        }
+    }
+    out
+}
+
+/// Самопроверка счётчика: «зелёный» гейт отличим от «ничего не ищет».
+#[test]
+fn write_site_gate_counter_selftest() {
+    let fixture = "\
+let a = repo.update_full_in_tx(tx, 1);
+// repo.update_full_in_tx(tx, 2);
+/// restore_from_snapshot_in_tx( в докстроке
+pub fn restore_from_snapshot_in_tx(
+let b = repo.restore_from_snapshot_in_tx(tx, 3); // хвост update_full_in_tx(
+release_device_in_tx(tx, g);
+release_if_locked_device_in_tx(tx, g);
+";
+    assert_eq!(
+        count_calls(fixture, &WRITE_SITE_CALLS),
+        2,
+        "вызовы, не комментарии и не определения"
+    );
+    assert_eq!(count_calls(fixture, &RELEASE_CALLS), 2);
+    assert_eq!(
+        count_calls("restore_from_snapshot_in_tx(\n", &WRITE_SITE_CALLS),
+        1,
+        "вызов без комментария считается"
+    );
+    assert_eq!(count_calls("", &WRITE_SITE_CALLS), 0);
+}
+
+/// Гейт 1: в act_service.rs ровно 8 write-site'ов и ровно 8 release-вызовов, и
+/// КАЖДЫЙ write-site сразу сопровождается своим helper'ом (прямые пути —
+/// безусловный `release_device_in_tx`, restore-пути — `release_if_locked_...`).
+#[test]
+fn write_site_gate_act_service_every_site_has_release() {
+    let src = include_str!("../src/services/act_service.rs");
+    assert_eq!(
+        count_calls(src, &WRITE_SITE_CALLS),
+        8,
+        "число write-site'ов devices.place_id в act_service.rs изменилось — добавь кейс release \
+         в group_write_sites.rs и обнови реестр"
+    );
+    assert_eq!(
+        count_calls(src, &RELEASE_CALLS),
+        8,
+        "каждый write-site act_service.rs обязан вызывать release-helper"
+    );
+
+    // Парность: release — в окне строк сразу после write-site'а, нужного вида.
+    const WINDOW: usize = 14;
+    let lines: Vec<&str> = src.lines().collect();
+    let mut paired = 0;
+    for (i, line) in lines.iter().enumerate() {
+        let code = line.split("//").next().unwrap_or("");
+        if code.contains("fn ") || count_calls(code, &WRITE_SITE_CALLS) == 0 {
+            continue;
+        }
+        // `.restore_from_snapshot_in_tx(` стоит на строке цепочки — вид helper'а
+        // определяется по самому вызову на этой строке.
+        let is_restore = code.contains("restore_from_snapshot_in_tx(");
+        let (want, forbid) = if is_restore {
+            ("release_if_locked_device_in_tx(", "release_device_in_tx(")
+        } else {
+            ("release_device_in_tx(", "release_if_locked_device_in_tx(")
+        };
+        let window: Vec<&str> = lines[i + 1..(i + 1 + WINDOW).min(lines.len())]
+            .iter()
+            .map(|l| l.split("//").next().unwrap_or(""))
+            .collect();
+        // release должен идти ДО следующего write-site'а
+        let end = window
+            .iter()
+            .position(|l| count_calls(l, &WRITE_SITE_CALLS) > 0)
+            .unwrap_or(window.len());
+        let scope = &window[..end];
+        assert!(
+            scope.iter().any(|l| l.contains(want)),
+            "write-site act_service.rs:{} без {want} в {WINDOW} строках после него — добавь кейс \
+             release в group_write_sites.rs",
+            i + 1
+        );
+        assert!(
+            !scope.iter().any(|l| l.contains(forbid)),
+            "write-site act_service.rs:{} вызывает не тот release-helper ({forbid})",
+            i + 1
+        );
+        paired += 1;
+    }
+    assert_eq!(paired, 8, "проверено парных write-site'ов");
+}
+
+/// Гейт 2: по всем `crates/*/src` вызовы трёх методов разрешены только в файлах
+/// реестра, с точным числом; определения (`fn `) не считаются.
+#[test]
+fn write_site_gate_no_unregistered_place_writers() {
+    let sources = rust_sources_under_crates();
+    assert!(
+        sources.len() > 50,
+        "скан исходников ничего не нашёл ({} файлов) — гейт бы молча позеленел",
+        sources.len()
+    );
+    let mut seen: Vec<(String, usize)> = Vec::new();
+    for (rel, text) in &sources {
+        let n = count_calls(text, &WRITE_SITE_CALLS);
+        if n > 0 {
+            seen.push((rel.clone(), n));
+        }
+    }
+    for (rel, n) in &seen {
+        match WRITE_SITE_REGISTRY.iter().find(|(f, _)| f == rel) {
+            None => panic!(
+                "новое место записи devices.place_id в {rel} ({n} вызовов) — добавь кейс release \
+                 в group_write_sites.rs и внеси файл в реестр"
+            ),
+            Some((_, want)) => assert_eq!(
+                n, want,
+                "число вызовов write-site'ов в {rel} изменилось ({n}, в реестре {want}) — добавь \
+                 кейс release в group_write_sites.rs"
+            ),
+        }
+    }
+    for (rel, want) in WRITE_SITE_REGISTRY {
+        assert!(
+            seen.iter().any(|(f, _)| f == rel),
+            "файл реестра {rel} ({want} вызовов) больше не содержит write-site'ов — обнови реестр"
+        );
+    }
+}
