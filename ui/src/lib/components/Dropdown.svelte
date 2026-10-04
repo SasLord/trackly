@@ -48,6 +48,12 @@
     getGroupId: (g: TGroup) => string | number;
     getGroupName: (g: TGroup) => string;
     getGroupMeta?: (g: TGroup) => string | undefined;
+    /** Optional section title: when set and the value differs from the
+     *  previous VISIBLE item's, a non-focusable heading (`role="presentation"`)
+     *  is rendered before the item. Headings are NOT options — they take no
+     *  part in arrow navigation, `aria-activedescendant` or result counting.
+     *  Without this prop the markup/ARIA/behaviour are unchanged. */
+    getGroupSection?: (g: TGroup) => string | undefined;
     /** e.g. serial/inventory row — rendered `.tr-mono` in flat mode only. */
     getGroupSub?: (g: TGroup) => string | undefined;
     getGroupCount: (g: TGroup) => number;
@@ -88,6 +94,7 @@
     getGroupId,
     getGroupName,
     getGroupMeta,
+    getGroupSection,
     getGroupSub,
     getGroupCount,
     isGroupExpandable,
@@ -392,6 +399,16 @@
     } else {
       openPanel('');
     }
+  }
+
+  /** Section heading to render before `visibleGroups[i]`, or `undefined`.
+   *  Pure presentation: never consulted by keyboard navigation. */
+  function sectionHeadingAt(i: number): string | undefined {
+    if (!getGroupSection) return undefined;
+    const current = getGroupSection(visibleGroups[i]);
+    if (!current) return undefined;
+    if (i === 0) return current;
+    return getGroupSection(visibleGroups[i - 1]) === current ? undefined : current;
   }
 
   /** D-12 `aria-activedescendant` target: id of the option row at
@@ -741,6 +758,9 @@
         <li class="tr-dropdown-empty">Ничего не найдено</li>
       {:else}
         {#each visibleGroups as g, i (getGroupId(g))}
+          {#if sectionHeadingAt(i)}
+            <li class="tr-dropdown-section" role="presentation">{sectionHeadingAt(i)}</li>
+          {/if}
           <li>
             <button
               type="button"
@@ -1075,6 +1095,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  // Optional section heading (getGroupSection) — not an option, not focusable.
+  :global(.tr-dropdown-panel .tr-dropdown-section) {
+    padding: var(--tr-space-xs) var(--tr-space-sm);
+    color: var(--tr-text-secondary);
+    font: var(--tr-text-body-strong);
+    list-style: none;
+    pointer-events: none;
   }
 
   // D-13 (canonical copy): both rows share the same 46px height as a normal

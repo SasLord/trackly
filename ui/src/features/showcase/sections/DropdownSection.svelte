@@ -13,6 +13,7 @@
     count: number;
     expandable: boolean;
     selected?: boolean;
+    section?: string;
   }
   interface DemoMember {
     id: string;
@@ -35,6 +36,15 @@
   function expandDemoGroup(g: DemoGroup): DemoMember[] {
     return g.id === 'g1' ? membersDemo : [];
   }
+
+  // --- Block 1b: combobox with section headings (getGroupSection) ---
+  const sectionsDemo: DemoGroup[] = [
+    { id: 's1', name: 'Элемент А-1', count: 1, expandable: false, section: 'Раздел А' },
+    { id: 's2', name: 'Элемент А-2', count: 1, expandable: false, section: 'Раздел А' },
+    { id: 's3', name: 'Элемент Б-1', count: 1, expandable: false, section: 'Раздел Б' },
+    { id: 's4', name: 'Элемент Б-2', count: 1, expandable: false, section: 'Раздел Б' },
+  ];
+  let sectionsValue = $state('');
 
   // --- Block 2: flat select with in-panel search + checkmark ---
   const flatOptions: DemoGroup[] = [
@@ -59,6 +69,7 @@
   // Anchors used only to locate each Dropdown instance's rendered field
   // element for the onMount forced-open sequence below.
   let groupsDemoEl: HTMLDivElement | undefined;
+  let sectionsDemoEl: HTMLDivElement | undefined;
   let flatDemoEl: HTMLDivElement | undefined;
   let emptyDemoEl: HTMLDivElement | undefined;
   let loadingDemoEl: HTMLDivElement | undefined;
@@ -86,6 +97,9 @@
         const firstOption = panel?.querySelector<HTMLButtonElement>('.tr-dropdown-option');
         firstOption?.click();
       }
+
+      // Block 1b: focus opens the panel with its section headings visible.
+      sectionsDemoEl?.querySelector('input')?.focus();
 
       // Block 2: a single click opens the flat select panel (search box +
       // checkmark on the pre-selected option), no drill-in involved.
@@ -127,6 +141,31 @@
         onQueryInput={(q) => (comboValue = q)}
         onPickGroup={(g) => (comboValue = g.name)}
         onPickMember={(m) => (comboValue = m.name)}
+      />
+    </div>
+  </div>
+
+  <div class="variant-block">
+    <h3 class="variant-label">Комбобокс с заголовками секций</h3>
+    <div class="demo-anchor" bind:this={sectionsDemoEl}>
+      <Dropdown
+        variant="combobox"
+        value={sectionsValue}
+        placeholder="Выберите элемент"
+        loading={false}
+        groups={sectionsDemo}
+        getGroupId={(g) => g.id}
+        getGroupName={(g) => g.name}
+        getGroupSection={(g) => g.section}
+        getGroupCount={(g) => g.count}
+        isGroupExpandable={neverExpandable}
+        onExpandGroup={noopExpand}
+        getMemberId={(m) => m.id}
+        getMemberName={(m) => m.name}
+        onSearch={() => {}}
+        onQueryInput={(q) => (sectionsValue = q)}
+        onPickGroup={(g) => (sectionsValue = g.name)}
+        onPickMember={() => {}}
       />
     </div>
   </div>
