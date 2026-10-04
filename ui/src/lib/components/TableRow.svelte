@@ -58,7 +58,7 @@
         type="button"
         class="tr-row-chevron"
         class:expanded={groupExpanded}
-        aria-label={groupExpanded ? 'Свернуть группу' : 'Развернуть группу'}
+        aria-label={groupExpanded ? 'Свернуть' : 'Развернуть'}
         onclick={handleChevronClick}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">

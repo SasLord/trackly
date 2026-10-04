@@ -106,7 +106,7 @@
   <h2>Dropdown</h2>
 
   <div class="variant-block">
-    <h3 class="variant-label">Комбобокс с группами (drill-in)</h3>
+    <h3 class="variant-label">Комбобокс со свёрнутыми наборами (drill-in)</h3>
     <div class="demo-anchor" bind:this={groupsDemoEl}>
       <Dropdown
         variant="combobox"

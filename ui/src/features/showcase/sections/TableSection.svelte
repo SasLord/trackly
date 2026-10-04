@@ -206,7 +206,7 @@
   </div>
 
   <div class="variant-block">
-    <h3 class="variant-label">Строка-группа</h3>
+    <h3 class="variant-label">Раскрываемая строка</h3>
     <Table columns={8} head={tableHead}>
       <TableRow
         group

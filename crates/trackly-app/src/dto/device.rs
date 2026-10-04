@@ -287,10 +287,10 @@ pub struct DeviceFilter {
     pub name_prefix: Option<String>,
     /// Включать ли мягко-удалённые устройства. По умолчанию false.
     pub include_deleted: bool,
-    /// Если true (акт-форма/пикер устройства, Phase 18/D-04/D-05) — группировка
-    /// по (type_id, name, model), сортировка по count DESC (остаток по убыванию),
+    /// Если true (акт-форма/пикер устройства, Phase 18/D-04/D-05) — свёртка
+    /// одинаковых устройств по (type_id, name, model), сортировка по count DESC (остаток по убыванию),
     /// текстовый фильтр по name_prefix активен.
-    /// Если false (по умолчанию, страница Устройств) — группировка по
+    /// Если false (по умолчанию, страница Устройств) — свёртка одинаковых по
     /// (type_id, name), сортировка по имени; не изменено Phase 18.
     pub group_by_condition: bool,
 }
@@ -321,29 +321,29 @@ pub struct DeviceListResponse {
     pub total: u64,
 }
 
-/// Группа одинаковых устройств (DEV-11 / D-Group-01).
+/// Набор одинаковых устройств, свёрнутых в одну строку (DEV-11 / D-Group-01).
 ///
 /// Только для не-уникальных устройств (без inventory_number и serial_number).
-/// `repr` — представительная строка группы (с MIN(id)).
-/// `ids` — все ID в группе (для expand через `devices_list_by_ids`).
+/// `repr` — представительная строка набора (с MIN(id)).
+/// `ids` — все ID в наборе (для expand через `devices_list_by_ids`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DeviceGroup {
     pub repr: DeviceDto,
     #[specta(type = u32)]
     pub count: u64,
     pub ids: Vec<i32>,
-    /// Количество различных значений condition в группе.
-    /// При `group_by_condition=false`: > 1 означает смешанную группу (отображается
+    /// Количество различных значений condition в наборе.
+    /// При `group_by_condition=false`: > 1 означает смешанный набор (отображается
     /// как «разное» на фронтенде).
     /// При `group_by_condition=true` (Phase 18+): condition больше НЕ входит в
-    /// ключ группировки (ключ — (type_id, name, model)) — поле сигнализирует
-    /// фронтенду о необходимости drill-in подгруппировки по condition (D-07).
+    /// ключ свёртки (ключ — (type_id, name, model)) — поле сигнализирует
+    /// фронтенду о необходимости drill-in разбивки по condition (D-07).
     #[specta(type = i32)]
     pub condition_distinct_count: i64,
-    /// Количество различных значений place в группе (Phase 40 Plan 26 — Фикс B).
-    /// Значение больше 1 означает, что члены группы расположены в разных
+    /// Количество различных значений place в наборе (Phase 40 Plan 26 — Фикс B).
+    /// Значение больше 1 означает, что члены набора расположены в разных
     /// местах — фронтенд должен погасить `repr.place_path_short` (показать
-    /// «—») вместо места произвольного члена группы.
+    /// «—») вместо места произвольного члена набора.
     #[specta(type = i32)]
     pub place_distinct_count: i64,
 }

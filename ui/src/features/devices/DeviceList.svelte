@@ -96,7 +96,7 @@
          doubled, over-tall footer with two top borders. -->
     <span class="pagination-info">
       {#if showGroups}
-        Групп: {groups.length}
+        Свёрнуто: {groups.length}
       {:else}
         Показано {items.length} из {total}
       {/if}

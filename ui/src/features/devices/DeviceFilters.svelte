@@ -99,7 +99,7 @@
       onchange={(key) => onStatusChange(key === 'null' ? null : Number(key))}
     />
 
-    <Checkbox checked={grouped} onchange={onGroupedChange}>Группировать похожие</Checkbox>
+    <Checkbox checked={grouped} onchange={onGroupedChange}>Свернуть одинаковые</Checkbox>
   </div>
 </div>
 
