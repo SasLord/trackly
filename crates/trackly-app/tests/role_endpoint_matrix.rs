@@ -3903,3 +3903,739 @@ fn group_types_http_route_completeness() {
     );
     assert_eq!(in_source.len(), 10);
 }
+
+// ===========================================================================
+// Phase 41 Plan 13 — Groups (GRP-09, SPEC 13)
+//
+// Матрица 3 роли x 15 команд групп x 2 транспорта (HTTP и прямой вызов
+// `build_groups_*`), кросс-проверка с типами (manager создаёт группу, но не
+// тип), серверная валидация и правила состава/вложенности через HTTP, тест
+// полноты маршрутов. Пользователи и данные вымышленные. Существующие Cases и
+// тесты плана 09 не менялись; фикстуры и хелперы `gt_*` переиспользованы.
+// ===========================================================================
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GroupGate {
+    /// `Action::MutateGroups` — Admin|Manager.
+    Mut,
+    /// `Action::ReadGroups` — Admin|Manager.
+    Read,
+}
+
+/// Таблица-драйвер: (имя команды == имя маршрута, вид гейта, JSON-payload HTTP).
+/// Payload'ы корректны по форме: employee обязан получить именно 403, а не 422.
+fn group_cases() -> Vec<(&'static str, GroupGate, serde_json::Value)> {
+    vec![
+        ("groups_list", GroupGate::Read, json!({})),
+        ("groups_get", GroupGate::Read, json!({ "id": 999999 })),
+        ("groups_card", GroupGate::Read, json!({ "id": 999999 })),
+        (
+            "groups_composition",
+            GroupGate::Read,
+            json!({ "groupId": 999999 }),
+        ),
+        (
+            "groups_search",
+            GroupGate::Read,
+            json!({ "query": "а", "excludeGroupId": null }),
+        ),
+        (
+            "groups_for_devices",
+            GroupGate::Read,
+            json!({ "deviceIds": [] }),
+        ),
+        (
+            "groups_user_options",
+            GroupGate::Read,
+            json!({ "query": "а" }),
+        ),
+        (
+            "groups_create",
+            GroupGate::Mut,
+            json!({ "dto": { "type_id": 999999, "name": null, "place_id": null } }),
+        ),
+        (
+            "groups_update",
+            GroupGate::Mut,
+            json!({ "id": 999999, "version": 1, "name": "Проба" }),
+        ),
+        ("groups_delete", GroupGate::Mut, json!({ "id": 999999 })),
+        (
+            "groups_set_parent",
+            GroupGate::Mut,
+            json!({ "dto": { "id": 999999, "version": 1, "parent_group_id": null } }),
+        ),
+        (
+            "groups_add_devices",
+            GroupGate::Mut,
+            json!({ "dto": { "group_id": 999999, "device_ids": [] } }),
+        ),
+        (
+            "groups_remove_devices",
+            GroupGate::Mut,
+            json!({ "dto": { "group_id": 999999, "device_ids": [] } }),
+        ),
+        (
+            "groups_move",
+            GroupGate::Mut,
+            json!({ "dto": { "id": 999999, "version": 1, "target_place_id": 999999 } }),
+        ),
+        (
+            "groups_set_values",
+            GroupGate::Mut,
+            json!({ "dto": { "id": 999999, "version": 1, "values": [] } }),
+        ),
+    ]
+}
+
+/// Прямой вызов `build_groups_*` (Tauri-путь) с аргументами, симметричными
+/// `group_cases()`. Возвращает только исход гейта.
+async fn groups_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Result<(), AppError> {
+    use trackly_app::dto::groups::{
+        GroupAddDevicesDto, GroupCreateDto, GroupMoveDto, GroupRemoveDevicesDto, GroupSetParentDto,
+        GroupSetValuesDto,
+    };
+    use trackly_app::tauri_cmds::groups as g;
+    match name {
+        "groups_list" => g::build_groups_list(ctx, caller).await.map(|_| ()),
+        "groups_get" => g::build_groups_get(ctx, caller, 999999).await.map(|_| ()),
+        "groups_card" => g::build_groups_card(ctx, caller, 999999).await.map(|_| ()),
+        "groups_composition" => g::build_groups_composition(ctx, caller, 999999)
+            .await
+            .map(|_| ()),
+        "groups_search" => g::build_groups_search(ctx, caller, "а".to_string(), None)
+            .await
+            .map(|_| ()),
+        "groups_for_devices" => g::build_groups_for_devices(ctx, caller, vec![])
+            .await
+            .map(|_| ()),
+        "groups_user_options" => g::build_groups_user_options(ctx, caller, "а".to_string())
+            .await
+            .map(|_| ()),
+        "groups_create" => g::build_groups_create(
+            ctx,
+            caller,
+            GroupCreateDto {
+                type_id: 999999,
+                name: None,
+                place_id: None,
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_update" => g::build_groups_update(ctx, caller, 999999, 1, "Проба".to_string())
+            .await
+            .map(|_| ()),
+        "groups_delete" => g::build_groups_delete(ctx, caller, 999999)
+            .await
+            .map(|_| ()),
+        "groups_set_parent" => g::build_groups_set_parent(
+            ctx,
+            caller,
+            GroupSetParentDto {
+                id: 999999,
+                version: 1,
+                parent_group_id: None,
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_add_devices" => g::build_groups_add_devices(
+            ctx,
+            caller,
+            GroupAddDevicesDto {
+                group_id: 999999,
+                device_ids: vec![],
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_remove_devices" => g::build_groups_remove_devices(
+            ctx,
+            caller,
+            GroupRemoveDevicesDto {
+                group_id: 999999,
+                device_ids: vec![],
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_move" => g::build_groups_move(
+            ctx,
+            caller,
+            GroupMoveDto {
+                id: 999999,
+                version: 1,
+                target_place_id: 999999,
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_set_values" => g::build_groups_set_values(
+            ctx,
+            caller,
+            GroupSetValuesDto {
+                id: 999999,
+                version: 1,
+                values: vec![],
+            },
+        )
+        .await
+        .map(|_| ()),
+        other => panic!("groups_call_build: неизвестная команда {other}"),
+    }
+}
+
+/// Статусы, при которых маршрут «не дошёл» до бизнес-логики: аутентификация,
+/// гейт или форма payload'а. Для admin/manager любой другой статус допустим.
+const GROUP_NOT_REACHED: [StatusCode; 4] = [
+    StatusCode::UNAUTHORIZED,
+    StatusCode::FORBIDDEN,
+    StatusCode::UNSUPPORTED_MEDIA_TYPE,
+    StatusCode::UNPROCESSABLE_ENTITY,
+];
+
+async fn groups_type_id(env: &GtEnv, code: &'static str) -> i64 {
+    gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM group_types WHERE code = ?1",
+        vec![gt_text(code)],
+    )
+    .await
+}
+
+async fn groups_seed_place(env: &GtEnv, name: &'static str) -> i64 {
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO places (kind, name, parent_id, is_storage, created_at_utc, \
+         updated_at_utc, version) VALUES ('room', ?1, NULL, 0, 1700000000, 1700000000, 1)",
+        vec![gt_text(name)],
+    )
+    .await;
+    gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM places WHERE name = ?1",
+        vec![gt_text(name)],
+    )
+    .await
+}
+
+async fn groups_seed_device(env: &GtEnv, name: &'static str, inv: &'static str) -> i64 {
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO devices (type_id, name, inventory_number, serial_number, place_id, \
+         status_id, created_at_utc, updated_at_utc, version) \
+         VALUES (1, ?1, ?2, ?2, NULL, 1, 1700000000, 1700000000, 1)",
+        vec![gt_text(name), gt_text(inv)],
+    )
+    .await;
+    gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM devices WHERE inventory_number = ?1",
+        vec![gt_text(inv)],
+    )
+    .await
+}
+
+/// Создаёт группу типа `type_id` через HTTP от admin; возвращает её id.
+async fn groups_http_create(env: &GtEnv, type_id: i64, name: &str, place_id: Option<i64>) -> i64 {
+    let (status, body) = gt_post(
+        env,
+        &env.admin_cookie,
+        "groups_create",
+        json!({ "dto": { "type_id": type_id, "name": name, "place_id": place_id } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "groups_create {name}: {body}");
+    body["id"].as_i64().expect("id группы")
+}
+
+async fn groups_version(env: &GtEnv, id: i64) -> i64 {
+    gt_db_i64(
+        &env.ctx,
+        "SELECT version FROM groups WHERE id = ?1",
+        vec![gt_int(id)],
+    )
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// Case 81: HTTP, 3 роли x все 15 команд
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn groups_role_matrix_http() {
+    let env = gt_env().await;
+    for (name, kind, payload) in group_cases() {
+        // Без сессии — 401: маршрут существует и закрыт аутентификацией.
+        let status = post_with_cookie(
+            gt_app(&env.ctx),
+            &format!("/api/v1/{name}"),
+            payload.clone(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "Case 81: {name} без сессии"
+        );
+
+        // Admin и Manager: гейт пропускает, форма payload'а принята — иначе
+        // проверка отказа employee была бы вакуумной (403 вместо несуществующего роута).
+        for (who, cookie) in [
+            ("Admin", &env.admin_cookie),
+            ("Manager", &env.manager_cookie),
+        ] {
+            let (status, body) = gt_post(&env, cookie, name, payload.clone()).await;
+            assert!(
+                !GROUP_NOT_REACHED.contains(&status),
+                "Case 81: {who} → {name} ({kind:?}) → получил {status} ({body})"
+            );
+        }
+
+        // Employee: 403 на всём (и на чтениях).
+        let (status, _) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "Case 81: Employee → {name} ({kind:?}) → ожидали 403, получили {status}"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 82: Tauri-путь, прямой вызов build_groups_* с Identity каждой роли
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn groups_role_matrix_tauri_path() {
+    let env = gt_env().await;
+    for (name, kind, _) in group_cases() {
+        for (who, caller) in [("Admin", &env.admin), ("Manager", &env.manager)] {
+            let res = groups_call_build(&env.ctx, name, caller).await;
+            assert!(
+                !matches!(res, Err(AppError::Forbidden)),
+                "Case 82: {who} → build {name} ({kind:?}) → Forbidden"
+            );
+        }
+        let res = groups_call_build(&env.ctx, name, &env.employee).await;
+        assert!(
+            matches!(res, Err(AppError::Forbidden)),
+            "Case 82: Employee → build {name} ({kind:?}) → ожидали Forbidden, получили {res:?}"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 83: manager создаёт группу, но не тип; user_options доступен, users_list нет
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn groups_manager_can_create_group_not_type() {
+    let env = gt_env().await;
+    let arm = groups_type_id(&env, "workstation").await;
+    let before = gt_db_i64(&env.ctx, "SELECT COUNT(*) FROM groups", vec![]).await;
+
+    let (status, body) = gt_post(
+        &env,
+        &env.manager_cookie,
+        "groups_create",
+        json!({ "dto": { "type_id": arm, "name": "АРМ менеджера", "place_id": null } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "manager groups_create: {body}");
+    assert_eq!(
+        gt_db_i64(&env.ctx, "SELECT COUNT(*) FROM groups", vec![]).await,
+        before + 1,
+        "группа реально создана"
+    );
+
+    // Тот же manager: создание типа закрыто (ManageGroupTypes — Admin-only).
+    let types_before = gt_db_i64(&env.ctx, "SELECT COUNT(*) FROM group_types", vec![]).await;
+    let type_payload = json!({ "dto": { "name": "Тип менеджера", "behavior": "container" } });
+    let (status, _) = gt_post(
+        &env,
+        &env.manager_cookie,
+        "group_types_create",
+        type_payload.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "manager group_types_create");
+    assert_eq!(
+        gt_db_i64(&env.ctx, "SELECT COUNT(*) FROM group_types", vec![]).await,
+        types_before,
+        "тип не создан"
+    );
+    // Контроль не-вакуумности: admin тот же запрос проходит.
+    let (status, body) = gt_post(&env, &env.admin_cookie, "group_types_create", type_payload).await;
+    assert_eq!(status, StatusCode::OK, "admin group_types_create: {body}");
+
+    // groups_user_options доступен manager и отдаёт ровно три поля.
+    let (status, body) = gt_post(
+        &env,
+        &env.manager_cookie,
+        "groups_user_options",
+        json!({ "query": "Петров" }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "manager groups_user_options: {body}"
+    );
+    let items = body.as_array().expect("массив");
+    assert!(!items.is_empty(), "Петров найден: {body}");
+    for it in items {
+        let mut keys: Vec<&str> = it
+            .as_object()
+            .expect("объект")
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(keys, vec!["full_name", "id", "login"], "T-41-13-05");
+    }
+
+    // В отличие от него users_list для manager закрыт.
+    let (status, _) = gt_post(
+        &env,
+        &env.manager_cookie,
+        "users_list",
+        json!({ "filter": { "search": null }, "pagination": { "offset": 0, "limit": 20 } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "manager users_list");
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 84: серверная валидация значений свойств через HTTP
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn groups_http_server_side_validation() {
+    let env = gt_env().await;
+    let arm = groups_type_id(&env, "workstation").await;
+    let g = groups_http_create(&env, arm, "АРМ валидация", None).await;
+    let ip_prop = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM group_type_properties WHERE type_id = ?1 AND name = 'IP'",
+        vec![gt_int(arm)],
+    )
+    .await;
+    let mac_prop = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM group_type_properties WHERE type_id = ?1 AND name = 'MAC'",
+        vec![gt_int(arm)],
+    )
+    .await;
+
+    let set_value = |version: i64, prop: i64, text: String| {
+        json!({ "dto": { "id": g, "version": version, "values": [
+            { "property_id": prop, "text": text, "refs": [] }
+        ] } })
+    };
+
+    // Невалидный ip → 400, значение не записано, версия не выросла.
+    let rows_before = gt_db_i64(
+        &env.ctx,
+        "SELECT COUNT(*) FROM group_property_values WHERE group_id = ?1",
+        vec![gt_int(g)],
+    )
+    .await;
+    let ver = groups_version(&env, g).await;
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_set_values",
+        set_value(ver, ip_prop, "01.2.3.4".to_string()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "ip 01.2.3.4: {body}");
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT COUNT(*) FROM group_property_values WHERE group_id = ?1",
+            vec![gt_int(g)],
+        )
+        .await,
+        rows_before,
+        "после отказа в group_property_values ничего не появилось"
+    );
+    assert_eq!(groups_version(&env, g).await, ver, "версия не изменилась");
+
+    // Контроль не-вакуумности: валидный ip тем же маршрутом проходит и пишется.
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_set_values",
+        set_value(ver, ip_prop, "10.0.0.7".to_string()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "валидный ip: {body}");
+    assert_eq!(
+        gt_db_string(
+            &env.ctx,
+            "SELECT value_text FROM group_property_values WHERE group_id = ?1 AND property_id = ?2",
+            vec![gt_int(g), gt_int(ip_prop)],
+        )
+        .await,
+        "10.0.0.7"
+    );
+
+    // mac в трёх формах нормализуется к одному виду; перед каждой формой пишется
+    // другое значение, чтобы не получить зелёный тест от остатка прошлой итерации.
+    for raw in ["AA-BB-CC-DD-EE-FF", "aa:bb:cc:dd:ee:ff", "aabbccddeeff"] {
+        let ver = groups_version(&env, g).await;
+        let (status, body) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "groups_set_values",
+            set_value(ver, mac_prop, "00:00:00:00:00:01".to_string()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "mac предзначение: {body}");
+        let ver = groups_version(&env, g).await;
+        let (status, body) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "groups_set_values",
+            set_value(ver, mac_prop, raw.to_string()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "mac {raw}: {body}");
+        assert_eq!(
+            gt_db_string(
+                &env.ctx,
+                "SELECT value_text FROM group_property_values \
+                 WHERE group_id = ?1 AND property_id = ?2",
+                vec![gt_int(g), gt_int(mac_prop)],
+            )
+            .await,
+            "aa:bb:cc:dd:ee:ff",
+            "mac {raw} в БД"
+        );
+        let (status, card) =
+            gt_post(&env, &env.admin_cookie, "groups_card", json!({ "id": g })).await;
+        assert_eq!(status, StatusCode::OK, "card: {card}");
+        let mac_text = card["properties"]
+            .as_array()
+            .expect("properties")
+            .iter()
+            .find(|p| p["property_id"].as_i64() == Some(mac_prop))
+            .and_then(|p| p["text"].as_str().map(str::to_string));
+        assert_eq!(
+            mac_text.as_deref(),
+            Some("aa:bb:cc:dd:ee:ff"),
+            "mac {raw} в карточке"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 85: правила состава и вложенности через HTTP
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn groups_http_membership_and_nesting_rules() {
+    let env = gt_env().await;
+    let arm = groups_type_id(&env, "workstation").await;
+    let place_a = groups_seed_place(&env, "Склад А").await;
+    let place_b = groups_seed_place(&env, "Склад Б").await;
+
+    let root = groups_http_create(&env, arm, "АРМ корень", Some(place_a)).await;
+    let other = groups_http_create(&env, arm, "АРМ чужая", None).await;
+    let d_busy = groups_seed_device(&env, "Системный блок 1", "INV-GRP-1").await;
+    let d_free = groups_seed_device(&env, "Системный блок 2", "INV-GRP-2").await;
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO group_devices (device_id, group_id, added_at_utc) VALUES (?1, ?2, 1700000000)",
+        vec![gt_int(d_busy), gt_int(other)],
+    )
+    .await;
+
+    // Устройство из другой группы → 400, текст называет группу, состав не менялся.
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_add_devices",
+        json!({ "dto": { "group_id": root, "device_ids": [d_busy] } }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "занятое устройство: {body}"
+    );
+    assert!(
+        body.to_string().contains("АРМ чужая"),
+        "текст отказа называет группу: {body}"
+    );
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT COUNT(*) FROM group_devices WHERE device_id = ?1 AND group_id = ?2",
+            vec![gt_int(d_busy), gt_int(root)],
+        )
+        .await,
+        0,
+        "занятое устройство в root не попало"
+    );
+
+    // Контроль не-вакуумности: свободное устройство тем же маршрутом добавляется.
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_add_devices",
+        json!({ "dto": { "group_id": root, "device_ids": [d_free] } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "свободное устройство: {body}");
+    assert_eq!(body["added"].as_i64(), Some(1), "{body}");
+
+    // Вложение `other` под `root` (200), обратное вложение root под other → цикл, 400.
+    let ver_other = groups_version(&env, other).await;
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_set_parent",
+        json!({ "dto": { "id": other, "version": ver_other, "parent_group_id": root } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "вложение: {body}");
+    let ver_root = groups_version(&env, root).await;
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_set_parent",
+        json!({ "dto": { "id": root, "version": ver_root, "parent_group_id": other } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "цикл: {body}");
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT COUNT(*) FROM groups WHERE id = ?1 AND parent_group_id IS NULL",
+            vec![gt_int(root)],
+        )
+        .await,
+        1,
+        "parent_group_id root не изменился"
+    );
+
+    // Вложение в группу типа «Разбор» → 400.
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+         VALUES ('dismantle_grp13', 'Разбор', 'teardown', 1700000000, 1700000000)",
+        vec![],
+    )
+    .await;
+    let teardown_type = groups_type_id(&env, "dismantle_grp13").await;
+    let teardown = groups_http_create(&env, teardown_type, "Разбор #1", None).await;
+    let loose = groups_http_create(&env, arm, "АРМ свободная", None).await;
+    let ver_loose = groups_version(&env, loose).await;
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_set_parent",
+        json!({ "dto": { "id": loose, "version": ver_loose, "parent_group_id": teardown } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "teardown: {body}");
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT COUNT(*) FROM groups WHERE id = ?1 AND parent_group_id IS NULL",
+            vec![gt_int(loose)],
+        )
+        .await,
+        1,
+        "loose осталась корневой"
+    );
+
+    // groups_move вложенной группы → 400 (D-20), место не менялось.
+    let place_of_other = gt_db_i64(
+        &env.ctx,
+        "SELECT COALESCE(place_id, 0) FROM groups WHERE id = ?1",
+        vec![gt_int(other)],
+    )
+    .await;
+    let ver_other = groups_version(&env, other).await;
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_move",
+        json!({ "dto": { "id": other, "version": ver_other, "target_place_id": place_b } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "move вложенной: {body}");
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT COALESCE(place_id, 0) FROM groups WHERE id = ?1",
+            vec![gt_int(other)],
+        )
+        .await,
+        place_of_other,
+        "место вложенной группы не изменилось"
+    );
+
+    // Контроль не-вакуумности: корневая группа переносится, ответ несёт summary.
+    let ver_root = groups_version(&env, root).await;
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "groups_move",
+        json!({ "dto": { "id": root, "version": ver_root, "target_place_id": place_b } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "move корневой: {body}");
+    assert!(body["summary"].is_string(), "summary в ответе: {body}");
+    assert!(
+        body["changed_place_ids"].is_array(),
+        "changed_place_ids в ответе: {body}"
+    );
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT place_id FROM groups WHERE id = ?1",
+            vec![gt_int(root)],
+        )
+        .await,
+        place_b,
+        "корневая группа перенесена"
+    );
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 86: полнота маршрутов — множество путей в исходнике == таблица-драйвер
+// ---------------------------------------------------------------------------
+
+#[test]
+fn groups_http_route_completeness() {
+    let src = include_str!("../src/http/groups.rs");
+    let re = regex::Regex::new(r#""/api/v1/(\w+)""#).unwrap();
+    let in_source: std::collections::BTreeSet<String> =
+        re.captures_iter(src).map(|c| c[1].to_string()).collect();
+    let in_table: std::collections::BTreeSet<String> = group_cases()
+        .into_iter()
+        .map(|(n, _, _)| n.to_string())
+        .collect();
+    assert_eq!(
+        in_source.difference(&in_table).collect::<Vec<_>>(),
+        Vec::<&String>::new(),
+        "маршрут есть в http/groups.rs, но нет в таблице group_cases()"
+    );
+    assert_eq!(
+        in_table.difference(&in_source).collect::<Vec<_>>(),
+        Vec::<&String>::new(),
+        "команда есть в таблице, но нет маршрута в http/groups.rs"
+    );
+    assert_eq!(in_source.len(), 15);
+}
