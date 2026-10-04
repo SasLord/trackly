@@ -25,6 +25,8 @@ pub enum MovementSource {
     Map,
     /// Перемещение как часть назначения/переназначения АРМ (Phase 41+).
     Workstation,
+    /// Перемещение как часть операции над группой (Phase 41: состав, место группы).
+    Group,
 }
 
 impl MovementSource {
@@ -35,6 +37,7 @@ impl MovementSource {
             Self::Act => "act",
             Self::Map => "map",
             Self::Workstation => "workstation",
+            Self::Group => "group",
         }
     }
 
@@ -48,6 +51,7 @@ impl MovementSource {
             "act" => Some(Self::Act),
             "map" => Some(Self::Map),
             "workstation" => Some(Self::Workstation),
+            "group" => Some(Self::Group),
             _ => None,
         }
     }
@@ -59,6 +63,8 @@ impl MovementSource {
 pub enum MovementEntityKind {
     Device,
     Cartridge,
+    /// Группа (Phase 41, D-29: история группы на том же MovementTimeline).
+    Group,
 }
 
 impl MovementEntityKind {
@@ -67,6 +73,7 @@ impl MovementEntityKind {
         match self {
             Self::Device => "device",
             Self::Cartridge => "cartridge",
+            Self::Group => "group",
         }
     }
 
@@ -75,6 +82,7 @@ impl MovementEntityKind {
         match self {
             Self::Device => "Устройство",
             Self::Cartridge => "Картридж",
+            Self::Group => "Группа",
         }
     }
 
@@ -85,6 +93,7 @@ impl MovementEntityKind {
         match s {
             "device" => Some(Self::Device),
             "cartridge" => Some(Self::Cartridge),
+            "group" => Some(Self::Group),
             _ => None,
         }
     }
@@ -186,5 +195,24 @@ mod tests {
     #[test]
     fn is_reportable_place_change_false_when_both_none() {
         assert!(!is_reportable_place_change(None, None));
+    }
+
+    #[test]
+    fn group_tokens_parse_and_round_trip() {
+        assert_eq!(
+            MovementSource::from_str_lenient("group"),
+            Some(MovementSource::Group)
+        );
+        assert_eq!(MovementSource::Group.as_str(), "group");
+        assert_eq!(
+            MovementSource::from_str_lenient("workstation"),
+            Some(MovementSource::Workstation)
+        );
+        assert_eq!(
+            MovementEntityKind::from_str_lenient("group"),
+            Some(MovementEntityKind::Group)
+        );
+        assert_eq!(MovementEntityKind::Group.as_str(), "group");
+        assert_eq!(MovementEntityKind::Group.label_ru(), "Группа");
     }
 }

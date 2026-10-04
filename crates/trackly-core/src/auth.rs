@@ -125,6 +125,13 @@ pub enum Action {
     ReadPlaces,
     /// Создание/переименование/перемещение/архивация/удаление места. Admin ONLY (D-20).
     MutatePlaces,
+    /// Управление типами групп и их свойствами (GRP-09). Admin ONLY.
+    ManageGroupTypes,
+    /// Создание/изменение/удаление групп, состава и значений свойств (GRP-09).
+    /// Admin | Manager. `MutatePlaces` для групп НЕ используется.
+    MutateGroups,
+    /// Просмотр групп, состава и значений свойств (GRP-09). Admin | Manager.
+    ReadGroups,
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +152,9 @@ pub enum Action {
 /// | ReadData           | ✓     | ✓       | ✗        |
 /// | ReadPlaces         | ✓     | ✓       | ✗        |
 /// | MutatePlaces       | ✓     | ✗       | ✗        |
+/// | ManageGroupTypes   | ✓     | ✗       | ✗        |
+/// | MutateGroups       | ✓     | ✓       | ✗        |
+/// | ReadGroups         | ✓     | ✓       | ✗        |
 /// | CreateRequest      | ✓     | ✓       | ✓        |
 ///
 /// # Errors
@@ -156,7 +166,10 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
         // Manager cannot mutate (every other Mutate* Action is Admin|Manager below).
         // Do NOT move this into the Admin|Manager bucket — see RESEARCH.md Common
         // Pitfall 3 and `authorize_manager_mutate_places_forbidden`.
-        Action::ManageUsers | Action::ManageSettings | Action::MutatePlaces => {
+        Action::ManageUsers
+        | Action::ManageSettings
+        | Action::MutatePlaces
+        | Action::ManageGroupTypes => {
             matches!(identity.role, Role::Admin)
         }
         Action::MutateDevices
@@ -167,7 +180,9 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
         | Action::ReadPrinters
         | Action::ReadData
         | Action::DeleteRequests
-        | Action::ReadPlaces => {
+        | Action::ReadPlaces
+        | Action::MutateGroups
+        | Action::ReadGroups => {
             matches!(identity.role, Role::Admin | Role::Manager)
         }
         Action::CreateRequest | Action::ReadRequests | Action::CancelOwnRequest => true,
@@ -422,5 +437,40 @@ mod tests {
             authorize(&id, &Action::ReadPlaces),
             Err(AppError::Forbidden)
         ));
+    }
+
+    // authorize — группы (GRP-09): типы/свойства только Admin; группы Admin|Manager
+
+    #[test]
+    fn authorize_group_types_admin_only() {
+        let mk = |role| Identity {
+            user_id: Some(1),
+            role,
+        };
+        assert!(authorize(&mk(Role::Admin), &Action::ManageGroupTypes).is_ok());
+        assert!(matches!(
+            authorize(&mk(Role::Manager), &Action::ManageGroupTypes),
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize(&mk(Role::Employee), &Action::ManageGroupTypes),
+            Err(AppError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn authorize_groups_admin_and_manager() {
+        let mk = |role| Identity {
+            user_id: Some(1),
+            role,
+        };
+        for action in [Action::MutateGroups, Action::ReadGroups] {
+            assert!(authorize(&mk(Role::Admin), &action).is_ok());
+            assert!(authorize(&mk(Role::Manager), &action).is_ok());
+            assert!(matches!(
+                authorize(&mk(Role::Employee), &action),
+                Err(AppError::Forbidden)
+            ));
+        }
     }
 }

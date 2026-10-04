@@ -1421,6 +1421,9 @@ fn movement_reason(
         Some(MovementSource::Act) => "актом".to_string(),
         Some(MovementSource::Map) => "по карте".to_string(),
         Some(MovementSource::Workstation) => "назначение АРМ".to_string(),
+        // Phase 41: перемещение как часть операции над группой. Уточнённая причина
+        // (название группы, D-26/D-28) собирается в сервисе групп, здесь — безопасная метка.
+        Some(MovementSource::Group) => "группой".to_string(),
         None => source.to_string(),
     }
 }
