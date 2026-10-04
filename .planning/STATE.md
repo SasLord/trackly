@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-10-04T15:30:16.638Z"
-last_activity: 2026-10-04
+status: executing
+last_updated: "2026-10-04T19:23:45.940Z"
+last_activity: 2026-10-04 -- Phase 41 planning complete
 progress:
   total_phases: 20
-  completed_phases: 10
-  total_plans: 145
+  completed_phases: 9
+  total_plans: 153
   completed_plans: 145
-  percent: 50
+  percent: 45
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
 Plan: 26 of 26
-Status: Phase complete — ready for verification
+Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
 Остаточный GAP 1 (ревью WR-01) закрыт: пост-проверка семьи убрана из do_return, единственный гейт
@@ -113,7 +113,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-04
+Last activity: 2026-10-04 -- Phase 41 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
