@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T11:03:15.391Z"
+last_updated: "2026-10-04T11:58:52.170Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 133
+  completed_plans: 134
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 15 of 26
+Plan: 16 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -525,6 +525,7 @@ Last activity: 2026-10-04
 | Phase 41 P17 | 23min | 2 tasks | 6 files |
 | Phase 41 P12 | ~55min | 2 tasks | 4 files |
 | Phase 41 P14 | 40min | 2 tasks | 3 files |
+| Phase 41 P15 | ~2h | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1185,6 +1186,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-17: batch_size в отчёте перемещений считает только устройства пакета подзапросом по batch_id; movement_reason для Group даёт «перенос группы» / «в составе группы «имя»»
 - [Phase 41]: 41-12: CAS по version группы проверяется до валидации значений; is_primary у device_refs отклоняется; USB и явные ссылки дедуплицируются по device_id (побеждает usb)
 - [Phase 41]: 41-14: guard S1 сравнивает new_place с текущим внутри writer-замыкания; очистка места члена = реальная смена; S9 сознательно без guard'а
+- [Phase 41]: 41-15: moving_group_count = distinct root groups with a place and a live member in the subtree; referencing_group_count counts every groups row (FK RESTRICT ignores soft delete)
 
 ### Pending Todos
 
@@ -1384,8 +1386,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T11:03:15.381Z
-Stopped at: Completed 41-14-PLAN.md
+Last session: 2026-10-04T11:58:52.161Z
+Stopped at: Completed 41-15-PLAN.md
 Resume file: None
 
 None
