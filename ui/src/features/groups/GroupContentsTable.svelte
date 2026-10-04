@@ -23,6 +23,8 @@
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '$lib/components/Button.svelte';
+  import GroupAddDevicesModal from './GroupAddDevicesModal.svelte';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
   import { pluralizeRu } from '$lib/utils/pluralize';
@@ -30,6 +32,7 @@
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { AppError } from '$lib/api/errors';
   import type {
+    GroupAddDevicesResultDto,
     DeviceDto,
     DeviceGroup,
     GroupCompositionDto,
@@ -401,6 +404,15 @@
     }
   }
 
+  // Модалка мультивыбора (D-01, второй путь): groups.addDevices и инвалидация
+  // счётчиков места выполняются внутри модалки; здесь — только обновить состав.
+  let addModalOpen = $state(false);
+
+  async function handleModalAdded(_result: GroupAddDevicesResultDto): Promise<void> {
+    await loadComposition();
+    onChanged?.();
+  }
+
   function pickItem(item: SearchItem): void {
     if (item.kind === 'group') void attachGroup(item.hit);
     else void addDevice(firstFree(item.group.ids));
@@ -532,6 +544,7 @@
         onPickMember={pickMember}
       />
     </div>
+    <Button variant="secondary" onclick={() => (addModalOpen = true)}>Добавить несколько…</Button>
   </div>
 {/snippet}
 
@@ -562,6 +575,10 @@
     </Table>
   </div>
 </div>
+
+{#if addModalOpen}
+  <GroupAddDevicesModal {group} onClose={() => (addModalOpen = false)} onAdded={handleModalAdded} />
+{/if}
 
 <style lang="scss">
   .group-contents {

@@ -737,6 +737,14 @@ const DIRECT_CALL_MARKERS = [
     label: 'массовый перенос (places_move_subtree_contents)',
   },
   { marker: 'acts.delete(', label: 'мягкое удаление/undo акта (acts.delete)' },
+  // Phase 41 (группы): у группы с местом устройства живут в месте группы, поэтому
+  // перенос группы, добавление устройств в состав и вложение группы меняют
+  // place_id у членов. Перечень взят от серверных мутаций (groups_move,
+  // groups_add_devices, groups_set_parent — все отдают changed_place_ids), а не от
+  // экранов: groups.move( появится в странице раздела (план 41-23).
+  { marker: 'groups.move(', label: 'перенос группы (groups.move)' },
+  { marker: 'groups.addDevices(', label: 'добавление в состав (groups.addDevices)' },
+  { marker: 'groups.setParent(', label: 'вложение группы (groups.setParent)' },
 ];
 
 function checkCompleteness(files, violations) {
