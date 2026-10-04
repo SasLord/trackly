@@ -12,8 +12,8 @@ use trackly_infra::repos::SqliteGroupRepository;
 
 /// Вывести устройство из группы (D-22: состав не врёт, акт проходит).
 ///
-/// Возвращает id группы, если членство было; тогда пишет `audit_log`
-/// `custom:group_member_released` с `{group_id, act_id}`. Если членства не было —
+/// Возвращает id группы, если членство было; тогда пишет запись `audit_log`
+/// о выводе из состава с `{group_id, act_id}`. Если членства не было —
 /// `None`, без записей. Место устройства не меняется.
 pub(crate) fn release_device_in_tx(
     tx: &Transaction<'_>,

@@ -173,6 +173,77 @@ async fn seed_device(
         .expect("seed device")
 }
 
+async fn group_version(ctx: &AppCtx, id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT version FROM groups WHERE id = ?1",
+        vec![int(id)],
+    )
+    .await
+}
+
+async fn group_place(ctx: &AppCtx, id: i64) -> Option<i64> {
+    opt_i64(
+        ctx,
+        "SELECT place_id FROM groups WHERE id = ?1",
+        vec![int(id)],
+    )
+    .await
+}
+
+async fn group_parent(ctx: &AppCtx, id: i64) -> Option<i64> {
+    opt_i64(
+        ctx,
+        "SELECT parent_group_id FROM groups WHERE id = ?1",
+        vec![int(id)],
+    )
+    .await
+}
+
+/// Инвариант: место КАЖДОЙ вложенной группы равно месту её корня. Обходит все группы БД
+/// (корень ищется подъёмом по `parent_group_id`); возвращает число проверенных вложенных.
+async fn assert_place_invariant(ctx: &AppCtx, step: &str) -> usize {
+    let rows: Vec<(i64, Option<i64>, Option<i64>)> = ctx
+        .writer
+        .execute(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, parent_group_id, place_id FROM groups WHERE deleted_at_utc IS NULL",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
+        })
+        .await
+        .expect("groups walk");
+    let find = |id: i64| rows.iter().find(|r| r.0 == id).expect("group exists");
+    let mut nested = 0;
+    for row in &rows {
+        if row.1.is_none() {
+            continue;
+        }
+        nested += 1;
+        let mut root = row;
+        for _ in 0..rows.len() {
+            match root.1 {
+                Some(p) => root = find(p),
+                None => break,
+            }
+        }
+        assert!(root.1.is_none(), "{step}: цикл вложенности");
+        assert_eq!(
+            row.2, root.2,
+            "{step}: место вложенной группы {} != месту корня {}",
+            row.0, root.0
+        );
+    }
+    nested
+}
+
 async fn text_of(ctx: &AppCtx, sql: &'static str, p: Vec<rusqlite::types::Value>) -> String {
     ctx.writer
         .execute(move |conn| {
@@ -685,4 +756,357 @@ async fn membership_rights_employee_forbidden_manager_allowed() {
         .await
         .expect("manager remove");
     assert_eq!(member_count(&ctx).await, 0);
+}
+
+// ---------------------------------------------------------------------------
+// membership_nesting_
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_nesting_cycle_and_teardown_are_rejected() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let b = seed_base(&ctx).await;
+    let root = seed_group(&ctx, b.arm, "АРМ #3", 3, None, None).await;
+    let child = seed_group(&ctx, b.arm, "АРМ #4", 4, None, Some(root)).await;
+    let teardown_type = ctx
+        .writer
+        .execute(|conn| {
+            conn.execute(
+                "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+                 VALUES ('dismantle_t', 'Разбор', 'teardown', 1700000000, 1700000000)",
+                [],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("teardown type");
+    let teardown = seed_group(&ctx, teardown_type, "Разбор #1", 1, None, None).await;
+    let loose = seed_group(&ctx, b.arm, "АРМ #5", 5, None, None).await;
+
+    // корень -> в собственного потомка
+    let v = group_version(&ctx, root).await;
+    let msg = validation_message(
+        ctx.groups
+            .set_parent(&admin(), root, v, Some(child))
+            .await
+            .expect_err("цикл"),
+    );
+    assert_eq!(
+        msg,
+        "Нельзя вложить группу в саму себя или в свою вложенную группу."
+    );
+    assert_eq!(
+        group_parent(&ctx, root).await,
+        None,
+        "parent_group_id не изменился"
+    );
+    assert_eq!(group_version(&ctx, root).await, v);
+
+    // в саму себя
+    let v = group_version(&ctx, loose).await;
+    let err = ctx
+        .groups
+        .set_parent(&admin(), loose, v, Some(loose))
+        .await
+        .expect_err("сама в себя");
+    assert!(matches!(err, AppError::Validation { .. }), "{err:?}");
+    assert_eq!(group_parent(&ctx, loose).await, None);
+
+    // в группу типа «Разбор»
+    let msg = validation_message(
+        ctx.groups
+            .set_parent(&admin(), loose, v, Some(teardown))
+            .await
+            .expect_err("teardown"),
+    );
+    assert_eq!(
+        msg,
+        "Группа типа «Разбор» не может содержать другие группы."
+    );
+    assert_eq!(group_parent(&ctx, loose).await, None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_nesting_under_parent_with_place_propagates_with_journal_batch() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let b = seed_base(&ctx).await;
+    let parent = seed_group(&ctx, b.arm, "АРМ #3", 3, Some(b.place_a), None).await;
+    let child = seed_group(&ctx, b.arm, "АРМ #4", 4, Some(b.place_b), None).await;
+    let d1 = seed_device(
+        &ctx,
+        "Системный блок",
+        "INV-N-1",
+        "SN-N-1",
+        Some(b.place_b),
+        Some(child),
+    )
+    .await;
+    let d2 = seed_device(
+        &ctx,
+        "Монитор",
+        "INV-N-2",
+        "SN-N-2",
+        Some(b.place_b),
+        Some(child),
+    )
+    .await;
+    let v = group_version(&ctx, child).await;
+
+    let out = ctx
+        .groups
+        .set_parent(&admin(), child, v, Some(parent))
+        .await
+        .expect("вложение");
+
+    assert_eq!(group_parent(&ctx, child).await, Some(parent));
+    assert_eq!(group_place(&ctx, child).await, Some(b.place_a));
+    assert_eq!(device_place(&ctx, d1).await, Some(b.place_a));
+    assert_eq!(device_place(&ctx, d2).await, Some(b.place_a));
+    assert_eq!(out.moved_devices, 2);
+    assert!(out.changed_place_ids.contains(&b.place_a));
+    assert!(out.changed_place_ids.contains(&b.place_b));
+
+    let child_name = text_of(
+        &ctx,
+        "SELECT name FROM groups WHERE id = ?1",
+        vec![int(child)],
+    )
+    .await;
+    let batch = text_of(
+        &ctx,
+        "SELECT DISTINCT batch_id FROM place_movements WHERE source = 'group'",
+        vec![],
+    )
+    .await;
+    assert_eq!(out.batch_id.as_deref(), Some(batch.as_str()));
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND entity_type = 'group' \
+             AND entity_id = ?2 AND group_id = ?2 AND entity_label = ?3",
+            vec![
+                rusqlite::types::Value::Text(batch.clone()),
+                int(child),
+                rusqlite::types::Value::Text(child_name.clone()),
+            ]
+        )
+        .await,
+        1,
+        "строка группы Some->Some"
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1 AND entity_type = 'device' \
+             AND group_id = ?2 AND entity_label = ?3",
+            vec![
+                rusqlite::types::Value::Text(batch),
+                int(child),
+                rusqlite::types::Value::Text(child_name),
+            ]
+        )
+        .await,
+        2,
+        "строки устройств с общим batch_id, group_id и именем группы"
+    );
+    assert_eq!(audit_count(&ctx, "set_parent", child).await, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_nesting_under_parent_without_place_clears_group_place_only() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let b = seed_base(&ctx).await;
+    let parent = seed_group(&ctx, b.arm, "АРМ #3", 3, None, None).await;
+    let child = seed_group(&ctx, b.arm, "АРМ #4", 4, Some(b.place_b), None).await;
+    let grandchild = seed_group(&ctx, b.arm, "АРМ #5", 5, Some(b.place_b), Some(child)).await;
+    let d1 = seed_device(
+        &ctx,
+        "Системный блок",
+        "INV-W-1",
+        "SN-W-1",
+        Some(b.place_b),
+        Some(child),
+    )
+    .await;
+    let d2 = seed_device(
+        &ctx,
+        "Монитор",
+        "INV-W-2",
+        "SN-W-2",
+        Some(b.place_b),
+        Some(grandchild),
+    )
+    .await;
+    let v = group_version(&ctx, child).await;
+
+    let out = ctx
+        .groups
+        .set_parent(&admin(), child, v, Some(parent))
+        .await
+        .expect("вложение");
+
+    assert_eq!(group_place(&ctx, child).await, None);
+    assert_eq!(
+        group_place(&ctx, grandchild).await,
+        None,
+        "вся ветка без места"
+    );
+    assert_eq!(
+        device_place(&ctx, d1).await,
+        Some(b.place_b),
+        "запрет спит: место устройства цело"
+    );
+    assert_eq!(device_place(&ctx, d2).await, Some(b.place_b));
+    assert_eq!(out.moved_devices, 0);
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT COUNT(*) FROM place_movements", vec![]).await,
+        0
+    );
+    assert_eq!(assert_place_invariant(&ctx, "без места").await, 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_nesting_exit_from_parent_keeps_places() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let b = seed_base(&ctx).await;
+    let parent = seed_group(&ctx, b.arm, "АРМ #3", 3, Some(b.place_a), None).await;
+    let child = seed_group(&ctx, b.arm, "АРМ #4", 4, Some(b.place_a), Some(parent)).await;
+    let d1 = seed_device(
+        &ctx,
+        "Системный блок",
+        "INV-E-1",
+        "SN-E-1",
+        Some(b.place_a),
+        Some(child),
+    )
+    .await;
+    let v = group_version(&ctx, child).await;
+
+    let out = ctx
+        .groups
+        .set_parent(&admin(), child, v, None)
+        .await
+        .expect("выход");
+
+    assert_eq!(group_parent(&ctx, child).await, None);
+    assert_eq!(group_place(&ctx, child).await, Some(b.place_a));
+    assert_eq!(device_place(&ctx, d1).await, Some(b.place_a));
+    assert_eq!(out.moved_devices, 0);
+    assert!(out.changed_place_ids.is_empty());
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT COUNT(*) FROM place_movements", vec![]).await,
+        0
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_nesting_rights_and_stale_version() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let b = seed_base(&ctx).await;
+    let parent = seed_group(&ctx, b.arm, "АРМ #3", 3, Some(b.place_a), None).await;
+    let child = seed_group(&ctx, b.arm, "АРМ #4", 4, None, None).await;
+    let v = group_version(&ctx, child).await;
+    let employee = create_identity(&ctx, "emp1", "Петров П.П.", Role::Employee).await;
+    let manager = create_identity(&ctx, "mgr1", "Иванов И.И.", Role::Manager).await;
+
+    let err = ctx
+        .groups
+        .set_parent(&employee, child, v, Some(parent))
+        .await
+        .expect_err("employee");
+    assert!(matches!(err, AppError::Forbidden));
+    assert_eq!(group_parent(&ctx, child).await, None);
+
+    let err = ctx
+        .groups
+        .set_parent(&manager, child, v - 1, Some(parent))
+        .await
+        .expect_err("устаревшая версия");
+    assert!(
+        matches!(err, AppError::OptimisticLockMismatch { .. }),
+        "{err:?}"
+    );
+    assert_eq!(group_parent(&ctx, child).await, None);
+    assert_eq!(group_place(&ctx, child).await, None);
+
+    ctx.groups
+        .set_parent(&manager, child, v, Some(parent))
+        .await
+        .expect("manager");
+    assert_eq!(group_parent(&ctx, child).await, Some(parent));
+    assert_eq!(group_place(&ctx, child).await, Some(b.place_a));
+}
+
+// ---------------------------------------------------------------------------
+// membership_place_invariant_
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_place_invariant_walk() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let b = seed_base(&ctx).await;
+    let parent = seed_group(&ctx, b.arm, "АРМ #3", 3, Some(b.place_a), None).await;
+    let placeless = seed_group(&ctx, b.arm, "АРМ #6", 6, None, None).await;
+    let a = seed_group(&ctx, b.arm, "АРМ #4", 4, Some(b.place_b), None).await;
+    let a2 = seed_group(&ctx, b.arm, "АРМ #5", 5, Some(b.place_b), Some(a)).await;
+    seed_device(
+        &ctx,
+        "Системный блок",
+        "INV-V-1",
+        "SN-V-1",
+        Some(b.place_b),
+        Some(a2),
+    )
+    .await;
+    assert_eq!(assert_place_invariant(&ctx, "старт").await, 1);
+
+    // 1. вложение под родителя с местом
+    let v = group_version(&ctx, a).await;
+    ctx.groups
+        .set_parent(&admin(), a, v, Some(parent))
+        .await
+        .expect("вложение");
+    assert_eq!(assert_place_invariant(&ctx, "вложение").await, 2);
+    assert_eq!(group_place(&ctx, a2).await, Some(b.place_a));
+
+    // 2. перенос корня
+    let v = group_version(&ctx, parent).await;
+    ctx.groups
+        .move_group(&admin(), parent, v, b.place_b)
+        .await
+        .expect("перенос");
+    assert_eq!(assert_place_invariant(&ctx, "перенос корня").await, 2);
+    assert_eq!(group_place(&ctx, a2).await, Some(b.place_b));
+
+    // 3. вложение под родителя без места
+    let v = group_version(&ctx, a).await;
+    ctx.groups
+        .set_parent(&admin(), a, v, Some(placeless))
+        .await
+        .expect("под без места");
+    assert_eq!(assert_place_invariant(&ctx, "родитель без места").await, 2);
+    assert_eq!(group_place(&ctx, a2).await, None);
+
+    // 4. выход из родителя
+    let v = group_version(&ctx, a).await;
+    ctx.groups
+        .set_parent(&admin(), a, v, None)
+        .await
+        .expect("выход");
+    assert_eq!(assert_place_invariant(&ctx, "выход").await, 1);
+
+    // 5. снова под родителя с местом и удаление родителя
+    let v = group_version(&ctx, a).await;
+    ctx.groups
+        .set_parent(&admin(), a, v, Some(parent))
+        .await
+        .expect("вложение");
+    assert_eq!(assert_place_invariant(&ctx, "повторное вложение").await, 2);
+    ctx.groups
+        .delete_group(&admin(), parent)
+        .await
+        .expect("удаление родителя");
+    assert_eq!(group_parent(&ctx, a).await, None, "вложенная стала корнем");
+    assert_eq!(assert_place_invariant(&ctx, "удаление родителя").await, 1);
 }

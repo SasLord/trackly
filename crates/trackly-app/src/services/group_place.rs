@@ -200,69 +200,25 @@ pub(crate) fn move_group_in_tx(
         return Err(place_err("Место в архиве: выберите другое."));
     }
 
-    let group_ids = deps.groups.subtree_group_ids_in_tx(tx, group_id)?;
-    let device_ids = deps.groups.subtree_device_ids_in_tx(tx, group_id)?;
-    let old_place = group.place_id;
-    let group_moves = old_place != Some(target_place_id);
-
     let batch_id = uuid::Uuid::new_v4().to_string();
-    let mut changed_places: Vec<i64> = Vec::new();
-
-    if group_moves {
-        // Место групп поддерева меняется ДО цикла устройств (денормализация, Pitfall 4).
-        deps.groups
-            .set_subtree_place_in_tx(tx, group_id, Some(target_place_id), now)?;
-        deps.movements.record_batch_movement_if_applicable(
-            tx,
-            &deps.places,
-            MovementEntityKind::Group,
-            group_id,
-            old_place,
-            Some(target_place_id),
-            MovementSource::Group,
-            None,
-            None,
-            user_id,
-            now,
-            Some(&batch_id),
-            Some(&group.name),
-            Some(group_id),
-        )?;
-        if let Some(p) = old_place {
-            push_unique(&mut changed_places, p);
-        }
+    let outcome = propagate_group_place_in_tx(
+        tx,
+        deps,
+        group_id,
+        target_place_id,
+        group.place_id,
+        &batch_id,
+        user_id,
+        now,
+    )?;
+    if outcome.batch_id.is_none() {
+        return Ok(outcome);
     }
-
-    let mut moved_devices = 0;
-    for device_id in &device_ids {
-        let change = apply_group_place_to_device_in_tx(
-            tx,
-            deps,
-            *device_id,
-            target_place_id,
-            Some(&batch_id),
-            Some(&group.name),
-            group_id,
-            user_id,
-            now,
-        )?;
-        if change.changed {
-            moved_devices += 1;
-            if let Some(p) = change.previous_place {
-                push_unique(&mut changed_places, p);
-            }
-        }
-    }
-
-    if !group_moves && moved_devices == 0 {
-        return Ok(GroupMoveOutcome::default());
-    }
-    push_unique(&mut changed_places, target_place_id);
 
     let payload = serde_json::json!({
         "batch_id": batch_id,
-        "moved_devices": moved_devices,
-        "from": old_place,
+        "moved_devices": outcome.moved_devices,
+        "from": group.place_id,
         "to": target_place_id,
     });
     deps.audit.insert(
@@ -279,6 +235,86 @@ pub(crate) fn move_group_in_tx(
         },
     )?;
 
+    Ok(outcome)
+}
+
+/// Ядро протаскивания: поставить `target_place` группе поддерева `group_id`, вложенным
+/// группам и каждому устройству состава (с каскадом картриджей). Общее для переноса
+/// корневой группы и вложения группы под родителя с местом (план 11).
+///
+/// Порядок важен: место групп поддерева меняется ДО цикла устройств (денормализация,
+/// Pitfall 4). Строка группы в журнале пишется общим гейтом (только `Some -> Some`);
+/// `group_id` и `entity_label` (имя группы) уходят в КАЖДУЮ строку пакета. Если не
+/// изменилось ничего, возвращается `GroupMoveOutcome::default()` (`batch_id = None`).
+/// Аудит пишет вызывающий: у переноса и вложения разные действия.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn propagate_group_place_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group_id: i64,
+    target_place: i64,
+    old_place: Option<i64>,
+    batch_id: &str,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<GroupMoveOutcome, AppError> {
+    let group = deps.groups.get_group_in_tx(tx, group_id)?;
+    let group_ids = deps.groups.subtree_group_ids_in_tx(tx, group_id)?;
+    let device_ids = deps.groups.subtree_device_ids_in_tx(tx, group_id)?;
+    let group_moves = old_place != Some(target_place);
+
+    let mut changed_places: Vec<i64> = Vec::new();
+
+    if group_moves {
+        deps.groups
+            .set_subtree_place_in_tx(tx, group_id, Some(target_place), now)?;
+        deps.movements.record_batch_movement_if_applicable(
+            tx,
+            &deps.places,
+            MovementEntityKind::Group,
+            group_id,
+            old_place,
+            Some(target_place),
+            MovementSource::Group,
+            None,
+            None,
+            user_id,
+            now,
+            Some(batch_id),
+            Some(&group.name),
+            Some(group_id),
+        )?;
+        if let Some(p) = old_place {
+            push_unique(&mut changed_places, p);
+        }
+    }
+
+    let mut moved_devices = 0;
+    for device_id in &device_ids {
+        let change = apply_group_place_to_device_in_tx(
+            tx,
+            deps,
+            *device_id,
+            target_place,
+            Some(batch_id),
+            Some(&group.name),
+            group_id,
+            user_id,
+            now,
+        )?;
+        if change.changed {
+            moved_devices += 1;
+            if let Some(p) = change.previous_place {
+                push_unique(&mut changed_places, p);
+            }
+        }
+    }
+
+    if !group_moves && moved_devices == 0 {
+        return Ok(GroupMoveOutcome::default());
+    }
+    push_unique(&mut changed_places, target_place);
+
     Ok(GroupMoveOutcome {
         moved_devices,
         moved_nested_groups: if group_moves {
@@ -287,6 +323,6 @@ pub(crate) fn move_group_in_tx(
             0
         },
         changed_place_ids: changed_places,
-        batch_id: Some(batch_id),
+        batch_id: Some(batch_id.to_string()),
     })
 }

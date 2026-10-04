@@ -37,7 +37,8 @@ use crate::dto::groups::{
 };
 use crate::services::group_membership::release_device_in_tx;
 use crate::services::group_place::{
-    apply_group_place_to_device_in_tx, move_group_in_tx, GroupMoveDeps,
+    apply_group_place_to_device_in_tx, move_group_in_tx, propagate_group_place_in_tx,
+    GroupMoveDeps, GroupMoveOutcome,
 };
 use crate::services::place_path_display::compute_place_path_short_with_conn;
 use crate::services::plural::ru_plural;
@@ -572,19 +573,7 @@ impl GroupService {
             })
             .await?;
 
-        let mut summary = "группа".to_string();
-        if outcome.moved_devices > 0 {
-            summary.push_str(&format!(
-                " и {} {}",
-                outcome.moved_devices,
-                ru_plural(
-                    i64::from(outcome.moved_devices),
-                    "устройство",
-                    "устройства",
-                    "устройств"
-                )
-            ));
-        }
+        let summary = move_summary(outcome.moved_devices);
 
         Ok(GroupMoveResultDto {
             moved_devices: outcome.moved_devices,
@@ -781,6 +770,115 @@ impl GroupService {
             })
             .await
     }
+}
+
+// ---- вложенность ---------------------------------------------------------
+
+impl GroupService {
+    /// Вложить группу в группу либо вывести в корень (GRP-05, D-04). Цикл и вложение
+    /// в «Разбор» отклоняет `set_parent_in_tx`. Место вложенной группы производное:
+    /// родитель С местом протаскивает своё место на группу, её вложенные группы и весь
+    /// состав (пакет журнала); родитель БЕЗ места обнуляет место групп поддерева, места
+    /// устройств остаются («запрет спит»); выход в корень место не меняет.
+    pub async fn set_parent(
+        &self,
+        caller: &Identity,
+        id: i64,
+        version: i64,
+        parent_group_id: Option<i64>,
+    ) -> Result<GroupMoveResultDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+
+        let outcome = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let deps = GroupMoveDeps::new();
+                let before = deps.groups.get_group_in_tx(&tx, id)?;
+                deps.groups
+                    .set_parent_in_tx(&tx, id, version, parent_group_id, now)?;
+
+                let mut outcome = GroupMoveOutcome::default();
+                if let Some(parent_id) = parent_group_id {
+                    let parent = deps.groups.get_group_in_tx(&tx, parent_id)?;
+                    match parent.place_id {
+                        Some(parent_place) => {
+                            let batch_id = uuid::Uuid::new_v4().to_string();
+                            outcome = propagate_group_place_in_tx(
+                                &tx,
+                                &deps,
+                                id,
+                                parent_place,
+                                before.place_id,
+                                &batch_id,
+                                user_id,
+                                now,
+                            )?;
+                        }
+                        None => {
+                            if before.place_id.is_some() {
+                                deps.groups.set_subtree_place_in_tx(&tx, id, None, now)?;
+                                if let Some(p) = before.place_id {
+                                    outcome.changed_place_ids.push(p);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let payload = serde_json::json!({
+                    "from_parent": before.parent_group_id,
+                    "to_parent": parent_group_id,
+                    "batch_id": outcome.batch_id,
+                    "moved_devices": outcome.moved_devices,
+                });
+                deps.audit.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "group",
+                        entity_id: id,
+                        action: "set_parent",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(to_json(&payload)?),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(outcome)
+            })
+            .await?;
+
+        Ok(GroupMoveResultDto {
+            moved_devices: outcome.moved_devices,
+            moved_nested_groups: outcome.moved_nested_groups,
+            changed_place_ids: outcome.changed_place_ids,
+            summary: move_summary(outcome.moved_devices),
+            batch_id: outcome.batch_id,
+        })
+    }
+}
+
+/// Текст итога для тоста: «группа» либо «группа и 6 устройств».
+fn move_summary(moved_devices: i32) -> String {
+    let mut summary = "группа".to_string();
+    if moved_devices > 0 {
+        summary.push_str(&format!(
+            " и {} {}",
+            moved_devices,
+            ru_plural(
+                i64::from(moved_devices),
+                "устройство",
+                "устройства",
+                "устройств"
+            )
+        ));
+    }
+    summary
 }
 
 fn place_error(message: &str) -> AppError {
