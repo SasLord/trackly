@@ -27,6 +27,11 @@
       note: null,
       act_id: null,
       act_number: null,
+      // Plan 41-05 added the group-batch columns to MovementEntryDto; the
+      // factory must supply them or the spread cannot satisfy the type.
+      batch_id: null,
+      group_id: null,
+      group_label: null,
       created_at_utc: now,
       ...overrides,
     };
