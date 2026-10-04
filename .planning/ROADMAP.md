@@ -170,7 +170,7 @@
 | 40.3. Долг аудита v1.4 | v1.4 | 9/9 | Complete    | 2026-09-23 |
 | 40.4. Долг аудита v1.4, раунд 2 | v1.4 | 5/5 | Complete    | 2026-09-25 |
 | 40.5. Нумерация возвратов: плотные суффиксы в1..вN | v1.4 | 14/14 | Complete    | 2026-09-30 |
-| 41. Группы: модель и редактор | v1.4 | 0/TBD | Not started | - |
+| 41. Группы: модель и редактор | v1.4 | 1/26 | In Progress|  |
 | 41.1. Группы × Устройства | v1.4 | 0/TBD | Not started | - |
 | 41.2. Группы × Акты и Места | v1.4 | 0/TBD | Not started | - |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
@@ -866,12 +866,12 @@ GRP-10, GRD-06
      группы, состав и значения свойств — администратор и менеджер (роль «Специалист» — это
      существующий `manager`, четвёртая роль не вводится); сотрудник доступа к разделу не имеет.
 
-**Plans:** 26 plans
+**Plans:** 1/26 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 41-01-PLAN.md — схема: V045 (5 таблиц, триггер code/behavior) и V046 (batch_id, entity_label) — только аддитивно; тест run_up_to(44)
+- [x] 41-01-PLAN.md — схема: V045 (5 таблиц, триггер code/behavior) и V046 (batch_id, entity_label) — только аддитивно; тест run_up_to(44)
 - [ ] 41-02-PLAN.md — домен: GroupBehavior/PropertyDataType, нормализация ip/mac/число, Action::{ManageGroupTypes,MutateGroups,ReadGroups}, токены журнала Group
 - [ ] 41-03-PLAN.md — GRD-06: «Свернуть одинаковые» (5 фактических строк) и словарный гейт check-group-vocabulary с --selftest
 

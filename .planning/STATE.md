@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T00:11:13.210Z"
-last_activity: 2026-10-04 -- Phase 41 execution started
+last_updated: "2026-10-04T04:13:45.419Z"
+last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 119
+  completed_plans: 120
   percent: 45
 ---
 
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 1 of 26
-Status: Executing Phase 41
+Plan: 2 of 26
+Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
 Остаточный GAP 1 (ревью WR-01) закрыт: пост-проверка семьи убрана из do_return, единственный гейт
@@ -113,7 +113,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-04 -- Phase 41 execution started
+Last activity: 2026-10-04
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -511,6 +511,7 @@ Last activity: 2026-10-04 -- Phase 41 execution started
 | Phase 40.5 P12 | 2h | 2 tasks | 1 files |
 | Phase 40.5 P13 | 25m | 2 tasks | 2 files |
 | Phase 40.5 P14 | 95m | 2 tasks | 1 files |
+| Phase 41 P01 | 1h | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1155,6 +1156,7 @@ Recent decisions affecting current work:
 - [Phase 40.5]: 40.5-11: D-18 — сообщение о коллизии берёт карточку из блокирующей строки others; WR-01 — пост-проверка семьи только на do_return и каскаде переименования
 - [Phase 40.5]: 40.5-13 D-20/WR-01: пост-проверка семьи снята из do_return; аллокатор — единственный гейт нового номера; D-18 живёт только в каскаде переименования
 - [Phase 40.5-14]: D-12: живую проверку (7 пунктов, вкл. GAP 1.4) проходит человек; исполнитель ничего не отметил
+- [Phase 41-01]: group_id в place_movements — снимок без FK в каждой строке групповой записи; триггер неизменяемости только на UPDATE OF code, behavior
 
 ### Pending Todos
 
@@ -1354,9 +1356,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-03T22:39:44.760Z
+Last session: 2026-10-04T04:13:40.878Z
 Stopped at: Phase 41 UI-SPEC approved
-Resume file: .planning/phases/41-groups-model-and-editor/41-UI-SPEC.md
+Resume file: None
 
 None
 
