@@ -1,7 +1,7 @@
 <script lang="ts">
   // Phase 41 Plan 20 (D-09, D-13..D-16, UI-SPEC 9.2): таблица свойств типа
   // группы прямо в панели типа — правка названия/типа/флагов, добавление,
-  // скрытие/возврат, перестановка «Выше»/«Ниже» (перетаскивание — Задача 2).
+  // скрытие/возврат, перестановка «Выше»/«Ниже» и перетаскивание за ручку «⠿» на pointer-events (D-10).
   //
   // Источник истины — сервер: UI-блокировки (disabled типа данных у заполненного
   // свойства, скрытие вместо удаления) — удобство; отказ показывается его
@@ -17,7 +17,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import PropertyRequiredViolatorsPopup from './PropertyRequiredViolatorsPopup.svelte';
   import { groupTypes } from '$lib/api/groups';
-  import { reorder } from '$lib/utils/reorder';
+  import { insertionIndex, reorder } from '$lib/utils/reorder';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { pushToast } from '$lib/stores/toast.svelte';
   import type { AppError } from '$lib/api/errors';
@@ -244,6 +244,116 @@
     if (idx >= 0 && idx < liveRows.length - 1) moveLive(idx, idx + 2);
   }
 
+  // ---- Перестановка перетаскиванием (D-10) -------------------------------------
+  // Структура обработчиков — как в PlaceTree (прошла живой UAT на Tauri и в LAN-
+  // браузере): pointerdown/move/up/cancel + setPointerCapture на контейнере. HTML5
+  // DnD не используется (в WKWebView drop не срабатывает). Hit-test — только по
+  // прямоугольникам строк через insertionIndex, не поиск элемента под курсором. Сохранение —
+  // тот же moveLive, что и у пунктов «Выше»/«Ниже» (оптимистично, с откатом).
+  const DRAG_START_THRESHOLD_PX = 6;
+
+  let draggingId = $state<number | null>(null);
+  let dragGhost = $state<{ label: string; x: number; y: number } | null>(null);
+  let indicatorTop = $state<number | null>(null);
+
+  // Служебное состояние жеста: не читается шаблоном, реактивность не нужна.
+  let dragOriginId: number | null = null;
+  let dragPointerId: number | null = null;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragStarted = false;
+  let dragInsertIndex: number | null = null;
+  let dragContainer: HTMLElement | null = null;
+
+  function liveRowEls(container: HTMLElement): HTMLElement[] {
+    // Строки живых свойств — те, у кого есть ручка; скрытые в драге не участвуют.
+    return Array.from(container.querySelectorAll<HTMLElement>('button.drag-handle'))
+      .map((h) => h.closest<HTMLElement>('tr'))
+      .filter((tr): tr is HTMLElement => tr !== null);
+  }
+
+  function resetDrag(): void {
+    if (dragContainer !== null && dragPointerId !== null) {
+      try {
+        dragContainer.releasePointerCapture(dragPointerId);
+      } catch {
+        // Захват уже снят (например, pointercancel опередил).
+      }
+    }
+    dragOriginId = null;
+    dragPointerId = null;
+    dragStarted = false;
+    dragInsertIndex = null;
+    dragContainer = null;
+    draggingId = null;
+    dragGhost = null;
+    indicatorTop = null;
+  }
+
+  function handlePointerDown(e: PointerEvent): void {
+    if (!canEdit) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const handle = (e.target as HTMLElement).closest<HTMLElement>('.drag-handle');
+    if (!handle) return;
+    const id = Number(handle.dataset.propId);
+    if (!Number.isFinite(id)) return;
+    dragOriginId = id;
+    dragPointerId = e.pointerId;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragStarted = false;
+    dragInsertIndex = null;
+  }
+
+  function handlePointerMove(e: PointerEvent): void {
+    if (dragOriginId === null || e.pointerId !== dragPointerId) return;
+    const container = e.currentTarget as HTMLElement;
+    if (!dragStarted) {
+      if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) < DRAG_START_THRESHOLD_PX) {
+        return;
+      }
+      dragStarted = true;
+      dragContainer = container;
+      draggingId = dragOriginId;
+      const dragged = currentProperty(dragOriginId);
+      dragGhost = { label: dragged?.name ?? '', x: e.clientX, y: e.clientY };
+      container.setPointerCapture(e.pointerId);
+    }
+    e.preventDefault();
+    if (dragGhost) dragGhost = { ...dragGhost, x: e.clientX, y: e.clientY };
+
+    const rects = liveRowEls(container).map((el) => el.getBoundingClientRect());
+    const idx = insertionIndex(rects, e.clientY);
+    dragInsertIndex = idx;
+    if (rects.length > 0) {
+      const edge = idx < rects.length ? rects[idx].top : rects[rects.length - 1].bottom;
+      indicatorTop = edge - container.getBoundingClientRect().top;
+    }
+  }
+
+  function handlePointerUp(e: PointerEvent): void {
+    if (dragOriginId === null || e.pointerId !== dragPointerId) return;
+    const originId = dragOriginId;
+    const started = dragStarted;
+    const to = dragInsertIndex;
+    resetDrag();
+    if (!started || to === null) return; // обычный клик по ручке — без перестановки
+    const from = liveRows.findIndex((r) => r.id === originId);
+    if (from >= 0) moveLive(from, to);
+  }
+
+  function handlePointerCancel(e: PointerEvent): void {
+    if (dragOriginId === null || e.pointerId !== dragPointerId) return;
+    resetDrag();
+  }
+
+  function handleWindowKeydown(e: KeyboardEvent): void {
+    if (draggingId !== null && e.key === 'Escape') {
+      e.preventDefault();
+      resetDrag();
+    }
+  }
+
   // ---- Скрыть / вернуть ------------------------------------------------------
   let hideTarget = $state<GroupTypePropertyDto | null>(null);
   let hiding = $state(false);
@@ -354,7 +464,17 @@
   />
 {/snippet}
 
-<div class="props-table">
+<svelte:window onkeydown={handleWindowKeydown} />
+
+<div
+  class="props-table"
+  class:dragging-active={draggingId !== null}
+  role="presentation"
+  onpointerdown={handlePointerDown}
+  onpointermove={handlePointerMove}
+  onpointerup={handlePointerUp}
+  onpointercancel={handlePointerCancel}
+>
   <Table
     columns={6}
     framed={false}
@@ -374,7 +494,9 @@
     {#each rows as p, i (p.id)}
       {@const liveIdx = liveRows.findIndex((r) => r.id === p.id)}
       <TableRow
-        class={p.archived ? 'prop-row prop-row-hidden' : 'prop-row'}
+        class={['prop-row', p.archived && 'prop-row-hidden', draggingId === p.id && 'dragging']
+          .filter(Boolean)
+          .join(' ')}
         last={i === rows.length - 1}
       >
         <td class="col-handle">
@@ -506,7 +628,21 @@
     {/snippet}
   </Table>
   <div class="sr-only" aria-live="polite" role="status">{liveMessage}</div>
+  {#if draggingId !== null && indicatorTop !== null}
+    <div class="insert-indicator" style:top="{indicatorTop}px" aria-hidden="true"></div>
+  {/if}
 </div>
+
+{#if dragGhost}
+  <div
+    class="drag-ghost"
+    style:left="{dragGhost.x + 12}px"
+    style:top="{dragGhost.y + 12}px"
+    aria-hidden="true"
+  >
+    {dragGhost.label}
+  </div>
+{/if}
 
 {#if hideTarget}
   <Modal open={true} size="md" title="Скрыть свойство" onClose={() => (hideTarget = null)}>
@@ -535,6 +671,48 @@
 <style lang="scss">
   .props-table {
     position: relative;
+
+    // Во время драга не выделяем текст (снимается в resetDrag).
+    &.dragging-active {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+  }
+
+  // Исходная строка на время драга; TableRow рендерит <tr> в своём компоненте.
+  :global(tr.prop-row.dragging) {
+    opacity: 0.4;
+  }
+
+  // Индикатор вставки: 2px на всю ширину таблицы, на границе вставки.
+  .insert-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    margin-top: -1px;
+    background: var(--tr-accent);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  // Призрак: pointer-events: none обязателен — иначе перехватывает попадания
+  // (GAP-11 фазы 39). Анимаций нет (prefers-reduced-motion не затрагивается).
+  .drag-ghost {
+    position: fixed;
+    z-index: 1000;
+    max-width: 260px;
+    padding: var(--tr-space-2xs) var(--tr-space-sm);
+    border: 1px solid var(--tr-border-strong);
+    border-radius: var(--tr-radius-sm);
+    background: var(--tr-surface-raised);
+    box-shadow: var(--tr-elev-3);
+    color: var(--tr-text-primary);
+    font-size: var(--tr-font-size-body);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
   }
 
   .col-handle {
@@ -561,8 +739,8 @@
     font-size: 16px;
     line-height: 1;
     cursor: grab;
-    // Жест стартует только за ручкой; touch-action нужен именно здесь, чтобы
-    // тач не превращал перетаскивание в прокрутку панели.
+    // Жест стартует только за ручкой; отключение жестов браузера нужно именно здесь,
+    // чтобы тач не превращал перетаскивание в прокрутку панели.
     touch-action: none;
 
     &:hover {
