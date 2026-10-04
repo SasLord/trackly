@@ -33,9 +33,11 @@ use trackly_infra::repos::{
 
 use crate::dto::groups::{
     DeviceMembershipDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
-    GroupMemberDeviceDto, GroupSearchHitDto,
+    GroupMemberDeviceDto, GroupMoveResultDto, GroupSearchHitDto,
 };
+use crate::services::group_place::{move_group_in_tx, GroupMoveDeps};
 use crate::services::place_path_display::compute_place_path_short_with_conn;
+use crate::services::plural::ru_plural;
 
 /// Максимальная длина поискового запроса (как в `PlaceService::search`).
 const SEARCH_QUERY_MAX_CHARS: usize = 100;
@@ -532,6 +534,62 @@ impl GroupService {
                 })
             })
             .await
+    }
+
+    /// Перенести группу вместе с составом (GRP-06, D-17/D-20/D-24). Одна транзакция:
+    /// место группы и вложенных, место каждого устройства, пакет журнала и аудит.
+    /// `version` — CAS по версии группы. Вложенную группу перенести нельзя.
+    pub async fn move_group(
+        &self,
+        caller: &Identity,
+        id: i64,
+        version: i64,
+        target_place_id: i64,
+    ) -> Result<GroupMoveResultDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+
+        let outcome = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let outcome = move_group_in_tx(
+                    &tx,
+                    &GroupMoveDeps::new(),
+                    id,
+                    Some(version),
+                    target_place_id,
+                    user_id,
+                    now,
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(outcome)
+            })
+            .await?;
+
+        let mut summary = "группа".to_string();
+        if outcome.moved_devices > 0 {
+            summary.push_str(&format!(
+                " и {} {}",
+                outcome.moved_devices,
+                ru_plural(
+                    i64::from(outcome.moved_devices),
+                    "устройство",
+                    "устройства",
+                    "устройств"
+                )
+            ));
+        }
+
+        Ok(GroupMoveResultDto {
+            moved_devices: outcome.moved_devices,
+            moved_nested_groups: outcome.moved_nested_groups,
+            changed_place_ids: outcome.changed_place_ids,
+            summary,
+            batch_id: outcome.batch_id,
+        })
     }
 }
 
