@@ -1,0 +1,325 @@
+[
+  {
+    "name": "insertionIndex: пустой список",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [],
+      "pointerY": 5
+    },
+    "expected": 0
+  },
+  {
+    "name": "insertionIndex: выше середины первой строки",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": 2
+    },
+    "expected": 0
+  },
+  {
+    "name": "insertionIndex: левее начала списка (отрицательный Y)",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": -50
+    },
+    "expected": 0
+  },
+  {
+    "name": "insertionIndex: ровно на середине первой строки -> 1",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": 5
+    },
+    "expected": 1
+  },
+  {
+    "name": "insertionIndex: ниже середины первой строки",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": 7
+    },
+    "expected": 1
+  },
+  {
+    "name": "insertionIndex: между строками 1 и 2",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": 14
+    },
+    "expected": 1
+  },
+  {
+    "name": "insertionIndex: ровно на середине второй строки -> 2",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": 15
+    },
+    "expected": 2
+  },
+  {
+    "name": "insertionIndex: ровно на середине последней строки -> длина",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": 25
+    },
+    "expected": 3
+  },
+  {
+    "name": "insertionIndex: ниже последней строки",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        },
+        {
+          "top": 10,
+          "height": 10
+        },
+        {
+          "top": 20,
+          "height": 10
+        }
+      ],
+      "pointerY": 999
+    },
+    "expected": 3
+  },
+  {
+    "name": "insertionIndex: одна строка, выше середины",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        }
+      ],
+      "pointerY": 4
+    },
+    "expected": 0
+  },
+  {
+    "name": "insertionIndex: одна строка, ниже середины",
+    "fn": "insertionIndex",
+    "input": {
+      "rects": [
+        {
+          "top": 0,
+          "height": 10
+        }
+      ],
+      "pointerY": 6
+    },
+    "expected": 1
+  },
+  {
+    "name": "reorder: вниз в середину (to в исходных индексах)",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c", "d"],
+      "from": 0,
+      "to": 3
+    },
+    "expected": ["b", "c", "a", "d"]
+  },
+  {
+    "name": "reorder: вниз в самый конец",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c", "d"],
+      "from": 0,
+      "to": 4
+    },
+    "expected": ["b", "c", "d", "a"]
+  },
+  {
+    "name": "reorder: вверх",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c", "d"],
+      "from": 3,
+      "to": 1
+    },
+    "expected": ["a", "d", "b", "c"]
+  },
+  {
+    "name": "reorder: вверх в самое начало",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c", "d"],
+      "from": 2,
+      "to": 0
+    },
+    "expected": ["c", "a", "b", "d"]
+  },
+  {
+    "name": "reorder: from == to — без изменений",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c"],
+      "from": 1,
+      "to": 1
+    },
+    "expected": ["a", "b", "c"]
+  },
+  {
+    "name": "reorder: to == from+1 — на месте",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c"],
+      "from": 1,
+      "to": 2
+    },
+    "expected": ["a", "b", "c"]
+  },
+  {
+    "name": "reorder: последний вниз (to == длина) — на месте",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c"],
+      "from": 2,
+      "to": 3
+    },
+    "expected": ["a", "b", "c"]
+  },
+  {
+    "name": "reorder: соседний вниз через одну позицию",
+    "fn": "reorder",
+    "input": {
+      "items": ["a", "b", "c"],
+      "from": 0,
+      "to": 2
+    },
+    "expected": ["b", "a", "c"]
+  },
+  {
+    "name": "reorder: одноэлементный массив",
+    "fn": "reorder",
+    "input": {
+      "items": ["a"],
+      "from": 0,
+      "to": 0
+    },
+    "expected": ["a"]
+  },
+  {
+    "name": "reorder: одноэлементный массив, to == длина",
+    "fn": "reorder",
+    "input": {
+      "items": ["a"],
+      "from": 0,
+      "to": 1
+    },
+    "expected": ["a"]
+  },
+  {
+    "name": "reorder: пустой массив",
+    "fn": "reorder",
+    "input": {
+      "items": [],
+      "from": 0,
+      "to": 0
+    },
+    "expected": []
+  }
+]
