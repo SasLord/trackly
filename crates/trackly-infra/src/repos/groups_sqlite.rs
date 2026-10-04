@@ -725,6 +725,159 @@ impl SqliteGroupRepository {
     }
 }
 
+/// Подмножество `ids`, которое есть в результате запроса `SELECT id ... IN (?, ...)`.
+/// В текст SQL попадают только `?`-заглушки по числу элементов (T-41-12-01).
+fn existing_ids(
+    conn: &Connection,
+    head: &str,
+    tail: &str,
+    ids: &[i64],
+) -> Result<std::collections::HashSet<i64>, AppError> {
+    if ids.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = [head, &placeholders, tail].concat();
+    let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(ids.iter().copied()), |r| {
+            r.get::<_, i64>(0)
+        })
+        .map_err(map_rusqlite)?
+        .collect::<Result<std::collections::HashSet<_>, _>>()
+        .map_err(map_rusqlite)?;
+    Ok(rows)
+}
+
+/// Живой и активный пользователь: не удалён мягко и не отключён.
+const LIVE_USERS_HEAD: &str =
+    "SELECT id FROM users WHERE deleted_at_utc IS NULL AND is_active = 1 AND id IN (";
+const LIVE_DEVICES_HEAD: &str = "SELECT id FROM devices WHERE deleted_at_utc IS NULL AND id IN (";
+
+impl SqliteGroupRepository {
+    /// Увеличить `version` группы на 1 с CAS (запись значений меняет группу).
+    pub fn bump_group_version_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        id: i64,
+        version: i64,
+        now_utc: i64,
+    ) -> Result<GroupRow, AppError> {
+        let affected = tx
+            .execute(
+                "UPDATE groups SET updated_at_utc = ?1, version = version + 1
+                 WHERE id = ?2 AND version = ?3 AND deleted_at_utc IS NULL",
+                rusqlite::params![now_utc, id, version],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(resolve_group_cas_failure(tx, id, version));
+        }
+        get_group_impl(tx, id)
+    }
+
+    /// Из `ids` — только живые активные пользователи.
+    pub fn live_user_ids_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        ids: &[i64],
+    ) -> Result<std::collections::HashSet<i64>, AppError> {
+        existing_ids(tx, LIVE_USERS_HEAD, ")", ids)
+    }
+
+    /// Из `ids` — только живые устройства.
+    pub fn live_device_ids_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        ids: &[i64],
+    ) -> Result<std::collections::HashSet<i64>, AppError> {
+        existing_ids(tx, LIVE_DEVICES_HEAD, ")", ids)
+    }
+
+    /// Из `ids` — живые устройства, у которых есть строка `printers`.
+    pub fn live_printer_device_ids(
+        &self,
+        conn: &Connection,
+        ids: &[i64],
+    ) -> Result<std::collections::HashSet<i64>, AppError> {
+        existing_ids(
+            conn,
+            "SELECT d.id FROM devices d JOIN printers p ON p.device_id = d.id
+             WHERE d.deleted_at_utc IS NULL AND d.id IN (",
+            ")",
+            ids,
+        )
+    }
+
+    /// Живые активные пользователи по id: `(id, full_name)`.
+    pub fn live_users_by_ids(
+        &self,
+        conn: &Connection,
+        ids: &[i64],
+    ) -> Result<Vec<(i64, String)>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; ids.len()].join(",");
+        let sql = [
+            "SELECT id, full_name FROM users
+             WHERE deleted_at_utc IS NULL AND is_active = 1 AND id IN (",
+            &placeholders,
+            ")",
+        ]
+        .concat();
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(ids.iter().copied()), |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Есть ли у группы непустое значение свойства (строка со ссылкой или непустой текст).
+    pub fn property_filled_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        group_id: i64,
+        property_id: i64,
+    ) -> Result<bool, AppError> {
+        tx.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM group_property_values
+               WHERE group_id = ?1 AND property_id = ?2
+                 AND (value_ref IS NOT NULL OR (value_text IS NOT NULL AND value_text <> '')))",
+            rusqlite::params![group_id, property_id],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|v| v != 0)
+        .map_err(map_rusqlite)
+    }
+
+    /// Пользователи для выбора в свойстве «Пользователи» (D-11): только живые активные,
+    /// только `(id, full_name, login)`. Фильтр по подстроке делает сервис в Rust.
+    pub fn list_user_options(
+        &self,
+        conn: &Connection,
+    ) -> Result<Vec<(i64, String, String)>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, full_name, login FROM users
+                 WHERE deleted_at_utc IS NULL AND is_active = 1
+                 ORDER BY full_name, id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+}
+
 impl GroupRepository for SqliteGroupRepository {
     type Conn = Connection;
 

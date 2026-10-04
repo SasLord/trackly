@@ -16,8 +16,10 @@ use std::sync::Arc;
 
 use rusqlite::Connection;
 use trackly_core::auth::{authorize, Action, Identity};
+use trackly_core::domain::group_values;
 use trackly_core::domain::groups::{
-    validate_name, GroupNew, GroupRow, GroupTypeRow, MAX_DEVICES_PER_BATCH,
+    validate_name, GroupNew, GroupRow, GroupTypeRow, GroupValueRow, PropertyDataType,
+    MAX_DEVICES_PER_BATCH, MAX_REFS_PER_PROPERTY,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::group_types::GroupTypeRepository;
@@ -32,8 +34,10 @@ use trackly_infra::repos::{
 };
 
 use crate::dto::groups::{
-    DeviceMembershipDto, GroupAddDevicesResultDto, GroupCompositionDto, GroupCreateDto,
-    GroupDeleteResultDto, GroupDto, GroupMemberDeviceDto, GroupMoveResultDto, GroupSearchHitDto,
+    DeviceMembershipDto, GroupAddDevicesResultDto, GroupCardDto, GroupCompositionDto,
+    GroupCreateDto, GroupDeleteResultDto, GroupDto, GroupMemberDeviceDto, GroupMoveResultDto,
+    GroupPrinterDto, GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto,
+    UserOptionDto,
 };
 use crate::services::group_membership::release_device_in_tx;
 use crate::services::group_place::{
@@ -885,5 +889,415 @@ fn place_error(message: &str) -> AppError {
     AppError::Validation {
         field: "place_id".to_string(),
         message: message.to_string(),
+    }
+}
+
+// ---- значения свойств, пользователи для выбора, карточка (план 41-12) ----
+
+/// Максимальная длина запроса и потолок выдачи в `user_options` (как в поиске групп).
+const USER_OPTIONS_LIMIT: usize = 50;
+
+const USER_NOT_FOUND_MESSAGE: &str = "Выбрать можно только пользователя, который уже заходил \
+                                      в приложение. Поиска по каталогу AD нет.";
+
+fn values_error(property_id: i64, message: impl Into<String>) -> AppError {
+    AppError::Validation {
+        field: format!("values.{property_id}"),
+        message: message.into(),
+    }
+}
+
+/// Проверенное значение одного свойства, готовое к записи.
+struct PreparedValue {
+    property_id: i64,
+    rows: Vec<GroupValueRow>,
+    /// Ссылки на пользователей/устройства для проверки живости одним запросом.
+    user_refs: Vec<i64>,
+    device_refs: Vec<i64>,
+}
+
+/// Разобрать и нормализовать одно значение формы. Живость ссылок проверяется отдельно.
+fn prepare_value(
+    group_id: i64,
+    data_type: PropertyDataType,
+    input: &GroupValueInputDto,
+) -> Result<PreparedValue, AppError> {
+    let pid = input.property_id;
+    let mut prepared = PreparedValue {
+        property_id: pid,
+        rows: Vec::new(),
+        user_refs: Vec::new(),
+        device_refs: Vec::new(),
+    };
+    match data_type {
+        PropertyDataType::Text
+        | PropertyDataType::Number
+        | PropertyDataType::Ip
+        | PropertyDataType::Mac => {
+            if !input.refs.is_empty() {
+                return Err(values_error(
+                    pid,
+                    "Это свойство хранит одно значение, а не список связей.",
+                ));
+            }
+            let raw = input.text.as_deref().unwrap_or("");
+            let normalized =
+                group_values::normalize_scalar(data_type, raw).map_err(|e| match e {
+                    AppError::Validation { message, .. } => values_error(pid, message),
+                    other => other,
+                })?;
+            if let Some(text) = normalized {
+                prepared.rows.push(GroupValueRow {
+                    group_id,
+                    property_id: pid,
+                    position: 0,
+                    value_text: Some(text),
+                    value_ref: None,
+                    is_primary: false,
+                });
+            }
+        }
+        PropertyDataType::Users | PropertyDataType::DeviceRefs => {
+            if input.text.as_deref().is_some_and(|t| !t.trim().is_empty()) {
+                return Err(values_error(pid, "Это свойство хранит связи, а не текст."));
+            }
+            if input.refs.len() > MAX_REFS_PER_PROPERTY {
+                return Err(values_error(
+                    pid,
+                    format!("Слишком много значений: не более {MAX_REFS_PER_PROPERTY}."),
+                ));
+            }
+            let mut seen = HashSet::new();
+            let mut primaries = 0;
+            for (pos, r) in input.refs.iter().enumerate() {
+                if !seen.insert(r.ref_id) {
+                    return Err(values_error(pid, "Значение указано дважды."));
+                }
+                if r.is_primary {
+                    primaries += 1;
+                }
+                prepared.rows.push(GroupValueRow {
+                    group_id,
+                    property_id: pid,
+                    position: pos as i64,
+                    value_text: None,
+                    value_ref: Some(r.ref_id),
+                    is_primary: r.is_primary,
+                });
+            }
+            if primaries > 1 {
+                return Err(values_error(pid, "Основным может быть только один."));
+            }
+            let ids: Vec<i64> = input.refs.iter().map(|r| r.ref_id).collect();
+            if data_type == PropertyDataType::Users {
+                prepared.user_refs = ids;
+            } else {
+                if primaries > 0 {
+                    return Err(values_error(
+                        pid,
+                        "Для ссылок на устройства основное значение не задаётся.",
+                    ));
+                }
+                prepared.device_refs = ids;
+            }
+        }
+    }
+    Ok(prepared)
+}
+
+/// Карточка группы на переданном соединении (общая для чтения и ответа `set_values`).
+fn build_card(
+    conn: &Connection,
+    repo: &SqliteGroupRepository,
+    type_repo: &SqliteGroupTypeRepository,
+    id: i64,
+) -> Result<GroupCardDto, AppError> {
+    let snap = GroupSnapshot::load(conn, repo, type_repo)?;
+    let row = snap
+        .row(id)
+        .ok_or(AppError::NotFound {
+            entity: "group",
+            id,
+        })?
+        .clone();
+    let group = snap.dto(&row)?;
+    let props = type_repo.list_properties(conn, row.type_id, false)?;
+    let values = repo.list_values(conn, id)?;
+
+    let type_of = |property_id: i64| {
+        props
+            .iter()
+            .find(|p| p.id == property_id)
+            .and_then(|p| PropertyDataType::from_str_lenient(&p.data_type))
+    };
+    let user_ids: Vec<i64> = values
+        .iter()
+        .filter(|v| type_of(v.property_id) == Some(PropertyDataType::Users))
+        .filter_map(|v| v.value_ref)
+        .collect();
+    let live_users: HashMap<i64, String> = repo
+        .live_users_by_ids(conn, &user_ids)?
+        .into_iter()
+        .collect();
+    let ref_prop_ids: Vec<i64> = props
+        .iter()
+        .filter(|p| {
+            PropertyDataType::from_str_lenient(&p.data_type) == Some(PropertyDataType::DeviceRefs)
+        })
+        .map(|p| p.id)
+        .collect();
+    let live_refs = repo.ref_devices_for_group(conn, id, &ref_prop_ids)?;
+    let live_ref_ids: HashSet<i64> = live_refs.iter().map(|r| r.device_id).collect();
+
+    let mut properties = Vec::with_capacity(props.len());
+    for p in &props {
+        let dt = PropertyDataType::from_str_lenient(&p.data_type);
+        let own: Vec<&GroupValueRow> = values.iter().filter(|v| v.property_id == p.id).collect();
+        let mut text = None;
+        let mut users = Vec::new();
+        let mut ref_device_ids = Vec::new();
+        match dt {
+            Some(PropertyDataType::Users) => {
+                for v in own {
+                    if let Some(uid) = v.value_ref {
+                        if let Some(name) = live_users.get(&uid) {
+                            users.push(GroupUserDto {
+                                user_id: uid,
+                                full_name: name.clone(),
+                                is_primary: v.is_primary,
+                            });
+                        }
+                    }
+                }
+            }
+            Some(PropertyDataType::DeviceRefs) => {
+                for v in own {
+                    if let Some(did) = v.value_ref {
+                        if live_ref_ids.contains(&did) {
+                            ref_device_ids.push(did);
+                        }
+                    }
+                }
+            }
+            _ => {
+                text = own.iter().find_map(|v| v.value_text.clone());
+            }
+        }
+        properties.push(GroupPropertyValueDto {
+            property_id: p.id,
+            name: p.name.clone(),
+            data_type: p.data_type.clone(),
+            sort_order: p.sort_order,
+            is_required: p.is_required,
+            show_on_map: p.show_on_map,
+            text,
+            users,
+            ref_device_ids,
+        });
+    }
+
+    // Единый список принтеров: USB-производные + явные ссылки на принтеры, дедуп по device_id.
+    let link_candidates: Vec<i64> = live_refs.iter().map(|r| r.device_id).collect();
+    let link_printers = repo.live_printer_device_ids(conn, &link_candidates)?;
+    let explicit: HashSet<i64> = live_refs
+        .iter()
+        .map(|r| r.device_id)
+        .filter(|d| link_printers.contains(d))
+        .collect();
+    let mut printers: Vec<GroupPrinterDto> = Vec::new();
+    let mut seen: HashSet<i64> = HashSet::new();
+    for r in repo.usb_printers_for_group(conn, id)? {
+        if seen.insert(r.device_id) {
+            printers.push(GroupPrinterDto {
+                device_id: r.device_id,
+                name: r.name,
+                inventory_number: r.inventory_number,
+                serial_number: r.serial_number,
+                origin: "usb".to_string(),
+                has_explicit_link: explicit.contains(&r.device_id),
+            });
+        }
+    }
+    for r in live_refs {
+        if explicit.contains(&r.device_id) && seen.insert(r.device_id) {
+            printers.push(GroupPrinterDto {
+                device_id: r.device_id,
+                name: r.name,
+                inventory_number: r.inventory_number,
+                serial_number: r.serial_number,
+                origin: "link".to_string(),
+                has_explicit_link: true,
+            });
+        }
+    }
+    printers.sort_by(|a, b| a.name.cmp(&b.name).then(a.device_id.cmp(&b.device_id)));
+
+    let link_property_id = ref_prop_ids.first().copied();
+    Ok(GroupCardDto {
+        group,
+        properties,
+        printers,
+        link_property_id,
+    })
+}
+
+impl GroupService {
+    /// Пользователи для выбора (D-11): живые активные, только `id`, `full_name`, `login`,
+    /// подстрока без учёта регистра в Rust, не более 50. Под `ReadGroups` — manager
+    /// не имеет права на `users_list`, а выбирать людей в группу ему можно.
+    pub async fn user_options(
+        &self,
+        caller: &Identity,
+        query: String,
+    ) -> Result<Vec<UserOptionDto>, AppError> {
+        authorize(caller, &Action::ReadGroups)?;
+        if query.chars().count() > SEARCH_QUERY_MAX_CHARS {
+            return Err(AppError::Validation {
+                field: "query".to_string(),
+                message: format!(
+                    "Запрос слишком длинный (макс. {SEARCH_QUERY_MAX_CHARS} символов)"
+                ),
+            });
+        }
+        let needle = query.trim().to_lowercase();
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let rows = repo.list_user_options(&conn)?;
+            Ok(rows
+                .into_iter()
+                .filter(|(_, full_name, login)| {
+                    needle.is_empty()
+                        || full_name.to_lowercase().contains(&needle)
+                        || login.to_lowercase().contains(&needle)
+                })
+                .take(USER_OPTIONS_LIMIT)
+                .map(|(id, full_name, login)| UserOptionDto {
+                    id,
+                    full_name,
+                    login,
+                })
+                .collect())
+        })
+        .await
+        .map_err(join_err)?
+    }
+
+    /// Карточка группы: свойства типа со значениями и единый список принтеров (D-12).
+    pub async fn card(&self, caller: &Identity, id: i64) -> Result<GroupCardDto, AppError> {
+        authorize(caller, &Action::ReadGroups)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let type_repo = self.type_repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            build_card(&conn, &repo, &type_repo, id)
+        })
+        .await
+        .map_err(join_err)?
+    }
+
+    /// Записать значения свойств группы (GRP-03). Проверка и нормализация — на сервере,
+    /// одна транзакция: либо записано всё, либо ничего. `version` — CAS по группе.
+    /// Переданное свойство полностью заменяется; непереданные не трогаются.
+    pub async fn set_values(
+        &self,
+        caller: &Identity,
+        id: i64,
+        version: i64,
+        values: Vec<GroupValueInputDto>,
+    ) -> Result<GroupCardDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let type_repo = self.type_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let group = repo.get_group_in_tx(&tx, id)?;
+                if group.version != version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "group",
+                        id,
+                        expected: version,
+                        actual: group.version,
+                    });
+                }
+                let props = type_repo.list_properties(&tx, group.type_id, false)?;
+
+                let mut prepared: Vec<PreparedValue> = Vec::with_capacity(values.len());
+                let mut seen = HashSet::new();
+                for input in &values {
+                    let pid = input.property_id;
+                    let prop = props
+                        .iter()
+                        .find(|p| p.id == pid)
+                        .ok_or_else(|| values_error(pid, "Свойство не относится к этой группе."))?;
+                    if !seen.insert(pid) {
+                        return Err(values_error(pid, "Свойство указано дважды."));
+                    }
+                    let data_type = PropertyDataType::from_str_lenient(&prop.data_type)
+                        .ok_or_else(|| values_error(pid, "Неизвестный тип свойства."))?;
+                    prepared.push(prepare_value(id, data_type, input)?);
+                }
+
+                // Живость ссылок — в той же транзакции, одним запросом на вид ссылки.
+                let all_users: Vec<i64> =
+                    prepared.iter().flat_map(|p| p.user_refs.iter().copied()).collect();
+                let live_users = repo.live_user_ids_in_tx(&tx, &all_users)?;
+                let all_devices: Vec<i64> =
+                    prepared.iter().flat_map(|p| p.device_refs.iter().copied()).collect();
+                let live_devices = repo.live_device_ids_in_tx(&tx, &all_devices)?;
+                for p in &prepared {
+                    if p.user_refs.iter().any(|u| !live_users.contains(u)) {
+                        return Err(values_error(p.property_id, USER_NOT_FOUND_MESSAGE));
+                    }
+                    if p.device_refs.iter().any(|d| !live_devices.contains(d)) {
+                        return Err(values_error(
+                            p.property_id,
+                            "Выбрать можно только существующее устройство.",
+                        ));
+                    }
+                }
+
+                for p in &prepared {
+                    repo.replace_property_values_in_tx(&tx, id, p.property_id, &p.rows, now)?;
+                }
+
+                // Обязательность — по итоговому состоянию всех живых обязательных свойств.
+                for prop in props.iter().filter(|p| p.is_required) {
+                    if !repo.property_filled_in_tx(&tx, id, prop.id)? {
+                        return Err(values_error(
+                            prop.id,
+                            format!("Заполните обязательное свойство «{}».", prop.name),
+                        ));
+                    }
+                }
+
+                repo.bump_group_version_in_tx(&tx, id, version, now)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "group",
+                        entity_id: id,
+                        action: "set_values",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(to_json(&serde_json::json!({
+                            "property_ids": prepared.iter().map(|p| p.property_id).collect::<Vec<_>>(),
+                        }))?),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                build_card(conn, &repo, &type_repo, id)
+            })
+            .await
     }
 }

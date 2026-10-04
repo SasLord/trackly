@@ -171,3 +171,94 @@ pub struct GroupSetParentDto {
     #[specta(type = Option<i32>)]
     pub parent_group_id: Option<i64>,
 }
+
+/// Ссылка в значении свойства `users`/`device_refs`: `is_primary` — основной пользователь.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupRefInputDto {
+    #[specta(type = i32)]
+    pub ref_id: i64,
+    pub is_primary: bool,
+}
+
+/// Значение одного свойства при записи формы: скаляр в `text` либо связи в `refs`.
+/// Пустое значение (пустой текст, пустой список) = удаление ранее сохранённого.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupValueInputDto {
+    #[specta(type = i32)]
+    pub property_id: i64,
+    pub text: Option<String>,
+    pub refs: Vec<GroupRefInputDto>,
+}
+
+/// Запись значений свойств группы: `version` — CAS по версии группы.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupSetValuesDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    pub values: Vec<GroupValueInputDto>,
+}
+
+/// Пользователь для выбора (D-11): только безопасные поля.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct UserOptionDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    pub full_name: String,
+    pub login: String,
+}
+
+/// Пользователь в значении свойства `users`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupUserDto {
+    #[specta(type = i32)]
+    pub user_id: i64,
+    pub full_name: String,
+    pub is_primary: bool,
+}
+
+/// Свойство типа вместе со значением группы (форма панели «Свойства»).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupPropertyValueDto {
+    #[specta(type = i32)]
+    pub property_id: i64,
+    pub name: String,
+    pub data_type: String,
+    #[specta(type = i32)]
+    pub sort_order: i64,
+    pub is_required: bool,
+    pub show_on_map: bool,
+    /// Нормализованный скаляр (text/number/ip/mac); для связей `None`.
+    pub text: Option<String>,
+    /// Живые пользователи значения (тип `users`), основной помечен.
+    pub users: Vec<GroupUserDto>,
+    /// Живые устройства явных ссылок (тип `device_refs`) по порядку позиций.
+    #[specta(type = Vec<i32>)]
+    pub ref_device_ids: Vec<i64>,
+}
+
+/// Подключённый принтер: USB-производный (`usb`) или явная ссылка (`link`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupPrinterDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub name: String,
+    pub inventory_number: Option<String>,
+    pub serial_number: Option<String>,
+    /// `usb` | `link`. При совпадении источников побеждает `usb`.
+    pub origin: String,
+    /// Есть явная ссылка (её можно удалить, даже если принтер виден по USB).
+    pub has_explicit_link: bool,
+}
+
+/// Карточка группы: шапка, свойства со значениями и единый список принтеров (D-12).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupCardDto {
+    pub group: GroupDto,
+    pub properties: Vec<GroupPropertyValueDto>,
+    pub printers: Vec<GroupPrinterDto>,
+    /// Первое живое свойство `device_refs` типа; `None`, если такого нет.
+    #[specta(type = Option<i32>)]
+    pub link_property_id: Option<i64>,
+}
