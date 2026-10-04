@@ -485,7 +485,8 @@ impl PlaceService {
             + stats.nested_places
             + stats.cartridge_count
             + stats.referencing_act_count
-            + stats.referencing_movement_count;
+            + stats.referencing_movement_count
+            + stats.referencing_group_count;
         if total > 0 {
             return Err(AppError::Conflict {
                 reason: build_delete_blocked_message(&stats),
@@ -927,6 +928,15 @@ fn build_delete_blocked_message(stats: &SubtreeStats) -> String {
             )
         ));
     }
+    // Phase 41 (GRP-10, Pitfall 5): группа на месте (`groups.place_id`,
+    // `ON DELETE RESTRICT`) блокирует удаление, даже если она пустая.
+    if stats.referencing_group_count > 0 {
+        parts.push(format!(
+            "{} {}",
+            stats.referencing_group_count,
+            ru_plural(stats.referencing_group_count, "группа", "группы", "групп")
+        ));
+    }
     format!(
         "Место нельзя удалить: в нём {}. Перенесите содержимое или архивируйте место.",
         join_with_and(&parts)
@@ -1107,6 +1117,8 @@ mod tests {
             cartridge_count: 0,
             referencing_act_count: 0,
             referencing_movement_count: 0,
+            referencing_group_count: 0,
+            moving_group_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1125,6 +1137,8 @@ mod tests {
             cartridge_count: 0,
             referencing_act_count: 0,
             referencing_movement_count: 0,
+            referencing_group_count: 0,
+            moving_group_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1142,6 +1156,8 @@ mod tests {
             cartridge_count: 3,
             referencing_act_count: 0,
             referencing_movement_count: 0,
+            referencing_group_count: 0,
+            moving_group_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1163,6 +1179,8 @@ mod tests {
             cartridge_count: 0,
             referencing_act_count: 1,
             referencing_movement_count: 0,
+            referencing_group_count: 0,
+            moving_group_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1177,6 +1195,8 @@ mod tests {
             cartridge_count: 0,
             referencing_act_count: 5,
             referencing_movement_count: 0,
+            referencing_group_count: 0,
+            moving_group_count: 0,
         };
         let msg_many = build_delete_blocked_message(&stats_many);
         assert_eq!(
@@ -1194,6 +1214,8 @@ mod tests {
             cartridge_count: 0,
             referencing_act_count: 1,
             referencing_movement_count: 0,
+            referencing_group_count: 0,
+            moving_group_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(

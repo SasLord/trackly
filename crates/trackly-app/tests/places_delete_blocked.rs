@@ -672,3 +672,227 @@ async fn delete_blocked_by_soft_deleted_device_has_russian_reason() {
     .await
     .expect("test timed out");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41 (GRP-10, Pitfall 5, D-23): `groups.place_id` is `ON DELETE RESTRICT`.
+// Even an EMPTY group on the place blocks the delete and is invisible in
+// `device_count`; `referencing_group_count` surfaces it, `moving_group_count`
+// counts only the groups a bulk move would really carry. Fictional data only.
+// ---------------------------------------------------------------------------
+
+/// Тип группы нужен как FK; `PlaceService`-харнесс не сеет встроенные типы.
+async fn insert_group_type(svc: &PlaceService, code: &'static str) -> i64 {
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+                 VALUES (?1, 'Тестовый тип', 'container', 0, 0)",
+                rusqlite::params![code],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("insert fixture group type")
+}
+
+async fn insert_group(
+    svc: &PlaceService,
+    type_id: i64,
+    seq: i64,
+    place_id: Option<i64>,
+    parent_group_id: Option<i64>,
+) -> i64 {
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO groups (type_id, name, seq, place_id, parent_group_id, \
+                 created_at_utc, updated_at_utc) VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)",
+                rusqlite::params![
+                    type_id,
+                    format!("АРМ #{seq}"),
+                    seq,
+                    place_id,
+                    parent_group_id
+                ],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("insert fixture group")
+}
+
+/// Устройство `name` на месте `place_id`, состоящее в группе `group_id`.
+async fn insert_member_device(svc: &PlaceService, group_id: i64, place_id: i64, name: &str) {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, place_id, status_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (1, ?1, ?2, 1, 1, 0, 0)",
+                rusqlite::params![name, place_id],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            let device_id = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO group_devices (device_id, group_id, added_at_utc) VALUES (?1, ?2, 0)",
+                rusqlite::params![device_id, group_id],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("insert fixture member device");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn delete_blocked_by_empty_group_has_russian_reason() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "Склад Г", None))
+            .await
+            .expect("create room");
+        let type_id = insert_group_type(&svc, "grp_empty_block").await;
+        insert_group(&svc, type_id, 1, Some(room.id), None).await;
+
+        // Контроль: устройств, картриджей, актов, перемещений нет — блокирует
+        // ИМЕННО пустая группа.
+        let stats = svc.subtree_stats(&admin, room.id).await.expect("stats");
+        assert_eq!(stats.device_count, 0);
+        assert_eq!(stats.referencing_group_count, 1);
+        assert_eq!(stats.moving_group_count, 0, "пустая группа не переезжает");
+
+        let err = svc
+            .delete_hard(&admin, room.id, room.version)
+            .await
+            .expect_err("место с пустой группой не удаляется");
+        match err {
+            AppError::Conflict { reason } => {
+                assert!(
+                    !reason.contains("FOREIGN KEY"),
+                    "сырой FK-текст не должен протекать: {reason}"
+                );
+                assert!(
+                    reason.contains("1 группа"),
+                    "сообщение называет число групп: {reason}"
+                );
+                assert!(reason.starts_with("Место нельзя удалить:"), "{reason}");
+            }
+            other => panic!("ожидали AppError::Conflict, получили {other:?}"),
+        }
+
+        let room_id = room.id;
+        let readers = svc.readers.clone();
+        let count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM places WHERE id = ?1",
+                rusqlite::params![room_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("join")
+        .expect("query places");
+        assert_eq!(count, 1, "заблокированное место не удалено");
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_counters_count_roots_with_live_members_only() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let hall = svc
+            .create(&admin, new_place(PlaceKind::Building, "Склад Д", None))
+            .await
+            .expect("create hall");
+        let shelf = svc
+            .create(
+                &admin,
+                new_place(PlaceKind::Room, "Стеллаж 1", Some(hall.id)),
+            )
+            .await
+            .expect("create shelf");
+        let elsewhere = svc
+            .create(&admin, new_place(PlaceKind::Room, "Другой склад", None))
+            .await
+            .expect("create elsewhere");
+
+        let type_id = insert_group_type(&svc, "grp_counters").await;
+        // Корневая группа и вложенная (обе с местом внутри поддерева).
+        let root = insert_group(&svc, type_id, 1, Some(hall.id), None).await;
+        let nested = insert_group(&svc, type_id, 2, Some(shelf.id), Some(root)).await;
+
+        let stats = svc.subtree_stats(&admin, hall.id).await.expect("stats");
+        assert_eq!(stats.referencing_group_count, 2);
+        assert_eq!(
+            stats.moving_group_count, 0,
+            "нет устройств: переезжать нечему"
+        );
+
+        // Две устройства-члена вложенной группы: считается КОРЕНЬ, дедуп — 1.
+        insert_member_device(&svc, nested, shelf.id, "Системный блок №1").await;
+        insert_member_device(&svc, nested, hall.id, "Монитор №1").await;
+        let stats = svc.subtree_stats(&admin, hall.id).await.expect("stats");
+        assert_eq!(stats.referencing_group_count, 2);
+        assert_eq!(
+            stats.moving_group_count, 1,
+            "две вложенные группы — один корень"
+        );
+
+        // Член и у КОРНЯ, и у вложенной группы: два «старта», но один корень.
+        insert_member_device(&svc, root, hall.id, "Клавиатура №1").await;
+        let stats = svc.subtree_stats(&admin, hall.id).await.expect("stats");
+        assert_eq!(stats.moving_group_count, 1, "дедуп по корневой группе");
+
+        // Группа без места («запрет спит», D-21) с членом в поддереве не считается.
+        let sleeping = insert_group(&svc, type_id, 3, None, None).await;
+        insert_member_device(&svc, sleeping, shelf.id, "Ноутбук №7").await;
+        let stats = svc.subtree_stats(&admin, hall.id).await.expect("stats");
+        assert_eq!(stats.moving_group_count, 1, "спящая группа не переезжает");
+        assert_eq!(
+            stats.referencing_group_count, 2,
+            "спящая группа не ссылается на место"
+        );
+
+        // Вторая корневая группа с членом ВНЕ поддерева: не переезжает.
+        let outside = insert_group(&svc, type_id, 4, Some(elsewhere.id), None).await;
+        insert_member_device(&svc, outside, elsewhere.id, "Принтер №3").await;
+        let stats = svc.subtree_stats(&admin, hall.id).await.expect("stats");
+        assert_eq!(
+            stats.moving_group_count, 1,
+            "член вне поддерева не считается"
+        );
+
+        // Вторая корневая группа с членом внутри поддерева: теперь 2.
+        let second = insert_group(&svc, type_id, 5, Some(hall.id), None).await;
+        insert_member_device(&svc, second, hall.id, "Сканер №2").await;
+        let stats = svc.subtree_stats(&admin, hall.id).await.expect("stats");
+        assert_eq!(stats.moving_group_count, 2);
+        assert_eq!(stats.referencing_group_count, 3);
+
+        // Множественное число в сообщении блокировки: «3 группы».
+        let err = svc
+            .delete_hard(&admin, hall.id, hall.version)
+            .await
+            .expect_err("заблокировано");
+        match err {
+            AppError::Conflict { reason } => {
+                assert!(reason.contains("3 группы"), "{reason}");
+                assert!(!reason.contains("FOREIGN KEY"), "{reason}");
+            }
+            other => panic!("ожидали AppError::Conflict, получили {other:?}"),
+        }
+    })
+    .await
+    .expect("test timed out");
+}

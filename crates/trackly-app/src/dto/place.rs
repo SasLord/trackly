@@ -174,6 +174,15 @@ pub struct SubtreeStatsDto {
     /// on screen).
     #[specta(type = i32)]
     pub referencing_act_count: i64,
+    /// GRP-10: все группы с `place_id` внутри поддерева (блокируют удаление места,
+    /// даже пустые). Считает сервер.
+    #[specta(type = i32)]
+    pub referencing_group_count: i64,
+    /// D-23: сколько групп реально переедут при массовом переносе содержимого
+    /// (различные корневые группы с местом, у которых есть живой член внутри
+    /// поддерева). Для модалки «переедут N групп» и тоста; клиент не вычисляет.
+    #[specta(type = i32)]
+    pub moving_group_count: i64,
 }
 
 impl From<SubtreeStats> for SubtreeStatsDto {
@@ -184,6 +193,8 @@ impl From<SubtreeStats> for SubtreeStatsDto {
             device_count: s.device_count,
             cartridge_count: s.cartridge_count,
             referencing_act_count: s.referencing_act_count,
+            referencing_group_count: s.referencing_group_count,
+            moving_group_count: s.moving_group_count,
         }
     }
 }

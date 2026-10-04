@@ -217,7 +217,33 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
            -- once, since `OR` already dedupes at the row level.
            (SELECT COUNT(*) FROM place_movements
             WHERE from_place_id IN (SELECT id FROM subtree)
-               OR to_place_id IN (SELECT id FROM subtree)) AS referencing_movement_count",
+               OR to_place_id IN (SELECT id FROM subtree)) AS referencing_movement_count,
+           -- Phase 41 (GRP-10, Pitfall 5): `groups.place_id` is `ON DELETE RESTRICT`
+           -- (V045) — even an EMPTY group on the place blocks the delete, and it
+           -- is invisible in `device_count`. No `deleted_at_utc` filter: the FK
+           -- does not distinguish a soft-deleted row either.
+           (SELECT COUNT(*) FROM groups
+            WHERE place_id IN (SELECT id FROM subtree)) AS referencing_group_count,
+           -- Phase 41 (D-23): groups that will REALLY move — distinct ROOT groups
+           -- with a place, reached upward (parent_group_id) from the live member
+           -- devices sitting in the subtree. Empty and sleeping (no place, D-21)
+           -- groups are deliberately excluded.
+           (SELECT COUNT(DISTINCT root_id) FROM (
+              WITH RECURSIVE up(start_id, id, parent) AS (
+                SELECT g.id, g.id, g.parent_group_id
+                  FROM group_devices gd
+                  JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+                  JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL
+                 WHERE d.place_id IN (SELECT id FROM subtree)
+                UNION
+                SELECT up.start_id, g.id, g.parent_group_id
+                  FROM groups g JOIN up ON g.id = up.parent
+                 WHERE g.deleted_at_utc IS NULL
+              )
+              SELECT up.id AS root_id FROM up
+                JOIN groups r ON r.id = up.id
+               WHERE up.parent IS NULL AND r.place_id IS NOT NULL
+           )) AS moving_group_count",
         rusqlite::params![root_id],
         |row| {
             Ok(SubtreeStats {
@@ -227,6 +253,8 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
                 cartridge_count: row.get(3)?,
                 referencing_act_count: row.get(4)?,
                 referencing_movement_count: row.get(5)?,
+                referencing_group_count: row.get(6)?,
+                moving_group_count: row.get(7)?,
             })
         },
     )

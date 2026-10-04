@@ -154,6 +154,19 @@ pub struct SubtreeStats {
     /// both fall inside the same subtree is intentionally counted once, not
     /// twice (D-01).
     pub referencing_movement_count: i64,
+    /// Все группы с `groups.place_id` внутри поддерева (Phase 41, GRP-10 /
+    /// Pitfall 5): `groups.place_id` — `ON DELETE RESTRICT`, поэтому даже
+    /// ПУСТАЯ группа на месте блокирует удаление, хотя в `device_count` не
+    /// попадает. Считаются все строки `groups` без фильтра по `deleted_at_utc`:
+    /// FK не различает «мягко удалённую» строку.
+    pub referencing_group_count: i64,
+    /// Число групп, которые РЕАЛЬНО переедут при «Перенести всё содержимое»
+    /// (D-23): различные КОРНЕВЫЕ группы с `place_id IS NOT NULL`, у которых
+    /// есть живое устройство-член с `devices.place_id` внутри поддерева — ровно
+    /// те группы, которые `move_subtree_contents` достаёт через устройства
+    /// содержимого. Пустая группа и «спящая» (D-21, без места) сюда не входят,
+    /// чтобы число в модалке и в тосте совпадало с фактом. Считает сервер.
+    pub moving_group_count: i64,
 }
 
 /// A single row in the "content of place" listing (PLC-06 / D-23 — one table, column
