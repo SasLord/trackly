@@ -20,6 +20,7 @@ pub mod organization_service;
 pub mod place_movement_service;
 pub mod place_path_display;
 pub mod place_service;
+pub mod plural;
 pub mod printer_service;
 pub mod report_service;
 pub mod request_service;

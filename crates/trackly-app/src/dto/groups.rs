@@ -109,3 +109,27 @@ pub struct GroupDeleteResultDto {
     #[specta(type = i32)]
     pub released_devices: i32,
 }
+
+/// Запрос «Перенести» группу (D-17): `version` — CAS по версии группы.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupMoveDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    #[specta(type = i32)]
+    pub target_place_id: i64,
+}
+
+/// Итог переноса группы (D-24): данные для тоста и инвалидации счётчиков (D-08).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupMoveResultDto {
+    pub moved_devices: i32,
+    pub moved_nested_groups: i32,
+    /// Прежние и новые места без дублей.
+    #[specta(type = Vec<i32>)]
+    pub changed_place_ids: Vec<i64>,
+    /// «группа и 6 устройств».
+    pub summary: String,
+    pub batch_id: Option<String>,
+}

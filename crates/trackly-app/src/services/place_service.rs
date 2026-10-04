@@ -29,6 +29,7 @@
 //! cycle-check+UPDATE / subtree-stats+DELETE compound operations) — this service
 //! calls them as a single unit, then separately audit-logs the result.
 
+use crate::services::plural::ru_plural;
 use std::sync::Arc;
 
 use rusqlite::OptionalExtension;
@@ -853,24 +854,6 @@ impl PlaceService {
 // with §11.3's singular/plural agreement rule applied identically (plan Task 2).
 // ---------------------------------------------------------------------------
 
-/// Russian noun pluralization by count: `one` (1, 21, 31, …), `few` (2-4, 22-24, …),
-/// `many` (0, 5-20, 25-30, …). The 11-14 exception (which would otherwise match
-/// `few` via `n % 10 == 1..4`) always resolves to `many`.
-fn ru_plural(n: i64, one: &'static str, few: &'static str, many: &'static str) -> &'static str {
-    let n_abs = n.unsigned_abs();
-    let mod100 = n_abs % 100;
-    let mod10 = n_abs % 10;
-    if (11..=14).contains(&mod100) {
-        many
-    } else {
-        match mod10 {
-            1 => one,
-            2..=4 => few,
-            _ => many,
-        }
-    }
-}
-
 fn join_with_and(parts: &[String]) -> String {
     match parts {
         [] => String::new(),
@@ -1114,22 +1097,6 @@ mod set_path_variant {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn ru_plural_device_word_matches_ui_spec_example() {
-        assert_eq!(
-            ru_plural(12, "устройство", "устройства", "устройств"),
-            "устройств"
-        );
-        assert_eq!(
-            ru_plural(1, "устройство", "устройства", "устройств"),
-            "устройство"
-        );
-        assert_eq!(
-            ru_plural(2, "устройство", "устройства", "устройств"),
-            "устройства"
-        );
-    }
 
     #[test]
     fn build_delete_blocked_message_matches_ui_spec_literal_example() {

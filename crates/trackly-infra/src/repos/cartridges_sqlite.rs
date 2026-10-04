@@ -1196,6 +1196,38 @@ impl SqliteCartridgeRepository {
              attached cartridge's place with no movement/audit row; caller must gate on \
              after.place_id.is_some() first"
         );
+        self.cascade_place_for_printer_batch_in_tx(
+            tx,
+            printer_device_id,
+            new_place_id,
+            source,
+            note,
+            user_id,
+            now_utc,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// Вариант каскада для группового переноса (Phase 41, GRP-06): строки журнала
+    /// картриджей несут тот же `batch_id` / `entity_label` / `group_id`, что и строки
+    /// пакета группы. Те же правила, что и у [`Self::cascade_place_for_printer_in_tx`]:
+    /// вызывать только при `new_place_id: Some(..)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cascade_place_for_printer_batch_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        printer_device_id: i64,
+        new_place_id: Option<i64>,
+        source: MovementSource,
+        note: &str,
+        user_id: Option<i64>,
+        now_utc: i64,
+        batch_id: Option<&str>,
+        entity_label: Option<&str>,
+        group_id: Option<i64>,
+    ) -> Result<(), AppError> {
         let attached: Vec<(i64, Option<i64>)> = {
             let mut stmt = tx
                 .prepare(
@@ -1224,7 +1256,7 @@ impl SqliteCartridgeRepository {
             )
             .map_err(map_rusqlite)?;
 
-            place_movements_repo.record_movement_if_applicable(
+            place_movements_repo.record_batch_movement_if_applicable(
                 tx,
                 &SqlitePlaceRepository,
                 MovementEntityKind::Cartridge,
@@ -1236,6 +1268,9 @@ impl SqliteCartridgeRepository {
                 None,
                 user_id,
                 now_utc,
+                batch_id,
+                entity_label,
+                group_id,
             )?;
         }
 
