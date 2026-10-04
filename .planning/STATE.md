@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T12:25:17.871Z"
+last_updated: "2026-10-04T13:03:11.091Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 135
+  completed_plans: 136
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 17 of 26
+Plan: 18 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -527,6 +527,7 @@ Last activity: 2026-10-04
 | Phase 41 P14 | 40min | 2 tasks | 3 files |
 | Phase 41 P15 | ~2h | 2 tasks | 6 files |
 | Phase 41 P13 | ~40min | 2 tasks | 6 files |
+| Phase 41 P16 | ~1h | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1189,6 +1190,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-14: guard S1 сравнивает new_place с текущим внутри writer-замыкания; очистка места члена = реальная смена; S9 сознательно без guard'а
 - [Phase 41]: 41-15: moving_group_count = distinct root groups with a place and a live member in the subtree; referencing_group_count counts every groups row (FK RESTRICT ignores soft delete)
 - [Phase 41]: 41-13: groups transports use separate GroupGate enum in the role matrix; add_devices and move are the single handlers for both UI paths; DTO mutations take {dto} payload, groups_update is flat {id, version, name}
+- [Phase 41]: 41-16: акты выводят устройство из состава: прямые пути release_device_in_tx, restore-пути release_if_locked (только член группы с местом); undo членство не восстанавливает — Явный вызов на сайте вместо логики в devices_sqlite.rs: акты и массовый перенос хотят разного; полнота write-site'ов держится счётным гейтом в group_write_sites.rs
 
 ### Pending Todos
 
@@ -1388,7 +1390,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T12:25:17.862Z
+Last session: 2026-10-04T13:03:05.497Z
 Stopped at: Completed 41-13-PLAN.md
 Resume file: None
 
