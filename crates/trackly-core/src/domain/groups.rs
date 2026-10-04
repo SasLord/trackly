@@ -222,6 +222,16 @@ pub struct GroupValueRow {
     pub is_primary: bool,
 }
 
+/// Устройство в карточке группы: производный принтер (USB-связь) или ссылка из
+/// свойства `device_refs`. Без serde: транспортный DTO строится в trackly-app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrinterRefRow {
+    pub device_id: i64,
+    pub name: String,
+    pub inventory_number: Option<String>,
+    pub serial_number: Option<String>,
+}
+
 /// Название: trim, пустое — «Укажите название.», длиннее `NAME_MAX_CHARS` — ошибка.
 pub fn validate_name(raw: &str, field: &str) -> Result<String, AppError> {
     let s = raw.trim();

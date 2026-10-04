@@ -9,6 +9,7 @@ pub mod ad_directory;
 pub mod cartridges;
 pub mod devices;
 pub mod group_types;
+pub mod groups;
 pub mod number_templates;
 pub mod places;
 pub mod printers;
