@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-10-04T14:50:21.758Z"
+status: verifying
+last_updated: "2026-10-04T15:30:16.638Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 145
-  completed_plans: 144
-  percent: 45
+  completed_plans: 145
+  percent: 50
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
 Plan: 26 of 26
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
 Остаточный GAP 1 (ревью WR-01) закрыт: пост-проверка семьи убрана из do_return, единственный гейт
@@ -536,6 +536,7 @@ Last activity: 2026-10-04
 | Phase 41 P24 | 25min | 2 tasks | 7 files |
 | Phase 41 P23 | 70min | 3 tasks | 8 files |
 | Phase 41 P25 | ~35min | 2 tasks | 3 files |
+| Phase 41 P26 | 35min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1208,6 +1209,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-24: блокировка места в форме устройства только подсказка; эффект неявной смены статуса отключён для заблокированного члена группы
 - [Phase 41]: 41-23: клик по устройству в составе группы ведёт в раздел по типу (devices.get: принтер -> #/printers, иначе #/devices); страница слушает hashchange для переход-фокуса при открытой странице; MovementTimeline получил необязательный showInitialPlacementNote (по умолчанию true), группа скрывает сноску про «поступление»
 - [Phase 41]: 41-25: chevron for movements batch lives inside the «Предмет» cell of a normal TableRow (not colspan group row) so the header keeps its date; batch heading is synthesized from batch_label/batch_size when the group row is not visible; no @media print rules (D-27)
+- [Phase 41]: 41-26: nyquist_compliant true означает только автоматическую выборку; 17 живых проверок + 2 сценария не пройдены, переданы пользователю до verify-work; GRP-10 остаётся частичным (41.1)
 
 ### Pending Todos
 
@@ -1407,7 +1409,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T14:50:21.748Z
+Last session: 2026-10-04T15:30:16.630Z
 Stopped at: Completed 41-25-PLAN.md
 Resume file: None
 
