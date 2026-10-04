@@ -133,3 +133,41 @@ pub struct GroupMoveResultDto {
     pub summary: String,
     pub batch_id: Option<String>,
 }
+
+/// Добавление устройств в группу (D-01): один обработчик для строки-поиска и модалки.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupAddDevicesDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    #[specta(type = Vec<i32>)]
+    pub device_ids: Vec<i64>,
+}
+
+/// Итог добавления: сколько устройств вошло и какие места затронуты (D-08).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupAddDevicesResultDto {
+    pub added: i32,
+    /// Прежние и новые места без дублей; пусто, если место ничьё не менялось.
+    #[specta(type = Vec<i32>)]
+    pub changed_place_ids: Vec<i64>,
+}
+
+/// Вывод устройств из группы (D-02): без подтверждения, место не меняется.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupRemoveDevicesDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    #[specta(type = Vec<i32>)]
+    pub device_ids: Vec<i64>,
+}
+
+/// Вложение группы в группу (D-04): `parent_group_id = None` — вывод в корень.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupSetParentDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    #[specta(type = Option<i32>)]
+    pub parent_group_id: Option<i64>,
+}

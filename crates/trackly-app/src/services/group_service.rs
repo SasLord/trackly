@@ -32,10 +32,13 @@ use trackly_infra::repos::{
 };
 
 use crate::dto::groups::{
-    DeviceMembershipDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
-    GroupMemberDeviceDto, GroupMoveResultDto, GroupSearchHitDto,
+    DeviceMembershipDto, GroupAddDevicesResultDto, GroupCompositionDto, GroupCreateDto,
+    GroupDeleteResultDto, GroupDto, GroupMemberDeviceDto, GroupMoveResultDto, GroupSearchHitDto,
 };
-use crate::services::group_place::{move_group_in_tx, GroupMoveDeps};
+use crate::services::group_membership::release_device_in_tx;
+use crate::services::group_place::{
+    apply_group_place_to_device_in_tx, move_group_in_tx, GroupMoveDeps,
+};
 use crate::services::place_path_display::compute_place_path_short_with_conn;
 use crate::services::plural::ru_plural;
 
@@ -590,6 +593,193 @@ impl GroupService {
             summary,
             batch_id: outcome.batch_id,
         })
+    }
+}
+
+// ---- состав --------------------------------------------------------------
+
+/// Проверка списка id устройств: непустой, не больше потолка, без дублей (порядок сохранён).
+fn normalize_device_ids(device_ids: Vec<i64>) -> Result<Vec<i64>, AppError> {
+    let mut seen = HashSet::new();
+    let ids: Vec<i64> = device_ids
+        .into_iter()
+        .filter(|id| seen.insert(*id))
+        .collect();
+    if ids.is_empty() {
+        return Err(AppError::Validation {
+            field: "device_ids".to_string(),
+            message: "Выберите хотя бы одно устройство.".to_string(),
+        });
+    }
+    if ids.len() > MAX_DEVICES_PER_BATCH {
+        return Err(AppError::Validation {
+            field: "device_ids".to_string(),
+            message: format!(
+                "Слишком много устройств в одном запросе (не более {MAX_DEVICES_PER_BATCH})."
+            ),
+        });
+    }
+    Ok(ids)
+}
+
+fn device_ids_error(message: String) -> AppError {
+    AppError::Validation {
+        field: "device_ids".to_string(),
+        message,
+    }
+}
+
+fn push_unique_place(out: &mut Vec<i64>, id: i64) {
+    if !out.contains(&id) {
+        out.push(id);
+    }
+}
+
+impl GroupService {
+    /// Добавить устройства в группу (GRP-05, D-01, D-21). Один обработчик для обоих
+    /// путей UI; пакет атомарен: занятое, удалённое или несуществующее устройство
+    /// отменяет весь пакет. Группа С местом присваивает его устройствам (журнал
+    /// `source='group'` с `group_id` для ссылки D-28); группа БЕЗ места место не трогает.
+    pub async fn add_devices(
+        &self,
+        caller: &Identity,
+        group_id: i64,
+        device_ids: Vec<i64>,
+    ) -> Result<GroupAddDevicesResultDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        let device_ids = normalize_device_ids(device_ids)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let deps = GroupMoveDeps::new();
+                let group = deps.groups.get_group_in_tx(&tx, group_id)?;
+
+                let mut added: Vec<i64> = Vec::new();
+                let mut changed_places: Vec<i64> = Vec::new();
+                for device_id in &device_ids {
+                    let device = match deps.devices.get_in_tx(&tx, *device_id) {
+                        Ok(d) => d,
+                        Err(AppError::NotFound { .. }) => {
+                            return Err(device_ids_error("Устройство не найдено.".to_string()))
+                        }
+                        Err(e) => return Err(e),
+                    };
+                    if device.deleted_at_utc.is_some() {
+                        return Err(device_ids_error(format!(
+                            "Устройство «{}» удалено и не может входить в группу.",
+                            device.name
+                        )));
+                    }
+                    if let Some(existing) = deps.groups.group_of_device_in_tx(&tx, *device_id)? {
+                        if existing.id == group_id {
+                            continue;
+                        }
+                        return Err(device_ids_error(format!(
+                            "Устройство «{}» уже входит в группу «{}». \
+                             Сначала выведите его из состава.",
+                            device.name, existing.name
+                        )));
+                    }
+                    deps.groups
+                        .add_device_in_tx(&tx, group_id, *device_id, now)?;
+                    added.push(*device_id);
+
+                    // D-21: место присваивает только группа С местом.
+                    if let Some(place) = group.place_id {
+                        let change = apply_group_place_to_device_in_tx(
+                            &tx,
+                            &deps,
+                            *device_id,
+                            place,
+                            None,
+                            Some(&group.name),
+                            group_id,
+                            user_id,
+                            now,
+                        )?;
+                        if change.changed {
+                            if let Some(p) = change.previous_place {
+                                push_unique_place(&mut changed_places, p);
+                            }
+                            push_unique_place(&mut changed_places, place);
+                        }
+                    }
+                }
+
+                if !added.is_empty() {
+                    deps.audit.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "group",
+                            entity_id: group_id,
+                            action: "add_devices",
+                            user_id,
+                            before_json: None,
+                            after_json: None,
+                            payload_json: Some(to_json(&serde_json::json!({
+                                "device_ids": added,
+                            }))?),
+                            created_at_utc: now,
+                        },
+                    )?;
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(GroupAddDevicesResultDto {
+                    added: added.len() as i32,
+                    changed_place_ids: changed_places,
+                })
+            })
+            .await
+    }
+
+    /// Вывести устройства из группы (D-02): без подтверждения, место не меняется.
+    /// Идемпотентно: устройства, которых нет в ЭТОЙ группе, игнорируются.
+    /// Возвращает, сколько устройств действительно выведено.
+    pub async fn remove_devices(
+        &self,
+        caller: &Identity,
+        group_id: i64,
+        device_ids: Vec<i64>,
+    ) -> Result<i32, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        let device_ids = normalize_device_ids(device_ids)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let deps = GroupMoveDeps::new();
+                deps.groups.get_group_in_tx(&tx, group_id)?;
+                let mut released = 0;
+                for device_id in &device_ids {
+                    let member_of = deps.groups.group_of_device_in_tx(&tx, *device_id)?;
+                    if member_of.map(|g| g.id) != Some(group_id) {
+                        continue;
+                    }
+                    if release_device_in_tx(
+                        &tx,
+                        &deps.groups,
+                        &deps.audit,
+                        *device_id,
+                        None,
+                        user_id,
+                        now,
+                    )?
+                    .is_some()
+                    {
+                        released += 1;
+                    }
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(released)
+            })
+            .await
     }
 }
 
