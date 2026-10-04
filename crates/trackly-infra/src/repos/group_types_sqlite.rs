@@ -10,12 +10,22 @@
 
 use rusqlite::{Connection, OptionalExtension};
 use trackly_core::domain::groups::{
-    GroupTypeNew, GroupTypePatch, GroupTypeRow, PropertyNew, PropertyPatch, PropertyRow,
+    GroupTypeNew, GroupTypePatch, GroupTypeRow, PropertyDataType, PropertyNew, PropertyPatch,
+    PropertyRow,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::group_types::GroupTypeRepository;
 
 use crate::error_conversions::map_rusqlite;
+
+/// Свойство по умолчанию встроенного типа (D-31). Без serde: структура живёт
+/// только между сервисом и репозиторием.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DefaultProperty {
+    pub name: &'static str,
+    pub data_type: PropertyDataType,
+    pub show_on_map: bool,
+}
 
 /// SQLite-реализация репозитория типов групп (zero-sized, как `SqlitePlaceRepository`).
 #[derive(Debug, Default, Clone)]
@@ -185,6 +195,59 @@ impl SqliteGroupTypeRepository {
                 .map_err(map_rusqlite)?;
         }
         Ok(inserted)
+    }
+}
+
+impl SqliteGroupTypeRepository {
+    /// Одноразовый засев свойств по умолчанию встроенного типа (D-31).
+    ///
+    /// Маркер `default_props_seeded` проверяется и выставляется одним `UPDATE`;
+    /// свойства вставляются только если затронута ровно одна строка, в той же
+    /// транзакции. Возвращает `true`, если засев выполнен сейчас. Скрытое,
+    /// удалённое или переименованное администратором свойство после этого не
+    /// воскресает и не дублируется: повторный вызов ничего не вставляет.
+    pub fn seed_default_properties_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        type_code: &str,
+        defaults: &[DefaultProperty],
+        now_utc: i64,
+    ) -> Result<bool, AppError> {
+        let affected = tx
+            .execute(
+                "UPDATE group_types SET default_props_seeded = 1, updated_at_utc = ?2
+                 WHERE code = ?1 AND is_builtin = 1 AND default_props_seeded = 0",
+                rusqlite::params![type_code, now_utc],
+            )
+            .map_err(map_rusqlite)?;
+        if affected != 1 {
+            return Ok(false);
+        }
+        let type_id: i64 = tx
+            .query_row(
+                "SELECT id FROM group_types WHERE code = ?1",
+                rusqlite::params![type_code],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        for (idx, d) in defaults.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO group_type_properties
+                   (type_id, name, data_type, sort_order, is_required, show_on_map,
+                    created_at_utc, updated_at_utc, version)
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?6, 1)",
+                rusqlite::params![
+                    type_id,
+                    d.name,
+                    d.data_type.as_str(),
+                    idx as i64,
+                    d.show_on_map as i64,
+                    now_utc,
+                ],
+            )
+            .map_err(map_rusqlite)?;
+        }
+        Ok(true)
     }
 }
 

@@ -35,9 +35,9 @@ use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
 use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AuthService, BackupService, CartridgeService,
-    DashboardService, DeviceService, NumberTemplateService, OrgDbService, OrganizationService,
-    PlaceMovementService, PlaceService, PrinterService, ReportService, RequestService,
-    TemplateService,
+    DashboardService, DeviceService, GroupTypeService, NumberTemplateService, OrgDbService,
+    OrganizationService, PlaceMovementService, PlaceService, PrinterService, ReportService,
+    RequestService, TemplateService,
 };
 use trackly_infra::ad::{
     directory::RealAdDirectory, directory_mock::MockAdDirectory, mock::MockAdClient,
@@ -115,6 +115,10 @@ pub struct AppCtx {
     /// Place service — place-tree mutations (create/rename/move/archive/unarchive/
     /// delete_hard), Admin-gated (D-20). Added in Phase 39 Plan 05.
     pub places: Arc<PlaceService>,
+    /// Group-type service — types and their properties, `ManageGroupTypes`
+    /// (Admin-only) / `ReadGroups`; seeds the three built-in types at startup.
+    /// Added in Phase 41 Plan 07.
+    pub group_types: Arc<GroupTypeService>,
     /// Place-movement timeline read service — HST-02, `ReadPlaces`-gated
     /// (Admin|Manager per D-12). Added in Phase 40 Plan 10.
     pub place_movements: Arc<PlaceMovementService>,
@@ -327,6 +331,17 @@ impl AppCtx {
             clock.clone(),
         ));
 
+        // Phase 41 Plan 07: group-type service. No cross-entity dependencies.
+        let group_types = Arc::new(GroupTypeService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
+        group_types
+            .seed_builtin_types_on_startup()
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         // Phase 40 Plan 10: place-movement timeline read service. Read-only, no
         // writer dependency — mirrors PlaceService's ordering-independence note.
         let place_movements = Arc::new(PlaceMovementService::new(readers.clone()));
@@ -456,6 +471,7 @@ impl AppCtx {
             dashboard,
             backup,
             places,
+            group_types,
             place_movements,
             number_templates,
         })
