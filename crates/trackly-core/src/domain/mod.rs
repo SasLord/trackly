@@ -5,6 +5,8 @@
 pub mod acts;
 pub mod cartridges;
 pub mod devices;
+pub mod group_values;
+pub mod groups;
 pub mod number_templates;
 pub mod place_movements;
 pub mod places;
