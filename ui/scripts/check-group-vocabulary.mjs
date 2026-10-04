@@ -69,6 +69,17 @@ const ALLOWLIST = [
     file: 'src/features/reports/ReportTable.svelte',
     markers: ['Группа', 'перенос группы'],
   },
+  {
+    // D-23: единственные надписи о группах в «Местах» (строка модалки массового
+    // переноса и тост) — формы группа/группы/групп; свёртка одинаковых здесь не
+    // упоминается. ШИРИНА записи: маркер 'групп' покрывает и строчное
+    // «группировать» (корень совпадает с началом маркера), но НЕ «Группировать»
+    // с заглавной и НЕ «сгруппировать» (корень начинается раньше маркера) —
+    // эти формы ловит selftest. Вне блока D-23 слово «группа» в файле
+    // появляться не должно.
+    file: 'src/features/places/PlaceContents.svelte',
+    markers: ['групп'],
+  },
 ];
 
 function allowEntryFor(relPath) {
@@ -225,6 +236,30 @@ function runSelfTest() {
       name: 'негатив: «перенос группы» в DeviceList (другой файл)',
       file: 'src/features/devices/DeviceList.svelte',
       src: "const reason = 'перенос группы';",
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив: формы группа/группы/групп в PlaceContents (D-23)',
+      file: 'src/features/places/PlaceContents.svelte',
+      src: "<p>переедут {n} {pluralizeRu(n, ['группа', 'группы', 'групп'])}</p>",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив: «Группировать» в PlaceContents (заглавная форма вне маркера)',
+      file: 'src/features/places/PlaceContents.svelte',
+      src: '<p>группы</p>\n<label>Группировать</label>',
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив: «Сгруппировать» в PlaceContents',
+      file: 'src/features/places/PlaceContents.svelte',
+      src: '<label>Сгруппировать</label>',
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив: «группы» из D-23 в другом файле «Мест»',
+      file: 'src/features/places/PlaceMoveModal.svelte',
+      src: '<p>переедут группы</p>',
       expectViolations: 1,
     },
     {

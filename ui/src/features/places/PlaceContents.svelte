@@ -28,8 +28,9 @@
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
+  import { pluralizeRu } from '$lib/utils/pluralize';
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
-  import type { PlaceContentDto, PlaceDto } from '../../bindings';
+  import type { PlaceContentDto, PlaceDto, SubtreeStatsDto } from '../../bindings';
 
   export type ContentTab = 'all' | 'device' | 'printer' | 'cartridge';
 
@@ -233,10 +234,19 @@
   let moving = $state(false);
   let moveCount = $state<number | null>(null);
   let moveCountLoading = $state(false);
+  // D-23: server-computed numbers read when the modal opens (places_subtree_stats).
+  // moveGroupCount = groups that actually move along (empty ones not counted);
+  // moveDeviceCount feeds the success toast — places_move_subtree_contents
+  // counts ALL content items (cartridges included), so its result would
+  // mislabel the toast. null = stats request failed → generic toast.
+  let moveGroupCount = $state<number | null>(null);
+  let moveDeviceCount = $state<number | null>(null);
 
   function openMoveModal(): void {
     moveTargetId = null;
     moveCount = null;
+    moveGroupCount = null;
+    moveDeviceCount = null;
     moveModalOpen = true;
   }
 
@@ -250,16 +260,27 @@
     const rootId = place.id;
     let cancelled = false;
     moveCountLoading = true;
-    apiCall<PlaceContentDto[]>('places_contents', { rootId, nested: true })
+    const contents = apiCall<PlaceContentDto[]>('places_contents', { rootId, nested: true })
       .then((r) => {
         if (!cancelled) moveCount = r.length;
       })
       .catch(() => {
         if (!cancelled) moveCount = null;
-      })
-      .finally(() => {
-        if (!cancelled) moveCountLoading = false;
       });
+    const stats = apiCall<SubtreeStatsDto>('places_subtree_stats', { rootId })
+      .then((st) => {
+        if (cancelled) return;
+        moveGroupCount = st.moving_group_count;
+        moveDeviceCount = st.device_count;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        moveGroupCount = null;
+        moveDeviceCount = null;
+      });
+    void Promise.all([contents, stats]).finally(() => {
+      if (!cancelled) moveCountLoading = false;
+    });
     return () => {
       cancelled = true;
     };
@@ -278,7 +299,13 @@
       // target — PlaceTree's own ancestorsAndSelf() extends this to their
       // full parent_id ancestor chains.
       notifyPlaceContentChanged([place.id, moveTargetId]);
-      pushToast('success', 'Содержимое перенесено');
+      if (moveGroupCount !== null && moveGroupCount > 0 && moveDeviceCount !== null) {
+        const devices = `${moveDeviceCount} ${pluralizeRu(moveDeviceCount, ['устройство', 'устройства', 'устройств'])}`;
+        const groups = `${moveGroupCount} ${pluralizeRu(moveGroupCount, ['группа', 'группы', 'групп'])}`;
+        pushToast('success', `Перенесено: ${devices} и ${groups}`);
+      } else {
+        pushToast('success', 'Содержимое перенесено');
+      }
       moveModalOpen = false;
       reloadToken += 1;
     } catch {
@@ -440,6 +467,12 @@
         Место изменится у {moveCount ?? 0} предметов в этом разделе и всех вложенных местах. Для каждого
         появится запись в истории перемещений с причиной «вручную».
       </p>
+      {#if moveGroupCount !== null && moveGroupCount > 0}
+        <p class="confirm-body">
+          Вместе с содержимым переедут {moveGroupCount}
+          {pluralizeRu(moveGroupCount, ['группа', 'группы', 'групп'])} и весь их состав.
+        </p>
+      {/if}
     {/if}
   </div>
 
