@@ -46,3 +46,28 @@ pub(crate) fn release_device_in_tx(
     )?;
     Ok(Some(group.id))
 }
+
+/// Вывести устройство из группы ТОЛЬКО если оно сейчас член группы с местом.
+///
+/// Для restore-путей актов (убрали устройство из акта, правка возврата, undo
+/// при удалении акта): restore из снимка возвращает старое место и затёр бы
+/// «место принадлежит группе», поэтому членство снимается; если устройство не
+/// в запирающей группе (нет членства либо у группы нет места, D-21) — `None`,
+/// без записей.
+pub(crate) fn release_if_locked_device_in_tx(
+    tx: &Transaction<'_>,
+    groups: &SqliteGroupRepository,
+    audit: &SqliteAuditLogRepository,
+    device_id: i64,
+    act_id: Option<i64>,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<Option<i64>, AppError> {
+    if groups
+        .locked_group_for_device_in_tx(tx, device_id)?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    release_device_in_tx(tx, groups, audit, device_id, act_id, user_id, now)
+}

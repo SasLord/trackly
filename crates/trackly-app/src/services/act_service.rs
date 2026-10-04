@@ -35,7 +35,7 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::acts_sqlite::{next_sub_number_for_parent, recompute_parent_archived};
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::{
-    SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository,
+    SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository, SqliteGroupRepository,
     SqlitePlaceMovementsRepository, SqlitePlaceRepository,
 };
 
@@ -600,6 +600,16 @@ impl ActService {
                             resolved_place_id,
                             now,
                         )?;
+                        // Phase 41 D-22: акт выводит устройство из состава группы.
+                        crate::services::group_membership::release_device_in_tx(
+                            &tx,
+                            &SqliteGroupRepository,
+                            &audit_repo,
+                            dev_id,
+                            Some(act_id),
+                            user_id_opt,
+                            now,
+                        )?;
                         let after_json =
                             device_snapshot_json(&after).map_err(|e| AppError::Internal {
                                 source_chain: format!("after_json: {e}"),
@@ -952,6 +962,16 @@ impl ActService {
                         resolved_place_id,
                         now,
                     )?;
+                    // Phase 41 D-22: акт выводит устройство из состава группы.
+                    crate::services::group_membership::release_device_in_tx(
+                        &tx,
+                        &SqliteGroupRepository,
+                        &audit_repo,
+                        dev_id,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
+                    )?;
                     let after_json =
                         device_snapshot_json(&after).map_err(|e| AppError::Internal {
                             source_chain: format!("after_json: {e}"),
@@ -1131,6 +1151,16 @@ impl ActService {
                     let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
                     let restored = devices_repo
                         .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
+                    // Phase 41 D-22: акт выводит устройство из состава группы.
+                    crate::services::group_membership::release_if_locked_device_in_tx(
+                        &tx,
+                        &SqliteGroupRepository,
+                        &audit_repo,
+                        removed_id,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
+                    )?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
                             source_chain: format!("update remove after_json: {e}"),
@@ -1761,6 +1791,16 @@ impl ActService {
                             effective_condition.as_deref(),
                             now,
                         )?;
+                        // Phase 41 D-22: акт выводит устройство из состава группы.
+                        crate::services::group_membership::release_device_in_tx(
+                            &tx,
+                            &SqliteGroupRepository,
+                            &audit_repo,
+                            device_id,
+                            Some(return_act_id),
+                            user_id_opt,
+                            now,
+                        )?;
                         let after_json =
                             device_snapshot_json(&after).map_err(|e| AppError::Internal {
                                 source_chain: format!("return after_json: {e}"),
@@ -2283,6 +2323,16 @@ impl ActService {
                     let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
                     let restored = devices_repo
                         .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
+                    // Phase 41 D-22: акт выводит устройство из состава группы.
+                    crate::services::group_membership::release_if_locked_device_in_tx(
+                        &tx,
+                        &SqliteGroupRepository,
+                        &audit_repo,
+                        removed_id,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
+                    )?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return remove after_json: {e}"),
@@ -2358,6 +2408,16 @@ impl ActService {
                         on_warehouse_status_id,
                         effective_location,
                         condition.as_deref(),
+                        now,
+                    )?;
+                    // Phase 41 D-22: акт выводит устройство из состава группы.
+                    crate::services::group_membership::release_device_in_tx(
+                        &tx,
+                        &SqliteGroupRepository,
+                        &audit_repo,
+                        added_id,
+                        Some(payload.id),
+                        user_id_opt,
                         now,
                     )?;
                     let after_json =
@@ -2446,6 +2506,16 @@ impl ActService {
                         on_warehouse_status_id,
                         effective_location,
                         condition.as_deref(),
+                        now,
+                    )?;
+                    // Phase 41 D-22: акт выводит устройство из состава группы.
+                    crate::services::group_membership::release_device_in_tx(
+                        &tx,
+                        &SqliteGroupRepository,
+                        &audit_repo,
+                        dev_id,
+                        Some(payload.id),
+                        user_id_opt,
                         now,
                     )?;
                     let after_json =
@@ -3643,6 +3713,16 @@ fn undo_device_mutations_for_act(
             })?;
         let place_before_undo = devices_repo.get_in_tx(tx, device_id)?;
         let restored = devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
+        // Phase 41 D-22: акт выводит устройство из состава группы.
+        crate::services::group_membership::release_if_locked_device_in_tx(
+            tx,
+            &SqliteGroupRepository,
+            audit_repo,
+            device_id,
+            Some(act_id),
+            user_id_opt,
+            now,
+        )?;
         touched_place_ids.push(place_before_undo.place_id);
         touched_place_ids.push(restored.place_id);
         let after_json = device_snapshot_json(&restored).map_err(|e| AppError::Internal {
