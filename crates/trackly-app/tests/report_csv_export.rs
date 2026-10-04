@@ -66,6 +66,10 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
             reason: None,
             entity_type_label: None,
             is_deleted: None,
+            batch_id: None,
+            batch_role: None,
+            batch_size: None,
+            batch_label: None,
         }],
     };
     let columns = &[
@@ -156,6 +160,10 @@ async fn csv_export_guards_formula_injection() {
             reason: None,
             entity_type_label: None,
             is_deleted: None,
+            batch_id: None,
+            batch_role: None,
+            batch_size: None,
+            batch_label: None,
         }],
     };
     let columns = &["device_name", "model_label"];

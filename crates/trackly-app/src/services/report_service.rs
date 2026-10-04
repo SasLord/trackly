@@ -14,7 +14,7 @@ use std::sync::Arc;
 use rusqlite::types::ToSql;
 use time::{Date, Month, PrimitiveDateTime, Time, UtcOffset};
 use trackly_core::domain::acts::ActType;
-use trackly_core::domain::place_movements::MovementSource;
+use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
@@ -1379,6 +1379,10 @@ fn query_acts_inner(
                 reason: None,
                 entity_type_label: None,
                 is_deleted: None,
+                batch_id: None,
+                batch_role: None,
+                batch_size: None,
+                batch_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1404,6 +1408,8 @@ fn movement_reason(
     note: Option<&str>,
     act_id: Option<i64>,
     act_number: Option<&str>,
+    entity_type: &str,
+    entity_label: Option<&str>,
 ) -> String {
     if act_id.is_some() {
         if let Some(number) = act_number {
@@ -1421,9 +1427,20 @@ fn movement_reason(
         Some(MovementSource::Act) => "актом".to_string(),
         Some(MovementSource::Map) => "по карте".to_string(),
         Some(MovementSource::Workstation) => "назначение АРМ".to_string(),
-        // Phase 41: перемещение как часть операции над группой. Уточнённая причина
-        // (название группы, D-26/D-28) собирается в сервисе групп, здесь — безопасная метка.
-        Some(MovementSource::Group) => "группой".to_string(),
+        // Phase 41 (D-26/D-28): перемещение как часть операции над группой.
+        // Строка самой группы читается «перенос группы», строки состава —
+        // «в составе группы «{имя}»» (имя — снимок `entity_label`, переживает
+        // удаление группы).
+        Some(MovementSource::Group) => {
+            if entity_type == MovementEntityKind::Group.as_str() {
+                "перенос группы".to_string()
+            } else {
+                match entity_label {
+                    Some(l) if !l.is_empty() => format!("в составе группы «{l}»"),
+                    _ => "в составе группы".to_string(),
+                }
+            }
+        }
         None => source.to_string(),
     }
 }
@@ -1520,15 +1537,21 @@ fn query_movements_inner(
         "{with_prefix}SELECT pm.id, \
                strftime('%Y-%m', datetime(pm.created_at_utc, 'unixepoch', '+3 hours')) AS month_key, \
                pm.from_place_id, pm.from_place_path, pm.to_place_id, pm.to_place_path, \
-               COALESCE(d.name, c.code) AS device_name, \
+               COALESCE(d.name, c.code, pm.entity_label) AS device_name, \
                CASE pm.entity_type WHEN 'device' THEN 'Устройство' \
                                    WHEN 'cartridge' THEN 'Картридж' \
+                                   WHEN 'group' THEN 'Группа' \
                                    ELSE pm.entity_type END AS entity_type_label, \
                pm.source, pm.note, pm.act_id, \
                COALESCE(pm.actor_name_snapshot, u.login) AS actor_name, \
                CASE WHEN d.deleted_at_utc IS NOT NULL OR c.deleted_at_utc IS NOT NULL \
                     THEN 1 ELSE 0 END AS is_deleted, \
-               pm.created_at_utc \
+               pm.created_at_utc, \
+               pm.batch_id, pm.entity_type, pm.entity_label, \
+               CASE WHEN pm.batch_id IS NULL THEN NULL ELSE \
+                    (SELECT COUNT(*) FROM place_movements pm2 \
+                      WHERE pm2.batch_id = pm.batch_id AND pm2.entity_type = 'device') \
+               END AS batch_size \
          FROM place_movements pm \
          LEFT JOIN devices d ON pm.entity_type = 'device' AND pm.entity_id = d.id \
          LEFT JOIN cartridges c ON pm.entity_type = 'cartridge' AND pm.entity_id = c.id \
@@ -1552,6 +1575,10 @@ fn query_movements_inner(
             let actor_name: Option<String> = r.get(11)?;
             let is_deleted: i64 = r.get(12)?;
             let created_at_utc: i64 = r.get(13)?;
+            let batch_id: Option<String> = r.get(14)?;
+            let entity_type: String = r.get(15)?;
+            let entity_label: Option<String> = r.get(16)?;
+            let batch_size: Option<i64> = r.get(17)?;
 
             Ok((
                 r.get::<_, i64>(0)?,
@@ -1568,6 +1595,10 @@ fn query_movements_inner(
                 actor_name,
                 is_deleted,
                 created_at_utc,
+                batch_id,
+                entity_type,
+                entity_label,
+                batch_size,
             ))
         })
         .map_err(map_rusqlite)?;
@@ -1589,6 +1620,10 @@ fn query_movements_inner(
             actor_name,
             is_deleted,
             created_at_utc,
+            batch_id,
+            entity_type,
+            entity_label,
+            batch_size,
         ) = row.map_err(map_rusqlite)?;
 
         // D-18/D-20 (Plan 40-02): shorten by the CURRENT effective variant,
@@ -1604,7 +1639,24 @@ fn query_movements_inner(
         // return number ("20в"), not the bare parent number a raw column
         // select straight off `acts` used to surface here previously.
         let act_number = resolve_movement_act_number(conn, act_id);
-        let reason = movement_reason(&source, note.as_deref(), act_id, act_number.as_deref());
+        let reason = movement_reason(
+            &source,
+            note.as_deref(),
+            act_id,
+            act_number.as_deref(),
+            &entity_type,
+            entity_label.as_deref(),
+        );
+        // D-25/D-26: роль строки в пакете группового переноса. Заголовок — строка
+        // самой группы; всё остальное в пакете — состав. Имя группы в каждой
+        // строке пакета — снимок `entity_label`.
+        let (batch_role, batch_label) = match batch_id {
+            Some(_) if entity_type == MovementEntityKind::Group.as_str() => {
+                (Some("header".to_string()), entity_label.clone())
+            }
+            Some(_) => (Some("member".to_string()), entity_label.clone()),
+            None => (None, None),
+        };
         let actor_name = actor_name.unwrap_or_else(|| "система".to_string());
 
         rows.push(ReportRow {
@@ -1630,6 +1682,10 @@ fn query_movements_inner(
             reason: Some(reason),
             entity_type_label,
             is_deleted: Some(is_deleted != 0),
+            batch_id,
+            batch_role,
+            batch_size,
+            batch_label,
         });
     }
     let total = rows.len() as i64;
@@ -1752,6 +1808,10 @@ fn query_device_snapshot(
                 reason: None,
                 entity_type_label: None,
                 is_deleted: None,
+                batch_id: None,
+                batch_role: None,
+                batch_size: None,
+                batch_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1911,6 +1971,10 @@ fn query_cartridge_audit(
                 reason: None,
                 entity_type_label: None,
                 is_deleted: None,
+                batch_id: None,
+                batch_role: None,
+                batch_size: None,
+                batch_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -2050,6 +2114,10 @@ fn query_cartridge_snapshot(
                 reason: None,
                 entity_type_label: None,
                 is_deleted: None,
+                batch_id: None,
+                batch_role: None,
+                batch_size: None,
+                batch_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -2202,6 +2270,10 @@ fn query_requests_inner(
                 reason: None,
                 entity_type_label: None,
                 is_deleted: None,
+                batch_id: None,
+                batch_role: None,
+                batch_size: None,
+                batch_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -3160,6 +3232,10 @@ mod tests {
             reason: None,
             entity_type_label: None,
             is_deleted: None,
+            batch_id: None,
+            batch_role: None,
+            batch_size: None,
+            batch_label: None,
         }
     }
 

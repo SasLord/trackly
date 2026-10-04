@@ -66,6 +66,10 @@ fn make_row(
         reason: None,
         entity_type_label: None,
         is_deleted: None,
+        batch_id: None,
+        batch_role: None,
+        batch_size: None,
+        batch_label: None,
     }
 }
 
