@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-05T00:26:51.180Z"
+last_updated: "2026-10-05T01:01:54.525Z"
 last_activity: 2026-10-05
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 153
-  completed_plans: 148
+  completed_plans: 149
   percent: 45
 ---
 
@@ -539,6 +539,7 @@ Last activity: 2026-10-05
 | Phase 41 P26 | 35min | 3 tasks | 1 files |
 | Phase 41 P28 | 5m | 2 tasks | 4 files |
 | Phase 41 P29 | 25 мин | 2 tasks | 3 files |
+| Phase 41 P30 | 45min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1213,6 +1214,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-25: chevron for movements batch lives inside the «Предмет» cell of a normal TableRow (not colspan group row) so the header keeps its date; batch heading is synthesized from batch_label/batch_size when the group row is not visible; no @media print rules (D-27)
 - [Phase 41]: 41-26: nyquist_compliant true означает только автоматическую выборку; 17 живых проверок + 2 сценария не пройдены, переданы пользователю до verify-work; GRP-10 остаётся частичным (41.1)
 - [Phase 41]: 41-28: хинт панели типа нейтральный для всех ролей
+- [Phase 41]: 41-30: усечение отчёта Перемещения сигнализируется (истинный total, уведомление в печати и CSV), потолок 1000 и порядок сохранены — W-B03: тихая потеря превращается в явное уведомление без расширения DoS-границы
 
 ### Pending Todos
 
@@ -1412,8 +1414,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-05T00:05:56.475Z
-Stopped at: Completed 41-25-PLAN.md
+Last session: 2026-10-05T01:01:54.514Z
+Stopped at: Completed 41-30-PLAN.md
 Resume file: None
 
 None
