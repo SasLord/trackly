@@ -8,6 +8,10 @@
 //! into SQL strings. WHERE clauses use `format!` only for `?N` placeholder positions.
 //!
 //! Security (T-07-03-04): Each query applies LIMIT 1000 as a DoS safeguard for v1.
+//! The movements report keeps that ceiling (oldest-first) but never truncates
+//! silently: its `ReportResponse.total` is the TRUE matching count and
+//! `movements_truncation_notice` turns `total > rows.len()` into user-facing
+//! text for print and CSV (W-B03, plan 41-30).
 
 use std::sync::Arc;
 
@@ -248,10 +252,20 @@ fn csv_safe(value: &str) -> String {
     }
 }
 
+/// Потолок строк отчёта «Перемещения» (T-07-03-04, DoS-предохранитель).
+pub const MOVEMENTS_REPORT_LIMIT: i64 = 1000;
+
 /// W-B03 (41-30): текст уведомления об усечении отчёта «Перемещения».
-/// Заглушка RED-шага — реализация в следующем коммите.
-pub fn movements_truncation_notice(_shown: usize, _total: i64) -> Option<String> {
-    None
+/// `None`, если усечения нет (`total <= shown`). Единственный источник текста
+/// на стороне Rust; JS-зеркало (план 41-33) сверяется с общей фикстурой
+/// `ui/scripts/fixtures/report-truncation/cases.json`.
+pub fn movements_truncation_notice(shown: usize, total: i64) -> Option<String> {
+    if total <= shown as i64 {
+        return None;
+    }
+    Some(format!(
+        "Показано записей: {shown} из {total} (самые ранние). Сузьте период или фильтры, чтобы увидеть остальные."
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -887,12 +901,15 @@ impl ReportService {
                 // hand-writing a second `COUNT(*)` that re-derives the
                 // WHERE/CTE construction — is what guarantees that; a
                 // hand-rolled duplicate is exactly the WR-03/WR-08 class of
-                // drift bug this phase has been fighting. At this org's scale
-                // (movements per item are "единицы за годы", D-20/RESEARCH)
-                // materializing the full row set to count it is not a
-                // meaningful cost.
+                // drift bug this phase has been fighting.
+                //
+                // W-B03 (41-30): the rows are capped at MOVEMENTS_REPORT_LIMIT,
+                // so the badge reads `total` — the TRUE matching count that
+                // `query_movements_inner` computes with the same CTE/WHERE
+                // when the ceiling is reached — not `rows.len()` (which would
+                // pin the badge at 1000).
                 let count = query_movements_inner(&conn, &filter, ts_from, ts_to)
-                    .map(|resp| resp.rows.len() as i64)
+                    .map(|resp| resp.total)
                     .unwrap_or(0);
                 vec![ReportCountEntry {
                     key: "all".into(),
@@ -950,6 +967,19 @@ impl ReportService {
                 .collect();
             wtr.write_record(&record).map_err(|e| AppError::Internal {
                 source_chain: format!("csv row: {e}"),
+            })?;
+        }
+
+        // W-B03:csv — a truncated movements report must not pass for a full
+        // one: one trailing record, notice in the first cell, rest empty.
+        // Other reports have `total == rows.len()` so this never fires there.
+        if let Some(notice) = movements_truncation_notice(rows.rows.len(), rows.total) {
+            let mut record: Vec<String> = vec![String::new(); columns.len()];
+            if let Some(first) = record.first_mut() {
+                *first = csv_safe(&notice);
+            }
+            wtr.write_record(&record).map_err(|e| AppError::Internal {
+                source_chain: format!("csv notice row: {e}"),
             })?;
         }
 
@@ -1467,6 +1497,12 @@ fn movement_reason(
 /// compute_place_path_short_with_conn`, D-18/D-20, Plan 40-02) instead of
 /// pulling a second connection from `&ReaderPool` per row, which could block
 /// forever on an exhausted pool (root cause of the CR-01 deadlock risk).
+///
+/// W-B03 (41-30): rows stay capped at `MOVEMENTS_REPORT_LIMIT` (oldest-first,
+/// T-07-03-04) but `total` is the TRUE number of matching rows: when the
+/// ceiling is reached a second `COUNT(*)` runs with the SAME `with_prefix`,
+/// `where_clause` and `param_refs` as the row query (never rebuilt — a second
+/// source of conditions drifts, WR-03/WR-08). Truncated = `total > rows.len()`.
 fn query_movements_inner(
     conn: &rusqlite::Connection,
     filter: &ReportFilter,
@@ -1564,7 +1600,7 @@ fn query_movements_inner(
          LEFT JOIN users u ON u.id = pm.user_id \
          WHERE {where_clause} \
          ORDER BY pm.created_at_utc ASC, pm.id ASC \
-         LIMIT 1000"
+         LIMIT {MOVEMENTS_REPORT_LIMIT}"
     );
 
     let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
@@ -1694,7 +1730,18 @@ fn query_movements_inner(
             batch_label,
         });
     }
-    let total = rows.len() as i64;
+    // W-B03: ceiling reached -> the true count with the same conditions.
+    let total = if rows.len() as i64 >= MOVEMENTS_REPORT_LIMIT {
+        let count_sql = format!(
+            "{with_prefix}SELECT COUNT(*) FROM place_movements pm \
+             LEFT JOIN devices d ON pm.entity_type = 'device' AND pm.entity_id = d.id \
+             WHERE {where_clause}"
+        );
+        conn.query_row(&count_sql, param_refs.as_slice(), |r| r.get::<_, i64>(0)) // W-B03:count
+            .map_err(map_rusqlite)?
+    } else {
+        rows.len() as i64
+    };
     Ok(ReportResponse { rows, total })
 }
 

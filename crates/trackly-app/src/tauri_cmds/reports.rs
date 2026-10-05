@@ -8,7 +8,7 @@
 
 use crate::context::AppCtx;
 use crate::dto::reports::{PeriodDto, ReportCountsDto, ReportFilter, ReportResponse};
-use crate::services::report_service::format_period_label;
+use crate::services::report_service::{format_period_label, movements_truncation_notice};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use rusqlite::OptionalExtension;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -396,6 +396,20 @@ pub async fn build_reports_export_pdf(
     // read access to filter.from_place_id/to_place_id/type_id.
     let filter_summary = build_movements_filter_summary(ctx, caller, &report_type, &filter).await?;
     let rows = fetch_report(ctx, caller, &report_type, filter, period.clone()).await?;
+    // W-B03:print — a truncated movements report states it in the existing
+    // `filter_summary` line (no new template variable: report.html is
+    // untouched, a new variable breaks the template preview editor).
+    let filter_summary = if report_type == "movements" {
+        match movements_truncation_notice(rows.rows.len(), rows.total) {
+            Some(notice) => Some(match filter_summary {
+                Some(summary) => format!("{summary}. {notice}"),
+                None => notice,
+            }),
+            None => filter_summary,
+        }
+    } else {
+        filter_summary
+    };
     let org = ctx.org_db.get().await?;
     let logo_bytes = ctx.org_db.get_logo_bytes().await?;
     let logo_mime = if logo_bytes.is_some() {

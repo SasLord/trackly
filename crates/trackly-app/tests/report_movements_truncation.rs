@@ -150,7 +150,10 @@ async fn report_trunc_total_counts_rows_beyond_limit() {
         .await
         .expect("movements report");
     assert_eq!(resp.rows.len(), 1000, "потолок строк сохранён");
-    assert_eq!(resp.total, 1005, "total — истинное число подходящих записей");
+    assert_eq!(
+        resp.total, 1005,
+        "total — истинное число подходящих записей"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -165,10 +168,15 @@ async fn report_trunc_under_limit_total_equals_rows() {
 
     let (ctx2, _dir2) = make_test_ctx().await;
     seed_basic(&ctx2, 1000).await;
-    let resp = build_reports_list_movements(&ctx2, &admin(), ReportFilter::default(), wide_period())
-        .await
-        .expect("movements report");
-    assert_eq!((resp.rows.len(), resp.total), (1000, 1000), "ровно на потолке");
+    let resp =
+        build_reports_list_movements(&ctx2, &admin(), ReportFilter::default(), wide_period())
+            .await
+            .expect("movements report");
+    assert_eq!(
+        (resp.rows.len(), resp.total),
+        (1000, 1000),
+        "ровно на потолке"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -222,7 +230,10 @@ async fn report_trunc_counts_badge_uses_total() {
     .expect("counts");
     assert_eq!(counts.counts.len(), 1);
     assert_eq!(counts.counts[0].key, "all");
-    assert_eq!(counts.counts[0].count, 1005, "значок — истинное число, не 1000");
+    assert_eq!(
+        counts.counts[0].count, 1005,
+        "значок — истинное число, не 1000"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -241,7 +252,11 @@ async fn report_trunc_csv_has_notice_row() {
     let text = String::from_utf8(bytes).expect("utf8");
     let text = text.trim_start_matches('\u{FEFF}');
     let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
-    assert_eq!(lines.len(), 1 + 1000 + 1, "шапка + 1000 строк + строка уведомления");
+    assert_eq!(
+        lines.len(),
+        1 + 1000 + 1,
+        "шапка + 1000 строк + строка уведомления"
+    );
     let last_first_cell = lines.last().unwrap().split(';').next().unwrap();
     assert_eq!(last_first_cell, fixture_notice_1000_of_1005());
     let notices = lines
