@@ -8,8 +8,8 @@
 //! (только admin), чтения — `ReadGroups` (admin|manager). Чтения идут через
 //! пул читателей (`spawn_blocking`), мутации — через единственный writer.
 //! Репозиторий (`SqliteGroupTypeRepository`) — единственный слой SQL.
-//! Аудит каждой мутации — `audit_log` в короткой транзакции после изменения
-//! (идиом `PlaceService`).
+//! Мутация и её строка `audit_log` — одна транзакция writer (идиом
+//! `GroupService::delete_group`): сбой аудита откатывает изменение (W-B02).
 
 use std::sync::Arc;
 
@@ -261,14 +261,15 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
                 let next_sort = repo
-                    .list_types(conn)?
+                    .list_types(&tx)?
                     .iter()
                     .map(|t| t.sort_order)
                     .max()
                     .map_or(0, |m| m + 1);
-                let id = repo.create_type(
-                    conn,
+                let id = repo.create_type_on(
+                    &tx,
                     &GroupTypeNew {
                         code,
                         name,
@@ -280,9 +281,8 @@ impl GroupTypeService {
                     },
                     now,
                 )?;
-                let out = build_type_dto(conn, &repo, repo.get_type(conn, id)?, true)?;
+                let out = build_type_dto(&tx, &repo, repo.get_type(&tx, id)?, true)?;
                 let after = to_json(&out)?;
-                let tx = conn.transaction().map_err(map_rusqlite)?;
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -353,8 +353,9 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
-                let current = repo.get_type(conn, id)?;
-                let before = to_json(&build_type_dto(conn, &repo, current.clone(), true)?)?;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let current = repo.get_type(&tx, id)?;
+                let before = to_json(&build_type_dto(&tx, &repo, current.clone(), true)?)?;
                 if want_code.as_deref().is_some_and(|c| c != current.code) {
                     return Err(Self::immutable_error("code"));
                 }
@@ -364,10 +365,9 @@ impl GroupTypeService {
                 {
                     return Err(Self::immutable_error("behavior"));
                 }
-                let row = repo.update_type(conn, id, version, &patch, now)?;
-                let out = build_type_dto(conn, &repo, row, true)?;
+                let row = repo.update_type_on(&tx, id, version, &patch, now)?;
+                let out = build_type_dto(&tx, &repo, row, true)?;
                 let after = to_json(&out)?;
-                let tx = conn.transaction().map_err(map_rusqlite)?;
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -381,7 +381,7 @@ impl GroupTypeService {
                         created_at_utc: now,
                     },
                 )?;
-                tx.commit().map_err(map_rusqlite)?;
+                tx.commit().map_err(map_rusqlite)?; // W-B02:update_type:commit
                 Ok(out)
             })
             .await
@@ -404,7 +404,8 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
-                let current = repo.get_type(conn, id)?;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let current = repo.get_type(&tx, id)?;
                 if current.is_builtin {
                     return Err(AppError::Validation {
                         field: "id".to_string(),
@@ -413,7 +414,7 @@ impl GroupTypeService {
                             .to_string(),
                     });
                 }
-                let groups = repo.count_groups_of_type(conn, id)?;
+                let groups = repo.count_groups_of_type(&tx, id)?;
                 if groups > 0 {
                     return Err(AppError::Validation {
                         field: "id".to_string(),
@@ -423,9 +424,8 @@ impl GroupTypeService {
                         ),
                     });
                 }
-                let before = to_json(&build_type_dto(conn, &repo, current, true)?)?;
-                repo.delete_type(conn, id)?;
-                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let before = to_json(&build_type_dto(&tx, &repo, current, true)?)?;
+                repo.delete_type_on(&tx, id)?;
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -467,8 +467,9 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
-                repo.get_type(conn, type_id)?;
-                if repo.list_properties(conn, type_id, true)?.len() >= MAX_PROPERTIES_PER_TYPE {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                repo.get_type(&tx, type_id)?;
+                if repo.list_properties(&tx, type_id, true)?.len() >= MAX_PROPERTIES_PER_TYPE {
                     return Err(AppError::Validation {
                         field: "type_id".to_string(),
                         message: format!(
@@ -476,13 +477,13 @@ impl GroupTypeService {
                         ),
                     });
                 }
-                if live_name_taken(conn, &repo, type_id, &name, None)? {
+                if live_name_taken(&tx, &repo, type_id, &name, None)? {
                     return Err(duplicate_property_name_error());
                 }
                 // Создаём необязательным: «обязательное» проверяется по уже
                 // существующим группам типа тем же правилом, что и при правке.
-                let id = match repo.create_property(
-                    conn,
+                let id = match repo.create_property_on(
+                    &tx,
                     &PropertyNew {
                         type_id,
                         name,
@@ -499,13 +500,12 @@ impl GroupTypeService {
                     Err(e) => return Err(e),
                 };
                 if want_required {
-                    let violators = repo.groups_missing_required(conn, type_id, id)?;
+                    let violators = repo.groups_missing_required(&tx, type_id, id)?;
                     if !violators.is_empty() {
-                        repo.delete_property_hard(conn, id)?;
                         return Err(required_violation_error(&violators));
                     }
-                    repo.update_property(
-                        conn,
+                    repo.update_property_on(
+                        &tx,
                         id,
                         1,
                         &PropertyPatch {
@@ -515,9 +515,8 @@ impl GroupTypeService {
                         now,
                     )?;
                 }
-                let out = property_dto(conn, &repo, repo.get_property(conn, id)?)?;
+                let out = property_dto(&tx, &repo, repo.get_property(&tx, id)?)?;
                 let after = to_json(&out)?;
-                let tx = conn.transaction().map_err(map_rusqlite)?;
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -572,12 +571,13 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
-                let current = repo.get_property(conn, id)?;
-                let before = to_json(&property_dto(conn, &repo, current.clone())?)?;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let current = repo.get_property(&tx, id)?;
+                let before = to_json(&property_dto(&tx, &repo, current.clone())?)?;
 
                 if let Some(new_type) = patch.data_type {
                     if new_type.as_str() != current.data_type {
-                        let filled = repo.filled_group_count(conn, id)?;
+                        let filled = repo.filled_group_count(&tx, id)?;
                         if filled > 0 {
                             return Err(AppError::Validation {
                                 field: "data_type".to_string(),
@@ -598,29 +598,28 @@ impl GroupTypeService {
                     && !current.is_required
                     && current.archived_at_utc.is_none()
                 {
-                    let violators = repo.groups_missing_required(conn, current.type_id, id)?;
+                    let violators = repo.groups_missing_required(&tx, current.type_id, id)?;
                     if !violators.is_empty() {
                         return Err(required_violation_error(&violators));
                     }
                 }
                 if let Some(new_name) = &patch.name {
                     if current.archived_at_utc.is_none()
-                        && live_name_taken(conn, &repo, current.type_id, new_name, Some(id))?
+                        && live_name_taken(&tx, &repo, current.type_id, new_name, Some(id))?
                     {
                         return Err(duplicate_property_name_error());
                     }
                 }
 
-                let row = match repo.update_property(conn, id, version, &patch, now) {
+                let row = match repo.update_property_on(&tx, id, version, &patch, now) {
                     Ok(row) => row,
                     Err(e) if is_duplicate_property_conflict(&e) => {
                         return Err(duplicate_property_name_error());
                     }
                     Err(e) => return Err(e),
                 };
-                let out = property_dto(conn, &repo, row)?;
+                let out = property_dto(&tx, &repo, row)?;
                 let after = to_json(&out)?;
-                let tx = conn.transaction().map_err(map_rusqlite)?;
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -655,15 +654,15 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
-                let current = repo.get_property(conn, id)?;
-                let before = to_json(&property_dto(conn, &repo, current)?)?;
-                let archived = repo.filled_group_count(conn, id)? > 0;
-                if archived {
-                    repo.archive_property(conn, id, now)?;
-                } else {
-                    repo.delete_property_hard(conn, id)?;
-                }
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let current = repo.get_property(&tx, id)?;
+                let before = to_json(&property_dto(&tx, &repo, current)?)?;
+                let archived = repo.filled_group_count(&tx, id)? > 0;
+                if archived {
+                    repo.archive_property_on(&tx, id, now)?;
+                } else {
+                    repo.delete_property_hard_on(&tx, id)?;
+                }
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -698,32 +697,32 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
-                let current = repo.get_property(conn, id)?;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let current = repo.get_property(&tx, id)?;
                 if current.archived_at_utc.is_none() {
-                    return property_dto(conn, &repo, current);
+                    return property_dto(&tx, &repo, current);
                 }
-                if live_name_taken(conn, &repo, current.type_id, &current.name, Some(id))? {
+                if live_name_taken(&tx, &repo, current.type_id, &current.name, Some(id))? {
                     return Err(duplicate_property_name_error());
                 }
                 if current.is_required {
                     // W-B01:2
                     // Наследное «скрыто + обязательное»: без проверки живое обязательное
                     // свойство заперло бы set_values у групп без значения.
-                    let violators = repo.groups_missing_required(conn, current.type_id, id)?;
+                    let violators = repo.groups_missing_required(&tx, current.type_id, id)?;
                     if !violators.is_empty() {
                         return Err(required_violation_error(&violators));
                     }
                 }
-                match repo.unarchive_property(conn, id, now) {
+                match repo.unarchive_property_on(&tx, id, now) {
                     Ok(()) => {}
                     Err(e) if is_duplicate_property_conflict(&e) => {
                         return Err(duplicate_property_name_error());
                     }
                     Err(e) => return Err(e),
                 }
-                let out = property_dto(conn, &repo, repo.get_property(conn, id)?)?;
+                let out = property_dto(&tx, &repo, repo.get_property(&tx, id)?)?;
                 let after = to_json(&out)?;
-                let tx = conn.transaction().map_err(map_rusqlite)?;
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -760,14 +759,14 @@ impl GroupTypeService {
 
         self.writer
             .execute(move |conn| {
-                repo.get_type(conn, type_id)?;
-                repo.reorder_properties(conn, type_id, &ordered, now)?;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                repo.get_type(&tx, type_id)?;
+                repo.reorder_properties_on(&tx, type_id, &ordered, now)?;
                 let mut out = Vec::new();
-                for p in repo.list_properties(conn, type_id, false)? {
-                    out.push(property_dto(conn, &repo, p)?);
+                for p in repo.list_properties(&tx, type_id, false)? {
+                    out.push(property_dto(&tx, &repo, p)?);
                 }
                 let payload = to_json(&ordered)?;
-                let tx = conn.transaction().map_err(map_rusqlite)?;
                 audit_repo.insert(
                     &tx,
                     AuditEntry {

@@ -251,6 +251,265 @@ impl SqliteGroupTypeRepository {
     }
 }
 
+/// Мутаторы на `&Connection`: вызываются и на соединении, и внутри транзакции
+/// сервиса (`Transaction` разыменовывается в `Connection`) — мутация и строка
+/// аудита закрепляются одним `COMMIT` (W-B02). Трейтовые методы с `&mut Connection`
+/// делегируют сюда.
+impl SqliteGroupTypeRepository {
+    pub fn create_type_on(
+        &self,
+        conn: &Connection,
+        new: &GroupTypeNew,
+        now_utc: i64,
+    ) -> Result<i64, AppError> {
+        conn.execute(
+            "INSERT INTO group_types
+               (code, name, behavior, is_builtin, sort_order, quick_action_enabled,
+                quick_action_label, created_at_utc, updated_at_utc, version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 1)",
+            rusqlite::params![
+                new.code,
+                new.name,
+                new.behavior.as_str(),
+                new.is_builtin as i64,
+                new.sort_order,
+                new.quick_action_enabled as i64,
+                new.quick_action_label,
+                now_utc,
+            ],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_type_on(
+        &self,
+        conn: &Connection,
+        id: i64,
+        version: i64,
+        patch: &GroupTypePatch,
+        now_utc: i64,
+    ) -> Result<GroupTypeRow, AppError> {
+        // quick_action_label: Option<Option<String>> — CASE-флаг «поле передано»,
+        // а не COALESCE (иначе явный сброс в NULL неотличим от «не передано»).
+        let label_present = patch.quick_action_label.is_some() as i64;
+        let label_value: Option<&str> =
+            patch.quick_action_label.as_ref().and_then(|v| v.as_deref());
+        let affected = conn
+            .execute(
+                "UPDATE group_types SET
+                   name                 = COALESCE(?1, name),
+                   sort_order           = COALESCE(?2, sort_order),
+                   quick_action_enabled = COALESCE(?3, quick_action_enabled),
+                   quick_action_label   = CASE WHEN ?4 = 1 THEN ?5 ELSE quick_action_label END,
+                   version              = version + 1,
+                   updated_at_utc       = ?6
+                 WHERE id = ?7 AND version = ?8 AND deleted_at_utc IS NULL",
+                rusqlite::params![
+                    patch.name,
+                    patch.sort_order,
+                    patch.quick_action_enabled.map(|b| b as i64),
+                    label_present,
+                    label_value,
+                    now_utc,
+                    id,
+                    version,
+                ],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(resolve_type_cas_failure(conn, id, version));
+        }
+        get_type_impl(conn, id)
+    }
+
+    pub fn delete_type_on(&self, conn: &Connection, id: i64) -> Result<(), AppError> {
+        let affected = conn
+            .execute(
+                "DELETE FROM group_types WHERE id = ?1",
+                rusqlite::params![id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "group_type",
+                id,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn create_property_on(
+        &self,
+        conn: &Connection,
+        new: &PropertyNew,
+        now_utc: i64,
+    ) -> Result<i64, AppError> {
+        // sort_order = MAX + 1 среди ВСЕХ свойств типа (включая скрытые): скрытое
+        // свойство хранит своё место, новое не должно с ним столкнуться.
+        conn.execute(
+            "INSERT INTO group_type_properties
+               (type_id, name, data_type, sort_order, is_required, show_on_map,
+                created_at_utc, updated_at_utc, version)
+             SELECT ?1, ?2, ?3, COALESCE(MAX(sort_order) + 1, 0), ?4, ?5, ?6, ?6, 1
+             FROM group_type_properties WHERE type_id = ?1",
+            rusqlite::params![
+                new.type_id,
+                new.name,
+                new.data_type.as_str(),
+                new.is_required as i64,
+                new.show_on_map as i64,
+                now_utc,
+            ],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_property_on(
+        &self,
+        conn: &Connection,
+        id: i64,
+        version: i64,
+        patch: &PropertyPatch,
+        now_utc: i64,
+    ) -> Result<PropertyRow, AppError> {
+        let affected = conn
+            .execute(
+                "UPDATE group_type_properties SET
+                   name           = COALESCE(?1, name),
+                   data_type      = COALESCE(?2, data_type),
+                   is_required    = COALESCE(?3, is_required),
+                   show_on_map    = COALESCE(?4, show_on_map),
+                   version        = version + 1,
+                   updated_at_utc = ?5
+                 WHERE id = ?6 AND version = ?7 AND deleted_at_utc IS NULL",
+                rusqlite::params![
+                    patch.name,
+                    patch.data_type.map(|d| d.as_str()),
+                    patch.is_required.map(|b| b as i64),
+                    patch.show_on_map.map(|b| b as i64),
+                    now_utc,
+                    id,
+                    version,
+                ],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(resolve_property_cas_failure(conn, id, version));
+        }
+        get_property_impl(conn, id)
+    }
+
+    pub fn archive_property_on(
+        &self,
+        conn: &Connection,
+        id: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        let affected = conn
+            .execute(
+                // Скрытое свойство из форм групп выпадает, а обязательность без формы
+                // невыполнима (D-13): флаг снимается при скрытии, значения остаются.
+                "UPDATE group_type_properties SET
+                   archived_at_utc = ?1,
+                   is_required = 0,
+                   version = version + 1, updated_at_utc = ?1
+                 WHERE id = ?2 AND archived_at_utc IS NULL AND deleted_at_utc IS NULL",
+                rusqlite::params![now_utc, id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            // Уже скрыто — не ошибка; нет строки — NotFound.
+            get_property_impl(conn, id)?;
+        }
+        Ok(())
+    }
+
+    pub fn unarchive_property_on(
+        &self,
+        conn: &Connection,
+        id: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        let affected = conn
+            .execute(
+                "UPDATE group_type_properties SET
+                   archived_at_utc = NULL, version = version + 1, updated_at_utc = ?1
+                 WHERE id = ?2 AND archived_at_utc IS NOT NULL AND deleted_at_utc IS NULL",
+                rusqlite::params![now_utc, id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            // Уже живое — не ошибка; нет строки — NotFound.
+            get_property_impl(conn, id)?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_property_hard_on(&self, conn: &Connection, id: i64) -> Result<(), AppError> {
+        let affected = conn
+            .execute(
+                "DELETE FROM group_type_properties WHERE id = ?1",
+                rusqlite::params![id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "group_type_property",
+                id,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn reorder_properties_on(
+        &self,
+        conn: &Connection,
+        type_id: i64,
+        ordered_ids: &[i64],
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        // Атомарность — забота вызывающего: своей транзакции нет (вложенный BEGIN
+        // невозможен), трейтовый `reorder_properties` открывает её сам.
+        let mut live: Vec<i64> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id FROM group_type_properties
+                     WHERE type_id = ?1 AND archived_at_utc IS NULL AND deleted_at_utc IS NULL",
+                )
+                .map_err(map_rusqlite)?;
+            let ids = stmt
+                .query_map(rusqlite::params![type_id], |r| r.get::<_, i64>(0))
+                .map_err(map_rusqlite)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(map_rusqlite)?;
+            ids
+        };
+        let mut requested = ordered_ids.to_vec();
+        live.sort_unstable();
+        requested.sort_unstable();
+        // Сверка множеств: чужой id, дубликат или пропуск — отказ до любой записи.
+        if live != requested {
+            return Err(AppError::Validation {
+                field: "ordered_ids".to_string(),
+                message: "Список свойств для сортировки не совпадает с текущим набором \
+                          свойств типа. Обновите страницу и повторите."
+                    .to_string(),
+            });
+        }
+        for (pos, id) in ordered_ids.iter().enumerate() {
+            conn.execute(
+                "UPDATE group_type_properties SET sort_order = ?1, updated_at_utc = ?2
+                 WHERE id = ?3 AND type_id = ?4",
+                rusqlite::params![pos as i64, now_utc, id, type_id],
+            )
+            .map_err(map_rusqlite)?;
+        }
+        Ok(())
+    }
+}
+
 impl GroupTypeRepository for SqliteGroupTypeRepository {
     type Conn = Connection;
 
@@ -292,24 +551,7 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         new: &GroupTypeNew,
         now_utc: i64,
     ) -> Result<i64, AppError> {
-        conn.execute(
-            "INSERT INTO group_types
-               (code, name, behavior, is_builtin, sort_order, quick_action_enabled,
-                quick_action_label, created_at_utc, updated_at_utc, version)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 1)",
-            rusqlite::params![
-                new.code,
-                new.name,
-                new.behavior.as_str(),
-                new.is_builtin as i64,
-                new.sort_order,
-                new.quick_action_enabled as i64,
-                new.quick_action_label,
-                now_utc,
-            ],
-        )
-        .map_err(map_rusqlite)?;
-        Ok(conn.last_insert_rowid())
+        self.create_type_on(conn, new, now_utc)
     }
 
     fn update_type(
@@ -320,53 +562,11 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         patch: &GroupTypePatch,
         now_utc: i64,
     ) -> Result<GroupTypeRow, AppError> {
-        // quick_action_label: Option<Option<String>> — CASE-флаг «поле передано»,
-        // а не COALESCE (иначе явный сброс в NULL неотличим от «не передано»).
-        let label_present = patch.quick_action_label.is_some() as i64;
-        let label_value: Option<&str> =
-            patch.quick_action_label.as_ref().and_then(|v| v.as_deref());
-        let affected = conn
-            .execute(
-                "UPDATE group_types SET
-                   name                 = COALESCE(?1, name),
-                   sort_order           = COALESCE(?2, sort_order),
-                   quick_action_enabled = COALESCE(?3, quick_action_enabled),
-                   quick_action_label   = CASE WHEN ?4 = 1 THEN ?5 ELSE quick_action_label END,
-                   version              = version + 1,
-                   updated_at_utc       = ?6
-                 WHERE id = ?7 AND version = ?8 AND deleted_at_utc IS NULL",
-                rusqlite::params![
-                    patch.name,
-                    patch.sort_order,
-                    patch.quick_action_enabled.map(|b| b as i64),
-                    label_present,
-                    label_value,
-                    now_utc,
-                    id,
-                    version,
-                ],
-            )
-            .map_err(map_rusqlite)?;
-        if affected == 0 {
-            return Err(resolve_type_cas_failure(conn, id, version));
-        }
-        get_type_impl(conn, id)
+        self.update_type_on(conn, id, version, patch, now_utc)
     }
 
     fn delete_type(&self, conn: &mut Connection, id: i64) -> Result<(), AppError> {
-        let affected = conn
-            .execute(
-                "DELETE FROM group_types WHERE id = ?1",
-                rusqlite::params![id],
-            )
-            .map_err(map_rusqlite)?;
-        if affected == 0 {
-            return Err(AppError::NotFound {
-                entity: "group_type",
-                id,
-            });
-        }
-        Ok(())
+        self.delete_type_on(conn, id)
     }
 
     fn count_groups_of_type(&self, conn: &Connection, type_id: i64) -> Result<i64, AppError> {
@@ -413,25 +613,7 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         new: &PropertyNew,
         now_utc: i64,
     ) -> Result<i64, AppError> {
-        // sort_order = MAX + 1 среди ВСЕХ свойств типа (включая скрытые): скрытое
-        // свойство хранит своё место, новое не должно с ним столкнуться.
-        conn.execute(
-            "INSERT INTO group_type_properties
-               (type_id, name, data_type, sort_order, is_required, show_on_map,
-                created_at_utc, updated_at_utc, version)
-             SELECT ?1, ?2, ?3, COALESCE(MAX(sort_order) + 1, 0), ?4, ?5, ?6, ?6, 1
-             FROM group_type_properties WHERE type_id = ?1",
-            rusqlite::params![
-                new.type_id,
-                new.name,
-                new.data_type.as_str(),
-                new.is_required as i64,
-                new.show_on_map as i64,
-                now_utc,
-            ],
-        )
-        .map_err(map_rusqlite)?;
-        Ok(conn.last_insert_rowid())
+        self.create_property_on(conn, new, now_utc)
     }
 
     fn update_property(
@@ -442,31 +624,7 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         patch: &PropertyPatch,
         now_utc: i64,
     ) -> Result<PropertyRow, AppError> {
-        let affected = conn
-            .execute(
-                "UPDATE group_type_properties SET
-                   name           = COALESCE(?1, name),
-                   data_type      = COALESCE(?2, data_type),
-                   is_required    = COALESCE(?3, is_required),
-                   show_on_map    = COALESCE(?4, show_on_map),
-                   version        = version + 1,
-                   updated_at_utc = ?5
-                 WHERE id = ?6 AND version = ?7 AND deleted_at_utc IS NULL",
-                rusqlite::params![
-                    patch.name,
-                    patch.data_type.map(|d| d.as_str()),
-                    patch.is_required.map(|b| b as i64),
-                    patch.show_on_map.map(|b| b as i64),
-                    now_utc,
-                    id,
-                    version,
-                ],
-            )
-            .map_err(map_rusqlite)?;
-        if affected == 0 {
-            return Err(resolve_property_cas_failure(conn, id, version));
-        }
-        get_property_impl(conn, id)
+        self.update_property_on(conn, id, version, patch, now_utc)
     }
 
     fn archive_property(
@@ -475,23 +633,7 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         id: i64,
         now_utc: i64,
     ) -> Result<(), AppError> {
-        let affected = conn
-            .execute(
-                // Скрытое свойство из форм групп выпадает, а обязательность без формы
-                // невыполнима (D-13): флаг снимается при скрытии, значения остаются.
-                "UPDATE group_type_properties SET
-                   archived_at_utc = ?1,
-                   is_required = 0,
-                   version = version + 1, updated_at_utc = ?1
-                 WHERE id = ?2 AND archived_at_utc IS NULL AND deleted_at_utc IS NULL",
-                rusqlite::params![now_utc, id],
-            )
-            .map_err(map_rusqlite)?;
-        if affected == 0 {
-            // Уже скрыто — не ошибка; нет строки — NotFound.
-            get_property_impl(conn, id)?;
-        }
-        Ok(())
+        self.archive_property_on(conn, id, now_utc)
     }
 
     fn unarchive_property(
@@ -500,35 +642,11 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         id: i64,
         now_utc: i64,
     ) -> Result<(), AppError> {
-        let affected = conn
-            .execute(
-                "UPDATE group_type_properties SET
-                   archived_at_utc = NULL, version = version + 1, updated_at_utc = ?1
-                 WHERE id = ?2 AND archived_at_utc IS NOT NULL AND deleted_at_utc IS NULL",
-                rusqlite::params![now_utc, id],
-            )
-            .map_err(map_rusqlite)?;
-        if affected == 0 {
-            // Уже живое — не ошибка; нет строки — NotFound.
-            get_property_impl(conn, id)?;
-        }
-        Ok(())
+        self.unarchive_property_on(conn, id, now_utc)
     }
 
     fn delete_property_hard(&self, conn: &mut Connection, id: i64) -> Result<(), AppError> {
-        let affected = conn
-            .execute(
-                "DELETE FROM group_type_properties WHERE id = ?1",
-                rusqlite::params![id],
-            )
-            .map_err(map_rusqlite)?;
-        if affected == 0 {
-            return Err(AppError::NotFound {
-                entity: "group_type_property",
-                id,
-            });
-        }
-        Ok(())
+        self.delete_property_hard_on(conn, id)
     }
 
     fn filled_group_count(&self, conn: &Connection, property_id: i64) -> Result<i64, AppError> {
@@ -580,40 +698,7 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         now_utc: i64,
     ) -> Result<(), AppError> {
         let tx = conn.transaction().map_err(map_rusqlite)?;
-        let mut live: Vec<i64> = {
-            let mut stmt = tx
-                .prepare(
-                    "SELECT id FROM group_type_properties
-                     WHERE type_id = ?1 AND archived_at_utc IS NULL AND deleted_at_utc IS NULL",
-                )
-                .map_err(map_rusqlite)?;
-            let ids = stmt
-                .query_map(rusqlite::params![type_id], |r| r.get::<_, i64>(0))
-                .map_err(map_rusqlite)?
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(map_rusqlite)?;
-            ids
-        };
-        let mut requested = ordered_ids.to_vec();
-        live.sort_unstable();
-        requested.sort_unstable();
-        // Сверка множеств: чужой id, дубликат или пропуск — отказ до любой записи.
-        if live != requested {
-            return Err(AppError::Validation {
-                field: "ordered_ids".to_string(),
-                message: "Список свойств для сортировки не совпадает с текущим набором \
-                          свойств типа. Обновите страницу и повторите."
-                    .to_string(),
-            });
-        }
-        for (pos, id) in ordered_ids.iter().enumerate() {
-            tx.execute(
-                "UPDATE group_type_properties SET sort_order = ?1, updated_at_utc = ?2
-                 WHERE id = ?3 AND type_id = ?4",
-                rusqlite::params![pos as i64, now_utc, id, type_id],
-            )
-            .map_err(map_rusqlite)?;
-        }
+        self.reorder_properties_on(&tx, type_id, ordered_ids, now_utc)?;
         tx.commit().map_err(map_rusqlite)?;
         Ok(())
     }
