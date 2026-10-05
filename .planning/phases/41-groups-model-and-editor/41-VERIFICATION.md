@@ -1,182 +1,194 @@
 ---
 phase: 41-groups-model-and-editor
-verified: 2026-10-04T16:30:00Z
+verified: 2026-10-06T12:00:00Z
 status: human_needed
-score: 8/8 success criteria verified at code level; 0/8 confirmed at runtime in the real application
+score: 8/8 критериев ROADMAP подтверждены на уровне кода; 6/6 заявок волны 41-27..41-34 подтверждены на уровне кода; 0 пунктов подтверждено в запущенном приложении после волны
 overrides_applied: 0
-re_verification: false
+re_verification:
+  previous_status: human_needed
+  previous_score: "8/8 на уровне кода, 0/8 в рантайме"
+  gaps_closed:
+    - "UAT тест 5, GAP-1: меню строки внутри скроллящегося контейнера (код: ActionMenu всегда выводится порталом; живая перепроверка не проведена)"
+    - "UAT тест 5, GAP-2: «Показать скрытые» не возвращает свойство (код: честный копирайт по filled_group_count; живая перепроверка не проведена)"
+    - "W-B01: обход обязательности через скрыть -> обязательное -> показать (закрыт для новых данных; остаток для легаси-строк — WR-01 ниже)"
+    - "W-B02: мутации типа и свойств не атомарны с аудитом (закрыто: одна транзакция, 10 тестов atomic_*)"
+    - "W-B03: усечение отчёта «Перемещения» молчаливое (закрыто: истинный total, уведомление в печати, CSV и на экране)"
+    - "W-F03: копирайт панели типа для manager (закрыто планом 41-28)"
+    - "Действие №1 прошлого отчёта: остаток GRP-10 не был привязан к ROADMAP (теперь Phase 41.1 содержит GRP-10 (остаток) в Requirements и критерий 3 про запрет удаления якорного устройства)"
+  gaps_remaining: []
+  regressions: []
 gaps: []
-partial_requirements:
-  - id: GRP-10
-    status: partial
-    reason: "Deliberate and recorded. Phase 41 delivers release-on-delete, unchanged devices.place_id, nested groups becoming roots, released count in the response. The half 'deleting an anchor device is forbidden while the group exists' needs groups.anchor_device_id, which V045 does not create (grep over crates/, migrations/, ui/src finds zero hits)."
-    action_required: "ROADMAP.md Phase 41.1 lists only GRD-01..GRD-05 and none of its 6 success criteria mentions the deletion prohibition; .planning/phases/41.1-groups-devices-integration/ is empty. The remainder is carried only by REQUIREMENTS.md ([~], 'Phase 41 + 41.1') and STATE.md. Add GRP-10 to the 41.1 Requirements line and add a success criterion, or the remainder can be silently dropped."
+deferred:
+  - truth: "GRP-10, половина «удаление якорного устройства запрещено, пока группа существует»"
+    addressed_in: "Phase 41.1"
+    evidence: "ROADMAP.md, Phase 41.1: Requirements «GRD-01..GRD-05, GRP-10 (остаток)»; критерий 3: «Удаление якорного устройства запрещено, пока группа существует — это перенесённый остаток GRP-10». Колонки groups.anchor_device_id в V045 нет."
 warnings:
-  - id: W-B01
+  - id: WR-01
     severity: warning
-    where: "crates/trackly-app/src/services/group_type_service.rs (update_property ~582-590, unarchive_property 672-719)"
-    what: "Un-hiding a property does not run the required-violators check, and update_property skips that check when the property is archived. Path: hide -> mark required -> un-hide. Afterwards every set_values on a group lacking that value fails (group_service.rs:1273 checks all live required properties), including edits to unrelated fields. Not data loss; the user is told which property to fill."
-    confirmed_by: "read in this verification, not only taken from the review"
-  - id: W-B02
-    severity: warning
-    what: "Type and property mutations are not atomic with their audit row (update_type writes on a bare conn, then opens a separate transaction for audit_log)."
-  - id: W-B03
-    severity: warning
-    what: "Movements report keeps the pre-existing LIMIT 1000 ordered oldest-first (report_service.rs:1561). Large group moves can push newest rows out and split a batch; the user is not told the result is truncated. Journal data itself is correct."
-  - id: W-F03
-    severity: warning
-    what: "GroupTypePanel copy 'Название и набор свойств — можно.' is shown to a read-only manager (also in deferred-items.md); needs a copy decision by the user."
+    blocks_phase_goal: false
+    where: "crates/trackly-app/src/services/group_type_service.rs:709-717 (unarchive_property); ui/src/features/groups/GroupTypePropertiesTable.svelte:570-581, 590-619"
+    what: "Легаси-строка «скрыто + обязательное» при существующей группе без значения не возвращается: сервер отвечает ошибкой is_required с текстом про «сделать обязательным», а из интерфейса выхода нет (скрытое нельзя заполнить в группах; у скрытой строки чекбокс «Обязательное» отключён; меню предлагает только «Показать»). Противоречит политике самого плана 41-29 «скрытое не бывает обязательным». Тест protect_d_unarchive_refuses_legacy_required_with_violators закрепляет отказ."
+    confirmed_by: "код прочитан в этой верификации (unarchive_property и archive_property_on); достижимость оценена по истории git"
+  - id: IN-01
+    severity: info
+    what: "Копирайт модалки скрытия/удаления считается от снимка filled_group_count на момент открытия; исход определяет сервер, возможное расхождение — только текст, не данные."
+  - id: IN-02
+    severity: info
+    what: "Транзакции мутаций типа отложенные (deferred); недостижимо при единственном писателе."
+  - id: IN-03
+    severity: info
+    what: "Склейка «{summary}. {notice}» в печати даст «..», если сводка фильтров кончается точкой."
 human_verification:
-  - test: "Open the 'Группы' section in the running desktop app (cargo tauri dev) AND in a LAN browser after pnpm --dir ui build. Walk the tree (arrows, Home/End, search), select a type and a group, create/rename/delete, move a group."
-    expected: "Sidebar item between 'Устройства' and 'Акты'; tree roots are types; right panel switches between type panel and group panel with tabs Состав / Свойства / История; layout scrolls inside its own region with no double scroll; no console errors."
-    why_human: "Component code is mounted and compile gates are green, but compile gates cannot see Svelte 5 rune runtime errors (effect_update_depth_exceeded), layout, focus rings, scroll regions or desktop-vs-browser asymmetry. The only runtime evidence is a Playwright WebKit smoke against a fake backend (plan 41-23), which by project rule is not verification; the app runs in WKWebView."
-  - test: "Type property editor as admin: add a property of each data type, drag-reorder (and cancel with Esc), hide a filled property, try to change the data type of a filled property, enter bad IP/MAC. Repeat as manager (read-only)."
-    expected: "Order persists after reload; Esc/pointercancel restores order with no write; filled property is hidden not deleted; data-type change refused with a message; IP/MAC normalised or rejected; manager sees no edit controls."
-    why_human: "Drag gesture, hit-testing through button.drag-handle -> closest('tr') and modal flows are not observable by grep. Checks H20-1, H20-2, H20-3 in 41-VALIDATION.md."
-  - test: "Group card: add two users and mark one primary; attach a USB-linked printer via SQL on a LOCAL dev DB plus the same printer as an explicit link."
-    expected: "Users field and 'Подключённые принтеры' visible out of the box on a clean DB; exactly one primary; the printer appears once (deduplicated); USB origin is not editable by hand."
-    why_human: "Data shape is verified by tests (groups_values_card, usb_printers_for_group CTE) but chips, primary toggle and printer list rendering are visual. Checks H22-1..H22-3."
-  - test: "Group move end to end: create a group with a nested group and several devices (one member without a place), move it, then open device history, group history tab, Reports -> Перемещения (expand/collapse batch chevron, filter by device type) and print the report from desktop and from the LAN browser."
-    expected: "Toast 'Перенесено: группа и N устройств'; place counters in 'Места' update; each device has a journal row; one batch row in the report expandable to member rows; device without a prior place gets the place with no journal row; the member's PlacePicker is disabled with a 'Место задаётся группой' link; print shows the full batch."
-    why_human: "Service-level atomicity and batching are machine-verified; modal, toast, counters, report expansion and multi-page print are UI behaviour. Checks H23-1, H24-1, H24-2, H25-1, H25-2 and scenario S-Б."
-  - test: "Role walk-through with two separate sessions: admin, manager, employee."
-    expected: "Manager sees 'Группы', can create a group and edit composition, has no type-editing controls and no 'Создать тип'. Employee has no sidebar item and #/groups shows 'Доступ запрещён'."
-    why_human: "Server-side matrix is machine-verified on both transports (role_endpoint_matrix, 11 tests green in this verification). Only the UI visibility layer needs eyes. Checks H20-3, H23-2."
-  - test: "Decide the copy question for GroupTypePanel read-only text (W-F03) and the GroupAddDevicesModal 'уже в группе' hint styling (H21-3)."
-    expected: "User decision recorded."
-    why_human: "Product copy, not code correctness."
+  - test: "R1 (41-HUMAN-UAT.md п.20). Меню «⋯» в каждом из 13 мест, главный случай — «Группы» -> тип «АРМ» -> таблица «Свойства»; десктоп (cargo tauri dev с main) и LAN-браузер после pnpm --dir ui build."
+    expected: "Панель меню открывается поверх интерфейса; содержимое и скролл DetailPanel не двигаются; второго скролл-региона нет; консоль без effect_update_depth_exceeded."
+    why_human: "Компиляционные гейты и структурный гейт не видят вёрстку, скролл, z-порядок и поведение в WKWebView. Проп portal удалён, поэтому портал стал и для вызовов, которым он раньше не включался (DevicesPage, DeviceFormModal, OrgSettings, ButtonsSection) — их поведение в приложении не смотрел никто."
+  - test: "R2 (п.21). Триггер строки в деревьях групп и мест виден, пока меню открыто; Esc закрывает только меню и возвращает фокус; Tab закрывает; клик вне закрывает; меню внутри DeviceFormModal выше модалки и Esc не закрывает саму модалку."
+    expected: "Все перечисленные поведения."
+    why_human: "Фокус, z-порядок и наведение — рантайм. Правило F гейта защищает от мёртвого CSS-селектора, но не доказывает, что правило срабатывает на экране."
+  - test: "R3 (п.22). Строка над таблицей «Свойства» под admin и под manager (две сессии)."
+    expected: "«Код и поведение типа изменить нельзя.» одинакова, слова «можно» нет."
+    why_human: "Вид в приложении; код строки проверен (GroupTypePanel.svelte:130)."
+  - test: "R4 (п.23). Тип «АРМ» под admin: (а) новое пустое свойство — пункт «Удалить свойство», кнопка «Удалить безвозвратно», в «Показать скрытые» не появляется; (б) заполненное — «Скрыть», затем «Вернуть» с бейджем «Скрыто»; (в) заполненное обязательное — в модалке «Признак «Обязательное» при скрытии снимается.», после возврата чекбокс снят, новая группа сохраняется без ошибки про обязательное."
+    expected: "Три ветви как описано."
+    why_human: "Модалки, меню и бейджи — рантайм; ветвление копирайта и серверный исход проверены гейтом, паритет-тестом и protect_d_*."
+  - test: "R5 (п.24). На КОПИИ dev-БД со вставленными 1005 вымышленными перемещениями открыть отчёт «Перемещения»; печать из десктопа и из LAN-браузера; CSV."
+    expected: "Над таблицей баннер «Показано записей: 1000 из 1005 (самые ранние)…», значок вкладки 1005; при сужении до 1000 и меньше баннер исчезает; на бумагу попадает серверная строка один раз, экранный баннер — нет; последняя строка CSV — то же уведомление; ReportTable остаётся единственным скролл-регионом."
+    why_human: "Печать (в том числе верстка LAN-печати прямо в DOM приложения), скролл-регион и вид баннера не проверяются кодом."
+  - test: "Решение по WR-01: чинить сейчас (малый локальный патч unarchive_property + замена теста) или принять как остаточный долг."
+    expected: "Решение записано."
+    why_human: "Продуктовое решение о политике для наследных строк."
 ---
 
-# Phase 41: Группы: модель и редактор — Verification Report
+# Фаза 41: Группы: модель и редактор — отчёт верификации (после волны 41-27..41-34)
 
-**Phase Goal:** Ввести универсальную группу устройств как единицу размещения поверх дерева мест — тип группы задаёт поведение и набор свойств, состав и место задаются в отдельном разделе «Группы», а устройства в составе следуют за местом группы с записью в историю по каждому.
-**Verified:** 2026-10-04
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Цель фазы:** Ввести универсальную группу устройств как единицу размещения поверх дерева мест — тип группы задаёт поведение и набор свойств, состав и место задаются в отдельном разделе «Группы», а устройства в составе следуют за местом группы с записью в историю по каждому.
+**Проверено:** 2026-10-06
+**Статус:** human_needed
+**Повторная верификация:** Да — после волны закрытия пробелов 41-27..41-34
 
-## Verdict in one paragraph
+## Вердикт одним абзацем
 
-The backend and data model deliver the phase goal and I could not falsify any of the 8 roadmap success criteria at code level. I re-read the code behind each one, re-derived the `devices.place_id` write-site inventory from source instead of from the registry, and ran the key gates myself. What is NOT established is anything that only shows in the running application: the whole «Группы» UI was never run in WKWebView or a LAN browser by anyone. Those items are routed to a human, not scored as passed. One requirement (GRP-10) is deliberately partial and its remainder is not tracked by the Phase 41.1 roadmap entry. Four non-blocking warnings remain open.
+Волна сделала то, что заявила, и я не смог это опровергнуть по коду. Все 8 критериев ROADMAP по-прежнему держатся, регрессий в проверенных местах нет. Два дефекта живой приёмки (меню в скроллящемся контейнере, «неработающий» чекбокс «Показать скрытые») устранены на уровне кода, а четыре предупреждения прошлого отчёта закрыты (W-B01 с остатком WR-01, W-B02, W-B03, W-F03). Но приложение после волны не запускал ни я, ни исполнители, поэтому перепроверка обоих дефектов остаётся за пользователем: статус `human_needed`, а не `passed`. Ничего ниже не помечено как проверенное человеком; пункты R1-R5 и оба гэпа остаются в состоянии `pending` / `fixed_pending_reverify`.
 
-## Goal Achievement
+## Достижение цели
 
-### Observable Truths (ROADMAP success criteria)
+### Наблюдаемые истины (критерии ROADMAP) — быстрая регрессионная проверка
 
-| # | Truth | Code-level status | Evidence |
-|---|-------|-------------------|----------|
-| 1 | Sidebar «Группы» between «Устройства» and «Акты»; tree (types as roots) left, panel right; old grouping renamed «Свернуть одинаковые» | VERIFIED (structure); layout/visual needs human | `ui/src/features/layout/sidebar-config.ts` order Устройства, Группы, Акты with `roles: ['admin','manager']`; `ui/src/routes.ts:24` `'/groups': GroupsPage`, absent from `employeeRoutes`; `GroupTree.svelte` builds `kind:'type'` and `kind:'group'` nodes; `DeviceFilters.svelte:102` label «Свернуть одинаковые»; no «Группир*» string left anywhere in `ui/src`; `check-group-vocabulary` OK (212 files) run in this verification |
-| 2 | Three built-in types seeded idempotently by code; renameable, extendable, not deletable; `code`/`behavior` immutable; no duplicate after rename + rerun | VERIFIED | `group_types_sqlite.rs:169` `INSERT ... ON CONFLICT(code) DO NOTHING` (rename survives, id stable); `idx_group_types_code` UNIQUE in V045; DB trigger `trg_group_types_immutable` (BEFORE UPDATE OF code, behavior) in V045; service guard `group_type_service.rs:349-355` rejects changed code/behavior, `:398` rejects delete of `is_builtin`; default properties seeded once through marker `default_props_seeded` set by one conditional `UPDATE ... WHERE default_props_seeded = 0` and inserted only when exactly one row was affected (`group_types_sqlite.rs:209-250`); startup call in `context.rs:343`. Tests `seed_inserts_missing_and_is_idempotent`, `seed_does_not_overwrite_admin_rename`, `seed_rename_survives_restart_and_reseed`, `seed_props_*` exist. Note: «Системный блок» and «Разбор» get no default properties by design (empty list, marker stays 0) |
-| 3 | Admin creates own type with property table (Текст, Число, IP, MAC, Пользователи с основным, Ссылки на устройства), order, required, «На карте»; filled property hidden not deleted; data type of filled property frozen; IP/MAC normalised and validated server-side | VERIFIED, with warning W-B01 | `PropertyDataType` has the six tokens; `group_type_properties` columns `sort_order`, `is_required`, `show_on_map`, `archived_at_utc` in V045; `delete_property` archives when `filled_group_count > 0`, hard-deletes otherwise (`group_type_service.rs:645-651`); data-type change refused when filled (`:567-580`); `normalize_ip` (IpAddr canonical form), `normalize_mac` (aa:bb:cc:dd:ee:ff, rejects mixed separators) in `trackly-core/src/domain/group_values.rs`, called from `group_service.rs:944` inside the server write path; primary-value uniqueness enforced by `uq_gpv_primary` and `primaries > 1` check; all type/property mutations gated by `Action::ManageGroupTypes`. WARNING W-B01: the required-flag protection can be bypassed through hide -> required -> un-hide (see Warnings) |
-| 4 | Default name «{тип} #{seq}», `seq` from per-type counter, name editable, names not unique, number never parsed back from name | VERIFIED | `group_service.rs:426-427` `seq = next_seq_in_tx` (`SELECT COALESCE(MAX(seq),0)+1 FROM groups WHERE type_id`), name = `format!("{} #{}", gtype.name, seq)` only when no explicit name; `UNIQUE(type_id, seq)` is the race backstop, no unique index on `name`; rename never touches `seq` (`update_group` doc and code); grep finds no name-parsing path. Tests `numbering_*` in `groups_service` |
-| 5 | Device in at most one group; explicit removal; nesting with cycle protection and child rules; nested group's place derived from root | VERIFIED | `group_devices.device_id` is PRIMARY KEY (V045); `add_device_in_tx` pre-check plus PK-race mapping to Conflict; `would_create_cycle_in_tx` recursive-CTE with UNION (loop-safe) and `parent_behavior_in_tx` rejecting a `teardown` parent (`groups_sqlite.rs:275-350`); `move_group_in_tx` rejects a nested group with the message naming its root (`group_place.rs`); `remove_devices` service method exists and is `MutateGroups`-gated. `groups_membership` 14 tests green in this verification. Child rule implemented = exactly what the SPEC states (only `teardown` cannot contain groups); brief default says containers may hold containers and anchors, which is not further restricted — consistent with SPEC acceptance text |
-| 6 | Group place propagates to all devices including nested groups; each device gets a `place_id` change and a journal row; rows of one move share one batch; individual movement of a member forbidden | VERIFIED at service/data level; UI and print need human | `group_place.rs`: one `Transaction`, no commit inside; `propagate_group_place_in_tx` loops `subtree_device_ids_in_tx`, writes `place_movements` with a single `batch_id` UUID, `group_id` and `entity_label` snapshot on every row (V046 columns); a device with no previous place gets the place with no journal row and an `audit_log` row (D-30). **Write-site inventory re-derived from source:** the only code that writes `devices.place_id` is `devices_sqlite.rs` (update_in_tx, update_status_and_place_in_tx, update_full_in_tx, restore_from_snapshot_in_tx, unused non-tx `update`) and `cartridges_sqlite.rs:651`; callers are `device_service.rs:741` (S1, guarded at lines ~700-720 via `locked_group_for_device_in_tx`), `place_service.rs:763` (S2, group roots ride with the group), `group_place.rs:85`, 8 call sites in `act_service.rs` (596, 958, 1153, 1786, 2325, 2405, 2503, 3715 — S3-S7, each paired with a release), and the cartridge backfill (S9, only writes `WHERE place_id IS NULL`, so it cannot touch a locked member). No unregistered writer found. Gate `group_write_sites` 23/23, `groups_move` 10/10 (including `move_atomic_failure_on_fourth_device_rolls_back_everything` and `move_propagates_to_all_devices_including_nested`) green in this verification. Design note: a group WITHOUT a place does not lock its members (D-21, enforced in `locked_group_for_device_in_tx` by `g.place_id IS NOT NULL`); "forbidden" therefore holds from the moment the group has a place. This is a locked decision in CONTEXT, not a defect. WARNING W-B03 on the report cap |
-| 7 | Group card shows composition, place, users (one primary), connected printers: USB derived from `printers.usb_host_device_id` and not hand-editable, network by explicit links; lists deduplicated | VERIFIED at data level; rendering needs human | `build_card` (`group_service.rs:~1050-1135`): USB printers from `usb_printers_for_group` (recursive subtree CTE over live hosts and live printers, `groups_sqlite.rs:541`), explicit links limited to live printers, merged with a `HashSet` on `device_id`, origin tagged `usb`/`link`; no write path exists for `usb_host_device_id` from groups; users come from `group_property_values` with `is_primary`. `GroupPanel`, `GroupPropertiesForm`, `GroupUsersField`, `GroupPrintersList` are imported and mounted (chain GroupsPage -> GroupPanel -> GroupPropertiesForm -> GroupUsersField/GroupPrintersList). `groups_values_card` 19 tests (run by the orchestrator) |
-| 8 | Permissions on both transports: types/properties admin only; groups/composition/values admin+manager («Специалист» = existing `manager`, no 4th role); employee no access | VERIFIED | `auth.rs`: `ManageGroupTypes` -> `Role::Admin` only; `MutateGroups`/`ReadGroups` -> Admin or Manager; `enum Role` still has exactly Admin, Manager, Employee. Every public method of `GroupService` and `GroupTypeService` calls `authorize` with the right action (listing in this verification: 17 + 9 methods checked one by one; only the startup seeder is caller-less by design). HTTP: 25 routes in `http/groups.rs` + `http/group_types.rs`, all 25 command names used by `ui/src/lib/api/groups.ts` exist as routes and in the specta/Tauri builder. `role_endpoint_matrix` filtered to groups: 11/11 green in this verification (matrix for both `_http` and `_tauri_path`, immutability not vacuous, route completeness). UI layer: sidebar `roles`, and `/groups` missing from `employeeRoutes` |
+Все 8 критериев были подробно проверены в предыдущем раунде. Волна затрагивала критерии 3 (свойства типов) и 6 (отчёт «Перемещения»); остальные не менялись: волна не трогала `migrations/`, `group_service.rs`, `group_place.rs`, `auth.rs`, HTTP-маршруты групп (`git diff 89b13a1c..HEAD --name-only`: затронуты только `group_type_service.rs`, `group_types_sqlite.rs`, `report_service.rs`, `tauri_cmds/reports.rs`, их тесты и файлы UI из списка ниже).
 
-**Score:** 8/8 at code level. 0/8 confirmed in the running application.
+| # | Истина | Статус | Что изменилось / доказательство |
+|---|--------|--------|---------------------------------|
+| 1 | Раздел «Группы», дерево и панель, «Свернуть одинаковые» | VERIFIED (код); вид — человек | `GroupTreeNode.svelte` менялся только ради триггера меню; 13 вызовов `<ActionMenu` без атрибута `portal` (grep по `ui/src`); гейт `check-action-menu-portal` PASS |
+| 2 | Три встроенных типа, идемпотентный посев, неизменяемость | VERIFIED | не затронуто волной; `group_type_service` тесты 39/39 зелёные в этой верификации |
+| 3 | Свойства типа: скрыть, а не удалить; заморозка типа данных; нормализация | VERIFIED, WR-01 как остаток | см. раздел «Проверка волны», пп. 41-29, 41-31, 41-32 |
+| 4 | Имя «{тип} #{seq}» | VERIFIED | не затронуто |
+| 5 | Не более одной группы, вложенность, защита от циклов | VERIFIED | не затронуто |
+| 6 | Место протаскивается, журнал по каждому устройству, одна партия | VERIFIED (сервис); печать и экран — человек | отчёт «Перемещения» теперь не усекается молча, см. п. 41-30, 41-33 |
+| 7 | Карточка: состав, место, пользователи, принтеры | VERIFIED (данные); вид — человек | не затронуто |
+| 8 | Права на двух транспортах | VERIFIED | не затронуто; `ManageGroupTypes` по-прежнему охраняет все мутации `GroupTypeService` (`authorize(.., &Action::ManageGroupTypes)` прочитан в `delete_property` и `unarchive_property`; начало `update_property` и остальные мутации в этой верификации не перечитывались) |
 
-### Required Artifacts
+**Счёт:** 8/8 на уровне кода; 0/8 подтверждено в запущенном приложении (после волны).
 
-| Artifact | Expected | Status | Details |
-|----------|----------|--------|---------|
-| `migrations/V045__groups.sql` | group_types, group_type_properties, groups, group_devices, group_property_values, immutability trigger | VERIFIED | additive only, no DROP, no rebuild; no `anchor_device_id` (see GRP-10) |
-| `migrations/V046__place_movements_batch.sql` | `batch_id`, `entity_label`, `group_id` + partial indexes | VERIFIED | three `ALTER ... ADD COLUMN`, no rebuild |
-| `crates/trackly-app/src/services/group_type_service.rs` | type/property service | VERIFIED | substantive, authorised, wired in `context.rs`, seeded at startup |
-| `crates/trackly-app/src/services/group_service.rs` | group CRUD, membership, move, values, card | VERIFIED | substantive, wired |
-| `crates/trackly-app/src/services/group_place.rs` | propagation primitives | VERIFIED | single transaction, batch id on every row |
-| `crates/trackly-app/src/services/group_membership.rs` | release primitives for write sites | VERIFIED | used by act and device deletion paths |
-| `crates/trackly-core/src/domain/group_values.rs` | value normalisation | VERIFIED | IP/MAC/number/text |
-| `ui/src/features/groups/*.svelte` (16 files) | the section | WIRED, runtime unverified | all components imported; chain from `routes.ts` -> `GroupsPage` confirmed |
-| `ui/src/lib/api/groups.ts` | one call point for 25 commands | VERIFIED | names match HTTP routes and Tauri registration |
-| `crates/trackly-app/tests/group_write_sites.rs` | closed write-site gate | VERIFIED | 23 tests green; contains a source scan that fails on an unregistered writer and a pairing check for the 8 act sites |
+### Проверка волны: заявка -> что есть в коде
 
-### Key Link Verification
+| План | Заявка | Статус | Доказательство (прочитано, не взято из SUMMARY) |
+|------|--------|--------|--------------------------------------------------|
+| 41-27 | `ActionMenu` всегда выводится порталом, проп `portal` удалён, гейт A-F | VERIFIED (код) | `ActionMenu.svelte`: нет `usePortal`, есть `use:portal` (стр. 232), комментарий «единственный режим, пропа portal нет»; `grep -rn -A8 "<ActionMenu" ui/src` по `portal` — 0 попаданий на 13 вызовах; гейт: `--selftest` PASS (10 фикстур: эталон + 9 мутантов), прогон на репозитории PASS 0 нарушений; гейт в `pnpm lint` (`ui/package.json`) |
+| 41-28 | Одна нейтральная строка для всех ролей | VERIFIED (код) | `GroupTypePanel.svelte:130`: «Код и поведение типа изменить нельзя.» без ветвления по роли |
+| 41-29 | ОТСТУПЛЕНИЕ ОБЪЯВЛЕНО: `archive_property` снимает `is_required` тем же UPDATE, `update_property` отвергает `is_required=true` у скрытого, защита при возврате осталась для легаси | VERIFIED с остатком WR-01 | `group_types_sqlite.rs:404-427`: `SET archived_at_utc = ?1, is_required = 0, ...`; `group_type_service.rs:~594` проверка `archived_at_utc.is_some()` -> `hidden_property_required_error()`; `unarchive_property` стр. 709-717 содержит запасную проверку. Тесты `protect_d_*` (3 шт.) зелёные в этой верификации. «Красные до правки» не пересчитывал, это слова SUMMARY |
+| 41-30 | Истинный `total` вторым `COUNT(*)`; уведомление в печати и CSV; значок вкладки по `resp.total` | VERIFIED (код и тесты) | `report_service.rs:1734-1745`: `COUNT(*)` с теми же `with_prefix` и `where_clause`, только при `rows.len() >= LIMIT`; `movements_truncation_notice` (стр. 262); CSV (стр. 976); печать в `tauri_cmds/reports.rs:402-411` через `filter_summary`, шаблон `report.html` не менялся, функция общая для Tauri и HTTP (`http/reports.rs:295`); счёт вкладок читает `resp.total` (стр. 912). `report_movements_truncation` 7/7 зелёные в этой верификации. Объявленный охранный тест (зелёный и до, и после) честно помечен в SUMMARY |
+| 41-31 | ОТСТУПЛЕНИЕ ОБЪЯВЛЕНО: `crates/*/src` не менялся, только копирайт и паритет-тест | VERIFIED | `propertyRemoval.ts` ветвит по `filledGroupCount > 0` (скрыть) / иначе (удалить безвозвратно), зеркало `delete_property` (`filled_group_count > 0` -> архив, иначе физическое удаление); таблица берёт копирайт только из `propertyRemovalCopy` (импорт стр. 23, использование стр. 362 и 509; литералов «Скрыть» между тегами нет — правило S3); `groups_property_removal_parity` 1/1 зелёный; гейт `check-property-removal` PASS (7 мутантов, 6 кейсов). Ожидание H20-1 переписано в `41-VALIDATION.md` |
+| 41-32 | ОТСТУПЛЕНИЕ ОБЪЯВЛЕНО: тела мутаторов в `*_on(&self, conn: &Connection, …)`; критерий `grep -c "conn.savepoint()" == 1` НЕ выполнен (0) | VERIFIED по существу; критерий плана не выполнен, отступление принято | в `group_type_service.rs` и `group_types_sqlite.rs` слово `savepoint` не встречается (0 попаданий), как и объявлено; вместо этого каждая мутация открывает одну `conn.transaction()`, зовёт `repo.*_on(&tx, …)` и `audit_repo.insert(&tx, …)` перед `tx.commit()` (прочитано в `update_property`, `delete_property`, `unarchive_property`); 10 тестов `atomic_*` (откат при отказе записи аудита) зелёные в этой верификации. Что 9 из 10 были красными до правки — слова SUMMARY, не пересчитано |
+| 41-33 | Баннер в `ReportsPage` по `rows.total` через `$derived`; гейт в `pnpm lint` | VERIFIED (код) | `ReportsPage.svelte:550-553` `$derived(reportTypeKey() === 'movements' && rows ? movementsTruncationNotice(rows.rows.length, rows.total) : null)`, разметка стр. 622-623; `truncationNotice.ts` — зеркало Rust-функции с тем же текстом; гейт `--selftest` OK (8 мутантов), прогон OK (8 кейсов); восьмой кейс «500 из 800» в фикстуре есть и читается обеими сторонами |
+| 41-34 | Полный регресс в порядке CI зелёный | ЧАСТИЧНО ПОДТВЕРЖДЕНО | я сам прогнал: гейт приватности (PASS, 0 нарушений), три новых node-гейта (selftest + прогон), 3 затронутых тестовых бинарника (39 + 1 + 7, 0 падений). НЕ перезапускал: полный `cargo test --workspace` (158 бинарников, 1625 пройдено — цифры взяты из SUMMARY 41-34), `svelte-check`, `pnpm build`, `clippy`, `rustfmt` |
 
-| From | To | Via | Status | Details |
-|------|----|-----|--------|---------|
-| `routes.ts` | `GroupsPage` | `'/groups'` route | WIRED | admin/manager route table only |
-| `GroupsPage` | all group modals/panels | imports | WIRED | 7 direct, 7 transitive |
-| UI components | backend | `apiCall` names | WIRED | 25/25 names match route + Tauri registration |
-| `DeviceService::update` | group lock | `locked_group_for_device_in_tx` | WIRED | rejects a changed `place_id` for a member of a placed group; same-place resend passes |
-| `ActService` 8 sites | release primitives | `release_device_in_tx` / `release_if_locked_device_in_tx` | WIRED | pairing enforced by gate test |
-| `PlaceService` bulk move | group roots | `devices_riding_with_group` | WIRED | group members are not moved individually |
-| `AppCtx::build` | built-in seeding | `seed_builtin_types_on_startup` | WIRED | `context.rs:343` |
+### Ключевые связи
 
-### Data-Flow Trace (Level 4)
+| Откуда | Куда | Через | Статус |
+|--------|------|-------|--------|
+| `pnpm lint` | три новых гейта | `ui/package.json` (`check-action-menu-portal`, `check-property-removal`, `check-report-truncation`, каждый со `--selftest` и без) | WIRED |
+| `GroupTypePropertiesTable` | `propertyRemovalCopy` | импорт и два использования | WIRED |
+| `ReportsPage` | `movementsTruncationNotice` | импорт стр. 16, `$derived` стр. 550 | WIRED |
+| `build_reports_export_pdf` | Tauri и LAN-HTTP | `tauri_cmds/reports.rs:824` и `http/reports.rs:295` вызывают одну функцию | WIRED, уведомление попадает на обоих транспортах |
+| `GroupTypeService` мутации | аудит | одна транзакция, `audit_repo.insert(&tx…)` до `commit` | WIRED |
 
-| Artifact | Data | Source | Real data | Status |
-|----------|------|--------|-----------|--------|
-| Group card printers | `printers` | `usb_printers_for_group` CTE + `ref_devices_for_group` | Yes (SQL over live rows) | FLOWING |
-| Group tree | groups/types | `groups_list`, `group_types_list` | Yes | FLOWING (backend); rendering unverified |
-| Movement timeline/report | `batch_id`, `group_id`, `entity_label` | `place_movements` V046 columns | Yes | FLOWING (data); UI unverified |
+### Поток данных (уровень 4)
 
-### Behavioral Spot-Checks (run in this verification)
+| Артефакт | Данные | Источник | Реальные данные | Статус |
+|----------|--------|----------|-----------------|--------|
+| Баннер отчёта | `rows.total` | второй `COUNT(*)` по тем же условиям | да (SQL над `place_movements`) | FLOWING |
+| Копирайт скрытия | `filled_group_count` | `GroupTypePropertyDto` из `filled_group_count(id)` | да | FLOWING |
+| Значок вкладки | `resp.total` | тот же запрос | да | FLOWING |
 
-| Behavior | Command | Result | Status |
-|----------|---------|--------|--------|
-| Write-site gate, membership, group move | `cargo test -p trackly-app --test group_write_sites --test groups_membership --test groups_move` | 23 + 14 + 10 passed, 0 failed | PASS |
-| Role matrix on both transports | `cargo test -p trackly-app --test role_endpoint_matrix group` | 11 passed, 0 failed | PASS |
-| Vocabulary gate | `node ui/scripts/check-group-vocabulary.mjs` | OK, 212 files, no violations | PASS |
-| Section gate | `node ui/scripts/check-groups-section.mjs` | PASS, 0 violations | PASS |
-| Reorder gate | `node ui/scripts/check-reorder.mjs` | OK, 22 cases | PASS |
-| Debt markers in 84 non-test source files changed by the phase | grep TBD/FIXME/XXX/TODO/HACK/todo!/unimplemented! | none | PASS |
+### Поведенческие проверки (запущены в этой верификации)
 
-I did not re-run the full workspace (the orchestrator did: 156 binaries, 1604 tests, 0 failures) and did not re-run `svelte-check`/`lint`/build. Those results are taken from the orchestrator and from `41-VALIDATION.md` and are not independently confirmed here.
+| Поведение | Команда | Результат | Статус |
+|-----------|---------|-----------|--------|
+| Сервис типов: `protect_d_*`, `atomic_*` и остальное | `cargo test -p trackly-app --test groups_types_service` | 39 пройдено, 0 упало | PASS |
+| Паритет копирайта скрытия с сервером | `... --test groups_property_removal_parity` | 1 пройден | PASS |
+| Усечение отчёта (включая CSV, печать, golden-фикстуру) | `... --test report_movements_truncation` | 7 пройдено | PASS |
+| Гейт портала | `node ui/scripts/check-action-menu-portal.mjs --selftest` и без флага | 10 фикстур совпали; 0 нарушений | PASS |
+| Гейт усечения | `node ui/scripts/check-report-truncation.mjs --selftest` и без флага | 8 мутантов ловятся; 8 кейсов | PASS |
+| Гейт копирайта скрытия | `node ui/scripts/check-property-removal.mjs --selftest` и без флага | 7 мутантов ловятся; 6 кейсов | PASS |
+| Приватность | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | 0 нарушений | PASS |
+| Маркеры долга в файлах волны | grep TBD/FIXME/XXX по 24 изменённым файлам вне `.planning/` | не найдено | PASS |
 
-### Probe Execution
+Тесты запускались с `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1` и префиксом `DEVELOPER_DIR=/Library/Developer/CommandLineTools`; тест `login_remember_persistent_cookie` не запускался (известное зависание).
 
-Step 7c: SKIPPED — no `scripts/*/tests/probe-*.sh` declared by any Phase 41 plan.
+### Покрытие требований
 
-### Requirements Coverage
+Идентификаторы GRP-01..GRP-09 из задания: все присутствуют в `REQUIREMENTS.md` как «Phase 41 / Complete» и заявлены планами фазы (в том числе волной: 41-27 и 41-28 — GRP-01/03/04/09, 41-29/31/32 — GRP-01..03, 41-30/33 — GRP-06, 41-34 — GRP-01..09). Осиротевших требований нет. Отдельно в REQUIREMENTS.md есть GRP-10 (Partial) и GRD-06 (Complete) — они не входили в запрос, но я их не потерял.
 
-All 11 phase IDs appear in plan frontmatter and in REQUIREMENTS.md; no requirement is mapped to Phase 41 without a claiming plan (no orphans).
+| Требование | Статус | Основание |
+|------------|--------|-----------|
+| GRP-01 | SATISFIED | тип с неизменяемым кодом и поведением; не регрессировал; панель типа нейтральна по ролям |
+| GRP-02 | SATISFIED (жест — человек) | свойства, порядок, обязательность; мутации теперь атомарны |
+| GRP-03 | SATISFIED с WR-01 | скрытие, заморозка типа данных, нормализация; обход обязательности закрыт для новых данных |
+| GRP-04 | SATISFIED (вид — человек) | раздел собран; меню строки всегда в портале (R1/R2 ждут живой проверки) |
+| GRP-05 | SATISFIED | не затронуто |
+| GRP-06 | SATISFIED на уровне сервиса; печать и экран — человек | отчёт «Перемещения» больше не усекается молча (R5) |
+| GRP-07 | SATISFIED | не затронуто |
+| GRP-08 | SATISFIED (вид — человек) | не затронуто |
+| GRP-09 | SATISFIED | не затронуто |
+| GRP-10 (вне запроса) | PARTIAL, отложено осознанно | остаток теперь на Phase 41.1 (Requirements + критерий 3) — действие №1 прошлого отчёта выполнено |
+| GRD-06 (вне запроса) | SATISFIED | не затронуто |
 
-| Requirement | Claimed by | Status | Evidence |
-|-------------|-----------|--------|----------|
-| GRP-01 | 41-01, 02, 04, 07, 09, 19, 26 | SATISFIED | SC2: trigger + service guard + idempotent seed |
-| GRP-02 | 41-01, 02, 04, 07, 09, 18, 20, 26 | SATISFIED (UI gesture needs human) | six data types, order, required, «На карте» |
-| GRP-03 | 41-01, 02, 04, 07, 09, 12, 20, 22, 26 | SATISFIED with W-B01 | hide/freeze/normalise hold; required-flag protection has a bypass |
-| GRP-04 | 41-06, 08, 13, 18, 19, 21, 23, 26 | SATISFIED (UI needs human) | SC1 + SC4 |
-| GRP-05 | 41-01, 06, 08, 10, 11, 13, 14, 21, 26 | SATISFIED | SC5 |
-| GRP-06 | 41-01, 05, 06, 10, 11, 13, 15, 17, 21, 23, 24, 25, 26 | SATISFIED at service level (UI/print need human) | SC6 |
-| GRP-07 | 41-10, 14, 15, 16, 24, 25, 26 | SATISFIED | S1 guard + closed registry; conditional on the group having a place (D-21) |
-| GRP-08 | 41-06, 08, 12, 13, 22, 26 | SATISFIED (rendering needs human) | SC7 |
-| GRP-09 | 41-02, 07, 09, 12, 13, 23, 26 | SATISFIED | SC8 |
-| GRP-10 | 41-01, 06, 11, 15 claim it complete; 41-08 states partial | **PARTIAL (deliberate)** | see below |
-| GRD-06 | 41-03, 26 | SATISFIED | «Свернуть одинаковые» + vocabulary gate |
+### Антипаттерны
 
-**GRP-10 reading, confirmed.** Early plans 41-01, 41-06, 41-11 and 41-15 list GRP-10 under `requirements-completed`, but only 41-08 owns the delete behaviour and it correctly records `requirements-partial: [GRP-10]`. In code: `delete_group` (`group_service.rs:503`) releases direct devices (cascade on `group_devices`), leaves `devices.place_id` untouched, nested groups become roots through `ON DELETE SET NULL` while keeping their denormalised place, returns `released_devices` for the confirmation dialog, and writes an audit row. The anchor half is genuinely absent: V045 has no `anchor_device_id`, and nothing in `crates/`, `migrations/` or `ui/src` mentions it. I found nothing else in the phase that was quietly left partial: every other ID resolved to concrete code above. The one thing I flag beyond the already-known deferral is that the remainder is not on the Phase 41.1 roadmap entry (Requirements line `GRD-01..GRD-05`, 6 success criteria, none about it), so the deferral is not yet enforceable by a later verifier. I did not treat it as "deferred" under the later-phase filter because no later-phase text matches it.
+| Файл | Строка | Паттерн | Серьёзность | Влияние |
+|------|--------|---------|-------------|---------|
+| `group_type_service.rs` | 709-717 | отказ вместо сброса флага для легаси-строки | Warning (WR-01) | тупик для наследных строк, см. ниже |
+| `GroupTypePropertiesTable.svelte` | 361-375 | копирайт от снимка `filled_group_count` | Info (IN-01) | возможна устаревшая формулировка, данные не страдают |
+| `tauri_cmds/reports.rs` | 402-411 | `"{summary}. {notice}"` | Info (IN-03) | возможны две точки подряд |
 
-### Anti-Patterns Found
+Блокирующих паттернов нет. Заглушек, пустых обработчиков и маркеров долга в файлах волны нет.
 
-| File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| `group_type_service.rs` | 582-590, 672-719 | un-hide / archived-required skip the violators check | Warning (W-B01) | group edits can start failing until the new required value is filled |
-| `group_type_service.rs` | update_type / property writes | audit row in a separate transaction | Warning (W-B02) | change can persist while the caller sees an error |
-| `report_service.rs` | 1561 | `LIMIT 1000` oldest-first with batch grouping | Warning (W-B03) | a batch can be split and truncation is silent |
-| `GroupTypePanel.svelte` | read-only text | promises a permission the manager lacks | Info/copy (W-F03) | misleading wording |
+## WR-01: блокирует цель фазы или нет
 
-No blocker patterns: no debt markers, no stubs, no empty handlers found in the phase's non-test source files.
+**Вывод: не блокирует; допустимый остаточный долг, но чинить рекомендуется до живой перепроверки R4.** Основания:
 
-### Human Verification Required
+1. Подтверждено прочтением кода: `unarchive_property` отказывает легаси-строке «скрыто + обязательное» при группах без значения, и из интерфейса выхода нет. Ревью описало это верно.
+2. Достижимость узкая: такая строка могла появиться только в БД, где свойство было скрыто до плана 41-29. Миграция V045 введена 2026-10-04 коммитом 0b7239b8; ни один тег не содержит её (самый новый тег `v1.4.0-phase39.3` старше). Значит, у реальных пользователей таких БД нет, только у разработчика и только при совпадении условий. Это моё заключение по истории git, а не наблюдение за БД разработчика.
+3. Ни один из 8 критериев ROADMAP от этого не зависит: новые данные защищены (скрытие снимает флаг, обязательность скрытого отвергается), а удалённый/скрытый пустой путь и путь заполненного работают по тестам.
+4. Оговорка: это внутреннее противоречие волны (политика «снять флаг, а не отказывать» у `archive_property` против отказа в `unarchive_property`), и тест `protect_d_unarchive_refuses_legacy_required_with_violators` закрепляет именно отказ. Исправление маленькое и локальное (снять `is_required` при возврате, тест заменить на «возврат удался, флаг снят»).
 
-See the `human_verification` list in the frontmatter. In short: everything about how the «Группы» section actually runs and looks in Tauri WKWebView and in a LAN browser. `41-VALIDATION.md` carries the full list of 17 live checks (H19-1 … H25-2) plus two end-to-end scenarios (S-А drag of a property, S-Б move-to-print) — none of them has been run by anyone. Plan 41-23's Playwright WebKit smoke (about 12 flows, no console errors, no `effect_update_depth_exceeded`) against a fake backend is a useful signal and is NOT counted as verification.
+Если у разработчика на dev-БД есть скрытое обязательное свойство, пункт R4(в) воспроизведёт этот тупик; тогда это станет дефектом приёмки, а не остаточным долгом.
 
-Run on both transports. Fixes in a spawned worktree are not in a running `cargo tauri dev` until merged to main. For the LAN browser run `pnpm --dir ui build` first. Use a local dev DB, not production data.
+## Требуется проверка человеком
 
-### Gaps Summary
+Список в frontmatter (`human_verification`): R1-R5 из `41-HUMAN-UAT.md` (пункты 20-24) плюс решение по WR-01. Все пункты R1-R5 остаются `pending`; два гэпа UAT остаются `fixed_pending_reverify`. Запускать на обоих транспортах: десктоп `cargo tauri dev` с `main` и LAN-браузер после `pnpm --dir ui build`; БД — dev или копия, не боевая. Скрипт вставки 1005 перемещений в репозиторий не класть.
 
-There are no goal-blocking gaps: all 8 success criteria hold in the code I read and the tests I ran. The status is `human_needed` because the UI runtime is unverified by design, not because something is known broken.
+Отдельно обратить внимание в R1/R2: проп `portal` удалён, поэтому панель меню теперь переносится в `<body>` и для вызовов, которым портал раньше не включали (меню «Тип устройства» внутри `DeviceFormModal`, шаблоны номеров в «Настройках», «Импорт и экспорт» в «Устройствах»). Структурный гейт подтверждает единый путь кода, но не z-порядок и фокус.
 
-Items to action regardless of the UAT outcome:
+## Итог по пробелам
 
-1. **GRP-10 remainder is orphaned from the roadmap.** Add `GRP-10` to Phase 41.1's Requirements and a success criterion «удаление устройства-якоря запрещено, пока существует группа» (needs `groups.anchor_device_id` in a 41.1 migration).
-2. **W-B01** — run `groups_missing_required` in `unarchive_property` and in `update_property` regardless of archived state (fix is small and local to `group_type_service.rs`).
-3. **W-B02 / W-B03 / W-F03** — non-blocking; decide whether to schedule or accept.
+Целевых пробелов нет. Статус `human_needed` вызван единственным: живая перепроверка после волны не проведена, а по правилу проекта выставить `passed` без неё нельзя. Решения, которые остаются за пользователем: WR-01 (чинить или принять), результаты R1-R5.
 
-The two gate defects found by the code review (INV-7 aliased import, vocabulary-gate prefix leak) were fixed in commit 751d0762 and I did not re-prove them by mutation; I relied on the orchestrator's statement that they were proven before and after.
+Отступления волны (41-29, 41-31, 41-32) объявлены в SUMMARY, согласуются с кодом, который я читал, и оправданы: в 41-29 защита шире запланированной, в 41-31 сервер уже вёл себя верно, в 41-32 причина (rusqlite 0.38, у `Transaction` нет `DerefMut`) взята из SUMMARY и мной не перепроверялась, зато атомарность доказана откатными тестами `atomic_*`, которые я прогнал, а не подсчётом `savepoint`.
+
+Что я не проверял самостоятельно: полный прогон workspace, `svelte-check`, `pnpm build`, `clippy`, `rustfmt` (цифры взяты из SUMMARY 41-34); «красный до правки» для `protect_d_*`, `atomic_*`, `report_trunc_*` (взято из SUMMARY); запущенное приложение.
 
 ---
 
-_Verified: 2026-10-04_
-_Verifier: Claude (gsd-verifier)_
+_Проверено: 2026-10-06_
+_Верификатор: Claude (gsd-verifier)_

@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 41 (groups-model-and-editor) — EXECUTING
+Phase: 41 (groups-model-and-editor) — AWAITING LIVE UAT (verification: human_needed)
 Plan: 34 of 34
-Status: Ready to execute
+Status: Догоняющая волна 41-27…41-34 исполнена и проверена по коду; открыты R1–R5 (живая проверка) и решение по WR-01
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
 Остаточный GAP 1 (ревью WR-01) закрыт: пост-проверка семьи убрана из do_return, единственный гейт
