@@ -456,7 +456,7 @@
       </td>
       <td class="col-menu">
         {#if canEdit}
-          <ActionMenu variant="ghost-sm" portal label={`Действия: ${d.name}`}>
+          <ActionMenu variant="ghost-sm" label={`Действия: ${d.name}`}>
             <button
               type="button"
               role="menuitem"
@@ -484,7 +484,7 @@
       <!-- Клик по меню не должен сворачивать/разворачивать строку. -->
       <td class="col-menu">
         <div class="menu-stop" role="presentation" onclick={(e) => e.stopPropagation()}>
-          <ActionMenu variant="ghost-sm" portal label={`Действия: ${child.name}`}>
+          <ActionMenu variant="ghost-sm" label={`Действия: ${child.name}`}>
             <button type="button" role="menuitem" onclick={() => onOpenGroup(child.id)}>
               Открыть группу
             </button>

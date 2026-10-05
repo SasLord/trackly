@@ -347,6 +347,14 @@
     .group-tree-row.selected & {
       opacity: 1;
     }
+
+    // Панель меню живёт в <body> (портал) и не держит hover/focus-within
+    // строки: пока меню открыто, триггер остаётся видимым. `:global` обязателен:
+    // `[aria-expanded]` рендерит дочерний ActionMenu, без него Svelte вырежет
+    // селектор как неиспользуемый.
+    &:has(:global([aria-expanded='true'])) {
+      opacity: 1;
+    }
   }
 
   .menu-danger {

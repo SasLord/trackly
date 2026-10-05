@@ -203,7 +203,7 @@
         </td>
         <td class="col-menu">
           {#if canEdit && r.link}
-            <ActionMenu variant="ghost-sm" portal label={`Действия: ${r.name}`}>
+            <ActionMenu variant="ghost-sm" label={`Действия: ${r.name}`}>
               <button type="button" role="menuitem" onclick={() => onRemoveLink(r.device_id)}>
                 Убрать ссылку
               </button>

@@ -2,6 +2,12 @@
   import { untrack, type Snippet } from 'svelte';
   import { portal } from '$lib/utils/portal';
 
+  /* Меню действий. Панель ВСЕГДА выводится в `<body>` через `use:portal`
+   * (единственный режим, пропа `portal` нет): правый край выровнен по
+   * правому краю триггера, при нехватке места снизу панель открывается вверх.
+   * Причина — `overflow` скроллящихся контейнеров (DetailPanel, тело Modal)
+   * обрезает или раздвигает непортальную панель (UAT фазы 41, тест 5). */
+
   interface Props {
     label?: string;
     /** 'default' — текущий бордер-триггер (36×36, используется в DevicesPage
@@ -16,13 +22,6 @@
     icon?: Snippet;
     /** Inline min-width панели поверх дефолтных 180px (`.action-menu-panel`). */
     panelMinWidth?: string;
-    /** Рендерит панель в `<body>` через `use:portal` и переключает её на
-     *  `position: fixed`, чтобы `overflow-y: auto` тела `Modal` её не
-     *  обрезал (UI-SPEC §3, Discretion #3). Правый край панели выравнивается
-     *  по правому краю кнопки-триггера; при нехватке места снизу панель
-     *  открывается вверх. По умолчанию false — существующие вызовы
-     *  ('default'/'ghost-sm') не меняют поведения. */
-    portal?: boolean;
     /** UI-SPEC §2: поле номера показывает кнопку «Вставка» всегда, но
      *  делает её disabled в readonly/disabled-формах (plan 12 usage).
      *  Rule 2 (executor-examples.md) — минимально необходимо для того,
@@ -43,7 +42,6 @@
     variant = 'default',
     icon,
     panelMinWidth,
-    portal: usePortal = false,
     disabled = false,
     onOpenChange,
     children,
@@ -85,9 +83,9 @@
       // trigger; focus should follow wherever the user clicked.
       const target = e.target as Node;
       const insideRoot = rootEl?.contains(target) ?? false;
-      // Portal mode moves the panel out of rootEl (into <body>), so the
+      // The panel is always portaled into <body> (outside rootEl), so the
       // click-outside check must also cover the portaled panel.
-      const insidePanel = usePortal ? (panelEl?.contains(target) ?? false) : false;
+      const insidePanel = panelEl?.contains(target) ?? false;
       if (open && !insideRoot && !insidePanel) open = false;
     }
     function onKey(e: KeyboardEvent) {
@@ -140,10 +138,16 @@
       e.preventDefault();
       e.stopPropagation();
       close(true);
+    } else if (e.key === 'Tab') {
+      // WAI-ARIA menu button: Tab closes the menu and returns focus to the
+      // trigger. The panel lives at the end of <body>, so without this Tab
+      // from the last item would leave the application. No preventDefault:
+      // the default Tab move then continues from the trigger.
+      close(true);
     }
   }
 
-  /** Portal-mode positioning (UI-SPEC §3): right edge of the panel aligns
+  /** Panel positioning (UI-SPEC §3): right edge of the panel aligns
    *  with the right edge of the trigger button, 4px below; flips to open
    *  upward when there isn't enough room below. Unlike
    *  `lib/utils/dropdownAnchor.ts` (which left-aligns and pins the panel's
@@ -219,33 +223,19 @@
     {/if}
   </button>
   {#if open}
-    {#if usePortal}
-      <div
-        class="action-menu-panel action-menu-panel--portal"
-        role="menu"
-        tabindex="-1"
-        style:min-width={panelMinWidth}
-        bind:this={panelEl}
-        use:portal
-        use:actionMenuPortalPosition={triggerEl}
-        onkeydown={onPanelKeydown}
-        onclick={() => close(true)}
-      >
-        {@render children()}
-      </div>
-    {:else}
-      <div
-        class="action-menu-panel"
-        role="menu"
-        tabindex="-1"
-        style:min-width={panelMinWidth}
-        bind:this={panelEl}
-        onkeydown={onPanelKeydown}
-        onclick={() => close(true)}
-      >
-        {@render children()}
-      </div>
-    {/if}
+    <div
+      class="action-menu-panel"
+      role="menu"
+      tabindex="-1"
+      style:min-width={panelMinWidth}
+      bind:this={panelEl}
+      use:portal
+      use:actionMenuPortalPosition={triggerEl}
+      onkeydown={onPanelKeydown}
+      onclick={() => close(true)}
+    >
+      {@render children()}
+    </div>
   {/if}
 </div>
 
@@ -261,7 +251,6 @@
 
 <style lang="scss">
   .action-menu {
-    position: relative;
     display: inline-flex;
   }
 
@@ -314,12 +303,15 @@
   // ENTIRELY from `.tr-btn-ghost-icon` (global.scss) — no styles duplicated
   // here.
 
+  // Always portaled into <body> (`use:portal`); inline top/bottom/right are
+  // set by `actionMenuPortalPosition`, so only `position: fixed` lives here.
   .action-menu-panel {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
+    position: fixed;
     z-index: 1000;
     min-width: 180px;
+    max-width: 420px;
+    max-height: 280px;
+    overflow: auto;
     display: flex;
     flex-direction: column;
     padding: 4px;
@@ -327,20 +319,6 @@
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
     box-shadow: var(--tr-elev-2);
-  }
-
-  // Portal mode (UI-SPEC §3): positioned via `actionMenuPortalPosition`
-  // (inline `position: fixed`/`top`/`bottom`/`right` set on the node), so
-  // the static `top`/`right` offsets above must be cleared here. max-width
-  // 420px / max-height 280px + scroll are scoped to the portal panel only
-  // — the pre-existing 'default'/'ghost-sm' panels keep their unconstrained
-  // size (no behavior change, acceptance criterion of plan 40.2-09 task 2).
-  .action-menu-panel--portal {
-    top: auto;
-    right: auto;
-    max-width: 420px;
-    max-height: 280px;
-    overflow: auto;
   }
 
   .action-menu-panel :global(button) {

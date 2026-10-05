@@ -701,7 +701,6 @@
 
     <ActionMenu
       variant="ghost-md"
-      portal
       panelMinWidth="280px"
       label="Вставить номер по шаблону"
       disabled={actionsDisabled}
