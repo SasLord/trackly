@@ -1570,3 +1570,414 @@ async fn rights_properties_by_role() {
         Err(AppError::Forbidden)
     ));
 }
+
+// ---------------------------------------------------------------------------
+// atomic: мутация и аудит — одна транзакция (W-B02)
+// ---------------------------------------------------------------------------
+//
+// Приём: триггер обрывает вставку в `audit_log` для сущностей типов/свойств.
+// Мутация обязана вернуть ошибку И не оставить следов; после снятия триггера
+// та же мутация проходит (триггер — единственная причина отказа).
+
+async fn install_audit_fault(ctx: &AppCtx) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute_batch(
+                "CREATE TRIGGER audit_fault BEFORE INSERT ON audit_log \
+                 WHEN NEW.entity_type IN ('group_type', 'group_type_property') \
+                 BEGIN SELECT RAISE(ABORT, 'audit down'); END;",
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("install trigger");
+}
+
+async fn remove_audit_fault(ctx: &AppCtx) {
+    exec(ctx, "DROP TRIGGER audit_fault", vec![]).await;
+}
+
+/// Ошибка обязана прийти от триггера, а не от иной причины.
+fn assert_audit_fault<T: std::fmt::Debug>(res: Result<T, AppError>, what: &str) {
+    let err = res.expect_err(what);
+    assert!(
+        format!("{err:?}").contains("audit down"),
+        "{what}: ошибка должна быть от триггера аудита: {err:?}"
+    );
+}
+
+async fn count_types(ctx: &AppCtx) -> i64 {
+    scalar_i64(ctx, "SELECT COUNT(*) FROM group_types", vec![]).await
+}
+
+async fn count_props(ctx: &AppCtx, type_id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM group_type_properties WHERE type_id = ?1",
+        vec![int(type_id)],
+    )
+    .await
+}
+
+async fn type_name_version_matches(ctx: &AppCtx, id: i64, name: &str, version: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM group_types WHERE id = ?1 AND name = ?2 AND version = ?3",
+        vec![int(id), text(name), int(version)],
+    )
+    .await
+}
+
+async fn type_exists(ctx: &AppCtx, id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM group_types WHERE id = ?1",
+        vec![int(id)],
+    )
+    .await
+}
+
+async fn prop_matches(ctx: &AppCtx, id: i64, name: &str, req: i64, ver: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM group_type_properties
+         WHERE id = ?1 AND name = ?2 AND is_required = ?3 AND version = ?4",
+        vec![int(id), text(name), int(req), int(ver)],
+    )
+    .await
+}
+
+async fn prop_is_live(ctx: &AppCtx, id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM group_type_properties
+         WHERE id = ?1 AND archived_at_utc IS NULL",
+        vec![int(id)],
+    )
+    .await
+}
+
+async fn prop_sort_order(ctx: &AppCtx, id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT sort_order FROM group_type_properties WHERE id = ?1",
+        vec![int(id)],
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_create_type() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let before = count_types(&ctx).await;
+    install_audit_fault(&ctx).await;
+    let res = ctx
+        .group_types
+        .create_type(
+            &admin(),
+            GroupTypeCreateDto {
+                name: "Стойка Альфа".to_string(),
+                behavior: "container".to_string(),
+            },
+        )
+        .await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(count_types(&ctx).await, before, "тип не должен появиться");
+
+    remove_audit_fault(&ctx).await;
+    ctx.group_types
+        .create_type(
+            &admin(),
+            GroupTypeCreateDto {
+                name: "Стойка Альфа".to_string(),
+                behavior: "container".to_string(),
+            },
+        )
+        .await
+        .expect("без триггера создание проходит");
+    assert_eq!(count_types(&ctx).await, before + 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_update_type() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    let rename = || GroupTypeUpdateDto {
+        name: Some("Стойка Бета".to_string()),
+        ..Default::default()
+    };
+    install_audit_fault(&ctx).await;
+    let res = ctx
+        .group_types
+        .update_type(&admin(), t.id, t.version, rename())
+        .await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(
+        type_name_version_matches(&ctx, t.id, "Стойка Альфа", t.version).await,
+        1,
+        "имя и version прежние"
+    );
+
+    remove_audit_fault(&ctx).await;
+    ctx.group_types
+        .update_type(&admin(), t.id, t.version, rename())
+        .await
+        .expect("без триггера правка проходит");
+    assert_eq!(
+        type_name_version_matches(&ctx, t.id, "Стойка Бета", t.version + 1).await,
+        1,
+        "новое имя и version + 1"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_delete_type() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    install_audit_fault(&ctx).await;
+    let res = ctx.group_types.delete_type(&admin(), t.id).await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(type_exists(&ctx, t.id).await, 1, "тип остался");
+
+    remove_audit_fault(&ctx).await;
+    ctx.group_types
+        .delete_type(&admin(), t.id)
+        .await
+        .expect("без триггера удаление проходит");
+    assert_eq!(type_exists(&ctx, t.id).await, 0, "тип удалён");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_create_property() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    let before = count_props(&ctx, t.id).await;
+    install_audit_fault(&ctx).await;
+    let res = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(count_props(&ctx, t.id).await, before, "свойство не выросло");
+
+    remove_audit_fault(&ctx).await;
+    ctx.group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await
+        .expect("без триггера создание проходит");
+    assert_eq!(count_props(&ctx, t.id).await, before + 1);
+}
+
+/// ОХРАННЫЙ тест (без триггера): ветка `want_required` с существующей пустой
+/// группой отказывает по нарушителям и не оставляет свойство. Зелёный и до,
+/// и после правки (раньше откат делала ручная компенсация, теперь — транзакция):
+/// его роль — не дать потерять откат при удалении компенсации.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_create_property_required_violation_leaves_nothing() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    seed_group(&ctx, t.id, "Стойка Бета", 1).await;
+    let mut dto = prop_create(t.id, "Хост", "text");
+    dto.is_required = true;
+    let err = ctx
+        .group_types
+        .create_property(&admin(), dto)
+        .await
+        .expect_err("есть нарушители обязательности");
+    assert!(matches!(err, AppError::Validation { ref field, .. } if field == "is_required"));
+    assert_eq!(count_props(&ctx, t.id).await, 0, "свойство не осталось");
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'group_type_property'",
+            vec![]
+        )
+        .await,
+        0,
+        "аудита нет"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_update_property() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    let p = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await
+        .unwrap();
+    let patch = || PropertyUpdateDto {
+        name: Some("Хост".to_string()),
+        is_required: Some(true),
+        ..Default::default()
+    };
+    install_audit_fault(&ctx).await;
+    let res = ctx
+        .group_types
+        .update_property(&admin(), p.id, p.version, patch())
+        .await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(
+        prop_matches(&ctx, p.id, "Метка", 0, p.version).await,
+        1,
+        "имя, is_required, version прежние"
+    );
+
+    remove_audit_fault(&ctx).await;
+    ctx.group_types
+        .update_property(&admin(), p.id, p.version, patch())
+        .await
+        .expect("без триггера правка проходит");
+    assert_eq!(prop_matches(&ctx, p.id, "Хост", 1, p.version + 1).await, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_delete_property_hard() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    let p = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await
+        .unwrap();
+    install_audit_fault(&ctx).await;
+    let res = ctx.group_types.delete_property(&admin(), p.id).await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(count_props(&ctx, t.id).await, 1, "свойство осталось");
+
+    remove_audit_fault(&ctx).await;
+    let out = ctx
+        .group_types
+        .delete_property(&admin(), p.id)
+        .await
+        .expect("без триггера удаление проходит");
+    assert!(!out.archived);
+    assert_eq!(count_props(&ctx, t.id).await, 0, "удалено физически");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_delete_property_archive() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    let p = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await
+        .unwrap();
+    let g = seed_group(&ctx, t.id, "Стойка Бета", 1).await;
+    exec(
+        &ctx,
+        "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+         VALUES (?1, ?2, 'м-01', 1700000000)",
+        vec![int(g), int(p.id)],
+    )
+    .await;
+    install_audit_fault(&ctx).await;
+    let res = ctx.group_types.delete_property(&admin(), p.id).await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(prop_is_live(&ctx, p.id).await, 1, "свойство осталось живым");
+
+    remove_audit_fault(&ctx).await;
+    let out = ctx
+        .group_types
+        .delete_property(&admin(), p.id)
+        .await
+        .expect("без триггера скрытие проходит");
+    assert!(out.archived);
+    assert_eq!(prop_is_live(&ctx, p.id).await, 0, "свойство скрыто");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_unarchive_property() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    let p = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await
+        .unwrap();
+    let g = seed_group(&ctx, t.id, "Стойка Бета", 1).await;
+    exec(
+        &ctx,
+        "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+         VALUES (?1, ?2, 'м-01', 1700000000)",
+        vec![int(g), int(p.id)],
+    )
+    .await;
+    // Скрываем до установки триггера.
+    let out = ctx
+        .group_types
+        .delete_property(&admin(), p.id)
+        .await
+        .unwrap();
+    assert!(out.archived);
+    assert_eq!(1 - prop_is_live(&ctx, p.id).await, 1);
+
+    install_audit_fault(&ctx).await;
+    let res = ctx.group_types.unarchive_property(&admin(), p.id).await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(
+        1 - prop_is_live(&ctx, p.id).await,
+        1,
+        "свойство осталось скрытым"
+    );
+
+    remove_audit_fault(&ctx).await;
+    ctx.group_types
+        .unarchive_property(&admin(), p.id)
+        .await
+        .expect("без триггера возврат проходит");
+    assert_eq!(
+        1 - prop_is_live(&ctx, p.id).await,
+        0,
+        "свойство снова живое"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn atomic_reorder_properties() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка Альфа").await;
+    let mut ids = Vec::new();
+    for name in ["Метка", "Хост", "Стойка"] {
+        let p = ctx
+            .group_types
+            .create_property(&admin(), prop_create(t.id, name, "text"))
+            .await
+            .unwrap();
+        ids.push(i32::try_from(p.id).unwrap());
+    }
+    let first = i64::from(ids[0]);
+    let before = prop_sort_order(&ctx, first).await;
+    let reversed: Vec<i32> = ids.iter().rev().copied().collect();
+    let type_id = i32::try_from(t.id).unwrap();
+
+    install_audit_fault(&ctx).await;
+    let res = ctx
+        .group_types
+        .reorder_properties(&admin(), type_id, reversed.clone())
+        .await;
+    assert_audit_fault(res, "аудит оборван");
+    assert_eq!(
+        prop_sort_order(&ctx, first).await,
+        before,
+        "порядок прежний"
+    );
+
+    remove_audit_fault(&ctx).await;
+    ctx.group_types
+        .reorder_properties(&admin(), type_id, reversed)
+        .await
+        .expect("без триггера перестановка проходит");
+    assert_ne!(
+        prop_sort_order(&ctx, first).await,
+        before,
+        "порядок изменился"
+    );
+    assert_eq!(
+        prop_sort_order(&ctx, first).await,
+        2,
+        "первое стало последним"
+    );
+}
