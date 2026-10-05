@@ -15,6 +15,7 @@ use trackly_app::dto::auth::UserNew;
 use trackly_app::dto::group_types::{
     GroupTypeCreateDto, GroupTypeDto, GroupTypeUpdateDto, PropertyCreateDto, PropertyUpdateDto,
 };
+use trackly_app::dto::groups::GroupValueInputDto;
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -1276,6 +1277,241 @@ async fn protect_c_hidden_property_has_no_violators() {
         .await
         .unwrap()
         .is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// protect_d: обход «обязательного» через скрытие (W-B01)
+// ---------------------------------------------------------------------------
+
+fn text_value(property_id: i64, text: &str) -> GroupValueInputDto {
+    GroupValueInputDto {
+        property_id,
+        text: Some(text.to_string()),
+        refs: vec![],
+    }
+}
+
+async fn group_version_of(ctx: &AppCtx, id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT version FROM groups WHERE id = ?1",
+        vec![int(id)],
+    )
+    .await
+}
+
+/// Ровно три шага из W-B01: скрыть -> отметить обязательным -> показать.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn protect_d_hide_then_require_is_rejected() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка").await;
+    let host = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Хост", "text"))
+        .await
+        .unwrap();
+    let label = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await
+        .unwrap();
+    let alfa = seed_group(&ctx, t.id, "Стойка Альфа", 1).await;
+    let beta = seed_group(&ctx, t.id, "Стойка Бета", 2).await;
+    exec(
+        &ctx,
+        "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+         VALUES (?1, ?2, 'h-01', 1700000000)",
+        vec![int(alfa), int(host.id)],
+    )
+    .await;
+
+    // Шаг 1: скрыть (значение есть -> скрытие, а не удаление).
+    let out = ctx
+        .group_types
+        .delete_property(&admin(), host.id)
+        .await
+        .unwrap();
+    assert!(out.archived);
+
+    // Шаг 2: отметить скрытое обязательным — отказ сервера.
+    let hidden = type_by_code(&ctx, &t.code, true)
+        .await
+        .properties
+        .into_iter()
+        .find(|p| p.id == host.id)
+        .expect("скрытое свойство в списке со скрытыми");
+    let err = ctx
+        .group_types
+        .update_property(
+            &admin(),
+            host.id,
+            hidden.version,
+            PropertyUpdateDto {
+                is_required: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("скрытое свойство нельзя сделать обязательным");
+    match err {
+        AppError::Validation { field, message } => {
+            assert_eq!(field, "is_required");
+            assert!(
+                message.contains("Скрытое свойство нельзя сделать обязательным"),
+                "{message}"
+            );
+        }
+        other => panic!("ожидали Validation, получили {other:?}"),
+    }
+
+    // Шаг 3: показать — свойство не обязательное, правка несвязанного поля проходит.
+    let back = ctx
+        .group_types
+        .unarchive_property(&admin(), host.id)
+        .await
+        .unwrap();
+    assert!(!back.is_required);
+    let ver = group_version_of(&ctx, beta).await;
+    ctx.groups
+        .set_values(&admin(), beta, ver, vec![text_value(label.id, "м-1")])
+        .await
+        .expect("set_values по несвязанному полю не должен падать на «Хост»");
+}
+
+/// Вторая дорога: обязательное -> скрыть -> создать группу -> показать.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn protect_d_hiding_required_property_clears_flag() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка").await;
+    let host = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Хост", "text"))
+        .await
+        .unwrap();
+    let label = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
+        .await
+        .unwrap();
+    let alfa = seed_group(&ctx, t.id, "Стойка Альфа", 1).await;
+    exec(
+        &ctx,
+        "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+         VALUES (?1, ?2, 'h-01', 1700000000)",
+        vec![int(alfa), int(host.id)],
+    )
+    .await;
+
+    // Нарушителей нет — обязательным сделать можно.
+    ctx.group_types
+        .update_property(
+            &admin(),
+            host.id,
+            host.version,
+            PropertyUpdateDto {
+                is_required: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("нарушителей нет");
+
+    let out = ctx
+        .group_types
+        .delete_property(&admin(), host.id)
+        .await
+        .unwrap();
+    assert!(out.archived);
+    let hidden = type_by_code(&ctx, &t.code, true)
+        .await
+        .properties
+        .into_iter()
+        .find(|p| p.id == host.id)
+        .expect("скрытое свойство в списке со скрытыми");
+    assert!(hidden.archived);
+    assert!(!hidden.is_required, "скрытое свойство не обязательное");
+
+    // Пока свойство скрыто, появляется группа без значения.
+    let beta = seed_group(&ctx, t.id, "Стойка Бета", 2).await;
+    let back = ctx
+        .group_types
+        .unarchive_property(&admin(), host.id)
+        .await
+        .expect("возврат не заперт нарушителями");
+    assert!(!back.is_required);
+    let ver = group_version_of(&ctx, beta).await;
+    ctx.groups
+        .set_values(&admin(), beta, ver, vec![text_value(label.id, "м-1")])
+        .await
+        .expect("set_values по несвязанному полю проходит");
+
+    // След в аудите: состояние ДО скрытия содержит is_required=true.
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM audit_log
+             WHERE entity_type = 'group_type_property' AND action = 'archive'
+               AND entity_id = ?1 AND before_json LIKE '%\"is_required\":true%'",
+            vec![int(host.id)]
+        )
+        .await,
+        1
+    );
+}
+
+/// Страховочный пояс: наследное «скрыто + обязательное» при нарушителях не возвращается.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn protect_d_unarchive_refuses_legacy_required_with_violators() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let t = new_custom_type(&ctx, "Стойка").await;
+    let host = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Хост", "text"))
+        .await
+        .unwrap();
+    let alfa = seed_group(&ctx, t.id, "Стойка Альфа", 1).await;
+    let beta = seed_group(&ctx, t.id, "Стойка Бета", 2).await;
+    exec(
+        &ctx,
+        "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+         VALUES (?1, ?2, 'h-01', 1700000000)",
+        vec![int(alfa), int(host.id)],
+    )
+    .await;
+    let beta_name = group_name(&ctx, beta).await;
+    // Наследное состояние создаётся напрямую в БД (в обход сервиса).
+    exec(
+        &ctx,
+        "UPDATE group_type_properties SET archived_at_utc = 1700000100, is_required = 1
+         WHERE id = ?1",
+        vec![int(host.id)],
+    )
+    .await;
+
+    let err = ctx
+        .group_types
+        .unarchive_property(&admin(), host.id)
+        .await
+        .expect_err("есть нарушители обязательности");
+    match err {
+        AppError::Validation { field, message } => {
+            assert_eq!(field, "is_required");
+            assert!(message.contains(&beta_name), "{message}");
+        }
+        other => panic!("ожидали Validation, получили {other:?}"),
+    }
+
+    // Свойство осталось скрытым.
+    assert!(!type_by_code(&ctx, &t.code, false)
+        .await
+        .properties
+        .iter()
+        .any(|p| p.id == host.id));
+    assert!(type_by_code(&ctx, &t.code, true)
+        .await
+        .properties
+        .iter()
+        .any(|p| p.id == host.id && p.archived));
 }
 
 // ---------------------------------------------------------------------------
