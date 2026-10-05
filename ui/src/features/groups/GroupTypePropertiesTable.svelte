@@ -20,6 +20,7 @@
   import { insertionIndex, reorder } from '$lib/utils/reorder';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { propertyRemovalCopy } from './propertyRemoval';
   import type { AppError } from '$lib/api/errors';
   import type { GroupTypePropertyDto, PropertyUpdateDto } from '../../bindings';
 
@@ -354,24 +355,36 @@
     }
   }
 
-  // ---- Скрыть / вернуть ------------------------------------------------------
-  let hideTarget = $state<GroupTypePropertyDto | null>(null);
-  let hiding = $state(false);
+  // ---- Скрыть (заполненное) / удалить (пустое) / вернуть --------------------
+  // Копирайт и ветвление — только из `propertyRemovalCopy` (GAP-2, план 41-31).
+  let removeTarget = $state<GroupTypePropertyDto | null>(null);
+  let removing = $state(false);
+  const removalCopy = $derived(
+    removeTarget
+      ? propertyRemovalCopy({
+          name: removeTarget.name,
+          filledGroupCount: removeTarget.filled_group_count,
+          isRequired: removeTarget.is_required,
+        })
+      : null,
+  );
 
-  async function confirmHide(): Promise<void> {
-    const target = hideTarget;
-    if (!target) return;
-    hiding = true;
+  async function confirmRemove(): Promise<void> {
+    const target = removeTarget;
+    const copy = removalCopy;
+    if (!target || !copy) return;
+    removing = true;
     try {
       const outcome = await groupTypes.deleteProperty(target.id);
-      hideTarget = null;
-      // Сервер сам решает: заполненное скрывает, пустое удаляет физически.
+      removeTarget = null;
+      // Тост — по фактическому исходу сервера: между открытием модалки и
+      // подтверждением другой пользователь мог заполнить свойство.
       pushToast('success', outcome.archived ? 'Свойство скрыто' : 'Свойство удалено');
       await onReload();
     } catch (e) {
-      pushToast('error', errMessage(e, 'Не удалось скрыть свойство.'));
+      pushToast('error', errMessage(e, copy.errorToast));
     } finally {
-      hiding = false;
+      removing = false;
     }
   }
 
@@ -493,6 +506,11 @@
     {/snippet}
     {#each rows as p, i (p.id)}
       {@const liveIdx = liveRows.findIndex((r) => r.id === p.id)}
+      {@const removal = propertyRemovalCopy({
+        name: p.name,
+        filledGroupCount: p.filled_group_count,
+        isRequired: p.is_required,
+      })}
       <TableRow
         class={['prop-row', p.archived && 'prop-row-hidden', draggingId === p.id && 'dragging']
           .filter(Boolean)
@@ -589,8 +607,13 @@
                 >
                   Ниже
                 </button>
-                <button type="button" role="menuitem" onclick={() => (hideTarget = p)}>
-                  Скрыть
+                <button
+                  type="button"
+                  role="menuitem"
+                  class:menu-danger={removal.kind === 'delete'}
+                  onclick={() => (removeTarget = p)}
+                >
+                  {removal.menuLabel}
                 </button>
               {/if}
             </ActionMenu>
@@ -644,17 +667,16 @@
   </div>
 {/if}
 
-{#if hideTarget}
-  <Modal open={true} size="md" title="Скрыть свойство" onClose={() => (hideTarget = null)}>
-    <p class="confirm-text">
-      Свойство «{hideTarget.name}» исчезнет из форм групп. Заполненные значения останутся в базе,
-      свойство можно будет вернуть.
-    </p>
+{#if removeTarget && removalCopy}
+  <Modal open={true} size="md" title={removalCopy.modalTitle} onClose={() => (removeTarget = null)}>
+    <p class="confirm-text">{removalCopy.body}</p>
     {#snippet footer()}
-      <Button variant="secondary" onclick={() => (hideTarget = null)} disabled={hiding}>
+      <Button variant="secondary" onclick={() => (removeTarget = null)} disabled={removing}>
         Отмена
       </Button>
-      <Button variant="primary" loading={hiding} onclick={confirmHide}>Скрыть</Button>
+      <Button variant={removalCopy.confirmVariant} loading={removing} onclick={confirmRemove}>
+        {removalCopy.confirmLabel}
+      </Button>
     {/snippet}
   </Modal>
 {/if}
@@ -786,6 +808,12 @@
   }
   .add-type {
     flex: 0 0 220px;
+  }
+
+  // Опасный пункт меню (удаление пустого свойства) — как в деревьях групп/мест.
+  .menu-danger {
+    border-top: 1px solid var(--tr-border);
+    color: var(--tr-danger-text);
   }
 
   .confirm-text {
