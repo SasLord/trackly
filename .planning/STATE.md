@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-05T02:36:22.521Z"
+last_updated: "2026-10-05T04:03:42.968Z"
 last_activity: 2026-10-05
 progress:
   total_phases: 20
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 153
-  completed_plans: 152
-  percent: 45
+  completed_plans: 153
+  percent: 50
 ---
 
 # Project State
@@ -543,6 +543,7 @@ Last activity: 2026-10-05
 | Phase 41 P31 | ~50m | 3 tasks | 9 files |
 | Phase 41 P32 | ~1h | 2 tasks | 3 files |
 | Phase 41 P33 | 15min | 2 tasks | 4 files |
+| Phase 41 P34 | 100min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1221,6 +1222,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-31: копирайт скрытия/удаления свойства ветвится по filled_group_count через propertyRemovalCopy; зеркало закреплено общей фикстурой property-removal/cases.json (JS-гейт + Rust-паритет)
 - [Phase 41]: 41-32: мутаторы репозитория типов групп вынесены в inherent *_on(&Connection) (Transaction не DerefMut в rusqlite 0.38); мутация и аудит — одна транзакция writer — W-B02: сбой аудита обязан откатывать изменение; порт GroupTypeRepository не тронут
 - [Phase 41]: 41-33: S3-гейт проверяет оба аргумента movementsTruncationNotice (.length первым, .total вторым); баннер без @media print
+- [Phase 41]: Статус гэпа UAT — fixed_pending_reverify (не resolved): исправление применено, живой перепроверки не было; инструментарий GSD знает только failed/resolved — resolved/pass/closed читались бы как «проверено», а приложение исполнителем не запускалось
 
 ### Pending Todos
 
@@ -1420,8 +1422,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-05T01:01:54.514Z
-Stopped at: Completed 41-30-PLAN.md
+Last session: 2026-10-05T04:03:38.287Z
+Stopped at: Completed 41-34-PLAN.md (граница волны; живая перепроверка R1-R5 за пользователем)
 Resume file: None
 
 None
