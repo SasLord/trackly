@@ -112,8 +112,29 @@ created: 2026-10-04
 | 41-26-T1 | 26 | 13 | GRP-01..GRP-10 | T-41-26-02 | полный regress workspace один раз, clippy | full suite | `cargo clippy --workspace --all-targets -- -D warnings` | ✅ (прогон) | ✅ green |
 | 41-26-T2 | 26 | 13 | GRD-06, GRP-04 | T-41-26-01 | UI-гейты в порядке CI, privacy | CI-chain | `pnpm --dir ui lint && node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ✅ создан | ✅ green |
 | 41-26-T3 | 26 | 13 | все | T-41-26-04 | заполнение карты и сбор живых проверок | doc | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ✅ создан | ✅ green |
+| 41-27-T1 | 27 | 1 | GRP-03, GRP-04 | T-41-27-03 | гейт «панель меню не в потоке», 10 мутантов selftest | node-гейт | `node ui/scripts/check-action-menu-portal.mjs --selftest && node ui/scripts/check-action-menu-portal.mjs` | ✅ создан | ✅ green |
+| 41-27-T2 | 27 | 1 | GRP-03, GRP-04 | T-41-27-02,03 | портал по умолчанию, проп `portal` удалён, триггер виден в деревьях | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); ⬜ ожидает живой перепроверки (R1, R2) |
+| 41-27-T3 | 27 | 1 | GRP-03, GRP-04 | T-41-27-03 | сборка и красный сценарий правила F на реальных файлах | UI build + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint && pnpm --dir ui build` | ✅ создан | ✅ green (авто); ⬜ ожидает живой перепроверки (R1, R2) |
+| 41-28-T1 | 28 | 1 | GRP-01, GRP-09 | T-41-28-01 | одна нейтральная строка хинта для всех ролей | UI/lint + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ создан | ✅ green (авто); ⬜ ожидает живой перепроверки (R3) |
+| 41-28-T2 | 28 | 1 | GRP-01, GRP-09 | T-41-28-02 | UI-SPEC, VALIDATION, deferred-items синхронизированы со старой формулировкой | doc grep | `grep -rn` по прежней формулировке в трёх документах, ожидается код 1 (не найдено) | ✅ создан | ✅ green |
+| 41-29-T1 | 29 | 2 | GRP-03 | T-41-29-01,02 | красные `protect_d_*` (скрытие обязательного снимает признак; скрытому нельзя потребовать обязательность; возврат легаси-строки с нарушителями отвергается) | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service protect_d` (красная фаза — в SUMMARY 41-29; сейчас 3 теста зелёные) | ✅ создан | ✅ green |
+| 41-29-T2 | 29 | 2 | GRP-03 | T-41-29-01..03 | `archive_property` снимает `is_required` тем же UPDATE; `update_property` отвергает обязательность скрытого; защита при возврате — запасная для легаси-строк | infra + app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service && cargo test -p trackly-infra --test group_types_repo` | ✅ создан | ✅ green |
+| 41-30-T1 | 30 | 3 | GRP-06 | T-41-30-01,03 | общая фикстура уведомления и `report_trunc_*` (красные до правки) | app + fixture | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test report_movements_truncation` (красная фаза — в SUMMARY 41-30) | ✅ создан | ✅ green |
+| 41-30-T2 | 30 | 3 | GRP-06 | T-41-30-01,03,04 | истинный `total` вторым `COUNT(*)`, уведомление в печати и CSV, значок вкладки по `resp.total` | app + human (печать) | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test report_movements_truncation && TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test group_report_batch` | ✅ создан | ✅ green (авто); ⬜ ожидает живой перепроверки (R5) |
+| 41-31-T1 | 31 | 4 | GRP-03 | T-41-31-05 | `propertyRemovalCopy`, общая фикстура, гейт с 7 мутантами | node-гейт | `node ui/scripts/check-property-removal.mjs --selftest && node ui/scripts/check-property-removal.mjs` | ✅ создан | ✅ green |
+| 41-31-T2 | 31 | 4 | GRP-03 | T-41-31-01..04 | честный копирайт в таблице свойств; сервер соответствует той же фикстуре (код `crates/*/src` не менялся) | UI/lint + parity + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint && TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_property_removal_parity` | ✅ создан | ✅ green (авто); ⬜ ожидает живой перепроверки (R4) |
+| 41-31-T3 | 31 | 4 | GRP-03 | T-41-31-01 | H20-1 переписан в VALIDATION, UI-SPEC синхронизирован, решение по контекстным меню записано | doc | `grep -c "Удалить безвозвратно" .planning/phases/41-groups-model-and-editor/41-UI-SPEC.md` (2) | ✅ создан | ✅ green |
+| 41-32-T1 | 32 | 5 | GRP-01, GRP-02, GRP-03 | T-41-32-01,02 | красные `atomic_*` с fault-injection триггером на `audit_log` | app service | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service atomic_` (красная фаза — в SUMMARY 41-32; сейчас 10 тестов зелёные) | ✅ создан | ✅ green |
+| 41-32-T2 | 32 | 5 | GRP-01, GRP-02, GRP-03 | T-41-32-01,02 | мутатор и запись аудита в одной транзакции; тела мутаторов в `*_on(&self, conn, …)` (отступление от плана: rusqlite 0.38, `&mut tx` не компилируется; критерий `conn.savepoint()` == 1 НЕ выполнен — их 0) | app service + infra | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test groups_types_service && cargo test -p trackly-infra --test group_types_repo` | ✅ создан | ✅ green |
+| 41-33-T1 | 33 | 6 | GRP-06 | T-41-33-04 | `movementsTruncationNotice`, гейт с 8 мутантами; фикстура расширена оркестратором кейсом «500 из 800» (e09fd295) против захардкоженного потолка `total <= 1000` | node-гейт | `node ui/scripts/check-report-truncation.mjs --selftest && node ui/scripts/check-report-truncation.mjs` | ✅ создан | ✅ green |
+| 41-33-T2 | 33 | 6 | GRP-06 | T-41-33-01..03 | экранный баннер усечения в ReportsPage по `rows.total` (`$derived`, без `$effect`), гейт в `pnpm lint` | UI build + human | `pnpm --dir ui svelte-check && pnpm --dir ui lint && pnpm --dir ui build` | ✅ создан | ✅ green (авто); ⬜ ожидает живой перепроверки (R5) |
+| 41-34-T1 | 34 | 7 | GRP-01..GRP-09 | T-41-34-03 | полный регресс одной цепочкой в порядке CI, последовательно | full suite | семь шагов CI-цепочки — см. раздел «Результаты прогонов (план 41-34…)» ниже | ✅ (прогон) | ✅ green |
+| 41-34-T2 | 34 | 7 | все | T-41-34-01 | гейт приватности и ручной греп добавленных строк волны | privacy | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ✅ создан | ✅ green |
+| 41-34-T3 | 34 | 7 | все | T-41-34-02 | два UAT-гэпа — «починено, ожидает перепроверки»; единый список живых проверок (пункты 20-24 в 41-HUMAN-UAT.md) | doc + human | `test "$(grep -c 'status: failed' 41-UAT.md)" = "0"` (в каталоге фазы) | ✅ создан | ✅ green (авто); ⬜ ожидает живой перепроверки (R1-R5 целиком) |
 
 **Заполнена планом 41-26 по факту прогонов 2026-10-04** (26 планов, 59 задач): «File Exists» и «Status» выставлены после зелёных прогонов, перечисленных в разделе «Результаты прогонов». Статус «green» означает ТОЛЬКО автоматическую проверку из колонки «Automated Command»; в строках с пометкой «живая проверка открыта» рантайм и вид в приложении не проверены (см. «Живые проверки для пользователя»).
+**Дополнена планом 41-34 по факту прогонов 2026-10-05** (задачи 41-27…41-34, 19 строк). Статус «green» — только команда из колонки «Automated Command», реально выполненная зелёной в границе волны. «⬜ ожидает живой перепроверки» — рантайм и вид в приложении не проверены; пункты R1-R5 живых проверок — 41-HUMAN-UAT.md, пункты 20-24. `nyquist_compliant` этой волной не меняется, пока открыты R1-R5.
+
 Файлы тестов в плане именуются по факту: `group_types_repo` (типы, триггер), `groups_repo` (группы, PK, CTE), `groups_membership`, `groups_move`, `groups_values_card`, `group_report_batch`, `places_move_groups` — вместо обобщённых `groups_service move_/card_/values_` из таблицы ниже.
 
 ### Phase Requirements → Test Map (из RESEARCH.md)
@@ -256,6 +277,38 @@ created: 2026-10-04
 
 ---
 
+## Результаты прогонов (план 41-34, 2026-10-05, граница волны 41-27…41-33, коммит-основа волны 1f82b55b, HEAD e09fd295)
+
+Границу волны закрывает ОДИН полный прогон, строго последовательно, по одному `cargo` за раз; рабочее дерево перед цепочкой чистое. Порядок — порядок `ci-fast.yml`. Каждый шаг записан отдельно.
+
+| # | Шаг | Код | Результат |
+|---|-----|-----|-----------|
+| 1 | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | 0 | PASS, 0 нарушений |
+| 2 | `pnpm --dir ui build` | 0 | собран; `git status` по `ui/src` пуст, `bindings.ts` не менялся |
+| 3 | `rustfmt --check` по 7 `.rs`-файлам, изменённым волной | 0 | чисто. Полный `cargo fmt --all -- --check` НЕ запускался: в `crates/trackly-app/src/dto/act.rs` и ряде тестов — заранее существующий дрейф, не волны |
+| 4 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | чисто (кэш: исходники после последнего clippy не менялись) |
+| 5 | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test --workspace --no-fail-fast -- --test-threads=1 --skip login_remember_persistent_cookie` | 0 | **158 тестовых бинарей, 1625 passed, 0 failed, 5 ignored**, 4779 с (около 80 минут, не 8) |
+| 6 | `pnpm --dir ui svelte-check` | 0 | 311 файлов, 0 ERRORS, 68 WARNINGS (база прежняя) |
+| 7 | `pnpm --dir ui lint` | 0 | eslint, prettier и все `check-*.mjs`; среди них `check-action-menu-portal` (selftest 10 фикстур + прогон, 0 нарушений), `check-property-removal` (7 мутантов, 6 кейсов), `check-report-truncation` (8 мутантов, 8 кейсов), `check-groups-section`, `check-reorder` (22 кейса), `check-group-vocabulary` (214 файлов) |
+
+Относительно 41-26 (156 бинарей, 1604 passed): +2 бинаря (`groups_property_removal_parity`, `report_movements_truncation`), +21 тест. По целям волны в полном прогоне: `groups_types_service` 39 passed (в том числе `atomic_*` — 10, `protect_d_*` — 3), `report_movements_truncation` 7, `groups_property_removal_parity` 1, `group_report_batch` 10, `group_types_repo` 14 — все 0 failed.
+
+Предсуществующий пропуск: `login_remember_persistent_cookie` (подвисание) — `--skip`, как и в 41-26; не вводится волной.
+
+### Отступления плана, зафиксированные в границе
+
+- 41-29: вместо одной защиты при возврате — `archive_property` снимает `is_required` тем же UPDATE, что и скрытие; `update_property` отвергает `is_required=true` у скрытого; защита при возврате осталась запасной для легаси-строк (иначе пользователь оказывался в тупике).
+- 41-31: `crates/*/src` не менялся вообще (сервер вёл себя верно) — копирайт плюс паритет-тест на общей фикстуре.
+- 41-32: rusqlite 0.38 (не 0.39, как в CLAUDE.md), у `Transaction` нет `DerefMut`; тела мутаторов вынесены в `*_on(&self, conn, …)`. Критерий плана `grep -c "conn.savepoint()" == 1` НЕ выполнен (0) — отступление записано, не затушёвано.
+- Оркестратор (e09fd295): в фикстуру `report-truncation/cases.json` добавлен 8-й кейс «500 из 800» — мутант с захардкоженным `total <= 1000` проходил все 7 прежних кейсов. Кейс убивает мутанта, selftest гейта зелёный, `report_movements_truncation` 7/7 на обновлённой фикстуре.
+- 41-30: тест `report_trunc_under_limit_total_equals_rows` — охранный, зелёный и до, и после правки; исполнитель заявил это открыто.
+
+### Приватность (план 41-34)
+
+Скрипт-гейт зелёный. Вручную просмотрены добавленные волной строки (`git diff 1f82b55b..HEAD -U0`: около 3400 строк кода и тестов, около 3400 строк `.planning/`) регулярными выражениями на ФИО (инициалы, «Фамилия Имя Отчество»), e-mail, телефоны, IP, MAC, ИНН/КПП/ОГРН/ОКПО, организационно-правовые формы, адреса. В коде и тестах совпадений нет. В `.planning/` — только вымышленное («Иванов И.И.», «Петров П.П.», «Сидоров С.С.», «Иванова И.И.», «Иванова А.А.», «Иванкин К.К.», «Кузнецов К.К.»; адреса 192.168.1.10, 192.168.1.100, 1.2.3.4; MAC из документационных примеров). Реквизитов, e-mail, телефонов, организаций, адресов — 0. Файлы волны из списка плана (`groups_types_service.rs`, `report_movements_truncation.rs`, `groups_property_removal_parity.rs`, обе `cases.json`, три `.mjs`-гейта, `propertyRemoval.ts`, `truncationNotice.ts`) проверены тем же способом: реальных имён нет. SUMMARY планов 41-27…41-33 прочитаны на цитаты живой БД, логов и вывода запросов — не найдено (упоминания «копия dev-БД» — описание процедуры, не вывод). Найдено 0 случаев, удалять было нечего. Граница гарантии: проверен диф волны, не вся история репозитория.
+
+---
+
 ## Покрытие требований автоматикой
 
 | Требование | Чем покрыто (машинно) | Остаётся человеку |
@@ -315,6 +368,8 @@ created: 2026-10-04
 ---
 
 ## Живые проверки для пользователя (до /gsd-verify-work)
+
+> **Повторная проверка после волны 41-27…41-33** (план 41-34): пункты R1-R5 собраны отдельным списком в `41-HUMAN-UAT.md` (пункты 20-24), все `pending`. Пункт H20-1 ниже переписан планом 41-31, копирайт H20-3 решён планом 41-28; живая перепроверка обоих — за пользователем.
 
 Это список к РУЧНОМУ прохождению. Исполнитель плана 41-26 ни одну из них не запускал и не отмечал пройденной. Запускать на ОБОИХ транспортах: десктоп — `cargo tauri dev` с ветки/дерева, где лежит изменение (исправления в стороннем worktree в работающее приложение не попадают, пока не слиты в `main`); LAN-браузер — после `pnpm --dir ui build`. По возможности — Windows WebView2. В каждом пункте дополнительно смотреть консоль: не должно быть `effect_update_depth_exceeded`.
 
