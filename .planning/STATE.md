@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-05T01:21:56.340Z"
+last_updated: "2026-10-05T01:51:23.544Z"
 last_activity: 2026-10-05
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 153
-  completed_plans: 150
+  completed_plans: 151
   percent: 45
 ---
 
@@ -541,6 +541,7 @@ Last activity: 2026-10-05
 | Phase 41 P29 | 25 мин | 2 tasks | 3 files |
 | Phase 41 P30 | 45min | 2 tasks | 4 files |
 | Phase 41 P31 | ~50m | 3 tasks | 9 files |
+| Phase 41 P32 | ~1h | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1217,6 +1218,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-28: хинт панели типа нейтральный для всех ролей
 - [Phase 41]: 41-30: усечение отчёта Перемещения сигнализируется (истинный total, уведомление в печати и CSV), потолок 1000 и порядок сохранены — W-B03: тихая потеря превращается в явное уведомление без расширения DoS-границы
 - [Phase 41]: 41-31: копирайт скрытия/удаления свойства ветвится по filled_group_count через propertyRemovalCopy; зеркало закреплено общей фикстурой property-removal/cases.json (JS-гейт + Rust-паритет)
+- [Phase 41]: 41-32: мутаторы репозитория типов групп вынесены в inherent *_on(&Connection) (Transaction не DerefMut в rusqlite 0.38); мутация и аудит — одна транзакция writer — W-B02: сбой аудита обязан откатывать изменение; порт GroupTypeRepository не тронут
 
 ### Pending Todos
 
