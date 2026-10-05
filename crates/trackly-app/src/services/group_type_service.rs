@@ -108,6 +108,16 @@ fn duplicate_property_name_error() -> AppError {
     }
 }
 
+/// Скрытое свойство из форм групп выпадает: обязательным его сделать нельзя (W-B01).
+fn hidden_property_required_error() -> AppError {
+    AppError::Validation {
+        field: "is_required".to_string(),
+        message: "Скрытое свойство нельзя сделать обязательным. \
+                  Сначала верните его в формы групп."
+            .to_string(),
+    }
+}
+
 /// Перехват нарушения `idx_gtp_name_live` (сырой `Conflict` от SQLite).
 fn is_duplicate_property_conflict(err: &AppError) -> bool {
     matches!(err, AppError::Conflict { reason } if reason.contains("idx_gtp_name_live")
@@ -528,7 +538,8 @@ impl GroupTypeService {
     }
 
     /// Обновить свойство (CAS по `version`). Смена типа данных заполненного
-    /// свойства и включение «обязательное» при пустых группах отклоняются на сервере.
+    /// свойства и включение «обязательное» при пустых группах отклоняются на сервере;
+    /// скрытое свойство обязательным сделать нельзя.
     pub async fn update_property(
         &self,
         caller: &Identity,
@@ -578,6 +589,10 @@ impl GroupTypeService {
                             });
                         }
                     }
+                }
+                if patch.is_required == Some(true) && current.archived_at_utc.is_some() {
+                    // W-B01:1
+                    return Err(hidden_property_required_error());
                 }
                 if patch.is_required == Some(true)
                     && !current.is_required
@@ -668,7 +683,8 @@ impl GroupTypeService {
             .await
     }
 
-    /// Вернуть скрытое свойство. Занятое живое имя в типе — `Validation`.
+    /// Вернуть скрытое свойство. Занятое живое имя в типе — `Validation`; наследное
+    /// обязательное свойство при нарушителях — `Validation` `is_required`.
     pub async fn unarchive_property(
         &self,
         caller: &Identity,
@@ -688,6 +704,15 @@ impl GroupTypeService {
                 }
                 if live_name_taken(conn, &repo, current.type_id, &current.name, Some(id))? {
                     return Err(duplicate_property_name_error());
+                }
+                if current.is_required {
+                    // W-B01:2
+                    // Наследное «скрыто + обязательное»: без проверки живое обязательное
+                    // свойство заперло бы set_values у групп без значения.
+                    let violators = repo.groups_missing_required(conn, current.type_id, id)?;
+                    if !violators.is_empty() {
+                        return Err(required_violation_error(&violators));
+                    }
                 }
                 match repo.unarchive_property(conn, id, now) {
                     Ok(()) => {}

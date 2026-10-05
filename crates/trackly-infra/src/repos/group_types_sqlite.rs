@@ -477,8 +477,12 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
     ) -> Result<(), AppError> {
         let affected = conn
             .execute(
+                // Скрытое свойство из форм групп выпадает, а обязательность без формы
+                // невыполнима (D-13): флаг снимается при скрытии, значения остаются.
                 "UPDATE group_type_properties SET
-                   archived_at_utc = ?1, version = version + 1, updated_at_utc = ?1
+                   archived_at_utc = ?1,
+                   is_required = 0,
+                   version = version + 1, updated_at_utc = ?1
                  WHERE id = ?2 AND archived_at_utc IS NULL AND deleted_at_utc IS NULL",
                 rusqlite::params![now_utc, id],
             )
