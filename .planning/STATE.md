@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-05T00:06:01.241Z"
+last_updated: "2026-10-05T00:26:51.180Z"
 last_activity: 2026-10-05
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 153
-  completed_plans: 147
+  completed_plans: 148
   percent: 45
 ---
 
@@ -538,6 +538,7 @@ Last activity: 2026-10-05
 | Phase 41 P25 | ~35min | 2 tasks | 3 files |
 | Phase 41 P26 | 35min | 3 tasks | 1 files |
 | Phase 41 P28 | 5m | 2 tasks | 4 files |
+| Phase 41 P29 | 25 мин | 2 tasks | 3 files |
 
 ## Accumulated Context
 
