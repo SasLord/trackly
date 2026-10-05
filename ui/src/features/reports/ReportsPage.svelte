@@ -13,6 +13,7 @@
   import ReportFilters from './ReportFilters.svelte';
   import RequestCategoryFilter from './RequestCategoryFilter.svelte';
   import ReportTable from './ReportTable.svelte';
+  import { movementsTruncationNotice } from './truncationNotice';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
 
   // Plan 40-18 (D-22): 'movements' mirrors ReportSubNav.svelte's own DomainKey
@@ -542,6 +543,15 @@
       // Non-fatal; filter shows empty list
     }
   });
+
+  // W-B03: «Перемещения» отдаёт максимум 1000 строк и истинный `total`. Баннер
+  // читает именно `rows.total` (не длину массива) — гейт check-report-truncation.
+  // Только $derived: ничего читаемого не записывается (effect_update_depth_exceeded).
+  const truncationNotice = $derived(
+    reportTypeKey() === 'movements' && rows
+      ? movementsTruncationNotice(rows.rows.length, rows.total)
+      : null,
+  );
 </script>
 
 <div class="reports-page">
@@ -609,6 +619,10 @@
       />
     </div>
 
+    {#if truncationNotice}
+      <div class="truncation-notice" role="status">{truncationNotice}</div>
+    {/if}
+
     <ReportTable
       rows={rows?.rows ?? []}
       columns={currentColumns()}
@@ -668,6 +682,19 @@
     gap: var(--tr-space-md);
     flex-wrap: wrap;
     padding: var(--tr-space-2xs) 0;
+  }
+
+  // W-B03: banner is a non-shrinking block in the .reports-content flex column,
+  // so the table stays the only scroll region. Deliberately no @media print
+  // rules: LAN print lays out inside the app DOM and everything outside the
+  // print root is hidden there; the server notice line is the only print surface.
+  .truncation-notice {
+    flex-shrink: 0;
+    padding: var(--tr-space-xs) var(--tr-space-md);
+    background: var(--tr-warning-soft);
+    color: var(--tr-warning-text);
+    border-radius: var(--tr-radius-sm);
+    font-size: var(--tr-font-size-body);
   }
 
   // CATF-01 (260821-w18): keeps RequestCategoryFilter directly adjacent to
