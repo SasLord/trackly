@@ -434,8 +434,16 @@ impl SqliteGroupTypeRepository {
     ) -> Result<(), AppError> {
         let affected = conn
             .execute(
+                // Возврат из скрытых симметричен скрытию (W-B01, ревью WR-01): флаг
+                // обязательности снимается тем же UPDATE. Наследная строка
+                // «скрыто + обязательное» (создана до плана 41-29) иначе не
+                // возвращается вовсе — скрытое свойство не заполнить, и пользователь
+                // оказывается в тупике. Обязательность включается заново уже на живом
+                // свойстве, через update_property, где проверка нарушителей работает.
                 "UPDATE group_type_properties SET
-                   archived_at_utc = NULL, version = version + 1, updated_at_utc = ?1
+                   archived_at_utc = NULL,
+                   is_required = 0,
+                   version = version + 1, updated_at_utc = ?1
                  WHERE id = ?2 AND archived_at_utc IS NOT NULL AND deleted_at_utc IS NULL",
                 rusqlite::params![now_utc, id],
             )

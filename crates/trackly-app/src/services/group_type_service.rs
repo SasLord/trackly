@@ -705,15 +705,14 @@ impl GroupTypeService {
                 if live_name_taken(&tx, &repo, current.type_id, &current.name, Some(id))? {
                     return Err(duplicate_property_name_error());
                 }
-                if current.is_required {
-                    // W-B01:2
-                    // Наследное «скрыто + обязательное»: без проверки живое обязательное
-                    // свойство заперло бы set_values у групп без значения.
-                    let violators = repo.groups_missing_required(&tx, current.type_id, id)?;
-                    if !violators.is_empty() {
-                        return Err(required_violation_error(&violators));
-                    }
-                }
+                // W-B01:2
+                // Наследное «скрыто + обязательное» (строки до плана 41-29) не
+                // отклоняется, а нормализуется: `unarchive_property_on` снимает
+                // обязательность тем же UPDATE, которым возвращает свойство. Отказ
+                // (как было до ревью WR-01) запирал пользователя — скрытое свойство
+                // не заполнить, а в меню строки есть только «Показать». Живое
+                // обязательное свойство без значений поэтому не появляется, и
+                // set_values у групп не ломается.
                 match repo.unarchive_property_on(&tx, id, now) {
                     Ok(()) => {}
                     Err(e) if is_duplicate_property_conflict(&e) => {

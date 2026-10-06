@@ -1459,14 +1459,21 @@ async fn protect_d_hiding_required_property_clears_flag() {
     );
 }
 
-/// Страховочный пояс: наследное «скрыто + обязательное» при нарушителях не возвращается.
+/// Ревью WR-01: наследное «скрыто + обязательное» (строка создана до плана 41-29)
+/// возвращается из скрытых и при этом теряет обязательность — отказ запирал
+/// пользователя без выхода.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn protect_d_unarchive_refuses_legacy_required_with_violators() {
+async fn protect_d_unarchive_clears_legacy_required_flag() {
     let (ctx, _dir) = make_test_ctx().await;
     let t = new_custom_type(&ctx, "Стойка").await;
     let host = ctx
         .group_types
         .create_property(&admin(), prop_create(t.id, "Хост", "text"))
+        .await
+        .unwrap();
+    let label = ctx
+        .group_types
+        .create_property(&admin(), prop_create(t.id, "Метка", "text"))
         .await
         .unwrap();
     let alfa = seed_group(&ctx, t.id, "Стойка Альфа", 1).await;
@@ -1478,7 +1485,6 @@ async fn protect_d_unarchive_refuses_legacy_required_with_violators() {
         vec![int(alfa), int(host.id)],
     )
     .await;
-    let beta_name = group_name(&ctx, beta).await;
     // Наследное состояние создаётся напрямую в БД (в обход сервиса).
     exec(
         &ctx,
@@ -1488,30 +1494,37 @@ async fn protect_d_unarchive_refuses_legacy_required_with_violators() {
     )
     .await;
 
-    let err = ctx
+    // Ревью WR-01: возврат НЕ отказывает, а нормализует наследное состояние —
+    // иначе пользователь в тупике (скрытое свойство не заполнить, в меню строки
+    // только «Показать»).
+    let out = ctx
         .group_types
         .unarchive_property(&admin(), host.id)
         .await
-        .expect_err("есть нарушители обязательности");
-    match err {
-        AppError::Validation { field, message } => {
-            assert_eq!(field, "is_required");
-            assert!(message.contains(&beta_name), "{message}");
-        }
-        other => panic!("ожидали Validation, получили {other:?}"),
-    }
+        .expect("возврат наследной строки «скрыто + обязательное» не должен отказывать");
 
-    // Свойство осталось скрытым.
-    assert!(!type_by_code(&ctx, &t.code, false)
-        .await
+    // Свойство живое и уже НЕ обязательное.
+    assert!(!out.archived, "свойство должно стать живым");
+    assert!(
+        !out.is_required,
+        "возврат из скрытых обязан снять обязательность (симметрия со скрытием)"
+    );
+    let live = type_by_code(&ctx, &t.code, false).await;
+    let row = live
         .properties
         .iter()
-        .any(|p| p.id == host.id));
-    assert!(type_by_code(&ctx, &t.code, true)
+        .find(|p| p.id == host.id)
+        .expect("свойство видно среди живых");
+    assert!(!row.is_required, "в выдаче типа флаг тоже снят");
+
+    // Настоящая гарантия W-B01: «Стойка Бета» значения по «Хост» не имеет, но
+    // живого ОБЯЗАТЕЛЬНОГО свойства без значения не существует, поэтому правка
+    // несвязанного поля проходит. Именно это и падало до закрытия W-B01.
+    let ver = group_version_of(&ctx, beta).await;
+    ctx.groups
+        .set_values(&admin(), beta, ver, vec![text_value(label.id, "м-1")])
         .await
-        .properties
-        .iter()
-        .any(|p| p.id == host.id && p.archived));
+        .expect("set_values по несвязанному полю не должен падать на «Хост»");
 }
 
 // ---------------------------------------------------------------------------
