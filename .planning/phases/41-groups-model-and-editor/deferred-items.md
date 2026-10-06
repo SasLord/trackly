@@ -58,3 +58,17 @@
   allowlist десктопных (`app_restart`, `settings_move_db`, `settings_open_db_folder`).
 
 Полная запись с artifacts — в `41-HUMAN-UAT.md`, раздел `## Gaps`, тест 24.
+
+## Находки аудита /gsd-validate-phase (2026-10-06, вне границ фазы 41)
+
+- **`settings_open_db_folder` не закрыт `isTauri`.** `openFolder()` в
+  `ui/src/features/settings/StorageSettings.svelte:29-39` гарда не имеет, кнопка
+  «Открыть папку с базой данных» рисуется и в LAN-браузере (`:103-105`); `isTauri`
+  (`:41-47`) закрывает только `settings_move_db` и `app_restart`. Отказ виден тостом,
+  данные не страдают. Нужно: гард или скрытие кнопки в браузере.
+- **`users_reset_password` — HTTP-only сирота.** `handler_reset_password` и
+  `build_users_reset_password` есть в `crates/trackly-app/src/http/users.rs`, но ни
+  команды Tauri, ни вызывающей стороны в `ui/src` нет — админский сброс пароля
+  недостижим из интерфейса на обоих транспортах. Решить: доделать UI или удалить маршрут.
+- Оба зафиксированы вердиктами в новом гейте `crates/trackly-app/tests/http_route_parity.rs`,
+  поэтому молча не разойдутся.
