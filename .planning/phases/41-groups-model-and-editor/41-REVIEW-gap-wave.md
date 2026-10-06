@@ -34,7 +34,7 @@ findings:
   warning: 1
   info: 3
   total: 4
-status: issues_found
+status: issues_found  # WR-01 закрыт (f027cc0b); открыты только 3 Info
 ---
 
 # Фаза 41 (gap-wave 41-27..41-34): отчёт код-ревью
@@ -93,6 +93,17 @@ status: issues_found
 ## Warnings
 
 ### WR-01: легаси «скрыто + обязательное» с нарушителями не возвращается — тупик
+
+> **ЗАКРЫТО 2026-10-06, коммит `f027cc0b`.** Решение выбрано пользователем из трёх
+> вариантов (починить сейчас / отложить как остаточный долг / пересоздать dev-БД).
+> `unarchive_property_on` снимает `is_required` тем же UPDATE, которым возвращает
+> свойство — возврат стал симметричен скрытию; проверка-отказ в сервисе убрана.
+> Тест `protect_d_unarchive_refuses_legacy_required_with_violators` заменён на
+> `protect_d_unarchive_clears_legacy_required_flag`, доказан красным на коде до
+> правки (`Validation{is_required}`) и зелёным после. Прогоны: groups_types_service
+> 39/39, group_types_repo 14/14, groups_property_removal_parity 1/1,
+> groups_values_card 19/19, role_endpoint_matrix 12/12, clippy -D warnings чисто.
+> Полный регресс волны (41-34) правку НЕ покрывает — он прошёл до неё.
 
 **Файл:** `crates/trackly-app/src/services/group_type_service.rs:709-717`
 (в связке с `ui/src/features/groups/GroupTypePropertiesTable.svelte:570-581, 591`)
