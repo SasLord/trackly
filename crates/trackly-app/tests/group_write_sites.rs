@@ -1581,38 +1581,93 @@ async fn s7_undo_return_releases_if_locked() {
 //
 // Урок фазы 40.1 / V042: полноту перечня write-site'ов нельзя держать в голове
 // и закрывать точечной правкой — нужен сплошной заход ОТ СЕРВЕРНЫХ МУТАЦИЙ и
-// гейт, который краснеет при новом месте записи. Репозиторий пишет
-// `devices.place_id` ровно тремя методами (`update_status_and_place_in_tx`,
-// `update_full_in_tx`, `restore_from_snapshot_in_tx`) плюс каскад картриджа
-// (S9, см. тест выше). Гейт считает ВЫЗОВЫ этих трёх методов по исходникам.
+// гейт, который краснеет при новом месте записи.
+//
+// Фактическая картина: `devices.place_id` пишут 8 методов `SqliteDeviceRepository`
+// (замороженный реестр `PLACE_WRITER_METHODS`) плюс каскад картриджа. Вердикты:
+//   - ТРЕБУЮТ release или guard: `update_status_and_place_in_tx`,
+//     `update_full_in_tx`, `restore_from_snapshot_in_tx` и `update_in_tx`
+//     (последний закрыт guard'ом S1 в `DeviceService::update`: он ОТКЛОНЯЕТ
+//     перенос, а не выводит из состава). Needle'ы — `WRITE_SITE_CALLS`.
+//   - ОСВОБОЖДЕНЫ как рождение: `create_in_tx`, `clone_device_in_tx`
+//     (`BIRTH_EXEMPT_CALLS`, см. комментарий у константы).
+//   - Не-tx пара трейта `create`/`update` — известна, продакшн-вызовов нет
+//     (сервисы используют только `*_in_tx`), needle по имени невозможен
+//     (`update(`/`create(` слишком общие); держится только реестром «от
+//     репозитория» (`write_site_gate_repo_place_writers_match_frozen_registry`).
+//
+// Каскад картриджа: `cartridges_sqlite.rs:651` (`UPDATE devices SET place_id=?1
+// ...`, сырой SQL) — известный третий класс write-site'ов. Он покрыт сценарием
+// S9 выше, но НЕ входит ни в один инвентарь-гейт: гейт для сырого SQL не строился,
+// потому что в тестах `report_service.rs` есть `INSERT INTO devices` и гейт был
+// бы шумным.
 //
 // Как добавить новый write-site: (1) решить, должен ли он выводить устройство
 // из состава группы (акт — да, D-22; перенос группой — нет, это и есть «место
 // задаёт группа»); (2) добавить явный вызов `release_device_in_tx` /
-// `release_if_locked_device_in_tx` на сайте; (3) написать сценарий в этом файле;
-// (4) только после этого поднять константу в реестре ниже.
+// `release_if_locked_device_in_tx` на сайте (либо guard, отклоняющий перенос, как
+// S1); (3) написать сценарий в этом файле; (4) только после этого поднять
+// константу в реестре ниже. Вердикт нового метода репозитория вносится в
+// `PLACE_WRITER_METHODS` и, для ReleaseRequired/BirthExempt, в needle'ы
+// `WRITE_SITE_CALLS` / `BIRTH_EXEMPT_CALLS`.
 
-const WRITE_SITE_CALLS: [&str; 3] = [
+/// Вызовы, требующие release ИЛИ guard, отклоняющий перенос.
+/// `update_in_tx(` уникален по имени среди репозиториев на сегодня; будущий
+/// одноимённый метод другого репозитория сделает гейт красным — это сознательно
+/// безопасное направление (решается уточнением реестра, не отключением гейта).
+const WRITE_SITE_CALLS: [&str; 4] = [
     "update_status_and_place_in_tx(",
     "update_full_in_tx(",
     "restore_from_snapshot_in_tx(",
+    "update_in_tx(",
 ];
 const RELEASE_CALLS: [&str; 2] = ["release_device_in_tx(", "release_if_locked_device_in_tx("];
 
-/// Реестр: файл (относительно корня репозитория) -> число вызовов трёх методов.
-/// act_service.rs: 8 = S3 create, S4 update (added, removed), S5 do_return,
-/// S6 update_return (removed, added, edited), S7 undo. place_service.rs: 1 = S2
-/// (одиночные устройства массового переноса). group_place.rs: 1 = свой путь
-/// группы (`apply_group_place_to_device_in_tx`). Определения методов
-/// (`pub fn ...` в devices_sqlite.rs) в счёт не входят.
-const WRITE_SITE_REGISTRY: [(&str, usize); 3] = [
+/// Освобождены от release: это РОЖДЕНИЕ устройства (в т.ч. клона). Новое
+/// устройство ещё не член группы, выводить из состава некого (сценарий S10 в
+/// шапке файла); release не нужен и не должен добавляться.
+///
+/// Ловушка имён: `create_in_tx(` носит и `SqlitePrinterRepository`
+/// (`printers_sqlite.rs`, `printer_service.rs`, `printer_repo.create_in_tx(` в
+/// `device_service.rs`). Поэтому выбраны способы (а) needle привязан к
+/// получателю `repo.` с границей идентификатора слева (`printer_repo.` не
+/// считается) и (б) скан этого набора исключает `crates/trackly-infra/src/repos/`
+/// (`BIRTH_SCAN_SKIP_PREFIX`). Вариант (в) — внести `printers_sqlite.rs` в реестр
+/// — отвергнут: число вызовов в его тест-модуле меняется от любой несвязанной
+/// правки, гейт стал бы шумным и его бы отключили. Оговорка: если сервис назовёт
+/// репозиторий устройств иначе, чем `repo`, birth-гейт его не увидит; это
+/// допустимо, потому что вердикт «рождение» не требует release, а полноту «от
+/// репозитория» держит `write_site_gate_repo_place_writers_match_frozen_registry`.
+const BIRTH_EXEMPT_CALLS: [&str; 2] = ["repo.create_in_tx(", "clone_device_in_tx("];
+const BIRTH_SCAN_SKIP_PREFIX: &str = "crates/trackly-infra/src/repos/";
+
+/// Реестр: файл (относительно корня репозитория) -> число вызовов методов из
+/// `WRITE_SITE_CALLS`. act_service.rs: 8 = S3 create, S4 update (added, removed),
+/// S5 do_return, S6 update_return (removed, added, edited), S7 undo.
+/// place_service.rs: 1 = S2 (одиночные устройства массового переноса).
+/// group_place.rs: 1 = свой путь группы (`apply_group_place_to_device_in_tx`).
+/// device_service.rs: 1 = S1 `update_in_tx`, прикрыт guard'ом (см.
+/// `uncovered_guarded_sites`). Определения методов (`pub fn ...` в
+/// devices_sqlite.rs) в счёт не входят.
+const WRITE_SITE_REGISTRY: [(&str, usize); 4] = [
     ("crates/trackly-app/src/services/act_service.rs", 8),
     ("crates/trackly-app/src/services/place_service.rs", 1),
     ("crates/trackly-app/src/services/group_place.rs", 1),
+    ("crates/trackly-app/src/services/device_service.rs", 1),
+];
+
+/// Реестр мест рождения устройства: device_service.rs 2 (одиночное создание и
+/// массовое), act_service.rs 1 (клон).
+const BIRTH_EXEMPT_REGISTRY: [(&str, usize); 2] = [
+    ("crates/trackly-app/src/services/device_service.rs", 2),
+    ("crates/trackly-app/src/services/act_service.rs", 1),
 ];
 
 /// Число вызовов `needles` в исходнике: строки-комментарии (`//`, `///`, `//!`),
-/// хвосты `// ...` и определения (`fn `) не считаются.
+/// хвосты `// ...` и определения (`fn `) не считаются. Вхождение принимается,
+/// только если слева от него нет символа идентификатора (буква, цифра, `_`):
+/// `printer_repo.create_in_tx(` не считается needle'ом `repo.create_in_tx(`, а
+/// `foo_update_in_tx(` — needle'ом `update_in_tx(`.
 fn count_calls(src: &str, needles: &[&str]) -> usize {
     src.lines()
         .map(|line| {
@@ -1620,9 +1675,60 @@ fn count_calls(src: &str, needles: &[&str]) -> usize {
             if code.contains("fn ") {
                 return 0;
             }
-            needles.iter().map(|n| code.matches(n).count()).sum()
+            needles
+                .iter()
+                .map(|n| {
+                    code.match_indices(n)
+                        .filter(|(pos, _)| {
+                            code[..*pos]
+                                .chars()
+                                .next_back()
+                                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+                        })
+                        .count()
+                })
+                .sum::<usize>()
         })
         .sum()
+}
+
+/// Чистая проверка реестра: возвращает нарушения (пусто = всё в порядке).
+/// Файлы с префиксом `skip_prefix` пропускаются.
+fn registry_violations(
+    sources: &[(String, String)],
+    needles: &[&str],
+    registry: &[(&str, usize)],
+    skip_prefix: Option<&str>,
+    new_site_hint: &str,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    let mut seen: Vec<(String, usize)> = Vec::new();
+    for (rel, text) in sources {
+        if skip_prefix.is_some_and(|p| rel.starts_with(p)) {
+            continue;
+        }
+        let n = count_calls(text, needles);
+        if n > 0 {
+            seen.push((rel.clone(), n));
+        }
+    }
+    for (rel, n) in &seen {
+        match registry.iter().find(|(f, _)| f == rel) {
+            None => violations.push(format!("новое место {new_site_hint} в {rel} ({n} вызовов)")),
+            Some((_, want)) if n != want => violations.push(format!(
+                "число вызовов в {rel} изменилось ({n}, в реестре {want}) — {new_site_hint}"
+            )),
+            Some(_) => {}
+        }
+    }
+    for (rel, want) in registry {
+        if !seen.iter().any(|(f, _)| f == rel) {
+            violations.push(format!(
+                "файл реестра {rel} ({want} вызовов) больше не содержит вызовов — обнови реестр"
+            ));
+        }
+    }
+    violations
 }
 
 fn rust_sources_under_crates() -> Vec<(String, String)> {
@@ -1678,6 +1784,29 @@ release_if_locked_device_in_tx(tx, g);
         "вызов без комментария считается"
     );
     assert_eq!(count_calls("", &WRITE_SITE_CALLS), 0);
+
+    // Граница идентификатора слева (D-03): `printer_repo.` не есть `repo.`.
+    assert_eq!(
+        count_calls(
+            "let _ = printer_repo.create_in_tx(a);\n",
+            &["repo.create_in_tx("]
+        ),
+        0,
+        "принтерный репозиторий не считается"
+    );
+    assert_eq!(
+        count_calls("let id = repo.create_in_tx(a);\n", &["repo.create_in_tx("]),
+        1
+    );
+    assert_eq!(
+        count_calls(
+            "foo_update_in_tx(x);\nr.update_in_tx(x);\n",
+            &["update_in_tx("]
+        ),
+        1,
+        "суффикс чужого имени не считается, вызов через точку считается"
+    );
+    assert_eq!(count_calls("update_in_tx(x);\n", &["update_in_tx("]), 1);
 }
 
 /// Гейт 1: в act_service.rs ровно 8 write-site'ов и ровно 8 release-вызовов, и
@@ -1741,8 +1870,8 @@ fn write_site_gate_act_service_every_site_has_release() {
     assert_eq!(paired, 8, "проверено парных write-site'ов");
 }
 
-/// Гейт 2: по всем `crates/*/src` вызовы трёх методов разрешены только в файлах
-/// реестра, с точным числом; определения (`fn `) не считаются.
+/// Гейт 2: по всем `crates/*/src` вызовы методов из `WRITE_SITE_CALLS` разрешены
+/// только в файлах реестра, с точным числом; определения (`fn `) не считаются.
 #[test]
 fn write_site_gate_no_unregistered_place_writers() {
     let sources = rust_sources_under_crates();
@@ -1751,30 +1880,414 @@ fn write_site_gate_no_unregistered_place_writers() {
         "скан исходников ничего не нашёл ({} файлов) — гейт бы молча позеленел",
         sources.len()
     );
-    let mut seen: Vec<(String, usize)> = Vec::new();
-    for (rel, text) in &sources {
-        let n = count_calls(text, &WRITE_SITE_CALLS);
-        if n > 0 {
-            seen.push((rel.clone(), n));
-        }
-    }
-    for (rel, n) in &seen {
-        match WRITE_SITE_REGISTRY.iter().find(|(f, _)| f == rel) {
-            None => panic!(
-                "новое место записи devices.place_id в {rel} ({n} вызовов) — добавь кейс release \
-                 в group_write_sites.rs и внеси файл в реестр"
-            ),
-            Some((_, want)) => assert_eq!(
-                n, want,
-                "число вызовов write-site'ов в {rel} изменилось ({n}, в реестре {want}) — добавь \
-                 кейс release в group_write_sites.rs"
-            ),
-        }
-    }
-    for (rel, want) in WRITE_SITE_REGISTRY {
+    let violations = registry_violations(
+        &sources,
+        &WRITE_SITE_CALLS,
+        &WRITE_SITE_REGISTRY,
+        None,
+        "записи devices.place_id — добавь кейс release в group_write_sites.rs и внеси файл в \
+         реестр",
+    );
+    assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+/// Гейт рождения: вызовы `BIRTH_EXEMPT_CALLS` вне `crates/trackly-infra/src/repos/`
+/// разрешены только в файлах реестра, с точным числом.
+#[test]
+fn write_site_gate_birth_exemptions_are_inventoried() {
+    let sources = rust_sources_under_crates();
+    assert!(
+        sources.len() > 50,
+        "скан исходников ничего не нашёл ({} файлов)",
+        sources.len()
+    );
+    for n in BIRTH_EXEMPT_CALLS {
         assert!(
-            seen.iter().any(|(f, _)| f == rel),
-            "файл реестра {rel} ({want} вызовов) больше не содержит write-site'ов — обнови реестр"
+            !WRITE_SITE_CALLS.contains(&n),
+            "освобождение закодировано, а не описано: {n} не может быть в WRITE_SITE_CALLS"
         );
     }
+    let violations = registry_violations(
+        &sources,
+        &BIRTH_EXEMPT_CALLS,
+        &BIRTH_EXEMPT_REGISTRY,
+        Some(BIRTH_SCAN_SKIP_PREFIX),
+        "РОЖДЕНИЯ устройства — подтверди, что оно не переносит существующее устройство, и внеси \
+         в BIRTH_EXEMPT_REGISTRY",
+    );
+    assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+const RELEASE_WINDOW: usize = 14;
+const GUARD_WINDOW: usize = 20;
+
+fn code_of(line: &str) -> &str {
+    line.split("//").next().unwrap_or("")
+}
+
+/// Номера (1-based) строк `update_in_tx(`-сайтов без прикрытия. Сайт покрыт, если
+/// (а) в `RELEASE_WINDOW` строках ПОСЛЕ него (до следующего write-site'а) есть
+/// release-helper ИЛИ (б) в `GUARD_WINDOW` строках ДО него есть и
+/// `locked_group_for_device_in_tx(`, и `AppError::Validation` (guard отклоняет
+/// перенос, D-02). Guard стоит ДО write-site'а, release ПОСЛЕ — окна
+/// разнонаправленные; на сайте `device_service.rs:741` guard лежит на :729-730.
+fn uncovered_guarded_sites(src: &str) -> Vec<usize> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let code = code_of(line);
+        if code.contains("fn ") || count_calls(code, &["update_in_tx("]) == 0 {
+            continue;
+        }
+        let after: Vec<&str> = lines[i + 1..(i + 1 + RELEASE_WINDOW).min(lines.len())]
+            .iter()
+            .map(|l| code_of(l))
+            .collect();
+        let end = after
+            .iter()
+            .position(|l| count_calls(l, &WRITE_SITE_CALLS) > 0)
+            .unwrap_or(after.len());
+        let released = after[..end]
+            .iter()
+            .any(|l| RELEASE_CALLS.iter().any(|r| l.contains(r)));
+        let before: Vec<&str> = lines[i.saturating_sub(GUARD_WINDOW)..i]
+            .iter()
+            .map(|l| code_of(l))
+            .collect();
+        let guarded = before
+            .iter()
+            .any(|l| l.contains("locked_group_for_device_in_tx("))
+            && before.iter().any(|l| l.contains("AppError::Validation"));
+        if !released && !guarded {
+            out.push(i + 1);
+        }
+    }
+    out
+}
+
+/// Гейт парности: каждый `update_in_tx(`-сайт — с release-helper'ом или guard'ом S1.
+#[test]
+fn write_site_gate_update_in_tx_released_or_guarded() {
+    let mut inspected = 0;
+    let mut violations = Vec::new();
+    for (rel, text) in rust_sources_under_crates() {
+        if count_calls(&text, &["update_in_tx("]) == 0 {
+            continue;
+        }
+        let total = text
+            .lines()
+            .filter(|l| count_calls(l, &["update_in_tx("]) > 0)
+            .count();
+        inspected += total;
+        for line in uncovered_guarded_sites(&text) {
+            violations.push(format!(
+                "write-site update_in_tx в {rel}:{line} без release-helper'а и без guard'а S1 — \
+                 перенос существующего устройства обойдёт членство в группе (D-22/GRP-07)"
+            ));
+        }
+    }
+    assert!(
+        inspected > 0,
+        "ни одного update_in_tx-сайта — гейт вакуумен"
+    );
+    assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PlaceWriterVerdict {
+    ReleaseRequired,
+    BirthExempt,
+    NoProductionCallers,
+}
+
+/// Замороженный реестр методов `SqliteDeviceRepository`, пишущих `devices.place_id`.
+/// `create`/`update` — не-tx методы трейта `DeviceRepository`: известна, продакшн-
+/// вызовов нет, needle по имени невозможен (`update(`/`create(` — слишком общие).
+/// Новая запись добавляется только вместе с вердиктом и, для
+/// ReleaseRequired/BirthExempt, с needle'ом в `WRITE_SITE_CALLS` /
+/// `BIRTH_EXEMPT_CALLS`.
+const PLACE_WRITER_METHODS: [(&str, PlaceWriterVerdict); 8] = [
+    (
+        "update_status_and_place_in_tx",
+        PlaceWriterVerdict::ReleaseRequired,
+    ),
+    ("update_full_in_tx", PlaceWriterVerdict::ReleaseRequired),
+    (
+        "restore_from_snapshot_in_tx",
+        PlaceWriterVerdict::ReleaseRequired,
+    ),
+    ("update_in_tx", PlaceWriterVerdict::ReleaseRequired),
+    ("create_in_tx", PlaceWriterVerdict::BirthExempt),
+    ("clone_device_in_tx", PlaceWriterVerdict::BirthExempt),
+    ("create", PlaceWriterVerdict::NoProductionCallers),
+    ("update", PlaceWriterVerdict::NoProductionCallers),
+];
+
+/// Имена методов, пишущих `devices.place_id`: SQL-литерал тела (`INSERT INTO
+/// devices` / `UPDATE devices`, до закрывающей кавычки) упоминает `place_id`
+/// (`writes_place_id_in_sql`; имя параметра `place_id` записью не считается). Берётся текст до первого `#[cfg(test)]`;
+/// строка с `fn ` открывает метод, его тело — до следующей строки с `fn `.
+/// Эвристика консервативна в сторону ложных срабатываний (метод с
+/// `UPDATE devices ... WHERE place_id` покраснеет и потребует явной
+/// классификации). Граница: запись через хелпер в другом файле эта проверка не
+/// увидит, пока запись идёт SQL-строкой по `devices` — пропуск невозможен.
+fn place_writing_methods(src: &str) -> Vec<String> {
+    let src = src.split("#[cfg(test)]").next().unwrap_or(src);
+    let mut methods: Vec<(String, String)> = Vec::new();
+    for line in src.lines() {
+        let code = code_of(line);
+        if let Some(pos) = code.find("fn ") {
+            let name: String = code[pos + 3..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            methods.push((name, String::new()));
+        }
+        if let Some((_, body)) = methods.last_mut() {
+            body.push_str(code);
+            body.push('\n');
+        }
+    }
+    let mut out: Vec<String> = methods
+        .into_iter()
+        .filter(|(_, body)| writes_place_id_in_sql(body))
+        .map(|(name, _)| name)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Есть ли в теле SQL-литерал `INSERT INTO devices` / `UPDATE devices`, в котором
+/// (до закрывающей кавычки) упоминается `place_id`. Параметр функции или
+/// аргумент `params![..]` с именем `place_id` сами по себе записью не считаются.
+fn writes_place_id_in_sql(body: &str) -> bool {
+    ["INSERT INTO devices", "UPDATE devices"]
+        .iter()
+        .flat_map(|marker| body.match_indices(marker).map(|(pos, _)| &body[pos..]))
+        .any(|tail| tail.split('"').next().unwrap_or("").contains("place_id"))
+}
+
+/// (новые, исчезли) относительно `PLACE_WRITER_METHODS`.
+fn place_writer_diff(src: &str) -> (Vec<String>, Vec<String>) {
+    let found = place_writing_methods(src);
+    let mut frozen: Vec<String> = PLACE_WRITER_METHODS
+        .iter()
+        .map(|(n, _)| n.to_string())
+        .collect();
+    frozen.sort();
+    let new = found
+        .iter()
+        .filter(|n| !frozen.contains(n))
+        .cloned()
+        .collect();
+    let gone = frozen
+        .iter()
+        .filter(|n| !found.contains(n))
+        .cloned()
+        .collect();
+    (new, gone)
+}
+
+/// Гейт «от репозитория»: множество методов, пишущих `devices.place_id`, равно
+/// замороженному реестру; новый метод краснит гейт, даже если его никто не вызывает.
+#[test]
+fn write_site_gate_repo_place_writers_match_frozen_registry() {
+    let src = include_str!("../../trackly-infra/src/repos/devices_sqlite.rs");
+    assert!(
+        !place_writing_methods(src).is_empty(),
+        "не найдено ни одного метода — гейт вакуумен"
+    );
+    let (new, gone) = place_writer_diff(src);
+    assert!(
+        new.is_empty() && gone.is_empty(),
+        "методы devices_sqlite.rs, пишущие place_id, разошлись с реестром. новые: {new:?}; \
+         исчезли: {gone:?}. Классифицируй метод: ReleaseRequired / BirthExempt / \
+         NoProductionCallers"
+    );
+}
+
+/// Связь трёх слоёв: вердикты <-> needle'ы.
+#[test]
+fn write_site_gate_verdicts_match_needles() {
+    let with = |v: PlaceWriterVerdict| -> std::collections::BTreeSet<String> {
+        PLACE_WRITER_METHODS
+            .iter()
+            .filter(|(_, x)| *x == v)
+            .map(|(n, _)| n.to_string())
+            .collect()
+    };
+    let release: std::collections::BTreeSet<String> = with(PlaceWriterVerdict::ReleaseRequired)
+        .into_iter()
+        .map(|n| format!("{n}("))
+        .collect();
+    let calls: std::collections::BTreeSet<String> =
+        WRITE_SITE_CALLS.iter().map(|s| s.to_string()).collect();
+    assert_eq!(release, calls, "ReleaseRequired != WRITE_SITE_CALLS");
+
+    let birth: std::collections::BTreeSet<String> = BIRTH_EXEMPT_CALLS
+        .iter()
+        .map(|n| {
+            n.strip_prefix("repo.")
+                .unwrap_or(n)
+                .strip_suffix('(')
+                .expect("needle заканчивается на (")
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        with(PlaceWriterVerdict::BirthExempt),
+        birth,
+        "BirthExempt != BIRTH_EXEMPT_CALLS"
+    );
+
+    let none: std::collections::BTreeSet<String> =
+        ["create", "update"].iter().map(|s| s.to_string()).collect();
+    assert_eq!(with(PlaceWriterVerdict::NoProductionCallers), none);
+}
+
+/// Мутация 1: update_in_tx-сайт без release и без guard'а краснит проверку.
+#[test]
+fn write_site_gate_mutation_update_in_tx_without_guard_or_release() {
+    // (i) голый сайт
+    assert_eq!(
+        uncovered_guarded_sites("let a = repo.update_in_tx(tx, 1);\n"),
+        vec![1]
+    );
+    // (ii) release после
+    assert!(uncovered_guarded_sites(
+        "let a = repo.update_in_tx(tx, 1);\nlet x = 1;\nrelease_device_in_tx(tx, g);\n"
+    )
+    .is_empty());
+    // (iii) guard до
+    let guarded = "\
+let g = groups.locked_group_for_device_in_tx(&tx, id)?;
+return Err(AppError::Validation {
+});
+let a = repo.update_in_tx(tx, 1);
+";
+    assert!(uncovered_guarded_sites(guarded).is_empty());
+    // (iv) маркер только в комментарии
+    let commented = "\
+// groups.locked_group_for_device_in_tx(&tx, id)?;
+// AppError::Validation {
+let a = repo.update_in_tx(tx, 1);
+";
+    assert_eq!(uncovered_guarded_sites(commented), vec![3]);
+
+    // реальный текст
+    let src = include_str!("../src/services/device_service.rs");
+    let site_lines: Vec<usize> = src
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| count_calls(l, &["update_in_tx("]) > 0)
+        .map(|(i, _)| i + 1)
+        .collect();
+    assert_eq!(site_lines.len(), 1, "сайт update_in_tx ровно один");
+    assert!(
+        uncovered_guarded_sites(src).is_empty(),
+        "немутированная линия должна проходить"
+    );
+    let anchor = "groups.locked_group_for_device_in_tx(&tx, id)?";
+    assert_eq!(
+        src.matches(anchor).count(),
+        1,
+        "якорь мутации должен быть уникален (урок mutation_test_anchor_must_be_unique)"
+    );
+    let mutated = src.replace(anchor, "groups.some_other_lookup_in_tx(&tx, id)?");
+    assert_eq!(uncovered_guarded_sites(&mutated), site_lines);
+}
+
+/// Мутация 2: новый/пропавший метод репозитория, пишущий place_id.
+#[test]
+fn write_site_gate_mutation_new_repo_method_writing_place_id() {
+    let src = include_str!("../../trackly-infra/src/repos/devices_sqlite.rs");
+    let (new, gone) = place_writer_diff(src);
+    assert!(
+        new.is_empty() && gone.is_empty(),
+        "базовая линия: {new:?} {gone:?}"
+    );
+
+    let mut added = src.to_string();
+    added.push_str(
+        "\npub fn move_device_in_tx() {\n    let _ = \"UPDATE devices SET place_id = ?1 WHERE id = ?2\";\n}\n",
+    );
+    let (new, gone) = place_writer_diff(&added);
+    assert_eq!(new, vec!["move_device_in_tx".to_string()]);
+    assert!(gone.is_empty());
+
+    let anchor = "status_id = ?1, place_id = ?2,";
+    assert_eq!(
+        src.matches(anchor).count(),
+        1,
+        "якорь мутации должен быть уникален (урок mutation_test_anchor_must_be_unique)"
+    );
+    let removed = src.replace(anchor, "status_id = ?1,");
+    let (new, gone) = place_writer_diff(&removed);
+    assert!(new.is_empty());
+    assert_eq!(gone, vec!["update_status_and_place_in_tx".to_string()]);
+
+    let negatives = "\
+fn read_it() {
+    let _ = \"SELECT d.place_id FROM devices d\";
+}
+fn notes_only() {
+    let _ = \"UPDATE devices SET notes = ?1\";
+}
+";
+    assert!(place_writing_methods(negatives).is_empty());
+}
+
+/// Мутация 3: birth-гейт и ловушка имён `create_in_tx`.
+#[test]
+fn write_site_gate_mutation_birth_inventory_name_trap() {
+    const DEV: &str = "crates/trackly-app/src/services/device_service.rs";
+    const ACT: &str = "crates/trackly-app/src/services/act_service.rs";
+    let dev = include_str!("../src/services/device_service.rs");
+    let act = include_str!("../src/services/act_service.rs");
+    let check = |sources: &[(String, String)]| {
+        registry_violations(
+            sources,
+            &BIRTH_EXEMPT_CALLS,
+            &BIRTH_EXEMPT_REGISTRY,
+            Some(BIRTH_SCAN_SKIP_PREFIX),
+            "РОЖДЕНИЯ устройства",
+        )
+    };
+    let base = |dev_text: String| {
+        vec![
+            (DEV.to_string(), dev_text),
+            (ACT.to_string(), act.to_string()),
+        ]
+    };
+    assert!(check(&base(dev.to_string())).is_empty(), "базовая линия");
+
+    // A: новый вызов repo.create_in_tx
+    let a = format!("{dev}\nlet _ = repo.create_in_tx(&tx, &domain_new, 0);\n");
+    let v = check(&base(a));
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains("device_service.rs"));
+
+    // B: принтерный репозиторий не шумит
+    let b = format!("{dev}\nlet _ = printer_repo.create_in_tx(&tx, &p, 0);\n");
+    assert!(check(&base(b)).is_empty());
+
+    // C: repos/ исключён префиксом
+    let noisy = "let _ = repo.create_in_tx(&tx, &p, 0);\nlet _ = repo.create_in_tx(&tx, &q, 0);\n";
+    let mut c = base(dev.to_string());
+    c.push((
+        "crates/trackly-infra/src/repos/printers_sqlite.rs".to_string(),
+        noisy.to_string(),
+    ));
+    assert!(check(&c).is_empty());
+
+    // D: тот же текст в новом сервисе — нарушение
+    let mut d = base(dev.to_string());
+    d.push((
+        "crates/trackly-app/src/services/some_new_service.rs".to_string(),
+        noisy.to_string(),
+    ));
+    let v = check(&d);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains("новое место") && v[0].contains("some_new_service.rs"));
 }
