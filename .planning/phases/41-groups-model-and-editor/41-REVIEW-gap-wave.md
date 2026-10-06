@@ -103,7 +103,15 @@ status: issues_found  # WR-01 закрыт (f027cc0b); открыты тольк
 > правки (`Validation{is_required}`) и зелёным после. Прогоны: groups_types_service
 > 39/39, group_types_repo 14/14, groups_property_removal_parity 1/1,
 > groups_values_card 19/19, role_endpoint_matrix 12/12, clippy -D warnings чисто.
-> Полный регресс волны (41-34) правку НЕ покрывает — он прошёл до неё.
+> Полный регресс ПОСЛЕ правки прогнан отдельно (2026-10-06): 157 целей,
+> **1624 пройдено, 0 падений, 5 ignored**. Собран из трёх частей, потому что
+> фоновые команды режутся по лимиту времени: основной прогон дал 143 цели
+> (1565 тестов) и был убит внутри `number_templates_migration`; оставшиеся
+> 11 целей `trackly-infra` добиты по одной (59 тестов); doc-tests 3 цели
+> (0 пройдено, 3 ignored). Счёт ignored совпал с прогоном 41-34 (5),
+> а `groups_types_service` 39 и `group_types_repo` 14 совпали с отчётом 41-32 —
+> значит замена теста ничего не потеряла. Вывод каждой части писался сырым
+> в файл, поэтому убийство по лимиту не стёрло результат.
 
 **Файл:** `crates/trackly-app/src/services/group_type_service.rs:709-717`
 (в связке с `ui/src/features/groups/GroupTypePropertiesTable.svelte:570-581, 591`)
