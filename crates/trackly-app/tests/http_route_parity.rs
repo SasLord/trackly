@@ -6,9 +6,10 @@
 //! Поэтому команда без маршрута ломает ровно тот же экран, но только по LAN.
 //! Так и случилось со счётчиками «Отчётов»: `reports_get_report_counts`
 //! зарегистрирована в Tauri, маршрута нет, а `spa_fallback`
-//! (`src/http/mod.rs`) отдаёт на незарегистрированный `/api/v1/*` сам
-//! `index.html` с HTTP 200 и `text/html` — отказ выглядит как успех. Дыра
-//! прожила с фазы 28 и вскрылась только живой приёмкой фазы 41. Имевшиеся
+//! (`src/http/mod.rs`) отдавал на незарегистрированный `/api/v1/*` сам
+//! `index.html` с HTTP 200 и `text/html` — отказ выглядел как успех
+//! (исправлено в Фазе 41.7, F17: теперь 404 JSON, см. тест
+//! `unknown_api_path_answers_json_404_not_spa`). Дыра прожила с фазы 28 и вскрылась только живой приёмкой фазы 41. Имевшиеся
 //! тесты полноты маршрутов (`role_endpoint_matrix.rs`:
 //! `group_types_http_route_completeness`, `groups_http_route_completeness`)
 //! скоупнуты на `src/http/group_types.rs` и `src/http/groups.rs` и пропуск в
@@ -49,7 +50,7 @@
 //! расхождений сверяются ТОЧНО с таблицами вердиктов ниже — и лишняя
 //! позиция, и исчезнувшая красят гейт. Живой тест сравнивает ответ не с
 //! ожидаемым кодом, а с контрольным ответом на заведомо несуществующий путь,
-//! поэтому он останется рабочим и после починки `spa_fallback`.
+//! поэтому он остался рабочим и после починки `spa_fallback` (F17, Фаза 41.7).
 //!
 //! Данные в тесте отсутствуют: гейт читает исходники и бьёт по пустым телам.
 
@@ -319,8 +320,8 @@ fn every_tauri_command_is_reachable_over_http() {
         unexpected.is_empty(),
         "команды Tauri без HTTP-маршрута /api/v1/<name>, не внесённые в CMD_WITHOUT_ROUTE: {}.\n\
          Фронтенд (ui/src/lib/api/client.ts) по LAN делает POST /api/v1/<имя команды>: без \
-         маршрута экран молча получает index.html вместо данных (ровно дефект счётчиков \
-         «Отчётов»). Либо добавьте маршрут в src/http/<модуль>.rs, либо внесите позицию в \
+         маршрута экран получает 404 вместо данных (до F17, Фаза 41.7, получал index.html с \
+         кодом 200 — ровно дефект счётчиков «Отчётов»). Либо добавьте маршрут в src/http/<модуль>.rs, либо внесите позицию в \
          CMD_WITHOUT_ROUTE с вердиктом, почему она десктопная по смыслу.\n\
          Всего команд: {}, маршрутов: {}.",
         fmt_set(&unexpected),
@@ -456,7 +457,7 @@ fn every_dual_transport_build_helper_has_an_http_caller() {
 ///
 /// Эталон берётся из самого прогона (две разные фиктивные ручки должны дать
 /// идентичное тело), а не из ожидаемого кода, — поэтому тест остаётся
-/// рабочим и после починки `spa_fallback` на 404 JSON.
+/// рабочим и после починки `spa_fallback` на 404 JSON (сделано в Фазе 41.7, F17).
 ///
 /// Тест ловит то, чего разбор текста в тесте 1 увидеть не может: маршрут,
 /// объявленный в функции-роутере, которую забыли смерджить в `build_router`
@@ -554,6 +555,112 @@ async fn live_router_answers_every_tauri_command_path() {
          добавлен — удалите строку из таблицы вердиктов.",
         fmt_set(&stale)
     );
+}
+
+// ---------------------------------------------------------------------------
+// 4а. F17: неизвестный /api/-путь — 404 JSON, а не index.html с кодом 200
+// ---------------------------------------------------------------------------
+
+/// Раньше `spa_fallback` отвечал на любой незарегистрированный `/api/...`
+/// файлом `index.html` с HTTP 200 и `text/html` — отказ выглядел как успех
+/// (так счётчики «Отчётов» молча не работали по LAN с фазы 28). Исправлено в
+/// Фазе 41.7 (F17, D-14): путь, равный `api` или начинающийся с `api/`,
+/// получает `404` + `application/json` (тело `AppError`, `code: NOT_FOUND`).
+///
+/// Префикс сверяется по границе сегмента: `/apiary` — это SPA-путь и JSON-404
+/// получать не должен (охранный кейс, проверяется только если `ui/dist`
+/// собран и вшит в бинарник — иначе fallback честно отвечает 404 text/plain).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unknown_api_path_answers_json_404_not_spa() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let paths =
+        trackly_infra::Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("resolve paths");
+    let config = trackly_infra::AppConfig::default();
+    let log_guard = trackly_app::logging::init(&paths, &config)
+        .or_else(|_| {
+            let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
+            Ok::<_, anyhow::Error>(guard)
+        })
+        .expect("log guard");
+    let ctx = trackly_app::context::AppCtx::build(paths, config, log_guard)
+        .await
+        .expect("build ctx");
+    let app = build_router(
+        &ctx,
+        RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()),
+    );
+
+    async fn probe(app: &axum::Router, method: &str, uri: &str) -> (u16, String, Vec<u8>) {
+        let mut builder = Request::builder().method(method).uri(uri);
+        let body = if method == "POST" {
+            builder = builder.header("content-type", "application/json");
+            Body::from("{}")
+        } else {
+            Body::empty()
+        };
+        let res = app
+            .clone()
+            .oneshot(builder.body(body).expect("request"))
+            .await
+            .expect("router response");
+        let status = res.status().as_u16();
+        let ct = res
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .expect("body")
+            .to_vec();
+        (status, ct, body)
+    }
+
+    for (method, uri) in [
+        ("POST", "/api/v1/zzz_unknown"),
+        ("GET", "/api/zzz"),
+        ("GET", "/api"),
+    ] {
+        let (status, ct, body) = probe(&app, method, uri).await;
+        assert_eq!(
+            status, 404,
+            "{method} {uri}: ожидался 404, получен {status} (content-type {ct:?}) — \
+             неизвестный /api/ снова маскируется под успех"
+        );
+        assert!(
+            ct.contains("application/json"),
+            "{method} {uri}: ожидался application/json, получен {ct:?}"
+        );
+        let json: serde_json::Value = serde_json::from_slice(&body)
+            .unwrap_or_else(|e| panic!("{method} {uri}: не JSON: {e}"));
+        assert_eq!(
+            json["code"], "NOT_FOUND",
+            "{method} {uri}: тело ошибки должно нести code NOT_FOUND, получено {json}"
+        );
+    }
+
+    // Охранные кейсы — только при вшитом ui/dist/index.html.
+    let ui_bundled = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../ui/dist/index.html")
+        .exists();
+    if ui_bundled {
+        let (status, _, _) = probe(&app, "GET", "/").await;
+        assert_eq!(status, 200, "GET / должен по-прежнему отдавать SPA");
+
+        let (status, ct, _) = probe(&app, "GET", "/apiary").await;
+        assert!(
+            !(status == 404 && ct.contains("application/json")),
+            "GET /apiary получил JSON-404: префикс сверяется не по границе сегмента"
+        );
+    } else {
+        eprintln!(
+            "unknown_api_path_answers_json_404_not_spa: ui/dist/index.html не собран — \
+             охранные кейсы GET / и GET /apiary пропущены"
+        );
+    }
+
+    ctx.shutdown.cancel();
 }
 
 // ---------------------------------------------------------------------------

@@ -269,11 +269,25 @@ struct SpaAssets;
 /// Fallback handler that serves the embedded SPA. Serves the requested asset by
 /// path; unknown paths fall back to `index.html` (the SPA uses a hash router, so
 /// every client route is reachable from `/`).
+///
+/// Exception (F17, Phase 41.7, D-14): a path that is `api` or starts with `api/`
+/// is never an SPA route — an unregistered API endpoint answers `404` with the
+/// standard JSON `AppError` body (`code: NOT_FOUND`). Before this, such a path
+/// got `index.html` with HTTP 200 and a missing route looked like a success
+/// (report counters silently did not work over LAN from phase 28). The prefix
+/// is matched on a segment boundary, so `/apiary` stays an SPA path.
 async fn spa_fallback(uri: axum::http::Uri) -> axum::response::Response {
     use axum::http::{header, StatusCode};
     use axum::response::IntoResponse;
 
     let path = uri.path().trim_start_matches('/');
+    if path == "api" || path.starts_with("api/") {
+        return crate::error_axum::AppErrorResponse(trackly_core::error::AppError::NotFound {
+            entity: "api_route",
+            id: 0,
+        })
+        .into_response();
+    }
     let lookup = if path.is_empty() { "index.html" } else { path };
 
     if let Some(file) = SpaAssets::get(lookup) {
