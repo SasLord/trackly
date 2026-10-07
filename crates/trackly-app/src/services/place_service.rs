@@ -108,8 +108,6 @@ impl PlaceService {
     /// Best-effort `WsEvent::EntitiesChanged` after a COMMITTED mutation
     /// (outside the writer closure). Delegates to the single owner of the
     /// send rule in `entities_broadcast`.
-    // Снимается планом 41.7-06 (PlaceService) — до тех пор ни одна мутация метод не зовёт.
-    #[allow(dead_code)]
     fn broadcast_entities(
         &self,
         op: &'static str,
@@ -124,6 +122,18 @@ impl PlaceService {
             device_ids,
             group_ids,
         );
+    }
+
+    /// Собрать id мест события из значений, часть которых может отсутствовать
+    /// (корневой узел без родителя): `None` отбрасывается, порядок и дубли
+    /// нормализует `send_entities_changed`. Список живёт здесь, а не в `PlaceDto`:
+    /// DTO сериализуется в `audit_log` (`to_after_json`), и лишнее поле
+    /// попало бы в `before_json`/`after_json`.
+    fn event_place_ids(ids: impl IntoIterator<Item = Option<i64>>) -> Vec<i64> {
+        let mut out: Vec<i64> = ids.into_iter().flatten().collect();
+        out.sort_unstable();
+        out.dedup();
+        out
     }
 
     // -----------------------------------------------------------------------
@@ -233,6 +243,8 @@ impl PlaceService {
             })
             .await?;
 
+        let place_ids = Self::event_place_ids([Some(row.id), row.parent_id]);
+        self.broadcast_entities("create", place_ids, Vec::new(), Vec::new());
         Ok(PlaceDto::from(row))
     }
 
@@ -293,6 +305,8 @@ impl PlaceService {
             })
             .await?;
 
+        let place_ids = Self::event_place_ids([Some(row.id)]);
+        self.broadcast_entities("rename", place_ids, Vec::new(), Vec::new());
         Ok(PlaceDto::from(row))
     }
 
@@ -353,6 +367,8 @@ impl PlaceService {
             })
             .await?;
 
+        let place_ids = Self::event_place_ids([Some(row.id)]);
+        self.broadcast_entities("set_path_variant", place_ids, Vec::new(), Vec::new());
         Ok(PlaceDto::from(row))
     }
 
@@ -374,10 +390,11 @@ impl PlaceService {
         let repo = self.repo.clone();
         let audit_repo = self.audit_repo.clone();
 
-        let row: PlaceRow = self
+        let (row, old_parent_id): (PlaceRow, Option<i64>) = self
             .writer
             .execute(move |conn| {
                 let before = repo.get(conn, id)?;
+                let old_parent_id = before.parent_id;
                 let before_json = Self::to_after_json(&PlaceDto::from(before))?;
 
                 // Cycle check + UPDATE run atomically inside SqlitePlaceRepository's
@@ -401,10 +418,12 @@ impl PlaceService {
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
 
-                Ok(row)
+                Ok((row, old_parent_id))
             })
             .await?;
 
+        let place_ids = Self::event_place_ids([Some(row.id), old_parent_id, row.parent_id]);
+        self.broadcast_entities("move_node", place_ids, Vec::new(), Vec::new());
         Ok(PlaceDto::from(row))
     }
 
@@ -414,7 +433,10 @@ impl PlaceService {
     pub async fn archive(&self, caller: &Identity, id: i64, version: i64) -> Result<(), AppError> {
         authorize(caller, &Action::MutatePlaces)?;
         self.set_archived(caller.user_id, id, version, true, "archive")
-            .await
+            .await?;
+        let place_ids = Self::event_place_ids([Some(id)]);
+        self.broadcast_entities("archive", place_ids, Vec::new(), Vec::new());
+        Ok(())
     }
 
     /// Reverse `archive`. Admin-only (D-20).
@@ -426,7 +448,10 @@ impl PlaceService {
     ) -> Result<(), AppError> {
         authorize(caller, &Action::MutatePlaces)?;
         self.set_archived(caller.user_id, id, version, false, "unarchive")
-            .await
+            .await?;
+        let place_ids = Self::event_place_ids([Some(id)]);
+        self.broadcast_entities("unarchive", place_ids, Vec::new(), Vec::new());
+        Ok(())
     }
 
     /// Shared archive/unarchive body — called only after the public method's
@@ -533,9 +558,11 @@ impl PlaceService {
         let repo = self.repo.clone();
         let audit_repo = self.audit_repo.clone();
 
-        self.writer
+        let parent_id: Option<i64> = self
+            .writer
             .execute(move |conn| {
                 let before = repo.get(conn, id)?;
+                let parent_id = before.parent_id;
                 let before_json = Self::to_after_json(&PlaceDto::from(before))?;
 
                 repo.delete_hard(conn, id, version)?;
@@ -556,9 +583,13 @@ impl PlaceService {
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
 
-                Ok(())
+                Ok(parent_id)
             })
-            .await
+            .await?;
+
+        let place_ids = Self::event_place_ids([Some(id), parent_id]);
+        self.broadcast_entities("delete_hard", place_ids, Vec::new(), Vec::new());
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -734,7 +765,8 @@ impl PlaceService {
         let user_id = caller.user_id;
         let places_repo = self.repo.clone();
 
-        self.writer
+        let (moved, touched_places, group_roots): (usize, Vec<Option<i64>>, Vec<i64>) = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
@@ -778,6 +810,11 @@ impl PlaceService {
                     }
                 }
 
+                // Места события: корень, цель и прежние места перенесённых
+                // элементов (id устройств здесь недоступны — только счётчик).
+                let mut touched_places: Vec<Option<i64>> =
+                    vec![Some(root_id), Some(target_place_id)];
+
                 let mut moved = 0usize;
                 for item in &items {
                     // The returned total keeps counting every content item, so the
@@ -792,6 +829,7 @@ impl PlaceService {
                         "device" | "printer" => {
                             let before = devices_repo.get_in_tx(&tx, item.id)?;
                             let before_place_id = before.place_id;
+                            touched_places.push(before_place_id);
 
                             devices_repo.update_status_and_place_in_tx(
                                 &tx,
@@ -825,6 +863,7 @@ impl PlaceService {
                                 .optional()
                                 .map_err(map_rusqlite)?
                                 .flatten();
+                            touched_places.push(before_place_id);
 
                             // No expected-version check: this is a
                             // system-initiated bulk operation (D-28), not a
@@ -870,7 +909,7 @@ impl PlaceService {
                 // group version (a bulk move has none); any error propagates and
                 // rolls back the whole transaction, groups and single devices alike.
                 for group_root in &group_roots {
-                    move_group_in_tx(
+                    let outcome = move_group_in_tx(
                         &tx,
                         &group_deps,
                         *group_root,
@@ -879,12 +918,20 @@ impl PlaceService {
                         user_id,
                         now,
                     )?;
+                    touched_places.extend(outcome.changed_place_ids.iter().copied().map(Some));
                 }
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(moved)
+                Ok((moved, touched_places, group_roots))
             })
-            .await
+            .await?;
+
+        // `device_ids` пуст осознанно (Q4): замыкание считает перенесённое числом,
+        // идентификаторы устройств в нём не собираются; клиент по `place_ids` и
+        // `group_ids` перечитывает затронутые места и группы.
+        let place_ids = Self::event_place_ids(touched_places);
+        self.broadcast_entities("move_subtree_contents", place_ids, Vec::new(), group_roots);
+        Ok(moved)
     }
 
     /// Cyrillic-safe full-path substring search (PLC-03/PLC-05). NEVER builds
