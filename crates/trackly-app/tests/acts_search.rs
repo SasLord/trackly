@@ -1,7 +1,8 @@
 //! Acts search integration tests — Phase 3 Plan 05 Task 1 (ACT-04).
 //!
 //! Покрывает FTS+LIKE search путь через `ActService::search`:
-//!   - по номеру акта (LIKE по CAST(number AS TEXT))
+//!   - по номеру акта (LIKE по ОТОБРАЖАЕМОМУ номеру: SQL-функция
+//!     `trackly_act_number`, Phase 41.7 D-09/D-10 — «42» / «42в1» / «42в2»)
 //!   - по ФИО Сдал/Принял (LIKE)
 //!   - по наименованию устройства (FTS5 MATCH через devices_fts JOIN act_items)
 //!   - filter по act_type (Акты vs Возвраты)
@@ -14,7 +15,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::params;
-use trackly_app::dto::act::{ActCreateDto, ActFilter, ActItemNewDto, Pagination};
+use trackly_app::dto::act::{
+    ActCreateDto, ActDto, ActFilter, ActItemNewDto, ActReturnDto, ActReturnItemDto, Pagination,
+};
 use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
@@ -346,6 +349,168 @@ async fn search_handles_special_chars() {
         // содержит один пробел, plain_query «% %» — матчит всё (с пробелом
         // в строке). Не строгий assert, просто no-panic.
         let _ = resp3;
+    })
+    .await
+    .expect("budget");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 41.7 (INT-02, NUM-09/NUM-14, D-09..D-11): поиск по ОТОБРАЖАЕМОМУ номеру.
+// У возврата в `acts.number` лежит номер РОДИТЕЛЯ, поэтому до правки SQL
+// «42в1» / «42в2» не находили ничего.
+// ---------------------------------------------------------------------------
+
+/// Фильтр без act_type: возвраты НЕ должны отрезаться (`handover_filter()`
+/// отрезал бы их). Поле `search` задаёт сам вызов поиска.
+fn any_type_filter() -> ActFilter {
+    ActFilter {
+        act_type: None,
+        archived: None,
+        search: None,
+        include_deleted: false,
+    }
+}
+
+/// Частичный возврат ровно одного устройства из акта выдачи.
+async fn return_one_device(svc: &ActService, handover: &ActDto, device_id: i64) -> ActDto {
+    let item = handover
+        .items
+        .iter()
+        .find(|i| i.device_id == device_id)
+        .expect("устройство есть в акте выдачи");
+    svc.do_return(
+        &Identity::trusted_admin(),
+        handover.id,
+        ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: None,
+            apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+            items: vec![ActReturnItemDto {
+                act_item_id: item.id,
+                device_id,
+                device_ids: vec![device_id],
+                quantity: 1,
+                condition_override: None,
+                place_id_override: None,
+            }],
+        },
+    )
+    .await
+    .expect("do_return")
+}
+
+/// Расходящаяся фикстура: семья «42» (родитель + ДВА возврата, у обоих
+/// `acts.number = "42"`) и посторонний акт «7» с другим ФИО. Имена устройств
+/// БЕЗ «42», чтобы FTS-ветка `device_text_hits` не давала ложных попаданий.
+async fn seed_family_42() -> (ActService, tempfile::TempDir) {
+    let (svc, dir) = make_acts_service();
+    let ids = seed_devices_named(&svc.writer, &["Alpha-A", "Alpha-B", "Gamma-C"]).await;
+    let parent = create_handover(&svc, &[ids[0], ids[1]], "Иванов И.И.", "Петров П.П.", "42").await;
+    create_handover(&svc, &[ids[2]], "Сидоров С.С.", "Кузнецов К.К.", "7").await;
+    let r1 = return_one_device(&svc, &parent, ids[0]).await;
+    let r2 = return_one_device(&svc, &parent, ids[1]).await;
+    assert_eq!(r1.number, "42в1", "предусловие фикстуры");
+    assert_eq!(r2.number, "42в2", "предусловие фикстуры");
+    (svc, dir)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn search_by_display_number_finds_first_return() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = seed_family_42().await;
+        let resp = svc
+            .search("42в1".into(), any_type_filter(), Pagination::default())
+            .await
+            .expect("search");
+        assert_eq!(resp.total, 1, "«42в1» находит ровно один акт");
+        assert_eq!(resp.items.len(), 1);
+        assert_eq!(resp.items[0].number, "42в1");
+        assert_eq!(resp.items[0].act_type, "return");
+    })
+    .await
+    .expect("budget");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn search_by_display_number_finds_second_return() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = seed_family_42().await;
+        let resp = svc
+            .search("42в2".into(), any_type_filter(), Pagination::default())
+            .await
+            .expect("search");
+        assert_eq!(resp.total, 1, "«42в2» находит ровно один акт");
+        assert_eq!(resp.items[0].number, "42в2");
+    })
+    .await
+    .expect("budget");
+}
+
+/// Охранный кейс D-10: «42» находит и родителя, и его возвраты, и это три
+/// РАЗНЫХ отображаемых номера. Зелёный и до правки SQL (у возвратов
+/// `acts.number = "42"`) — красным до фикса его не искать.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn search_parent_number_finds_parent_and_all_returns() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = seed_family_42().await;
+        let resp = svc
+            .search("42".into(), any_type_filter(), Pagination::default())
+            .await
+            .expect("search");
+        assert_eq!(
+            resp.total, 3,
+            "родитель + два возврата, посторонний «7» нет"
+        );
+        let mut numbers: Vec<String> = resp.items.iter().map(|a| a.number.clone()).collect();
+        numbers.sort();
+        assert_eq!(numbers, vec!["42", "42в1", "42в2"]);
+    })
+    .await
+    .expect("budget");
+}
+
+/// Поиск по ФИО в том же CTE не сломан добавлением `LEFT JOIN acts p`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn search_by_giver_still_works_with_returns_in_corpus() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = seed_family_42().await;
+        // Родитель «42»: giver «Иванов И.И.». Возвраты наследуют ФИО акта
+        // выдачи (поменянные местами), поэтому «Иванов» матчит родителя
+        // и оба возврата; «Сидоров» — только посторонний акт «7».
+        let sidorov = svc
+            .search("Сидоров".into(), any_type_filter(), Pagination::default())
+            .await
+            .expect("search");
+        assert_eq!(sidorov.total, 1);
+        assert_eq!(sidorov.items[0].number, "7");
+        let ivanov = svc
+            .search("Иванов".into(), any_type_filter(), Pagination::default())
+            .await
+            .expect("search");
+        assert!(
+            ivanov.total >= 1 && ivanov.items.iter().any(|a| a.number == "42"),
+            "ФИО-поиск находит родителя «42»"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Тест-документ Q6: регистр кириллицы принимается как есть — LIKE в SQLite
+/// нечувствителен к регистру только для ASCII, как и для ФИО. «42В1» с
+/// заглавной «В» не находит «42в1». Сворачивание регистра НЕ вводится.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn search_display_number_is_case_sensitive_for_cyrillic_suffix() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = seed_family_42().await;
+        let resp = svc
+            .search("42В1".into(), any_type_filter(), Pagination::default())
+            .await
+            .expect("search");
+        assert_eq!(resp.total, 0, "принято как есть (ASCII-only LIKE), Q6");
     })
     .await
     .expect("budget");

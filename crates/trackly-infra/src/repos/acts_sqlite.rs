@@ -213,7 +213,8 @@ impl SqliteActRepository {
     ///
     /// Реализация per Phase 3 RESEARCH §«FTS search across acts joining
     /// act_items + devices_fts»: UNION двух CTE — `act_text_hits` (LIKE по
-    /// числовому номеру, ФИО Сдал/Принял) и `device_text_hits` (FTS5 MATCH
+    /// ОТОБРАЖАЕМОМУ номеру — SQL-функция `trackly_act_number`, Phase 41.7
+    /// D-09/D-10: «42» / «42в1», — и ФИО Сдал/Принял) и `device_text_hits` (FTS5 MATCH
     /// через `devices_fts` JOIN `act_items.device_id`). Без отдельного
     /// `acts_fts` (отложено до Phase 7).
     ///
@@ -259,7 +260,8 @@ impl SqliteActRepository {
         let count_sql = format!(
             "WITH act_text_hits AS ( \
                  SELECT a.id FROM acts a \
-                  WHERE (CAST(a.number AS TEXT) LIKE ?1 \
+                  LEFT JOIN acts p ON p.id = a.parent_act_id \
+                  WHERE (trackly_act_number(a.act_type, a.number, a.sub_number, p.number) LIKE ?1 \
                          OR a.giver_name LIKE ?1 \
                          OR a.receiver_name LIKE ?1) \
              ), \
@@ -289,7 +291,8 @@ impl SqliteActRepository {
         let select_sql = format!(
             "WITH act_text_hits AS ( \
                  SELECT a.id FROM acts a \
-                  WHERE (CAST(a.number AS TEXT) LIKE ?1 \
+                  LEFT JOIN acts p ON p.id = a.parent_act_id \
+                  WHERE (trackly_act_number(a.act_type, a.number, a.sub_number, p.number) LIKE ?1 \
                          OR a.giver_name LIKE ?1 \
                          OR a.receiver_name LIKE ?1) \
              ), \

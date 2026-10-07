@@ -16,7 +16,9 @@
 //!
 //! See `.planning/research/PITFALLS.md` #2 (SQLite locked) and #4 (WAL persistence).
 
+use rusqlite::functions::FunctionFlags;
 use rusqlite::Connection;
+use trackly_core::domain::acts::{format_act_number, ActType};
 use trackly_core::error::AppError;
 
 /// 128 MiB — `mmap_size` for memory-mapped I/O on read paths.
@@ -59,6 +61,7 @@ pub fn apply_writer_pragmas(conn: &Connection) -> Result<(), AppError> {
     set_pragma(conn, "wal_autocheckpoint", WAL_AUTOCHECKPOINT_FRAMES)?;
     set_pragma(conn, "temp_store", "MEMORY")?;
     set_pragma(conn, "mmap_size", MMAP_SIZE_BYTES)?;
+    register_sql_functions(conn)?;
 
     Ok(())
 }
@@ -71,7 +74,49 @@ pub fn apply_reader_pragmas(conn: &Connection) -> Result<(), AppError> {
     set_pragma(conn, "temp_store", "MEMORY")?;
     set_pragma(conn, "mmap_size", MMAP_SIZE_BYTES)?;
     set_pragma(conn, "query_only", "ON")?;
+    register_sql_functions(conn)?;
     Ok(())
+}
+
+/// Имя SQL-функции отображаемого номера акта.
+pub const ACT_NUMBER_SQL_FN: &str = "trackly_act_number";
+
+/// Регистрирует пользовательские SQL-функции на соединении (Phase 41.7, D-09).
+///
+/// `trackly_act_number(act_type TEXT, number TEXT, sub_number INTEGER NULL,
+/// parent_number TEXT NULL) -> TEXT` — отображаемый номер акта («42» / «42в1»).
+/// Тело — `trackly_core::domain::acts::format_act_number`, то есть владелец
+/// формулы один.
+///
+/// Функция живёт только на соединении и используется ТОЛЬКО в запросах
+/// (никаких индексов, вью, триггеров и generated-колонок на ней): иначе
+/// сторонний `sqlite3` перестал бы открывать файл БД. Миграций поэтому нет.
+///
+/// Вызывается из обоих `apply_*_pragmas` — единственных хуков открытия
+/// соединения (writer-worker и reader-pool).
+pub fn register_sql_functions(conn: &Connection) -> Result<(), AppError> {
+    conn.create_scalar_function(
+        ACT_NUMBER_SQL_FN,
+        4,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let act_type: String = ctx.get(0)?;
+            let number: String = ctx.get(1)?;
+            let sub_number: Option<i64> = ctx.get(2)?;
+            let parent_number: Option<String> = ctx.get(3)?;
+            let act_type = ActType::from_str(&act_type)
+                .map_err(|e| rusqlite::Error::UserFunctionError(Box::new(e)))?;
+            Ok(format_act_number(
+                act_type,
+                &number,
+                sub_number,
+                parent_number.as_deref(),
+            ))
+        },
+    )
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("register sql function {ACT_NUMBER_SQL_FN} failed: {e}"),
+    })
 }
 
 fn set_pragma<V: rusqlite::ToSql + std::fmt::Display + Copy>(
@@ -151,5 +196,65 @@ mod tests {
             .pragma_query_value(None, "busy_timeout", |r| r.get::<_, i64>(0))
             .expect("read busy_timeout");
         assert_eq!(busy_timeout, 5000);
+    }
+
+    fn display(conn: &Connection, sql: &str) -> rusqlite::Result<String> {
+        conn.query_row(sql, [], |r| r.get::<_, String>(0))
+    }
+
+    #[test]
+    fn act_number_fn_registered_on_writer_connection() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_writer_pragmas(&conn).expect("writer pragmas");
+        assert_eq!(
+            display(&conn, "SELECT trackly_act_number('return','42',1,'42')").expect("query"),
+            "42в1"
+        );
+    }
+
+    #[test]
+    fn act_number_fn_registered_on_reader_connection_under_query_only() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_reader_pragmas(&conn).expect("reader pragmas");
+        let query_only: i64 = conn
+            .pragma_query_value(None, "query_only", |r| r.get::<_, i64>(0))
+            .expect("read query_only");
+        assert_eq!(query_only, 1, "предусловие: соединение только для чтения");
+        assert_eq!(
+            display(&conn, "SELECT trackly_act_number('return','42',2,'42')").expect("query"),
+            "42в2"
+        );
+    }
+
+    #[test]
+    fn act_number_fn_handover_with_null_parent_is_plain_number() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_writer_pragmas(&conn).expect("writer pragmas");
+        assert_eq!(
+            display(
+                &conn,
+                "SELECT trackly_act_number('handover','42',NULL,NULL)"
+            )
+            .expect("query"),
+            "42"
+        );
+    }
+
+    #[test]
+    fn act_number_fn_null_sub_number_of_return_defaults_to_one() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_writer_pragmas(&conn).expect("writer pragmas");
+        assert_eq!(
+            display(&conn, "SELECT trackly_act_number('return','42',NULL,'42')").expect("query"),
+            "42в1"
+        );
+    }
+
+    #[test]
+    fn act_number_fn_unknown_act_type_is_query_error_not_panic() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_writer_pragmas(&conn).expect("writer pragmas");
+        let res = display(&conn, "SELECT trackly_act_number('xyz','42',NULL,NULL)");
+        assert!(res.is_err(), "неизвестный act_type -> ошибка запроса");
     }
 }
