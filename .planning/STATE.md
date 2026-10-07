@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T17:42:38.732Z"
+last_updated: "2026-10-07T17:56:22.925Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
   completed_phases: 10
   total_plans: 167
-  completed_plans: 158
+  completed_plans: 159
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.7 (v1-4-ws-bootstrap-lan) — EXECUTING
-Plan: 6 of 14
+Plan: 7 of 14
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -573,6 +573,7 @@ Last activity: 2026-10-07
 | Phase 41.7 P11 | 25m | 2 tasks | 7 files |
 | Phase 41.7 P03 | 60min | 2 tasks | 6 files |
 | Phase 41.7 P04 | 25min | 2 tasks | 3 files |
+| Phase 41.7 P05 | 40min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1257,6 +1258,7 @@ Recent decisions affecting current work:
 - [Phase 41.7]: [41.7-11] PlaceTree читает reloadSeq через reloadSeqNow(): гейт INV-1 допускает один эффект со словом placeContentEventsStore
 - [Phase 41.7]: 41.7-03: bootstrap-маршрут закрывается предикатом count_active_admins (нет активного админа) внутри writer-транзакции; отказ = 409 Conflict
 - [Phase 41.7]: [41.7-04] spa_fallback: ранний 404 JSON для api или api/* по границе сегмента (F17, D-14); /apiary остаётся SPA
+- [Phase 41.7]: [41.7-05] Реестр гейта EntitiesChanged снят от исходников: 118 строк, пустой инвентарь краснит гейт; причины Exempt только по chars().count() >= 40
 
 ### Pending Todos
 
@@ -1457,7 +1459,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-07T17:42:34.461Z
+Last session: 2026-10-07T17:56:17.598Z
 Stopped at: Completed 41.7-03-PLAN.md
 Resume file: None
 
