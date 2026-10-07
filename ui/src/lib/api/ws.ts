@@ -5,7 +5,11 @@
 // Tauri path: @tauri-apps/api/event listen('trackly-event') — no WS server needed.
 //
 // WsEvent union is synchronised with Rust dto/printer.rs WsEvent enum:
-//   { type: 'new_request' | 'request_status_changed' | 'printer_alert' }
+//   { type: 'new_request' | 'request_status_changed' | 'printer_alert'
+//          | 'number_space_changed' | 'entities_changed' }
+// Фаза 41.7 (D-18): сокет теперь открывает и оболочка Admin/Manager (Layout.svelte),
+// поэтому тост «Соединение с сервером потеряно» (showReconnectingToast) может
+// появиться на любом экране админа — принято, придушивание по экранам отвергнуто.
 // NOTE: 'request_status_changed' — NOT 'request_updated' (06-CONTEXT sync).
 
 import type { WsEvent } from '../../bindings-phase6';

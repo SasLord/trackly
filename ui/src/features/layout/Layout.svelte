@@ -1,6 +1,9 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
   import { router } from 'svelte-spa-router';
+  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { notifyEntitiesChanged } from '$lib/stores/placeContentEvents.svelte';
+  import type { WsEvent } from '../../bindings-phase6';
   import Sidebar from './Sidebar.svelte';
   import { sidebarNav, closeNav } from './layout-state.svelte';
 
@@ -15,6 +18,40 @@
   let isDesktop = $state(true);
   let asideEl = $state<HTMLElement | null>(null);
   let prevFocus: HTMLElement | null = null;
+
+  // Фаза 41.7 (D-17/D-18): оболочка Admin/Manager держит WS-сокет и переводит
+  // entities_changed в перезагрузку деревьев/составов (стор placeContentEvents).
+  // Образец — EmployeeLayout: флаг disposed (WR-01), идемпотентный release,
+  // общий refcount-singleton ws.ts. Поля deviceIds/groupIds мост игнорирует
+  // осознанно — они для Фаз 43–45.
+  function handleEntitiesWsEvent(event: WsEvent): void {
+    if (event.type === 'entities_changed') {
+      notifyEntitiesChanged(event.placeIds);
+    }
+  }
+
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    connectWs()
+      .then((fn) => {
+        if (disposed) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
+      })
+      .catch(() => {
+        // Сбой сокета не фатален: локальные вызовы инвалидации продолжают работать.
+      });
+    const unsubscribe = onWsEvent(handleEntitiesWsEvent);
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+      unlisten?.();
+    };
+  });
 
   $effect(() => {
     if (typeof window === 'undefined') return;
