@@ -327,11 +327,12 @@ impl AppCtx {
         // Phase 39 Plan 05: place-tree service. No cross-entity dependencies
         // (unlike DeviceService's printer_repo), so no ordering constraint
         // beyond writer/readers/clock being available.
-        let places = Arc::new(PlaceService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-        ));
+        // Phase 41.7 (D-04): `with_ws_tx` wires the shared broadcast sender so
+        // `WsEvent::EntitiesChanged` can reach subscribed clients.
+        let places = Arc::new(
+            PlaceService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_ws_tx(ws_broadcast.clone()),
+        );
 
         // Phase 41 Plan 07: group-type service. No cross-entity dependencies.
         let group_types = Arc::new(GroupTypeService::new(
@@ -345,11 +346,11 @@ impl AppCtx {
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         // Phase 41 Plan 08: group service (reads + CRUD). Needs only writer/readers/clock.
-        let groups = Arc::new(GroupService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-        ));
+        // Phase 41.7 (D-04): shared broadcast sender for `EntitiesChanged`.
+        let groups = Arc::new(
+            GroupService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_ws_tx(ws_broadcast.clone()),
+        );
 
         // Phase 40 Plan 10: place-movement timeline read service. Read-only, no
         // writer dependency — mirrors PlaceService's ordering-independence note.

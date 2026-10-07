@@ -39,6 +39,7 @@ use crate::dto::groups::{
     GroupPrinterDto, GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto,
     UserOptionDto,
 };
+use crate::dto::printer::WsEvent;
 use crate::services::group_membership::release_device_in_tx;
 use crate::services::group_place::{
     apply_group_place_to_device_in_tx, move_group_in_tx, propagate_group_place_in_tx,
@@ -62,6 +63,9 @@ pub struct GroupService {
     pub(crate) type_repo: Arc<SqliteGroupTypeRepository>,
     pub(crate) places_repo: Arc<SqlitePlaceRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
+    /// Phase 41.7 INT-01: shared WS sender — `None` in test fixtures;
+    /// `AppCtx::build` wires it via `with_ws_tx`.
+    pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
 }
 
 /// Снимок всех групп с производными данными: один набор запросов вместо N+1.
@@ -194,7 +198,36 @@ impl GroupService {
             type_repo: Arc::new(SqliteGroupTypeRepository),
             places_repo: Arc::new(SqlitePlaceRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
+            ws_tx: None,
         }
+    }
+
+    /// Builder: wire the shared WS broadcast sender (Phase 41.7 INT-01, D-04).
+    /// Wired in `AppCtx::build`; `None` in test fixtures built via `new`.
+    pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
+        self.ws_tx = Some(ws_tx);
+        self
+    }
+
+    /// Best-effort `WsEvent::EntitiesChanged` after a COMMITTED mutation
+    /// (outside the writer closure). Delegates to the single owner of the
+    /// send rule in `entities_broadcast`.
+    // Снимается планом 41.7-07 (GroupService) — до тех пор ни одна мутация метод не зовёт.
+    #[allow(dead_code)]
+    fn broadcast_entities(
+        &self,
+        op: &'static str,
+        place_ids: Vec<i64>,
+        device_ids: Vec<i64>,
+        group_ids: Vec<i64>,
+    ) {
+        crate::services::entities_broadcast::send_entities_changed(
+            &self.ws_tx,
+            op,
+            place_ids,
+            device_ids,
+            group_ids,
+        );
     }
 
     // ---- чтения --------------------------------------------------------

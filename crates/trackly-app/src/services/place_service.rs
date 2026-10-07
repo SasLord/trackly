@@ -52,6 +52,7 @@ use trackly_infra::repos::{
 };
 
 use crate::dto::place::{PlaceDto, PlacePathDto};
+use crate::dto::printer::WsEvent;
 
 /// Max caller-supplied query length for `search` (mirrors `act_service.rs`'s
 /// `suggest_person` prefix-length guard idiom — 100 chars — T-39-08-02).
@@ -74,6 +75,9 @@ pub struct PlaceService {
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) repo: Arc<SqlitePlaceRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
+    /// Phase 41.7 INT-01: shared WS sender — `None` in test fixtures;
+    /// `AppCtx::build` wires it via `with_ws_tx`.
+    pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
 }
 
 impl PlaceService {
@@ -90,7 +94,36 @@ impl PlaceService {
             clock,
             repo: Arc::new(SqlitePlaceRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
+            ws_tx: None,
         }
+    }
+
+    /// Builder: wire the shared WS broadcast sender (Phase 41.7 INT-01, D-04).
+    /// Wired in `AppCtx::build`; `None` in test fixtures built via `new`.
+    pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
+        self.ws_tx = Some(ws_tx);
+        self
+    }
+
+    /// Best-effort `WsEvent::EntitiesChanged` after a COMMITTED mutation
+    /// (outside the writer closure). Delegates to the single owner of the
+    /// send rule in `entities_broadcast`.
+    // Снимается планом 41.7-06 (PlaceService) — до тех пор ни одна мутация метод не зовёт.
+    #[allow(dead_code)]
+    fn broadcast_entities(
+        &self,
+        op: &'static str,
+        place_ids: Vec<i64>,
+        device_ids: Vec<i64>,
+        group_ids: Vec<i64>,
+    ) {
+        crate::services::entities_broadcast::send_entities_changed(
+            &self.ws_tx,
+            op,
+            place_ids,
+            device_ids,
+            group_ids,
+        );
     }
 
     // -----------------------------------------------------------------------
