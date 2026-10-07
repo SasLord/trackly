@@ -1023,31 +1023,71 @@ GRP-04…GRP-08 (INT-01), NUM-09, NUM-14 (INT-02). INT-03 вне набора т
      `trackly-app` зелёный (с учётом известного пропуска `login_remember_persistent_cookie`).
 
 **Из аудита к учёту при планировании:**
+
 - Риск F17: `spa_fallback` (`http/mod.rs:252-272`) не исключает `/api/` — несуществующий
   маршрут отвечает 200 + `index.html`. Дешёвая правка (S), но менять её одновременно с
   добавлением bootstrap-маршрута: именно она 2 года скрывала INT-04.
+
 - INT-04 (счётчики отчётов в LAN) отложен решением пользователя 2026-10-06 и в объём этой
   фазы НЕ входит — но его первопричина №2 совпадает с F17 выше.
+
 - Фаза 41.5 (MSG-03) потребует расширить `is_visible_to` ролевой фильтрацией по участникам
   заявки. Если это дешево сделать сразу — сделать сразу, иначе зафиксировать как шов.
 
 **Plans:** 14 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 41.7-01-PLAN.md — Контракт WsEvent::EntitiesChanged, хелпер отправки, ws_tx в PlaceService/GroupService (волна 0)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 41.7-02-PLAN.md — INT-02: фича functions, format_act_number в trackly-core, SQL-функция, act_text_hits, матрица D-11
-- [ ] 41.7-03-PLAN.md — INT-03: публичный auth_bootstrap (сервис, HTTP, Tauri, governor, аудит) + тесты
-- [ ] 41.7-04-PLAN.md — F17: 404 JSON для /api/ в spa_fallback; FirstRunWizard на auth_bootstrap
-- [ ] 41.7-05-PLAN.md — Гейт INT-01, каркас: реестр вердиктов на каждую функцию области, фикстуры настоящего AppCtx, тесты формы таблицы
-- [ ] 41.7-06-PLAN.md — Рассылка и поведенческий гейт: place_service (8 мутаций)
-- [ ] 41.7-07-PLAN.md — Рассылка и поведенческий гейт: group_service (8 мутаций)
-- [ ] 41.7-08-PLAN.md — Рассылка и поведенческий гейт: act_service (5 мутаций)
-- [ ] 41.7-09-PLAN.md — Рассылка и поведенческий гейт: device_service (6 мутаций, D-16)
-- [ ] 41.7-10-PLAN.md — Рассылка и поведенческий гейт: cartridge_service (4 мутации, D-16)
 - [ ] 41.7-11-PLAN.md — Клиентский мост: стор, потребители, сокет в Layout.svelte (D-05, D-17, D-18)
-- [ ] 41.7-12-PLAN.md — Сквозной WS-кадр, фазовый гейт, ОДИН полный прогон пакета, карта верификации
-- [ ] 41.7-13-PLAN.md — Живая приёмка (чеклист D-15 отдаётся пользователю, autonomous: false)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 41.7-03-PLAN.md — INT-03: публичный auth_bootstrap (сервис, HTTP, Tauri, governor, аудит) + тесты
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 41.7-04-PLAN.md — F17: 404 JSON для /api/ в spa_fallback; FirstRunWizard на auth_bootstrap
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 41.7-05-PLAN.md — Гейт INT-01, каркас: реестр вердиктов на каждую функцию области, фикстуры настоящего AppCtx, тесты формы таблицы
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 41.7-14-PLAN.md — Гейт INT-01, сканер: чистый scan() с вырезанием #[cfg(test)]-блоков по балансу скобок, selftest, привязка слоя (2) к реальным scenario_*, боевой скан, мутации (в т.ч. на act_service.rs), гард области
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 41.7-06-PLAN.md — Рассылка и поведенческий гейт: place_service (8 мутаций)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 41.7-07-PLAN.md — Рассылка и поведенческий гейт: group_service (8 мутаций)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 41.7-08-PLAN.md — Рассылка и поведенческий гейт: act_service (5 мутаций)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 41.7-09-PLAN.md — Рассылка и поведенческий гейт: device_service (6 мутаций, D-16)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 41.7-10-PLAN.md — Рассылка и поведенческий гейт: cartridge_service (4 мутации, D-16)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+
+- [ ] 41.7-12-PLAN.md — Сквозной WS-кадр, фазовый гейт, ОДИН полный прогон пакета, карта верификации
+
+**Wave 13** *(blocked on Wave 12 completion)*
+
+- [ ] 41.7-13-PLAN.md — Живая приёмка (чеклист D-15 отдаётся пользователю, autonomous: false)
 
 _Порядок исполнения (волны сериализованы: исполнители одного крейта `trackly-app` не гоняют cargo одновременно; UI-план 11 идёт параллельно, он cargo не запускает):_ 01 → 02 → 03 → 04 → 05 → **14** → 06 → 07 → 08 → 09 → 10 → 12 → 13; 11 — волна 2. Номер 14 исполняется ПОСЛЕ 05 и ДО 06 (буквенные суффиксы `05a/05b` ломают разбор имён планов в инструментах).
 

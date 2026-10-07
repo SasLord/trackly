@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-10-07T11:21:46.605Z"
-last_activity: "2026-10-06 - Завершена quick-задача 261006-svt: полный инвентарь-гейт write-site'ов devices.place_id (residual item 1 фазы 41)"
+status: executing
+last_updated: "2026-10-07T14:07:28.647Z"
+last_activity: 2026-10-07 -- Phase 41.7 planning complete
 progress:
   total_phases: 21
   completed_phases: 10
-  total_plans: 153
+  total_plans: 167
   completed_plans: 153
   percent: 48
 ---
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41 (groups-model-and-editor) — ЗАКРЫТА 2026-10-06
 Plan: 34 of 34
-Status: 41-VERIFICATION.md — `passed`. Живая приёмка R1–R5 проведена пользователем 2026-10-06:
+Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
 R5 — счётчики вкладок «Отчётов» равны 0 в LAN-браузере — признан дефектом ВНЕ фазы 41
@@ -137,7 +137,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-06 - Завершена quick-задача 261006-svt: полный инвентарь-гейт write-site'ов devices.place_id (residual item 1 фазы 41)
+Last activity: 2026-10-07 -- Phase 41.7 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
