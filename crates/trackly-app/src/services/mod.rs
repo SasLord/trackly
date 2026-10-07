@@ -12,6 +12,7 @@ pub mod backup_service;
 pub mod cartridge_service;
 pub mod dashboard_service;
 pub mod device_service;
+pub(crate) mod entities_broadcast;
 pub(crate) mod group_membership;
 pub(crate) mod group_place;
 pub mod group_service;
