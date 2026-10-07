@@ -1031,10 +1031,22 @@ GRP-04…GRP-08 (INT-01), NUM-09, NUM-14 (INT-02). INT-03 вне набора т
 - Фаза 41.5 (MSG-03) потребует расширить `is_visible_to` ролевой фильтрацией по участникам
   заявки. Если это дешево сделать сразу — сделать сразу, иначе зафиксировать как шов.
 
-**Plans:** 0 plans
+**Plans:** 13 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 41.7 to break down)
+- [ ] 41.7-01-PLAN.md — Контракт WsEvent::EntitiesChanged, хелпер отправки, ws_tx в PlaceService/GroupService (волна 0)
+- [ ] 41.7-02-PLAN.md — INT-02: фича functions, format_act_number в trackly-core, SQL-функция, act_text_hits, матрица D-11
+- [ ] 41.7-03-PLAN.md — INT-03: публичный auth_bootstrap (сервис, HTTP, Tauri, governor, аудит) + тесты
+- [ ] 41.7-04-PLAN.md — F17: 404 JSON для /api/ в spa_fallback; FirstRunWizard на auth_bootstrap
+- [ ] 41.7-05-PLAN.md — Гейт INT-01, слой (1): реестр вердиктов, сканер исходников, selftest, мутационная проверка
+- [ ] 41.7-06-PLAN.md — Рассылка и поведенческий гейт: place_service (8 мутаций)
+- [ ] 41.7-07-PLAN.md — Рассылка и поведенческий гейт: group_service (8 мутаций)
+- [ ] 41.7-08-PLAN.md — Рассылка и поведенческий гейт: act_service (5 мутаций)
+- [ ] 41.7-09-PLAN.md — Рассылка и поведенческий гейт: device_service (6 мутаций, D-16)
+- [ ] 41.7-10-PLAN.md — Рассылка и поведенческий гейт: cartridge_service (4 мутации, D-16)
+- [ ] 41.7-11-PLAN.md — Клиентский мост: стор, потребители, сокет в Layout.svelte (D-05, D-17, D-18)
+- [ ] 41.7-12-PLAN.md — Сквозной WS-кадр, фазовый гейт, ОДИН полный прогон пакета, карта верификации
+- [ ] 41.7-13-PLAN.md — Живая приёмка (чеклист D-15 отдаётся пользователю, autonomous: false)
 
 ### Phase 41.1: Группы × Устройства (INSERTED)
 
