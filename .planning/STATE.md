@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-10-07T00:00:00.000Z"
-last_activity: 2026-10-07
+status: verifying
+last_updated: "2026-10-07T00:03:17.223Z"
+last_activity: "2026-10-06 - Завершена quick-задача 261006-svt: полный инвентарь-гейт write-site'ов devices.place_id (residual item 1 фазы 41)"
 progress:
-  total_phases: 20
+  total_phases: 21
   completed_phases: 11
   total_plans: 153
   completed_plans: 153
-  percent: 55
+  percent: 52
 ---
 
 # Project State
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.1 — groups-devices-integration (не начата; Фаза 41 закрыта 2026-10-06)
+**Current focus:** Phase 41.7 — долг выпуска v1.4 (исполняется до Фазы 41.1)
 
 ## Current Position
 
@@ -40,8 +40,12 @@ R5 — счётчики вкладок «Отчётов» равны 0 в LAN-б
 INT-03 (первого администратора не завести через LAN-браузер). Полный разбор —
 .planning/v1.4-MILESTONE-AUDIT.md.
 
-Следующий шаг: /gsd-discuss-phase 41.1 (UI hint: yes) — предварительно решить F13:
-колонки `groups.anchor_device_id` в V045 нет, нужна аддитивная миграция.
+Следующий шаг: /gsd-discuss-phase 41.7 — вставлена 2026-10-07, исполняется ДО Фазы 41.1
+(номер 41.7 выдан счётчиком phase.insert; порядок задан позицией записи в ROADMAP).
+Три блокера выпуска: INT-01 WS-события сущностей, INT-03 bootstrap по LAN,
+INT-02 поиск актов по номеру возврата.
+После неё: /gsd-discuss-phase 41.1 (UI hint: yes) — предварительно решить F13: колонки
+`groups.anchor_device_id` в V045 нет, нужна аддитивная миграция.
 
 ---
 
@@ -615,6 +619,7 @@ Last activity: 2026-10-06 - Завершена quick-задача 261006-svt: п
 - Phase 41.4 inserted after Phase 41: Заявки: Ремонт
 - Phase 41.5 inserted after Phase 41: Переписка в заявке
 - Phase 41.6 inserted after Phase 41: Раздел «Устройства» для сотрудника
+- Phase 41.7 inserted after Phase 41: Долг выпуска v1.4: WS-события сущностей (INT-01), bootstrap по LAN (INT-03), поиск номера возврата (INT-02); исполняется ДО Фазы 41.1 (URGENT)
 
 ### Decisions
 
