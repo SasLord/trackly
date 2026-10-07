@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T18:47:35.886Z"
+last_updated: "2026-10-07T18:47:40.038Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
@@ -575,6 +575,7 @@ Last activity: 2026-10-07
 | Phase 41.7 P04 | 25min | 2 tasks | 3 files |
 | Phase 41.7 P05 | 40min | 2 tasks | 4 files |
 | Phase 41.7 P14 | 2h | 3 tasks | 5 files |
+| Phase 41.7 P06 | 1h | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1262,6 +1263,7 @@ Recent decisions affecting current work:
 - [Phase 41.7]: [41.7-05] Реестр гейта EntitiesChanged снят от исходников: 118 строк, пустой инвентарь краснит гейт; причины Exempt только по chars().count() >= 40
 - [Phase 41.7]: 41.7-14: сканер не режет хвост от первого cfg(test): тестовые элементы вырезаются по балансу скобок, код между ними виден (act_service.rs)
 - [Phase 41.7]: 41.7-14: слой (2) привязан к исходнику поведенческого файла (scenario_<func>), константы нет; боевой скан красный до планов 06-10 (anti-vacuous 7/8)
+- [Phase 41.7]: 41.7-06: place_ids собирает приватный event_place_ids; PlaceDto и публичные типы не менялись (audit_log)
 
 ### Pending Todos
 
