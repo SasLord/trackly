@@ -212,8 +212,6 @@ impl GroupService {
     /// Best-effort `WsEvent::EntitiesChanged` after a COMMITTED mutation
     /// (outside the writer closure). Delegates to the single owner of the
     /// send rule in `entities_broadcast`.
-    // Снимается планом 41.7-07 (GroupService) — до тех пор ни одна мутация метод не зовёт.
-    #[allow(dead_code)]
     fn broadcast_entities(
         &self,
         op: &'static str,
@@ -440,7 +438,8 @@ impl GroupService {
         let type_id = dto.type_id;
         let place_id = dto.place_id.map(i64::from);
 
-        self.writer
+        let out = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let gtype = type_repo.get_type(&tx, type_id)?;
@@ -485,7 +484,15 @@ impl GroupService {
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(out)
             })
-            .await
+            .await?;
+
+        // После коммита, вне writer-замыкания. Без места place_ids пуст, событие всё
+        // равно идёт: group_ids = [id] (D-17).
+        let place_ids: Vec<i64> = place_id.into_iter().collect();
+        let device_ids: Vec<i64> = Vec::new();
+        let group_ids = vec![out.id];
+        self.broadcast_entities("create_group", place_ids, device_ids, group_ids);
+        Ok(out)
     }
 
     /// Переименовать группу (CAS по `version`). Счётчик `seq` не меняется.
@@ -505,7 +512,8 @@ impl GroupService {
         let type_repo = self.type_repo.clone();
         let audit_repo = self.audit_repo.clone();
 
-        self.writer
+        let out = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let before = to_json(&group_dto_on(&tx, &repo, &type_repo, id)?)?;
@@ -527,7 +535,14 @@ impl GroupService {
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(out)
             })
-            .await
+            .await?;
+
+        // Переименование места не меняет: пустой place_ids = «перезагрузить всё» (D-17).
+        let place_ids: Vec<i64> = Vec::new();
+        let device_ids: Vec<i64> = Vec::new();
+        let group_ids = vec![id];
+        self.broadcast_entities("update_group", place_ids, device_ids, group_ids);
+        Ok(out)
     }
 
     /// Удалить группу (GRP-10). Прямые устройства освобождаются (членство исчезает),
@@ -546,7 +561,8 @@ impl GroupService {
         let type_repo = self.type_repo.clone();
         let audit_repo = self.audit_repo.clone();
 
-        self.writer
+        let out = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let before = group_dto_on(&tx, &repo, &type_repo, id)?;
@@ -574,7 +590,13 @@ impl GroupService {
                     released_devices: released as i32,
                 })
             })
-            .await
+            .await?;
+
+        let place_ids: Vec<i64> = Vec::new();
+        let device_ids: Vec<i64> = Vec::new();
+        let group_ids = vec![id];
+        self.broadcast_entities("delete_group", place_ids, device_ids, group_ids);
+        Ok(out)
     }
 
     /// Перенести группу вместе с составом (GRP-06, D-17/D-20/D-24). Одна транзакция:
@@ -609,6 +631,14 @@ impl GroupService {
                 Ok(outcome)
             })
             .await?;
+
+        // D-03: список мест клонируется один раз и уходит и в событие, и в ответ.
+        // Q4: GroupMoveOutcome хранит только счётчик устройств, device_ids пуст.
+        // Событие безусловно (даже при пустом итоге): group_ids = [id] не пуст.
+        let place_ids = outcome.changed_place_ids.clone();
+        let device_ids: Vec<i64> = Vec::new();
+        let group_ids = vec![id];
+        self.broadcast_entities("move_group", place_ids, device_ids, group_ids);
 
         let summary = move_summary(outcome.moved_devices);
 
@@ -678,7 +708,8 @@ impl GroupService {
         let now = self.clock.unix_seconds();
         let user_id = caller.user_id;
 
-        self.writer
+        let (result, added) = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let deps = GroupMoveDeps::new();
@@ -754,12 +785,20 @@ impl GroupService {
                     )?;
                 }
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(GroupAddDevicesResultDto {
+                let result = GroupAddDevicesResultDto {
                     added: added.len() as i32,
                     changed_place_ids: changed_places,
-                })
+                };
+                Ok((result, added))
             })
-            .await
+            .await?;
+
+        // D-03: те же места, что в ответе. Одно событие на весь пакет (D-01).
+        let place_ids = result.changed_place_ids.clone();
+        let device_ids = added;
+        let group_ids = vec![group_id];
+        self.broadcast_entities("add_devices", place_ids, device_ids, group_ids);
+        Ok(result)
     }
 
     /// Вывести устройства из группы (D-02): без подтверждения, место не меняется.
@@ -777,12 +816,13 @@ impl GroupService {
         let now = self.clock.unix_seconds();
         let user_id = caller.user_id;
 
-        self.writer
+        let released_ids = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let deps = GroupMoveDeps::new();
                 deps.groups.get_group_in_tx(&tx, group_id)?;
-                let mut released = 0;
+                let mut released: Vec<i64> = Vec::new();
                 for device_id in &device_ids {
                     let member_of = deps.groups.group_of_device_in_tx(&tx, *device_id)?;
                     if member_of.map(|g| g.id) != Some(group_id) {
@@ -799,13 +839,21 @@ impl GroupService {
                     )?
                     .is_some()
                     {
-                        released += 1;
+                        released.push(*device_id);
                     }
                 }
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(released)
             })
-            .await
+            .await?;
+
+        // Место не меняется: place_ids пуст, но событие идёт (D-17).
+        let count = released_ids.len() as i32;
+        let place_ids: Vec<i64> = Vec::new();
+        let device_ids = released_ids;
+        let group_ids = vec![group_id];
+        self.broadcast_entities("remove_devices", place_ids, device_ids, group_ids);
+        Ok(count)
     }
 }
 
@@ -889,6 +937,12 @@ impl GroupService {
                 Ok(outcome)
             })
             .await?;
+
+        // D-03: список мест клонируется один раз (событие и ответ). Q4: device_ids пуст.
+        let place_ids = outcome.changed_place_ids.clone();
+        let device_ids: Vec<i64> = Vec::new();
+        let group_ids = vec![id];
+        self.broadcast_entities("set_parent", place_ids, device_ids, group_ids);
 
         Ok(GroupMoveResultDto {
             moved_devices: outcome.moved_devices,
@@ -1249,7 +1303,8 @@ impl GroupService {
         let type_repo = self.type_repo.clone();
         let audit_repo = self.audit_repo.clone();
 
-        self.writer
+        let card = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let group = repo.get_group_in_tx(&tx, id)?;
@@ -1331,6 +1386,12 @@ impl GroupService {
                 tx.commit().map_err(map_rusqlite)?;
                 build_card(conn, &repo, &type_repo, id)
             })
-            .await
+            .await?;
+
+        let place_ids: Vec<i64> = Vec::new();
+        let device_ids: Vec<i64> = Vec::new();
+        let group_ids = vec![id];
+        self.broadcast_entities("set_values", place_ids, device_ids, group_ids);
+        Ok(card)
     }
 }

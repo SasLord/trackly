@@ -35,14 +35,6 @@ fn sorted(mut v: Vec<i64>) -> Vec<i64> {
     v
 }
 
-async fn group_version(ctx: &AppCtx, id: i64) -> i64 {
-    ctx.groups
-        .get_group(&admin(), id)
-        .await
-        .expect("get_group")
-        .version
-}
-
 /// Свойство «IP» встроенного типа «АРМ».
 async fn ip_property_id(ctx: &AppCtx) -> i64 {
     ctx.group_types
