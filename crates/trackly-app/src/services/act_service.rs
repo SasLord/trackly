@@ -704,9 +704,16 @@ impl ActService {
             });
         }
 
+        // D-03/D-04 (41.7): ONE deduped list — the clone goes into the event,
+        // the original into the DTO, so response and event cannot diverge.
+        // Unconditional: sent regardless of `number_changed` (trap P4).
+        let changed = dedupe_place_ids(touched_place_ids);
+        let place_ids = changed.clone();
+        self.broadcast_entities("create", place_ids, Vec::new(), Vec::new());
+
         let dto = self.get(act_id).await?;
         Ok(ActSaveOutcome::Created(Box::new(ActDto {
-            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            changed_place_ids: changed,
             ..dto
         })))
     }
@@ -1357,9 +1364,16 @@ impl ActService {
             }
         }
 
+        // D-03/D-04 (41.7): ONE deduped list — the clone goes into the event,
+        // the original into the DTO, so response and event cannot diverge.
+        // Unconditional: sent regardless of `number_changed` (trap P4).
+        let changed = dedupe_place_ids(touched_place_ids);
+        let place_ids = changed.clone();
+        self.broadcast_entities("update", place_ids, Vec::new(), Vec::new());
+
         let dto = self.get(act_id).await?;
         Ok(ActSaveOutcome::Created(Box::new(ActDto {
-            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            changed_place_ids: changed,
             ..dto
         })))
     }
@@ -1888,9 +1902,14 @@ impl ActService {
         // (`{parent}в{sub}`) — the act number space shifted.
         self.broadcast_act_number_space_changed();
 
+        // D-03/D-04 (41.7): one deduped list for both the event and the DTO.
+        let changed = dedupe_place_ids(touched_place_ids);
+        let place_ids = changed.clone();
+        self.broadcast_entities("do_return", place_ids, Vec::new(), Vec::new());
+
         let dto = self.get(return_act_id).await?;
         Ok(ActDto {
-            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            changed_place_ids: changed,
             ..dto
         })
     }
@@ -2654,9 +2673,14 @@ impl ActService {
             })
             .await?;
 
+        // D-03/D-04 (41.7): one deduped list for both the event and the DTO.
+        let changed = dedupe_place_ids(touched_place_ids);
+        let place_ids = changed.clone();
+        self.broadcast_entities("update_return", place_ids, Vec::new(), Vec::new());
+
         let dto = self.get(return_act_id).await?;
         Ok(ActDto {
-            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            changed_place_ids: changed,
             ..dto
         })
     }
@@ -3118,6 +3142,9 @@ impl ActService {
         // BE-CR-04 (D-14): deleting an act frees its number; deleting a
         // return changes its siblings' displayed numbers.
         self.broadcast_act_number_space_changed();
+        // D-03/D-04 (41.7): the event carries the very list the caller gets back.
+        let place_ids = touched.clone();
+        self.broadcast_entities("delete_soft", place_ids, Vec::new(), Vec::new());
         Ok(touched)
     }
 
@@ -3506,6 +3533,27 @@ impl ActService {
                 contexts: vec!["act_create".to_string()],
             });
         }
+    }
+
+    /// Best-effort `WsEvent::EntitiesChanged` after a COMMITTED act mutation
+    /// (outside the writer closure). Delegates to the single owner of the send
+    /// rule in `entities_broadcast`. Acts only ever send `place_ids`:
+    /// `device_ids`/`group_ids` stay empty because the writer closures return
+    /// touched places, not device ids (decision Q4).
+    fn broadcast_entities(
+        &self,
+        op: &'static str,
+        place_ids: Vec<i64>,
+        device_ids: Vec<i64>,
+        group_ids: Vec<i64>,
+    ) {
+        crate::services::entities_broadcast::send_entities_changed(
+            &self.ws_tx,
+            op,
+            place_ids,
+            device_ids,
+            group_ids,
+        );
     }
 
     fn pdf_pipeline(&self) -> Result<PdfPipelineRefs<'_>, AppError> {
