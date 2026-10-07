@@ -20,7 +20,10 @@
   import { push } from 'svelte-spa-router';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
+  import {
+    notifyPlaceContentChanged,
+    placeContentEventsStore,
+  } from '$lib/stores/placeContentEvents.svelte';
   import { groups as groupsApi } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -163,6 +166,21 @@
     refreshToken += 1;
     panelRefreshToken += 1;
   }
+
+  // Фаза 41.7 (D-17): панели справа перечитываются по событию другого клиента.
+  // Читаем ТОЛЬКО reloadSeq; запись токена и lastReloadSeq — в untrack
+  // (иначе effect_update_depth_exceeded, который не ловят svelte-check/eslint/build).
+  // Не $state: нужен лишь для сравнения, первый запуск эффекта токен не поднимает.
+  let lastReloadSeq = placeContentEventsStore.reloadSeq;
+  $effect(() => {
+    const seq = placeContentEventsStore.reloadSeq;
+    untrack(() => {
+      if (seq !== lastReloadSeq) {
+        lastReloadSeq = seq;
+        panelRefreshToken += 1;
+      }
+    });
+  });
 
   function focusNode(node: GroupTreeNodeRef): void {
     focusRequest = { ...node, token: ++focusCounter };

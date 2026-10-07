@@ -27,7 +27,10 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
+  import {
+    notifyPlaceContentChanged,
+    placeContentEventsStore,
+  } from '$lib/stores/placeContentEvents.svelte';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto, SubtreeStatsDto } from '../../bindings';
@@ -158,6 +161,7 @@
     const rootId = place.id;
     const nested = !onlyHere;
     void reloadToken; // GAP-8: forces a re-fetch after an edit-modal save.
+    void placeContentEventsStore.reloadSeq; // Фаза 41.7 (D-17): перезагрузка по событию другого клиента
     let cancelled = false;
     loading = true;
     loadError = false;

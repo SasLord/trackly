@@ -383,6 +383,7 @@
   $effect(() => {
     void refreshToken;
     void placeContentEventsStore.seq;
+    void placeContentEventsStore.reloadSeq; // Фаза 41.7 (D-17): перезагрузка по событию другого клиента
     untrack(() => {
       void loadAll();
     });

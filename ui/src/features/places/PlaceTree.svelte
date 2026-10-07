@@ -12,7 +12,7 @@
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
+  import { placeContentEventsStore, reloadSeqNow } from '$lib/stores/placeContentEvents.svelte';
   import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -302,6 +302,7 @@
   $effect(() => {
     void showArchived;
     void refreshToken;
+    void reloadSeqNow(); // Фаза 41.7 (D-17): перезагрузка по событию другого клиента (reloadSeq стора)
     void loadTree();
   });
 
