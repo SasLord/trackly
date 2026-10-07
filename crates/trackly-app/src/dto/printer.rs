@@ -307,6 +307,40 @@ pub enum WsEvent {
     /// introduces the variant, its payload shape, and its visibility rule.
     #[serde(rename_all = "camelCase")]
     NumberSpaceChanged { contexts: Vec<String> },
+    /// Aggregated "entities changed" invalidation signal (Phase 41.7 INT-01,
+    /// D-01): ONE event per mutation carrying three id lists, so a bulk
+    /// operation (e.g. moving 200 devices) never floods the capacity-128
+    /// broadcast channel (`Lagged`).
+    ///
+    /// Contract:
+    /// 1. `device_ids` and `group_ids` are a forward-compat slot for Phases
+    ///    43-45; today's client does not read them.
+    /// 2. An empty list means "not determined / not affected", NOT "nothing
+    ///    changed". An empty `place_ids` is read by the client as "reload
+    ///    everything" (D-17).
+    /// 3. The event is sent AFTER the mutation committed (D-04), never from
+    ///    inside the writer closure - a rolled-back mutation sends nothing.
+    /// 4. Where no device id is at hand `device_ids` stays empty (Q4). The
+    ///    exceptions are named explicitly: subtree content move
+    ///    (`move_subtree_contents` returns only a `usize` count), whole-group
+    ///    move (`GroupMoveOutcome.moved_devices: i32`) AND ALL act mutations
+    ///    (the writer closures of `create` / `update` / `do_return` /
+    ///    `update_return` / `delete_soft` return only places; device ids never
+    ///    leave the closure). Without naming acts here a reader would assume
+    ///    acts fill `device_ids` - CONTEXT Q4 lists them among the filling
+    ///    ones, and that discrepancy is legitimised only by the code fact.
+    ///
+    /// Wire format:
+    /// `{ "type": "entities_changed", "placeIds": [..], "deviceIds": [..], "groupIds": [..] }`
+    #[serde(rename_all = "camelCase")]
+    EntitiesChanged {
+        #[specta(type = Vec<i32>)]
+        place_ids: Vec<i64>,
+        #[specta(type = Vec<i32>)]
+        device_ids: Vec<i64>,
+        #[specta(type = Vec<i32>)]
+        group_ids: Vec<i64>,
+    },
 }
 
 impl WsEvent {
@@ -323,6 +357,9 @@ impl WsEvent {
     /// - `NumberSpaceChanged` (Phase 40.2 Plan 05) → Admin | Manager only —
     ///   the same two roles that can ever open a "Вставка"/create popup that
     ///   consumes a numbering template; Employee never opens those popups.
+    /// - `EntitiesChanged` (Phase 41.7, D-02) → Admin | Manager only — the
+    ///   roles that can open the places/groups trees; no field inspection and
+    ///   no author branching (do NOT model this on `RequestStatusChanged`).
     pub fn is_visible_to(&self, identity: &Identity) -> bool {
         match self {
             WsEvent::PrinterAlert { .. } => {
@@ -339,6 +376,9 @@ impl WsEvent {
                     || identity.user_id == Some(*requested_by_user_id)
             }
             WsEvent::NumberSpaceChanged { .. } => {
+                matches!(identity.role, Role::Admin | Role::Manager)
+            }
+            WsEvent::EntitiesChanged { .. } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
             }
         }
@@ -466,6 +506,52 @@ mod tests {
                 "contexts": ["act_create"]
             })
         );
+    }
+
+    // EntitiesChanged (Phase 41.7, D-01/D-02) — serialization + visibility.
+
+    #[test]
+    fn entities_changed_serializes_camel_case_fields_snake_case_tag() {
+        let event = WsEvent::EntitiesChanged {
+            place_ids: vec![1],
+            device_ids: vec![],
+            group_ids: vec![2],
+        };
+        let value = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "entities_changed",
+                "placeIds": [1],
+                "deviceIds": [],
+                "groupIds": [2]
+            })
+        );
+        let back: WsEvent = serde_json::from_value(value).unwrap();
+        match back {
+            WsEvent::EntitiesChanged {
+                place_ids,
+                device_ids,
+                group_ids,
+            } => {
+                assert_eq!(place_ids, vec![1]);
+                assert!(device_ids.is_empty());
+                assert_eq!(group_ids, vec![2]);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn entities_changed_visible_to_admin_manager_not_employee() {
+        let event = WsEvent::EntitiesChanged {
+            place_ids: vec![1],
+            device_ids: vec![],
+            group_ids: vec![],
+        };
+        assert!(event.is_visible_to(&identity(None, Role::Admin)));
+        assert!(event.is_visible_to(&identity(Some(99), Role::Manager)));
+        assert!(!event.is_visible_to(&identity(Some(42), Role::Employee)));
     }
 
     #[test]

@@ -218,6 +218,13 @@ export type RequestCountsDto = {
  * table invalidation, D-14) and needs the variant to type-check. Visible to
  * Admin|Manager only (server-side `is_visible_to`, mirrored nowhere here —
  * this file only mirrors payload shape, not visibility).
+ *
+ * Phase 41.7 added `WsEvent::EntitiesChanged { placeIds, deviceIds, groupIds }`
+ * (`entities_changed`) — an aggregated invalidation signal sent after a
+ * committed places/groups/devices/acts mutation. Empty `placeIds` means
+ * "reload everything"; `deviceIds`/`groupIds` are a slot for Phases 43-45.
+ * Admin|Manager only. No Rust<->TS gate covers WsEvent — the JSON-literal
+ * unit test in `dto/printer.rs` is the safety net.
  */
 export type WsEvent =
   | { type: 'new_request'; requestId: number; requestType: string; requesterName: string }
@@ -228,4 +235,5 @@ export type WsEvent =
       requestedByUserId: number;
     }
   | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string }
-  | { type: 'number_space_changed'; contexts: string[] };
+  | { type: 'number_space_changed'; contexts: string[] }
+  | { type: 'entities_changed'; placeIds: number[]; deviceIds: number[]; groupIds: number[] };
