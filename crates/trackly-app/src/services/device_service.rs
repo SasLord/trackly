@@ -195,6 +195,27 @@ impl DeviceService {
         }
     }
 
+    /// Phase 41.7 (D-16): one `WsEvent::EntitiesChanged` per mutation, after the
+    /// writer closure has committed (outside it). Device intake, move, soft
+    /// delete, CSV import and bulk create change the place-tree counters
+    /// `device_count + cartridge_count`. Delegates to the single owner of the
+    /// send rule in `entities_broadcast`; an empty set of ids sends nothing.
+    fn broadcast_entities(
+        &self,
+        op: &'static str,
+        place_ids: Vec<i64>,
+        device_ids: Vec<i64>,
+        group_ids: Vec<i64>,
+    ) {
+        crate::services::entities_broadcast::send_entities_changed(
+            &self.ws_tx,
+            op,
+            place_ids,
+            device_ids,
+            group_ids,
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Validation helpers
     // -----------------------------------------------------------------------
@@ -385,6 +406,10 @@ impl DeviceService {
     pub async fn create(&self, new: DeviceNew) -> Result<DeviceSaveOutcome, AppError> {
         let outcome = self.create_without_broadcast(new).await?;
         if let DeviceSaveOutcome::Created(ref dto) = outcome {
+            // Unconditional: sent regardless of the inventory number (trap P4).
+            let place_ids: Vec<i64> = dto.place_id.into_iter().collect();
+            let device_ids = vec![dto.id];
+            self.broadcast_entities("create", place_ids, device_ids, Vec::new());
             if dto.inventory_no.is_some() {
                 self.broadcast_number_space_changed();
             }
@@ -544,6 +569,14 @@ impl DeviceService {
             .insert_new_and_get(new, Some((context.into(), to_remember)), printer)
             .await?;
         self.broadcast_number_space_changed();
+        let place_ids: Vec<i64> = dto.place_id.into_iter().collect();
+        let device_ids = vec![dto.id];
+        self.broadcast_entities(
+            "create_single_with_number_check_with_printer",
+            place_ids,
+            device_ids,
+            Vec::new(),
+        );
 
         Ok(DeviceSaveOutcome::Created(Box::new(dto)))
     }
@@ -692,7 +725,7 @@ impl DeviceService {
         // границу (Plan 40-03, аналог `place_service::create`).
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let updated_row = self
+        let (updated_row, before_place_id) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -812,9 +845,17 @@ impl DeviceService {
                 }
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(after)
+                Ok((after, before_place_id))
             })
             .await?;
+
+        // Unconditional: sent regardless of `number_changed` (trap P4). Both the
+        // old and the new place change their counters (D-03).
+        let place_ids: Vec<i64> = before_place_id
+            .into_iter()
+            .chain(updated_row.place_id)
+            .collect();
+        self.broadcast_entities("update", place_ids, vec![id], Vec::new());
 
         if number_changed {
             self.broadcast_number_space_changed();
@@ -833,7 +874,8 @@ impl DeviceService {
         let audit_repo = self.audit_repo.clone();
         let user_id_opt: Option<i64> = None;
 
-        self.writer
+        let before_place_id: Option<i64> = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
@@ -846,6 +888,7 @@ impl DeviceService {
                     .map_err(|e| AppError::Internal {
                         source_chain: format!("audit_log before-json (delete): {e}"),
                     })?;
+                let before_place_id = before.as_ref().and_then(|b| b.place_id);
 
                 repo.delete_soft_in_tx(&tx, id, version, now)?;
 
@@ -870,9 +913,12 @@ impl DeviceService {
                 .map_err(map_rusqlite)?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(())
+                Ok(before_place_id)
             })
             .await?;
+        // The place of the deleted device loses one from its counter (D-03).
+        let place_ids: Vec<i64> = before_place_id.into_iter().collect();
+        self.broadcast_entities("delete_soft", place_ids, vec![id], Vec::new());
         // BE-CR-04 (D-14): the deleted device's number is free again.
         self.broadcast_number_space_changed();
         Ok(())
@@ -1212,6 +1258,10 @@ impl DeviceService {
         // one per row (create_without_broadcast never broadcasts itself).
         let mut any_number_set = false;
 
+        // Phase 41.7 (D-01/D-16): ids of the created devices; ONE event after
+        // the loop instead of one per row.
+        let mut created_ids: Vec<i64> = Vec::new();
+
         // Process each row individually (per-row error accumulation, D-CSV-01).
         for (row_offset, row) in session.all_rows.iter().enumerate() {
             let row_index = (row_offset + 1) as u64; // 1-based for user display
@@ -1301,6 +1351,7 @@ impl DeviceService {
             match self.create_without_broadcast(new_device).await {
                 Ok(DeviceSaveOutcome::Created(dto)) => {
                     report.inserted += 1;
+                    created_ids.push(dto.id);
                     if let Some(key) = pending_number_key {
                         seen_numbers.insert(key, row_index);
                     }
@@ -1348,6 +1399,11 @@ impl DeviceService {
         }
 
         report.affected_place_ids = affected_place_ids.into_iter().collect();
+
+        // Unconditional: sent regardless of `any_number_set` (trap P4). Nothing
+        // inserted (all rows failed) -> both lists are empty -> nothing is sent.
+        let place_ids = report.affected_place_ids.clone();
+        self.broadcast_entities("import_csv_commit", place_ids, created_ids, Vec::new());
 
         if any_number_set {
             self.broadcast_number_space_changed();
@@ -1695,6 +1751,7 @@ impl DeviceService {
         }
         let mut new = new;
         new.inventory_no = trimmed_nonempty.clone();
+        let bulk_place_id = new.place_id;
 
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
@@ -1740,6 +1797,16 @@ impl DeviceService {
                 Ok(created_ids)
             })
             .await?;
+
+        // ONE event for the whole batch (D-01), unconditional (trap P4).
+        let place_ids: Vec<i64> = bulk_place_id.into_iter().collect();
+        let device_ids = ids.clone();
+        self.broadcast_entities(
+            "bulk_create_with_printer",
+            place_ids,
+            device_ids,
+            Vec::new(),
+        );
 
         if trimmed_nonempty.is_some() {
             self.broadcast_number_space_changed();
