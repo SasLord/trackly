@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T16:57:21.394Z"
+last_updated: "2026-10-07T17:30:03.536Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
   completed_phases: 10
   total_plans: 167
-  completed_plans: 156
+  completed_plans: 157
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.7 (v1-4-ws-bootstrap-lan) — EXECUTING
-Plan: 4 of 14
+Plan: 5 of 14
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -571,6 +571,7 @@ Last activity: 2026-10-07
 | Phase 41.7 P01 | 45m | 3 tasks | 7 files |
 | Phase 41.7 P02 | ~75min | 2 tasks | 6 files |
 | Phase 41.7 P11 | 25m | 2 tasks | 7 files |
+| Phase 41.7 P03 | 60min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1253,6 +1254,7 @@ Recent decisions affecting current work:
 - [Phase 41]: Статус гэпа UAT — fixed_pending_reverify (не resolved): исправление применено, живой перепроверки не было; инструментарий GSD знает только failed/resolved — resolved/pass/closed читались бы как «проверено», а приложение исполнителем не запускалось
 - [Phase 41.7]: [41.7-02] format_act_number живёт в trackly-core; SQL-функция trackly_act_number в обоих apply_*_pragmas; поиск актов по отображаемому номеру (D-09/D-10), регистр кириллицы как есть (Q6)
 - [Phase 41.7]: [41.7-11] PlaceTree читает reloadSeq через reloadSeqNow(): гейт INV-1 допускает один эффект со словом placeContentEventsStore
+- [Phase 41.7]: 41.7-03: bootstrap-маршрут закрывается предикатом count_active_admins (нет активного админа) внутри writer-транзакции; отказ = 409 Conflict
 
 ### Pending Todos
 
@@ -1453,8 +1455,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-07T16:57:18.151Z
-Stopped at: Phase 41.7 context gathered
+Last session: 2026-10-07T17:30:03.526Z
+Stopped at: Completed 41.7-03-PLAN.md
 Resume file: None
 
 None
