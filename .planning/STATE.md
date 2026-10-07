@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T20:28:29.317Z"
+last_updated: "2026-10-07T20:56:23.607Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
   completed_phases: 10
   total_plans: 167
-  completed_plans: 164
+  completed_plans: 165
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.7 (v1-4-ws-bootstrap-lan) — EXECUTING
-Plan: 12 of 14
+Plan: 13 of 14
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -579,6 +579,7 @@ Last activity: 2026-10-07
 | Phase 41.7 P07 | 35min | 2 tasks | 3 files |
 | Phase 41.7 P08 | ~2h | 2 tasks | 2 files |
 | Phase 41.7 P09 | 2h | 2 tasks | 2 files |
+| Phase 41.7 P10 | 40min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1270,6 +1271,7 @@ Recent decisions affecting current work:
 - [Phase 41.7]: [41.7-07] group_service: рассылка безусловна (group_ids=[id] не пуст); список мест клонируется один раз в событие и ответ (D-03); remove_devices шлёт с пустым place_ids (D-17)
 - [Phase 41.7]: [41.7-08] act_service: single deduped place list feeds both event and ActDto.changed_place_ids (D-03); broadcast unconditional outside if number_changed (P4); device_ids/group_ids empty (Q4)
 - [Phase 41.7]: [41.7-09] device_service: EntitiesChanged unconditional, outside NumberSpaceChanged conditions (P4); batch ops send one event after loop; D-01 N>=200 covered by CSV import (bulk capped at 100)
+- [Phase 41.7]: Plan 10: transition broadcast covers the cartridge, the auto-returned cartridge and a backfilled printer; place snapshot taken inside the same writer transaction
 
 ### Pending Todos
 
@@ -1470,7 +1472,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-07T20:28:21.687Z
+Last session: 2026-10-07T20:56:19.718Z
 Stopped at: Completed 41.7-14-PLAN.md
 Resume file: None
 
