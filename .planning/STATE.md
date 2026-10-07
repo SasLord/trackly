@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T17:42:34.471Z"
+last_updated: "2026-10-07T17:42:38.732Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
@@ -572,6 +572,7 @@ Last activity: 2026-10-07
 | Phase 41.7 P02 | ~75min | 2 tasks | 6 files |
 | Phase 41.7 P11 | 25m | 2 tasks | 7 files |
 | Phase 41.7 P03 | 60min | 2 tasks | 6 files |
+| Phase 41.7 P04 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1255,6 +1256,7 @@ Recent decisions affecting current work:
 - [Phase 41.7]: [41.7-02] format_act_number живёт в trackly-core; SQL-функция trackly_act_number в обоих apply_*_pragmas; поиск актов по отображаемому номеру (D-09/D-10), регистр кириллицы как есть (Q6)
 - [Phase 41.7]: [41.7-11] PlaceTree читает reloadSeq через reloadSeqNow(): гейт INV-1 допускает один эффект со словом placeContentEventsStore
 - [Phase 41.7]: 41.7-03: bootstrap-маршрут закрывается предикатом count_active_admins (нет активного админа) внутри writer-транзакции; отказ = 409 Conflict
+- [Phase 41.7]: [41.7-04] spa_fallback: ранний 404 JSON для api или api/* по границе сегмента (F17, D-14); /apiary остаётся SPA
 
 ### Pending Todos
 
