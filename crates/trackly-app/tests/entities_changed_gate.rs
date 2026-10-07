@@ -18,13 +18,20 @@
 //!
 //! Тесты каркаса:
 //!   * `registry_shape_is_valid` — форма таблицы без чтения исходников;
-//!   * `registry_inventory_is_not_empty` — пустой инвентарь краснит гейт.
+//!   * `registry_inventory_is_not_empty` — пустой инвентарь краснит гейт;
+//!   * `fixture_capture_skips_other_variants_and_sees_entities_changed` —
+//!     захват событий на настоящем `AppCtx`.
 
 mod entities_support;
 
 use std::collections::BTreeSet;
+use std::time::Duration;
 
+use entities_support::fixture::{
+    assert_no_entities, assert_one_entities, make_test_ctx, next_entities,
+};
 use entities_support::registry::*;
+use trackly_app::dto::printer::WsEvent;
 
 /// Нижняя граница размера инвентаря: гейт, который «зелёный, потому что
 /// измерил ноль», — худший режим отказа. Снято по факту: 118 строк.
@@ -184,4 +191,73 @@ fn registry_shape_is_valid() {
         "реестр невалиден:\n  - {}",
         problems.join("\n  - ")
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn fixture_capture_skips_other_variants_and_sees_entities_changed() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let entities = || WsEvent::EntitiesChanged {
+            place_ids: vec![7],
+            device_ids: vec![],
+            group_ids: vec![],
+        };
+        let other = || WsEvent::NumberSpaceChanged {
+            contexts: vec!["act".to_string()],
+        };
+
+        // Чужой вариант ПЕРЕД искомым: next_entities обязан его пропустить.
+        let mut rx = ctx.ws_broadcast.subscribe();
+        ctx.ws_broadcast.send(other()).expect("send other");
+        ctx.ws_broadcast.send(entities()).expect("send entities");
+        assert_eq!(
+            next_entities(&mut rx),
+            Some((vec![7], vec![], vec![])),
+            "чужой вариант не должен заслонять EntitiesChanged"
+        );
+
+        // Ровно одно EntitiesChanged среди чужих: проходит и возвращает тройку.
+        let mut rx = ctx.ws_broadcast.subscribe();
+        ctx.ws_broadcast.send(other()).expect("send other");
+        ctx.ws_broadcast.send(entities()).expect("send entities");
+        assert_eq!(
+            assert_one_entities(&mut rx, "одно событие"),
+            (vec![7], vec![], vec![])
+        );
+
+        // Только чужой вариант: EntitiesChanged нет, next_entities даёт None.
+        let mut rx = ctx.ws_broadcast.subscribe();
+        ctx.ws_broadcast.send(other()).expect("send other");
+        assert_no_entities(&mut rx, "только чужой вариант");
+
+        // Антивакуумность: assert_no_entities ДОЛЖЕН краснеть, когда событие есть.
+        let mut rx = ctx.ws_broadcast.subscribe();
+        ctx.ws_broadcast.send(entities()).expect("send entities");
+        let red = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_no_entities(&mut rx, "событие есть")
+        }));
+        assert!(
+            red.is_err(),
+            "assert_no_entities не заметил EntitiesChanged"
+        );
+
+        // И assert_one_entities краснеет на двух событиях и на нуле.
+        let mut rx = ctx.ws_broadcast.subscribe();
+        ctx.ws_broadcast.send(entities()).expect("send entities");
+        ctx.ws_broadcast.send(entities()).expect("send entities");
+        let two = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_one_entities(&mut rx, "два события")
+        }));
+        assert!(two.is_err(), "assert_one_entities пропустил два события");
+        let mut rx = ctx.ws_broadcast.subscribe();
+        let zero = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_one_entities(&mut rx, "ноль событий")
+        }));
+        assert!(
+            zero.is_err(),
+            "assert_one_entities пропустил отсутствие события"
+        );
+    })
+    .await
+    .expect("таймаут 60 с");
 }
