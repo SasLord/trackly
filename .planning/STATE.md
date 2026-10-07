@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T20:28:21.696Z"
+last_updated: "2026-10-07T20:28:29.317Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
@@ -578,6 +578,7 @@ Last activity: 2026-10-07
 | Phase 41.7 P06 | 1h | 2 tasks | 2 files |
 | Phase 41.7 P07 | 35min | 2 tasks | 3 files |
 | Phase 41.7 P08 | ~2h | 2 tasks | 2 files |
+| Phase 41.7 P09 | 2h | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1268,6 +1269,7 @@ Recent decisions affecting current work:
 - [Phase 41.7]: 41.7-06: place_ids собирает приватный event_place_ids; PlaceDto и публичные типы не менялись (audit_log)
 - [Phase 41.7]: [41.7-07] group_service: рассылка безусловна (group_ids=[id] не пуст); список мест клонируется один раз в событие и ответ (D-03); remove_devices шлёт с пустым place_ids (D-17)
 - [Phase 41.7]: [41.7-08] act_service: single deduped place list feeds both event and ActDto.changed_place_ids (D-03); broadcast unconditional outside if number_changed (P4); device_ids/group_ids empty (Q4)
+- [Phase 41.7]: [41.7-09] device_service: EntitiesChanged unconditional, outside NumberSpaceChanged conditions (P4); batch ops send one event after loop; D-01 N>=200 covered by CSV import (bulk capped at 100)
 
 ### Pending Todos
 
