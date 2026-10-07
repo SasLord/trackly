@@ -29,7 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"]
 tracing-appender = "0.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "fs", "net", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-rusqlite = { version = "0.38", features = ["bundled", "serde_json", "backup"] }
+rusqlite = { version = "0.38", features = ["bundled", "serde_json", "backup", "functions"] }
 refinery = { version = "0.9", features = ["rusqlite-bundled"] }
 toml = "0.8"
 tempfile = "3"
