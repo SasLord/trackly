@@ -40,6 +40,9 @@ use trackly_infra::error_conversions::map_rusqlite;
 /// Бюджет каждого теста (форма `number_space_broadcast_gate.rs`).
 const BUDGET: Duration = Duration::from_secs(60);
 
+/// Тройка списков `EntitiesChanged`: (place_ids, device_ids, group_ids).
+type Triple = (Vec<i64>, Vec<i64>, Vec<i64>);
+
 fn sorted(mut v: Vec<i64>) -> Vec<i64> {
     v.sort_unstable();
     v.dedup();
@@ -122,7 +125,7 @@ async fn printer_place(ctx: &AppCtx, id: i64) -> Option<i64> {
 }
 
 /// (число NumberSpaceChanged, тройки всех EntitiesChanged) из накопленного.
-fn split_events(events: Vec<WsEvent>) -> (usize, Vec<(Vec<i64>, Vec<i64>, Vec<i64>)>) {
+fn split_events(events: Vec<WsEvent>) -> (usize, Vec<Triple>) {
     let mut number_space = 0;
     let mut entities = Vec::new();
     for ev in events {

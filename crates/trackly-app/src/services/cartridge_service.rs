@@ -40,6 +40,33 @@ use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateC
 use crate::dto::printer::WsEvent;
 use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
 
+/// `cartridges.place_id` of a row (live or soft-deleted) inside the open
+/// writer transaction; `None` when the row is missing or has no place.
+fn cartridge_place_in_tx(tx: &rusqlite::Transaction<'_>, id: i64) -> Result<Option<i64>, AppError> {
+    Ok(tx
+        .query_row(
+            "SELECT place_id FROM cartridges WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)?
+        .flatten())
+}
+
+/// `devices.place_id` of a row inside the open writer transaction.
+fn device_place_in_tx(tx: &rusqlite::Transaction<'_>, id: i64) -> Result<Option<i64>, AppError> {
+    Ok(tx
+        .query_row(
+            "SELECT place_id FROM devices WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)?
+        .flatten())
+}
+
 /// Application service for cartridge lifecycle. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
 pub struct CartridgeService {
@@ -100,6 +127,28 @@ impl CartridgeService {
     pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
         self.ws_tx = Some(ws_tx);
         self
+    }
+
+    /// Phase 41.7 (D-16): one `WsEvent::EntitiesChanged` per mutation, after the
+    /// writer closure has committed (outside it). A cartridge's `place_id`
+    /// feeds the place-tree counter `device_count + cartridge_count`, so
+    /// create, update, delete and every lifecycle transition change what a
+    /// second LAN client shows. Delegates to the single owner of the send rule
+    /// in `entities_broadcast`; an empty set of ids sends nothing.
+    fn broadcast_entities(
+        &self,
+        op: &'static str,
+        place_ids: Vec<i64>,
+        device_ids: Vec<i64>,
+        group_ids: Vec<i64>,
+    ) {
+        crate::services::entities_broadcast::send_entities_changed(
+            &self.ws_tx,
+            op,
+            place_ids,
+            device_ids,
+            group_ids,
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -271,6 +320,7 @@ impl CartridgeService {
         let remember_ctx: TemplateContext = template_context.into();
         let nt_repo = self.number_templates.repo.clone();
 
+        let created_place_id = payload.place_id;
         let cart_id = self
             .writer
             .execute(move |conn| {
@@ -337,6 +387,12 @@ impl CartridgeService {
             });
         }
 
+        // Phase 41.7 (D-16, trap P4): independent of the number-space block
+        // above. A cartridge without a place feeds no tree counter, so the
+        // helper sends nothing for it.
+        let place_ids: Vec<i64> = created_place_id.into_iter().collect();
+        self.broadcast_entities("create", place_ids, Vec::new(), Vec::new());
+
         let dto = self.get(cart_id).await?;
         Ok(CartridgeSaveOutcome::Created(Box::new(dto)))
     }
@@ -361,7 +417,8 @@ impl CartridgeService {
         // эту границу (Plan 40-03/40-04, аналог `place_service::create`).
         let user_id = caller.user_id;
 
-        self.writer
+        let before_place_id = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
@@ -443,9 +500,16 @@ impl CartridgeService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(())
+                Ok(before_place_id)
             })
             .await?;
+
+        // Phase 41.7 (D-03): both the old and the new place change their
+        // counter; `None` (no place) feeds no counter and is dropped.
+        let mut place_ids: Vec<i64> = [before_place_id, place_id].into_iter().flatten().collect();
+        place_ids.sort_unstable();
+        place_ids.dedup();
+        self.broadcast_entities("update", place_ids, Vec::new(), Vec::new());
 
         self.get(id).await
     }
@@ -458,9 +522,14 @@ impl CartridgeService {
         let now = self.clock.unix_seconds();
         let audit_repo = self.audit_repo.clone();
 
-        self.writer
+        let deleted_place_id = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Phase 41.7 (D-03): the place the cartridge leaves is read in
+                // the same transaction, before the soft delete.
+                let place_before = cartridge_place_in_tx(&tx, id)?;
 
                 let affected = tx
                     .execute(
@@ -509,7 +578,7 @@ impl CartridgeService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(())
+                Ok(place_before)
             })
             .await?;
         // BE-CR-04 (D-14): the deleted cartridge's code is free again.
@@ -518,6 +587,9 @@ impl CartridgeService {
                 contexts: vec!["cartridge_create".to_string(), "drum_create".to_string()],
             });
         }
+        // Phase 41.7 (D-16, trap P4): independent of the number-space block.
+        let place_ids: Vec<i64> = deleted_place_id.into_iter().collect();
+        self.broadcast_entities("delete", place_ids, Vec::new(), Vec::new());
         Ok(())
     }
 
@@ -632,16 +704,72 @@ impl CartridgeService {
         // через эту границу (Plan 40-03/40-04, аналог `place_service::create`).
         let user_id = caller.user_id;
 
-        self.writer
+        let (place_ids, device_ids) = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Phase 41.7 (D-03): snapshot every row whose place the
+                // transition can change, in the same transaction and BEFORE it:
+                // the cartridge itself, the cartridge auto-returned from the
+                // target printer (D-16/D-17) and the printer (its place is
+                // backfilled from the cartridge's when it had none).
+                let install_printer = match &op {
+                    trackly_core::domain::cartridges::CartridgeTransitionOp::Install {
+                        printer_device_id: Some(pid),
+                        ..
+                    } => Some(*pid),
+                    _ => None,
+                };
+                let cart_before = cartridge_place_in_tx(&tx, cartridge_id)?;
+                let previous: Option<(i64, Option<i64>)> = match install_printer {
+                    Some(pid) => tx
+                        .query_row(
+                            "SELECT id, place_id FROM cartridges \
+                             WHERE current_printer_device_id = ?1 AND status_id = 2 \
+                               AND id != ?2 AND deleted_at_utc IS NULL \
+                             LIMIT 1",
+                            params![pid, cartridge_id],
+                            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
+                        )
+                        .optional()
+                        .map_err(map_rusqlite)?,
+                    None => None,
+                };
+                let printer_before = match install_printer {
+                    Some(pid) => device_place_in_tx(&tx, pid)?,
+                    None => None,
+                };
+
                 cart_repo.transition_in_tx(&tx, cartridge_id, version, &op, now, user_id)?;
+
+                let mut places: Vec<i64> = Vec::new();
+                places.extend(cart_before);
+                places.extend(cartridge_place_in_tx(&tx, cartridge_id)?);
+                if let Some((prev_id, prev_before)) = previous {
+                    places.extend(prev_before);
+                    places.extend(cartridge_place_in_tx(&tx, prev_id)?);
+                }
+                let mut device_ids: Vec<i64> = Vec::new();
+                if let Some(pid) = install_printer {
+                    let printer_after = device_place_in_tx(&tx, pid)?;
+                    if printer_before != printer_after {
+                        places.extend(printer_before);
+                        places.extend(printer_after);
+                        device_ids.push(pid);
+                    }
+                }
+                places.sort_unstable();
+                places.dedup();
+
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(())
+                Ok((places, device_ids))
             })
             .await?;
 
-        self.get(cartridge_id).await
+        let dto = self.get(cartridge_id).await?;
+        self.broadcast_entities("transition", place_ids, device_ids, Vec::new());
+        Ok(dto)
     }
 
     // -----------------------------------------------------------------------
