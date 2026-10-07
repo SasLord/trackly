@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T18:47:40.038Z"
+last_updated: "2026-10-07T19:14:02.006Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
   completed_phases: 10
   total_plans: 167
-  completed_plans: 161
+  completed_plans: 162
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.7 (v1-4-ws-bootstrap-lan) — EXECUTING
-Plan: 9 of 14
+Plan: 10 of 14
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -576,6 +576,7 @@ Last activity: 2026-10-07
 | Phase 41.7 P05 | 40min | 2 tasks | 4 files |
 | Phase 41.7 P14 | 2h | 3 tasks | 5 files |
 | Phase 41.7 P06 | 1h | 2 tasks | 2 files |
+| Phase 41.7 P07 | 35min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1264,6 +1265,7 @@ Recent decisions affecting current work:
 - [Phase 41.7]: 41.7-14: сканер не режет хвост от первого cfg(test): тестовые элементы вырезаются по балансу скобок, код между ними виден (act_service.rs)
 - [Phase 41.7]: 41.7-14: слой (2) привязан к исходнику поведенческого файла (scenario_<func>), константы нет; боевой скан красный до планов 06-10 (anti-vacuous 7/8)
 - [Phase 41.7]: 41.7-06: place_ids собирает приватный event_place_ids; PlaceDto и публичные типы не менялись (audit_log)
+- [Phase 41.7]: [41.7-07] group_service: рассылка безусловна (group_ids=[id] не пуст); список мест клонируется один раз в событие и ответ (D-03); remove_devices шлёт с пустым place_ids (D-17)
 
 ### Pending Todos
 
@@ -1464,7 +1466,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-07T18:47:35.877Z
+Last session: 2026-10-07T19:13:57.626Z
 Stopped at: Completed 41.7-14-PLAN.md
 Resume file: None
 
