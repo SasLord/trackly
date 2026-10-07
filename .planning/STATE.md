@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-07T15:57:37.296Z"
+last_updated: "2026-10-07T16:53:21.210Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 21
   completed_phases: 10
   total_plans: 167
-  completed_plans: 154
+  completed_plans: 155
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.7 (v1-4-ws-bootstrap-lan) — EXECUTING
-Plan: 2 of 14
+Plan: 3 of 14
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -569,6 +569,7 @@ Last activity: 2026-10-07
 | Phase 41 P33 | 15min | 2 tasks | 4 files |
 | Phase 41 P34 | 100min | 3 tasks | 3 files |
 | Phase 41.7 P01 | 45m | 3 tasks | 7 files |
+| Phase 41.7 P02 | ~75min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1249,6 +1250,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-32: мутаторы репозитория типов групп вынесены в inherent *_on(&Connection) (Transaction не DerefMut в rusqlite 0.38); мутация и аудит — одна транзакция writer — W-B02: сбой аудита обязан откатывать изменение; порт GroupTypeRepository не тронут
 - [Phase 41]: 41-33: S3-гейт проверяет оба аргумента movementsTruncationNotice (.length первым, .total вторым); баннер без @media print
 - [Phase 41]: Статус гэпа UAT — fixed_pending_reverify (не resolved): исправление применено, живой перепроверки не было; инструментарий GSD знает только failed/resolved — resolved/pass/closed читались бы как «проверено», а приложение исполнителем не запускалось
+- [Phase 41.7]: [41.7-02] format_act_number живёт в trackly-core; SQL-функция trackly_act_number в обоих apply_*_pragmas; поиск актов по отображаемому номеру (D-09/D-10), регистр кириллицы как есть (Q6)
 
 ### Pending Todos
 
@@ -1449,7 +1451,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-07T15:57:33.405Z
+Last session: 2026-10-07T16:53:18.017Z
 Stopped at: Phase 41.7 context gathered
 Resume file: None
 

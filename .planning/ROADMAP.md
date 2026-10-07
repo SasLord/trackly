@@ -176,7 +176,7 @@
 | 40.4. Долг аудита v1.4, раунд 2 | v1.4 | 5/5 | Complete    | 2026-09-25 |
 | 40.5. Нумерация возвратов: плотные суффиксы в1..вN | v1.4 | 14/14 | Complete    | 2026-09-30 |
 | 41. Группы: модель и редактор | v1.4 | 34/34 | Complete    | 2026-10-06 |
-| 41.7. Долг выпуска v1.4 *(до 41.1)* | v1.4 | 1/14 | In Progress|  |
+| 41.7. Долг выпуска v1.4 *(до 41.1)* | v1.4 | 2/14 | In Progress|  |
 | 41.1. Группы × Устройства | v1.4 | 0/TBD | Not started | - |
 | 41.2. Группы × Акты и Места | v1.4 | 0/TBD | Not started | - |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
@@ -1034,7 +1034,7 @@ GRP-04…GRP-08 (INT-01), NUM-09, NUM-14 (INT-02). INT-03 вне набора т
 - Фаза 41.5 (MSG-03) потребует расширить `is_visible_to` ролевой фильтрацией по участникам
   заявки. Если это дешево сделать сразу — сделать сразу, иначе зафиксировать как шов.
 
-**Plans:** 1/14 plans executed
+**Plans:** 2/14 plans executed
 Plans:
 **Wave 1**
 
@@ -1042,7 +1042,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 41.7-02-PLAN.md — INT-02: фича functions, format_act_number в trackly-core, SQL-функция, act_text_hits, матрица D-11
+- [x] 41.7-02-PLAN.md — INT-02: фича functions, format_act_number в trackly-core, SQL-функция, act_text_hits, матрица D-11
 - [ ] 41.7-11-PLAN.md — Клиентский мост: стор, потребители, сокет в Layout.svelte (D-05, D-17, D-18)
 
 **Wave 3** *(blocked on Wave 2 completion)*
