@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: verifying
-last_updated: "2026-10-07T00:03:17.223Z"
+last_updated: "2026-10-07T11:21:46.605Z"
 last_activity: "2026-10-06 - Завершена quick-задача 261006-svt: полный инвентарь-гейт write-site'ов devices.place_id (residual item 1 фазы 41)"
 progress:
   total_phases: 21
-  completed_phases: 11
+  completed_phases: 10
   total_plans: 153
   completed_plans: 153
-  percent: 52
+  percent: 48
 ---
 
 # Project State
@@ -1448,9 +1448,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-05T04:03:38.287Z
-Stopped at: Completed 41-34-PLAN.md (граница волны; живая перепроверка R1-R5 за пользователем)
-Resume file: None
+Last session: 2026-10-07T11:21:46.591Z
+Stopped at: Phase 41.7 context gathered
+Resume file: .planning/phases/41.7-v1-4-ws-bootstrap-lan/41.7-CONTEXT.md
 
 None
 
