@@ -21,9 +21,12 @@ use tower::ServiceExt;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
+use trackly_app::http::auth::{build_auth_bootstrap, BootstrapPayload};
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_app::tauri_cmds::auth::build_auth_bootstrap_tauri;
 use trackly_core::auth::Identity;
+use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
 
 const PEER: &str = "203.0.113.7:54321";
@@ -287,9 +290,7 @@ async fn bootstrap_route_rate_limited_per_peer() {
             "первые пять (burst) не лимитируются: {statuses:?}"
         );
         assert!(
-            statuses[5..]
-                .iter()
-                .any(|s| *s == StatusCode::TOO_MANY_REQUESTS),
+            statuses[5..].contains(&StatusCode::TOO_MANY_REQUESTS),
             "после burst обязан появиться 429: {statuses:?}"
         );
 
@@ -353,4 +354,37 @@ async fn bootstrap_invalid_input_rejected() {
     })
     .await
     .expect("bootstrap_invalid_input exceeded budget");
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn bootstrap_tauri_and_http_share_one_path() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let (_router, ctx) = build_test_components().await.expect("components");
+        assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
+
+        let created = build_auth_bootstrap_tauri(&ctx, user_new("bootstrap_admin"))
+            .await
+            .expect("первый вызов на чистой БД");
+        assert_eq!(created.role, "admin", "Tauri-путь тоже навязывает роль");
+
+        let again = build_auth_bootstrap_tauri(&ctx, user_new("second_admin")).await;
+        assert!(
+            matches!(again, Err(AppError::Conflict { .. })),
+            "второй вызов обязан дать Conflict: {again:?}"
+        );
+
+        // HTTP-билдер делит тот же сервисный метод и закрыт тем же условием.
+        let http = build_auth_bootstrap(
+            &ctx,
+            BootstrapPayload {
+                user_new: user_new("third_admin"),
+            },
+        )
+        .await;
+        assert!(matches!(http, Err(AppError::Conflict { .. })));
+        assert_eq!(admin_count(&ctx).await, 1);
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("bootstrap_tauri exceeded budget");
 }

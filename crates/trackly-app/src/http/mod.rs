@@ -86,12 +86,14 @@ async fn refresh_session_role(
 ///
 /// Топология:
 /// 1. Все маршруты используют `SessionManagerLayer` — Session extractor работает везде.
-/// 2. Публичные маршруты (auth_login, request_ad_restore, auth_status) — не
-///    требуют наличия identity, но session layer необходима для Session
-///    extractor.
+/// 2. Публичные маршруты (auth_login, request_ad_restore, auth_bootstrap,
+///    auth_status) — не требуют наличия identity, но session layer необходима
+///    для Session extractor.
 /// 3. Защищённые маршруты делают проверку identity в handlers (session_identity()).
 /// 4. auth_login и request_ad_restore дополнительно обёрнуты в GovernorLayer
-///    (rate limit) — оба несут пользовательские AD credentials.
+///    (rate limit) — оба несут пользовательские AD credentials. auth_bootstrap
+///    (INT-03, создание первого админа) — тоже, со СВОИМ конфигом: маршрут
+///    публичный, открыт только пока нет активного администратора (D-12/D-13).
 /// 5. Security headers применяются ко всем ответам.
 /// 6. Fallback: статические файлы Svelte SPA.
 pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router {
@@ -141,6 +143,23 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         )
         .route_layer(tower_governor::GovernorLayer::new(restore_governor_conf));
 
+    // --- /api/v1/auth_bootstrap (INT-03) — ПУБЛИЧНЫЙ маршрут создания первого
+    // администратора. Собственный governor (не делим корзины с login/restore):
+    // per-peer-IP 1/с, burst 5 (D-13). Привязка к частным IP отвергнута.
+    let bootstrap_governor_conf = Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .per_second(1)
+            .burst_size(5)
+            .finish()
+            .expect("governor config build failed"),
+    );
+    let bootstrap_route = axum::routing::Router::new()
+        .route(
+            "/api/v1/auth_bootstrap",
+            axum::routing::post(auth::handler_auth_bootstrap),
+        )
+        .route_layer(tower_governor::GovernorLayer::new(bootstrap_governor_conf));
+
     // --- auth_status без rate limit ---
     let status_route = axum::routing::Router::new().route(
         "/api/v1/auth_status",
@@ -153,6 +172,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
     let api_router = Router::new()
         .merge(login_route)
         .merge(restore_route)
+        .merge(bootstrap_route)
         .merge(status_route)
         .merge(auth::protected_router())
         .merge(users::router())

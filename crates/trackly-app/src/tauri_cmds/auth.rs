@@ -9,6 +9,7 @@
 use crate::context::AppCtx;
 use crate::dto::auth::{
     AdSettingsDto, AuthStatusDto, LoginRequest, NetworkSettingsDto, ServerStatusDto, UserDto,
+    UserNew,
 };
 use crate::http::auth::{RequestAdRestoreRequest, SetAdPayload};
 use crate::http::settings::NetworkPatch;
@@ -51,6 +52,16 @@ pub async fn build_request_ad_restore_tauri(
     req: RequestAdRestoreRequest,
 ) -> Result<(), AppError> {
     ctx.auth.request_ad_restore(&req.login, &req.password).await
+}
+
+/// Таури-вариант создания первого администратора (INT-03). Напрямую зовёт
+/// `bootstrap_first_admin` — НЕ через `resolve_tauri_identity`: путь публичный
+/// и закрыт условием «нет активного админа», а не identity вызывающего.
+pub async fn build_auth_bootstrap_tauri(
+    ctx: &AppCtx,
+    user_new: UserNew,
+) -> Result<UserDto, AppError> {
+    ctx.auth.bootstrap_first_admin(user_new).await
 }
 
 /// Таури server_toggle: старт / стоп axum сервера.
@@ -199,6 +210,15 @@ pub async fn request_ad_restore(
     req: RequestAdRestoreRequest,
 ) -> Result<(), AppError> {
     build_request_ad_restore_tauri(state.inner(), req).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn auth_bootstrap(
+    state: tauri::State<'_, AppCtx>,
+    user_new: UserNew,
+) -> Result<UserDto, AppError> {
+    build_auth_bootstrap_tauri(state.inner(), user_new).await
 }
 
 /// auth_logout: для Tauri — no-op (нет cookie-сессии).

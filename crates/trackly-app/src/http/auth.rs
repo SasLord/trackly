@@ -16,7 +16,7 @@ use trackly_core::auth::{Action, Identity, Role};
 use trackly_core::error::AppError;
 
 use crate::context::AppCtx;
-use crate::dto::auth::{AdSettingsDto, AuthStatusDto, LoginRequest, UserDto};
+use crate::dto::auth::{AdSettingsDto, AuthStatusDto, LoginRequest, UserDto, UserNew};
 use crate::error_axum::AppErrorResponse;
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,15 @@ pub struct LoginPayload {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct StatusPayload {}
+
+/// Тело POST /api/v1/auth_bootstrap (INT-03) — форма как у `users_create`
+/// (`{ userNew: {...} }`), чтобы `apiCall('auth_bootstrap', { userNew })` слал
+/// одинаковое тело на обоих транспортах. Присланная роль сервером игнорируется.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BootstrapPayload {
+    pub user_new: UserNew,
+}
 
 /// Тело POST /api/v1/request_ad_restore — явный запрос восстановления
 /// доступа (09-AD-GAPS restoration-flow UX). Зеркалит `LoginPayload`'s
@@ -176,6 +185,17 @@ pub async fn build_request_ad_restore(
     ctx.auth
         .request_ad_restore(&payload.req.login, &payload.req.password)
         .await
+}
+
+/// Создание первого администратора (INT-03). ПУБЛИЧНЫЙ маршрут: ни `Session`,
+/// ни `session_identity` — у вызывающего ещё нет учётной записи. Граница
+/// безопасности — условие «нет активного админа» внутри
+/// `AuthService::bootstrap_first_admin`.
+pub async fn build_auth_bootstrap(
+    ctx: &AppCtx,
+    payload: BootstrapPayload,
+) -> Result<UserDto, AppError> {
+    ctx.auth.bootstrap_first_admin(payload.user_new).await
 }
 
 /// Logout — flush session.
@@ -333,6 +353,17 @@ pub async fn handler_request_ad_restore(
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
+}
+
+pub async fn handler_auth_bootstrap(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<BootstrapPayload>,
+) -> Result<Json<UserDto>, AppErrorResponse> {
+    Ok(Json(
+        build_auth_bootstrap(&ctx, payload)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
 }
 
 pub async fn handler_logout(session: Session) -> Result<Json<()>, AppErrorResponse> {

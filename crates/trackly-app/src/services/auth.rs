@@ -260,15 +260,7 @@ impl AuthService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
             let conn = readers.acquire();
-            let count: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM users \
-                     WHERE role = 'admin' AND deleted_at_utc IS NULL",
-                    [],
-                    |r| r.get(0),
-                )
-                .map_err(map_rusqlite)?;
-            Ok(count == 0)
+            Ok(count_active_admins(&conn)? == 0)
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -1476,64 +1468,89 @@ impl AuthService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let id = insert_user_in_tx(
+                    &tx,
+                    caller_id,
+                    None,
+                    &NewUserRow {
+                        login: &login,
+                        full_name: &full_name,
+                        password_hash: &hash,
+                        role: &role,
+                        email: email.as_deref(),
+                        now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(id)
+            })
+            .await?;
 
-                // Soft-delete leaves the row (with its login) behind, but the schema
-                // enforces an unconditional UNIQUE(login). Re-creating a login that
-                // belongs to a soft-deleted user must REVIVE that row (reuse its id so
-                // act/history foreign keys stay intact) rather than fail on UNIQUE.
-                let existing: Option<(i64, Option<i64>)> = match tx.query_row(
-                    "SELECT id, deleted_at_utc FROM users WHERE login = ?1",
-                    rusqlite::params![login],
-                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
-                ) {
-                    Ok(v) => Some(v),
-                    Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                    Err(e) => return Err(map_rusqlite(e)),
-                };
+        self.get_user_by_id(id).await
+    }
 
-                let (id, action): (i64, &str) = match existing {
-                    // Active row already owns this login → genuine conflict.
-                    Some((_, None)) => {
-                        return Err(AppError::Conflict {
-                            reason: format!("Логин '{login}' уже занят"),
-                        });
-                    }
-                    // Soft-deleted row → revive in place.
-                    Some((existing_id, Some(_))) => {
-                        tx.execute(
-                            "UPDATE users SET \
-                               full_name = ?1, password_hash = ?2, role = ?3, email = ?4, \
-                               is_active = 1, deleted_at_utc = NULL, updated_at_utc = ?5, \
-                               version = version + 1 \
-                             WHERE id = ?6",
-                            rusqlite::params![full_name, hash, role, email, now, existing_id],
-                        )
-                        .map_err(map_rusqlite)?;
-                        (existing_id, "revive")
-                    }
-                    // No such login → fresh insert.
-                    None => {
-                        tx.execute(
-                            "INSERT INTO users \
-                             (login, full_name, password_hash, role, email, \
-                              is_active, created_at_utc, updated_at_utc, version) \
-                             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6, 1)",
-                            rusqlite::params![login, full_name, hash, role, email, now],
-                        )
-                        .map_err(map_rusqlite)?;
-                        (tx.last_insert_rowid(), "create")
-                    }
-                };
+    /// Создать ПЕРВОГО администратора на чистой установке (INT-03).
+    ///
+    /// **Метод ПУБЛИЧЕН: `authorize` намеренно не вызывается** — у вызывающего
+    /// ещё нет ни учётной записи, ни сессии. Это допустимо только потому, что
+    /// окно живёт до первой регистрации: единственная граница безопасности —
+    /// условие «в БД нет активного администратора» (тот же предикат, что у
+    /// `needs_bootstrap`, один владелец — `count_active_admins`). Авторитетная
+    /// проверка выполняется ВНУТРИ той же writer-транзакции, что создаёт
+    /// пользователя; `WriterHandle` исполняет замыкания строго последовательно,
+    /// поэтому check+insert атомарны и из двух параллельных вызовов успех один,
+    /// второй получает `AppError::Conflict`.
+    ///
+    /// Роль присланного `UserNew` игнорируется (mass assignment): сервер
+    /// навязывает `admin` до валидации. Запись в `audit_log` — без автора
+    /// (`user_id = NULL`, `action = 'custom:bootstrap'`).
+    ///
+    /// Принятый риск (T-41.7-09): окно откроется снова, если мягко удалён или
+    /// деактивирован последний активный администратор; след остаётся в аудите.
+    pub async fn bootstrap_first_admin(&self, mut new: UserNew) -> Result<UserDto, AppError> {
+        // Mass assignment: присланная роль не имеет значения (ДО валидации).
+        new.role = "admin".to_string();
+        Self::validate_user_new(&new)?;
 
-                // Audit log
-                tx.execute(
-                    "INSERT INTO audit_log \
-                     (entity_type, entity_id, action, user_id, before_json, after_json, payload_json, created_at_utc) \
-                     VALUES ('user', ?1, ?2, ?3, NULL, NULL, ?4, ?5)",
-                    rusqlite::params![id, action, caller_id, login, now],
-                )
-                .map_err(map_rusqlite)?;
+        // Дешёвая предпроверка ДО argon2 — закрытая установка не жжёт CPU.
+        if !self.needs_bootstrap().await? {
+            return Err(bootstrap_closed());
+        }
 
+        let now = self.clock.unix_seconds();
+        let password = Secret::new(new.password.clone());
+        let hash = tokio::task::spawn_blocking(move || hash_password(&password))
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking hash_password: {e}"),
+            })??;
+
+        let login = new.login.clone();
+        let full_name = new.full_name.clone();
+        let role = new.role.clone();
+        let email = new.email.clone();
+
+        let id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                // Авторитетная проверка в той же транзакции, что и вставка.
+                if count_active_admins(&tx)? != 0 {
+                    return Err(bootstrap_closed());
+                }
+                let id = insert_user_in_tx(
+                    &tx,
+                    None,
+                    Some("custom:bootstrap"),
+                    &NewUserRow {
+                        login: &login,
+                        full_name: &full_name,
+                        password_hash: &hash,
+                        role: &role,
+                        email: email.as_deref(),
+                        now,
+                    },
+                )?;
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(id)
             })
@@ -2205,6 +2222,118 @@ impl AuthService {
         Role::from_str(&new.role)?;
         Ok(())
     }
+}
+
+// ---------------------------------------------------------------------------
+// User insert helpers (shared by create_user and bootstrap_first_admin)
+// ---------------------------------------------------------------------------
+
+/// Число активных администраторов. ЕДИНСТВЕННЫЙ владелец предиката
+/// «нужна начальная настройка» — им пользуются и `needs_bootstrap`, и
+/// `bootstrap_first_admin` (D-12): расхождение предикатов открыло бы публичный
+/// маршрут там, где мастер уже не показывается (или наоборот).
+fn count_active_admins(conn: &rusqlite::Connection) -> Result<i64, AppError> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM users \
+         WHERE role = 'admin' AND deleted_at_utc IS NULL",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(map_rusqlite)
+}
+
+fn bootstrap_closed() -> AppError {
+    AppError::Conflict {
+        reason: "Первоначальная настройка уже выполнена".to_string(),
+    }
+}
+
+struct NewUserRow<'a> {
+    login: &'a str,
+    full_name: &'a str,
+    password_hash: &'a str,
+    role: &'a str,
+    email: Option<&'a str>,
+    now: i64,
+}
+
+/// Вставка пользователя (или ревайв мягко удалённого с тем же логином) и запись
+/// в `audit_log` внутри транзакции вызывающего. `action_override` задаёт метку
+/// действия в аудите (`None` -> «create»/«revive»). Коммит — на вызывающем.
+fn insert_user_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    caller_id: Option<i64>,
+    action_override: Option<&str>,
+    row: &NewUserRow<'_>,
+) -> Result<i64, AppError> {
+    let NewUserRow {
+        login,
+        full_name,
+        password_hash: hash,
+        role,
+        email,
+        now,
+    } = *row;
+
+    // Soft-delete leaves the row (with its login) behind, but the schema
+    // enforces an unconditional UNIQUE(login). Re-creating a login that
+    // belongs to a soft-deleted user must REVIVE that row (reuse its id so
+    // act/history foreign keys stay intact) rather than fail on UNIQUE.
+    let existing: Option<(i64, Option<i64>)> = match tx.query_row(
+        "SELECT id, deleted_at_utc FROM users WHERE login = ?1",
+        rusqlite::params![login],
+        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
+    ) {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(map_rusqlite(e)),
+    };
+
+    let (id, action): (i64, &str) = match existing {
+        // Active row already owns this login -> genuine conflict.
+        Some((_, None)) => {
+            return Err(AppError::Conflict {
+                reason: format!("Логин '{login}' уже занят"),
+            });
+        }
+        // Soft-deleted row -> revive in place.
+        Some((existing_id, Some(_))) => {
+            tx.execute(
+                "UPDATE users SET \
+                   full_name = ?1, password_hash = ?2, role = ?3, email = ?4, \
+                   is_active = 1, deleted_at_utc = NULL, updated_at_utc = ?5, \
+                   version = version + 1 \
+                 WHERE id = ?6",
+                rusqlite::params![full_name, hash, role, email, now, existing_id],
+            )
+            .map_err(map_rusqlite)?;
+            (existing_id, "revive")
+        }
+        // No such login -> fresh insert.
+        None => {
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, email, \
+                  is_active, created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6, 1)",
+                rusqlite::params![login, full_name, hash, role, email, now],
+            )
+            .map_err(map_rusqlite)?;
+            (tx.last_insert_rowid(), "create")
+        }
+    };
+    let action = action_override.unwrap_or(action);
+
+    // Audit log
+    tx.execute(
+        "INSERT INTO audit_log \
+         (entity_type, entity_id, action, user_id, before_json, after_json, payload_json, created_at_utc) \
+         VALUES ('user', ?1, ?2, ?3, NULL, NULL, ?4, ?5)",
+        rusqlite::params![id, action, caller_id, login, now],
+    )
+    .map_err(map_rusqlite)?;
+
+    Ok(id)
 }
 
 // ---------------------------------------------------------------------------
