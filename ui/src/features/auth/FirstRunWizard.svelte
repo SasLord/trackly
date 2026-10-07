@@ -53,8 +53,8 @@
     loading = true;
     error = null;
     try {
-      // Create first admin user
-      await apiCall<UserDto>('users_create', {
+      // Create first admin via the public bootstrap route (409 once an admin exists)
+      await apiCall<UserDto>('auth_bootstrap', {
         userNew: {
           login: login.trim(),
           full_name: fullName.trim(),
