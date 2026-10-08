@@ -48,9 +48,39 @@ export function pushToast(kind: ToastKind, message: string, opts?: PushToastOpti
   }
 
   const id = crypto.randomUUID();
-  // Enforce max toast limit — drop oldest if over limit.
-  if (toastStore.items.length >= MAX_TOASTS) {
-    toastStore.items = toastStore.items.slice(toastStore.items.length - MAX_TOASTS + 1);
+  // Лимит очереди: освобождаем место под новый тост, вытесняя САМЫЕ СТАРЫЕ, но
+  // ТОЛЬКО НЕ залипающие.
+  //
+  // Раньше здесь был безусловный `slice(length - MAX_TOASTS + 1)`, который
+  // срезал старейший тост независимо от `sticky`. Это воспроизводило GAP-1
+  // (сессия `ws-disconnect-toast-no-show`): при обрыве связи залипающий тост
+  // «Соединение с сервером потеряно…» ставится ПЕРВЫМ, а каждый следующий
+  // падающий API-вызов добавляет свой error-тост (в `ui/src` больше сотни
+  // мест `pushToast('error', …)`). Через MAX_TOASTS-1 таких тостов индикатор
+  // вытеснялся, а флаг эпизода `reconnecting` в `ws.ts` остаётся `true` до
+  // `onopen` — значит `showReconnectingToast()` больше не позовут и индикация
+  // обрыва исчезает навсегда, ровно на том экране, который активно сыплет
+  // ошибками. Дедуп залипающих (выше) от этого не спасал: он защищает от
+  // СТОПКИ одинаковых, а не от вытеснения единственного.
+  //
+  // Порядок остальных тостов сохраняется (фильтром, не пересборкой), иначе
+  // залипающий всплывал бы в начало списка при каждом вытеснении.
+  //
+  // Если вытеснять нечего (все записи залипающие), очередь растёт — это
+  // осознанный компромисс: залипающие дедуплицируются по тексту, поэтому их
+  // не больше, чем различных длящихся состояний.
+  let toDrop = toastStore.items.length - MAX_TOASTS + 1;
+  if (toDrop > 0) {
+    const dropped = new Set<string>();
+    for (const t of toastStore.items) {
+      if (toDrop <= 0) break;
+      if (t.sticky) continue;
+      dropped.add(t.id);
+      toDrop -= 1;
+    }
+    if (dropped.size > 0) {
+      toastStore.items = toastStore.items.filter((t) => !dropped.has(t.id));
+    }
   }
   toastStore.items = [...toastStore.items, { id, kind, message, sticky }];
   if (!sticky) {

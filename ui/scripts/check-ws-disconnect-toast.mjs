@@ -17,12 +17,20 @@
 // поле, снятый вызов — просто мёртвый код).
 //
 // Гейт ИСПОЛНЯЮЩИЙ и состоит из двух частей.
-//  1. Исполняемые проверки E1-E4 стора `src/lib/stores/toast.svelte.ts`:
+//  1. Исполняемые проверки E1-E5 стора `src/lib/stores/toast.svelte.ts`:
 //     модуль транспилируется и реально вызывается, `setTimeout` подменяется
 //     рекордером, поэтому «залипающий тост всё-таки получил TTL» ловится
 //     фактом планирования таймера, а не чтением исходника.
 //     Руна `$state(...)` перед транспиляцией срезается до `(...)` — гейт
-//     проверяет ЛОГИКУ стора (push/TTL/дедуп/remove), не реактивность.
+//     проверяет ЛОГИКУ стора (push/TTL/дедуп/remove/вытеснение), не
+//     реактивность.
+//     E5 отдельно закрывает ТРЕТИЙ способ потерять индикацию обрыва, найденный
+//     ревью фазы 41.7 (WR-01 отчёта): лимит очереди `MAX_TOASTS` вытеснял
+//     старейший тост не глядя на `sticky`, а индикатор обрыва ставится ПЕРВЫМ и
+//     дальше экран сыплет error-тостами — через десяток их индикатор исчезал, и
+//     флаг эпизода `reconnecting` уже не давал показать его снова. Дедуп (E2)
+//     от этого не защищал: он про стопку одинаковых, а не про вытеснение
+//     единственного.
 //  2. Структурные правила W1-W5 для `src/lib/api/ws.ts` (текст без
 //     комментариев, пробелы схлопнуты):
 //       W1 — тост обрыва ставится залипающим (`sticky: true`);
@@ -37,7 +45,7 @@
 //            причину и стоил сессии лишних витков.
 //
 // `--selftest` прогоняет те же проверки на встроенных эталонах: эталон обязан
-// пройти, мутанты M1-M9 — провалиться.
+// пройти, мутанты M1-M12 — провалиться.
 //
 // Реальных данных организации и людей гейт не содержит.
 //
@@ -57,6 +65,11 @@ const STORE = path.join(UI_ROOT, 'src/lib/stores/toast.svelte.ts');
 const WS = path.join(UI_ROOT, 'src/lib/api/ws.ts');
 const TAG = '[check-ws-disconnect-toast]';
 const RECONNECT_MESSAGE = 'Соединение с сервером потеряно. Переподключение…';
+/// Зеркало `MAX_TOASTS` из стора (стор его не экспортирует). Используется
+/// только как ВЕРХНЯЯ граница в E5 («лимит не отключён целиком»), поэтому
+/// расхождение на единицу гейт не ломает — важен порядок величины, а не
+/// точное значение.
+const MAX_TOASTS_EXPECTED = 10;
 
 // ---------------------------------------------------------------------------
 // Часть 1 — исполняемые проверки стора
@@ -90,7 +103,7 @@ async function loadModuleFromTs(tsSource, label) {
 }
 
 /**
- * Прогнать E1-E4 на загруженном модуле стора.
+ * Прогнать E1-E5 на загруженном модуле стора.
  * `setTimeout` подменяется рекордером на время вызовов, чтобы увидеть САМ ФАКТ
  * планирования TTL, а не ждать его истечения.
  */
@@ -150,6 +163,34 @@ async function runStoreCases(tsSource, label) {
         `E4: обычный тост запланировал ${scheduled.length} таймеров вместо 1 — залипание не должно становиться поведением по умолчанию`,
       );
     }
+
+    // E5 — залипающий индикатор переживает переполнение очереди (WR-01 ревью
+    // 41.7): при обрыве связи он ставится ПЕРВЫМ, а дальше экран сыплет
+    // error-тостами. Вытеснение по возрасту без учёта `sticky` снимало
+    // индикатор, а флаг эпизода `reconnecting` в ws.ts не даёт показать его
+    // снова → GAP-1 воспроизводится. E1-E4 этого не видели: они не доводят
+    // очередь до лимита.
+    //
+    // Второй половиной E5 проверяется, что лимит при этом НЕ отключён
+    // целиком — иначе «починкой» годился бы снос вытеснения как такового.
+    mod.toastStore.items = [];
+    const indicatorId = mod.pushToast('warning', RECONNECT_MESSAGE, { sticky: true });
+    const FLOOD = 30;
+    for (let i = 0; i < FLOOD; i += 1) {
+      mod.pushToast('error', `не удалось загрузить данные (${i})`);
+    }
+    if (!mod.toastStore.items.some((t) => t.id === indicatorId)) {
+      failures.push(
+        `E5: залипающий индикатор обрыва вытеснен лимитом очереди после ${FLOOD} обычных тостов — пользователь на активно ошибающемся экране теряет индикацию обрыва, а флаг эпизода reconnecting уже не даст показать её снова (GAP-1 фазы 41.7)`,
+      );
+    }
+    const nonSticky = mod.toastStore.items.filter((t) => !t.sticky).length;
+    if (nonSticky > MAX_TOASTS_EXPECTED) {
+      failures.push(
+        `E5: в очереди ${nonSticky} НЕ залипающих тостов после ${FLOOD} пушей — лимит очереди перестал работать; освобождать место обязано вытеснение старейшего НЕ залипающего, а не отказ от лимита`,
+      );
+    }
+    mod.toastStore.items = [];
   } catch (e) {
     failures.push(`исключение при прогоне стора: ${e.message}`);
   } finally {
@@ -252,8 +293,18 @@ export function pushToast(kind, message, opts) {
     }
   }
   const id = crypto.randomUUID();
-  if (toastStore.items.length >= MAX_TOASTS) {
-    toastStore.items = toastStore.items.slice(toastStore.items.length - MAX_TOASTS + 1);
+  let toDrop = toastStore.items.length - MAX_TOASTS + 1;
+  if (toDrop > 0) {
+    const dropped = new Set();
+    for (const t of toastStore.items) {
+      if (toDrop <= 0) break;
+      if (t.sticky) continue;
+      dropped.add(t.id);
+      toDrop -= 1;
+    }
+    if (dropped.size > 0) {
+      toastStore.items = toastStore.items.filter((t) => !dropped.has(t.id));
+    }
   }
   toastStore.items = [...toastStore.items, { id, kind, message, sticky }];
   if (!sticky) {
@@ -346,6 +397,40 @@ const STORE_MUTANTS = [
     from: '  toastStore.items = toastStore.items.filter((t) => t.id !== id);\n}',
     to: '}',
   },
+  {
+    id: 'M10',
+    name: 'вытеснение по возрасту без учёта sticky (возврат дефекта WR-01 ревью 41.7)',
+    from:
+      '  let toDrop = toastStore.items.length - MAX_TOASTS + 1;\n' +
+      '  if (toDrop > 0) {\n' +
+      '    const dropped = new Set();\n' +
+      '    for (const t of toastStore.items) {\n' +
+      '      if (toDrop <= 0) break;\n' +
+      '      if (t.sticky) continue;\n' +
+      '      dropped.add(t.id);\n' +
+      '      toDrop -= 1;\n' +
+      '    }\n' +
+      '    if (dropped.size > 0) {\n' +
+      '      toastStore.items = toastStore.items.filter((t) => !dropped.has(t.id));\n' +
+      '    }\n' +
+      '  }',
+    to:
+      '  if (toastStore.items.length >= MAX_TOASTS) {\n' +
+      '    toastStore.items = toastStore.items.slice(toastStore.items.length - MAX_TOASTS + 1);\n' +
+      '  }',
+  },
+  {
+    id: 'M11',
+    name: 'лимит очереди снят целиком (ложная «починка» вытеснения)',
+    from: '  let toDrop = toastStore.items.length - MAX_TOASTS + 1;\n  if (toDrop > 0) {',
+    to: '  let toDrop = 0;\n  if (toDrop > 0) {',
+  },
+  {
+    id: 'M12',
+    name: 'залипающие вытесняются наравне с обычными (гард `if (t.sticky) continue` снят)',
+    from: '      if (t.sticky) continue;\n',
+    to: '',
+  },
 ];
 
 const WS_MUTANTS = [
@@ -400,7 +485,7 @@ async function selftest() {
   const goodStore = await runStoreCases(GOOD_STORE, 'good-store.ts');
   if (goodStore.length) {
     console.error(
-      `${TAG} SELFTEST FAIL — эталонный стор не прошёл E1-E4:\n  - ${goodStore.join('\n  - ')}`,
+      `${TAG} SELFTEST FAIL — эталонный стор не прошёл E1-E5:\n  - ${goodStore.join('\n  - ')}`,
     );
     process.exit(1);
   }
@@ -417,7 +502,7 @@ async function selftest() {
     const failures = await runStoreCases(GOOD_STORE.split(m.from).join(m.to), 'mutant-store.ts');
     if (!failures.length) {
       console.error(
-        `${TAG} SELFTEST FAIL — мутант ${m.id} «${m.name}» прошёл E1-E4: гейт его не ловит`,
+        `${TAG} SELFTEST FAIL — мутант ${m.id} «${m.name}» прошёл E1-E5: гейт его не ловит`,
       );
       process.exit(1);
     }
@@ -464,7 +549,7 @@ async function main() {
     console.error(`${TAG} FAIL —\n  - ${failures.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log(`${TAG} OK — исполняемые E1-E4 по стору тостов, структурные W1-W5 по ws.ts`);
+  console.log(`${TAG} OK — исполняемые E1-E5 по стору тостов, структурные W1-W5 по ws.ts`);
 }
 
 main();
