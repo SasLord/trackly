@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-10-07T23:50:11.833Z"
+status: ready_to_plan
+last_updated: 2026-10-08T23:30:42.389Z
 last_activity: 2026-10-07
 progress:
   total_phases: 21
   completed_phases: 10
   total_plans: 167
-  completed_plans: 166
+  completed_plans: 430
   percent: 48
+stopped_at: Phase 41.7 complete (14/14) — ready to discuss Phase 42
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.7 — v1-4-ws-bootstrap-lan
+**Current focus:** Phase 42 — умный подбор принтера в заявке
 
 ## Current Position
 
-Phase: 41.7 (v1-4-ws-bootstrap-lan) — EXECUTING
-Plan: 13 of 14 (41.7-13 живая приёмка осталась; 41.7-12 завершён)
-Status: Ready to execute
+Phase: 42
+Plan: Not started
+Status: Ready to plan
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
 R5 — счётчики вкладок «Отчётов» равны 0 в LAN-браузере — признан дефектом ВНЕ фазы 41
@@ -137,7 +138,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-07
+Last activity: 2026-10-08
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -151,7 +152,7 @@ Last activity: 2026-10-07
 
 **Velocity:**
 
-- Total plans completed: 264
+- Total plans completed: 278
 - Average duration: —
 - Total execution time: —
 
@@ -194,6 +195,7 @@ Last activity: 2026-10-07
 | 40.3 | 9 | - | - |
 | 40.4 | 5 | - | - |
 | 40.5 | 14 | - | - |
+| 41.7 | 14 | - | - |
 
 **Recent Trend:**
 
