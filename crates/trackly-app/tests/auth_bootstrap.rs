@@ -355,6 +355,95 @@ async fn bootstrap_invalid_input_rejected() {
     .await
     .expect("bootstrap_invalid_input exceeded budget");
 }
+
+/// WR-01: публичный bootstrap обязан ТОЛЬКО вставлять — никогда не ревайвить.
+///
+/// `bootstrap_first_admin` делит запись строки с `create_user` через
+/// `insert_user_in_tx`, а у того есть ветвь ревайва: строка с тем же логином,
+/// мягко удалённая, обновляется НА МЕСТЕ с сохранением первичного ключа.
+/// Для `create_user` это сделано осознанно (вызывает аутентифицированный
+/// админ, FK на акты/историю остаются целыми). Для bootstrap вызывающий
+/// АНОНИМЕН, и ревайв означает захват исторической личности: анонимный клиент
+/// из LAN, знающий удалённый логин, получает его `id` с ролью `admin` и своим
+/// паролем — вместе со всем, что на этот `id` ссылается.
+///
+/// Состояние достижимо без удалённого администратора (т.е. это НЕ принятый риск
+/// T-41.7-09): достаточно того, что благословляет
+/// `bootstrap_route_open_when_only_non_admins_exist` — есть не-админы, нет
+/// активного админа.
+///
+/// Данные вымышленные.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn bootstrap_refuses_to_revive_soft_deleted_login() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let (router, ctx) = build_test_components().await.expect("components");
+        assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
+
+        // Мягко удалённый НЕ-админ — окно bootstrap остаётся открытым.
+        let ghost = ctx
+            .auth
+            .create_user(user_new("ghost_employee"), &Identity::trusted_admin())
+            .await
+            .expect("create employee");
+        ctx.auth
+            .delete_user(ghost.id, ghost.version, &Identity::trusted_admin())
+            .await
+            .expect("soft-delete employee");
+        assert!(
+            ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"),
+            "мягко удалённый сотрудник не закрывает окно"
+        );
+
+        // Анонимный POST с ИЗВЕСТНЫМ удалённым логином.
+        let (status, bytes) = post(
+            &router,
+            "/api/v1/auth_bootstrap",
+            body_with("ghost_employee", "password123"),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::CONFLICT,
+            "анонимный bootstrap обязан отказать, а не ревайвить удалённый логин; тело: {}",
+            String::from_utf8_lossy(&bytes)
+        );
+
+        // Старая строка не тронута: та же роль, всё ещё удалена.
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM users WHERE login = 'ghost_employee' \
+                 AND deleted_at_utc IS NOT NULL AND role = 'employee' AND is_active = 1",
+            )
+            .await,
+            1,
+            "строка удалённого сотрудника обязана остаться удалённой с исходной ролью"
+        );
+        assert_eq!(
+            admin_count(&ctx).await,
+            0,
+            "администратор не создан — личность не захвачена"
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'custom:bootstrap'",
+            )
+            .await,
+            0,
+            "отказ не должен оставлять запись bootstrap в аудите"
+        );
+        assert!(
+            ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"),
+            "отказ не закрывает окно первоначальной настройки"
+        );
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("bootstrap_refuses_revive exceeded budget");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_tauri_and_http_share_one_path() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {

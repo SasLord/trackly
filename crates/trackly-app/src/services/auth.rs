@@ -1472,6 +1472,9 @@ impl AuthService {
                     &tx,
                     caller_id,
                     None,
+                    // Аутентифицированный админ: ревайв мягко удалённого
+                    // логина намеренный (сохраняет id ради FK).
+                    true,
                     &NewUserRow {
                         login: &login,
                         full_name: &full_name,
@@ -1504,6 +1507,11 @@ impl AuthService {
     /// Роль присланного `UserNew` игнорируется (mass assignment): сервер
     /// навязывает `admin` до валидации. Запись в `audit_log` — без автора
     /// (`user_id = NULL`, `action = 'custom:bootstrap'`).
+    ///
+    /// Путь умеет ТОЛЬКО вставлять: `insert_user_in_tx` вызывается с
+    /// `allow_revive = false`, поэтому занятый логин — в том числе мягко
+    /// удалённый — даёт `Conflict`, а не ревайв (WR-01). Ревайв остаётся
+    /// поведением `create_user`, где вызывающий аутентифицирован.
     ///
     /// Принятый риск (T-41.7-09): окно откроется снова, если мягко удалён или
     /// деактивирован последний активный администратор; след остаётся в аудите.
@@ -1542,6 +1550,9 @@ impl AuthService {
                     &tx,
                     None,
                     Some("custom:bootstrap"),
+                    // ПУБЛИЧНЫЙ анонимный путь: только INSERT. Ревайв здесь —
+                    // захват личности мягко удалённого логина (WR-01).
+                    false,
                     &NewUserRow {
                         login: &login,
                         full_name: &full_name,
@@ -2260,10 +2271,26 @@ struct NewUserRow<'a> {
 /// Вставка пользователя (или ревайв мягко удалённого с тем же логином) и запись
 /// в `audit_log` внутри транзакции вызывающего. `action_override` задаёт метку
 /// действия в аудите (`None` -> «create»/«revive»). Коммит — на вызывающем.
+///
+/// `allow_revive` разделяет ДВА вызывающих с разным уровнем доверия (WR-01):
+///
+/// * `true` — [`AuthService::create_user`]: вызывающий аутентифицирован и имеет
+///   `ManageUsers`. Ревайв здесь НАМЕРЕННЫЙ: схема держит безусловный
+///   `UNIQUE(login)`, а мягкое удаление оставляет строку с её логином, поэтому
+///   «создать» занятый удалённый логин обязано переиспользовать тот же `id` —
+///   иначе FK на акты и историю осиротеют.
+/// * `false` — [`AuthService::bootstrap_first_admin`]: маршрут ПУБЛИЧНЫЙ,
+///   вызывающий АНОНИМЕН. Ревайв там означал бы захват исторической личности:
+///   кто угодно из LAN, зная мягко удалённый логин, получил бы его `id` с ролью
+///   `admin` и своим паролем, унаследовав всё, что на этот `id` ссылается, а
+///   аудит (`custom:bootstrap`, `before_json = NULL`) не отличил бы захват от
+///   честного создания. Поэтому публичный путь умеет ТОЛЬКО вставлять и на
+///   занятый логин (в любом состоянии) отвечает `Conflict`.
 fn insert_user_in_tx(
     tx: &rusqlite::Transaction<'_>,
     caller_id: Option<i64>,
     action_override: Option<&str>,
+    allow_revive: bool,
     row: &NewUserRow<'_>,
 ) -> Result<i64, AppError> {
     let NewUserRow {
@@ -2292,6 +2319,16 @@ fn insert_user_in_tx(
     let (id, action): (i64, &str) = match existing {
         // Active row already owns this login -> genuine conflict.
         Some((_, None)) => {
+            return Err(AppError::Conflict {
+                reason: format!("Логин '{login}' уже занят"),
+            });
+        }
+        // Soft-deleted row, but the caller is not allowed to revive (public
+        // bootstrap path) -> refuse. Deliberately the SAME message as the
+        // active-row conflict above: an anonymous caller must not be able to
+        // use the error text to distinguish «логин свободен» from «логин
+        // принадлежит мягко удалённой записи».
+        Some((_, Some(_))) if !allow_revive => {
             return Err(AppError::Conflict {
                 reason: format!("Логин '{login}' уже занят"),
             });
