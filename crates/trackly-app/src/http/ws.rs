@@ -13,6 +13,13 @@
 //! (dropped events). Обрабатываем через `continue` — НЕ `break` — иначе
 //! потеря нескольких событий завершит WS-сессию.
 //!
+//! ## Остановка серверного режима
+//!
+//! `handle_ws_socket` обязан сам закрывать сокет по токену `ServerShutdown`:
+//! апгрейженный сокет живёт в задаче, которую axum спаунит в `on_upgrade`, и
+//! внешняя отмена hyper-соединения до него не доходит. Подробности — в докблоке
+//! функции (отладочная сессия `ws-disconnect-toast-no-show`).
+//!
 //! ## Visibility filter (T-06-06-I)
 //!
 //! Каждое событие проверяется через `WsEvent::is_visible_to(&identity)` перед
@@ -27,13 +34,22 @@ use axum::{
     routing::any,
     Router,
 };
+use std::time::Duration;
+
 use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::printer::WsEvent;
 use crate::http::auth::session_identity;
+use crate::server::ServerShutdown;
 use trackly_core::auth::Identity;
+
+/// Сколько ждём отправку прощального Close-кадра при остановке сервера.
+/// Не «сколько нужно», а «сколько не жалко»: кадр — вежливость, а не условие
+/// закрытия. По истечении сокет всё равно дропается.
+const CLOSE_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Middleware: проверяет сессию перед WS upgrade.
 ///
@@ -59,27 +75,67 @@ pub async fn ws_auth_middleware(session: Session, mut req: Request, next: Next) 
 ///
 /// Identity уже проверена middleware — читается из `Extension<Identity>`.
 /// `ws: WebSocketUpgrade` — стандартный axum WS extractor.
+///
+/// `server_shutdown` — токен остановки инстанса сервера, положенный в extensions
+/// в `server::serve_connection_inner`. `Option`, потому что роутер поднимают и
+/// без `start_server` (интеграционные тесты через `axum::serve`); в этом случае
+/// сокет живёт до разрыва клиентом, как и раньше.
 pub async fn ws_handler(
     State(ctx): State<AppCtx>,
     Extension(identity): Extension<Identity>,
+    server_shutdown: Option<Extension<ServerShutdown>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     let rx = ctx.ws_broadcast.subscribe();
-    ws.on_upgrade(move |socket| handle_ws_socket(socket, identity, rx))
+    let shutdown = server_shutdown.map(|Extension(ServerShutdown(token))| token);
+    ws.on_upgrade(move |socket| handle_ws_socket(socket, identity, rx, shutdown))
 }
 
 /// WebSocket connection loop.
 ///
-/// Runs a `tokio::select!` on two branches:
+/// Runs a `tokio::select!` on three branches:
 ///   1. `rx.recv()` — fan-out broadcast events to the connected client.
 ///   2. `socket.recv()` — detect client disconnect (None / Close / Error).
+///   3. `shutdown.cancelled()` — серверный режим останавливают: закрыть сокет.
+///
+/// Ветвь 3 ОБЯЗАТЕЛЬНА, и вот почему её нельзя заменить ничем снаружи. Задачу с
+/// этим сокетом спаунит axum внутри `on_upgrade`, владение IO ей передаёт
+/// `hyper::upgrade::on`, поэтому дроп future hyper-соединения в
+/// `server::start_server` её НЕ трогает (проверено рантаймом — тест
+/// `ws_close_on_server_stop` оставался красным). А сама по себе эта функция не
+/// завершится никогда: `socket.recv()` вечно pending (транспорт
+/// server-push-only, клиент молчит), а `rx.recv()` отдаст `Closed` только при
+/// дропе `broadcast::Sender`, который лежит в `AppCtx.ws_broadcast` и остановку
+/// сервера переживает. Итог до фикса: после «Остановить сервер» сокет оставался
+/// открытым, браузерный `ws.onclose` не наступал, и тост D-18 «Соединение с
+/// сервером потеряно» не показывался НИКОГДА (отладочная сессия
+/// `ws-disconnect-toast-no-show`, GAP-1 фазы 41.7).
 async fn handle_ws_socket(
     mut socket: WebSocket,
     identity: Identity,
     mut rx: broadcast::Receiver<WsEvent>,
+    shutdown: Option<CancellationToken>,
 ) {
+    // `select!` требует future в каждой ветви. Когда токена нет (роутер поднят
+    // без `start_server`), подставляем вечно-pending ветвь, чтобы поведение
+    // осталось прежним, а не «мгновенно закрыть сокет».
+    let shutdown = shutdown.unwrap_or_default();
     loop {
         tokio::select! {
+            () = shutdown.cancelled() => {
+                // Закрываемся вежливо: браузер получит onclose с кодом нормального
+                // закрытия вместо обрыва 1006. Ошибку отправки игнорируем — сокет
+                // всё равно дропается следующей строкой.
+                // Таймаут обязателен: если peer перестал читать, окно отправки
+                // заполнено и `send` висит — задача снова жила бы вечно, т.е.
+                // ровно тот дефект, который этой ветвью и лечится.
+                let _ = tokio::time::timeout(
+                    CLOSE_SEND_TIMEOUT,
+                    socket.send(Message::Close(None)),
+                )
+                .await;
+                break;
+            }
             event = rx.recv() => {
                 match event {
                     Ok(evt) if evt.is_visible_to(&identity) => {

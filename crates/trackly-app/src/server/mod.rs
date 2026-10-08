@@ -35,6 +35,21 @@ use tokio_rustls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
+/// Токен остановки ЭТОГО инстанса сервера, прокинутый в расширения запроса.
+///
+/// Нужен обработчикам, которые переживают сам запрос. Главный потребитель —
+/// `http::ws::ws_handler`: апгрейженный WebSocket живёт в ОТДЕЛЬНОЙ задаче,
+/// которую axum спаунит внутри `on_upgrade`, и дроп future hyper-соединения её
+/// сокет НЕ закрывает (`hyper::upgrade::on` уже отдал туда владение IO).
+/// Поэтому единственный способ закрыть живой WS при остановке серверного
+/// режима — отдать токен внутрь цикла сокета (отладочная сессия
+/// `ws-disconnect-toast-no-show`, GAP-1 фазы 41.7).
+///
+/// Newtype, а не голый `CancellationToken`, чтобы расширение нельзя было спутать
+/// с чужим токеном в том же наборе extensions.
+#[derive(Clone)]
+pub struct ServerShutdown(pub CancellationToken);
+
 /// Handle для управления жизненным циклом запущенного сервера.
 ///
 /// Хранит cancel-token (дочерний к AppCtx.shutdown) и JoinHandle.
@@ -55,8 +70,13 @@ pub struct ServerHandle {
 /// Завершается при `shutdown.cancelled()` — цикл accept прерывается, функция
 /// возвращает `Ok(())`. JoinHandle в `ServerHandle` завершится следом.
 ///
-/// Новое соединение спаунится как независимая tokio-задача — shutdown не
-/// дожидается уже запущенных connections (graceful drain не нужен на LAN-scale).
+/// Новое соединение спаунится как независимая tokio-задача, но ПОЛУЧАЕТ клон
+/// `shutdown`: по отмене токена задача бросает соединение, и сокет закрывается.
+/// Graceful drain по-прежнему не делается (LAN-scale) — «остановлен» означает
+/// «живых соединений нет», а не «дождались ответов». Это обязательная часть
+/// контракта: WS-клиент в LAN-браузере узнаёт об остановке сервера ТОЛЬКО из
+/// события `onclose`. Пока соединения оставались жить, браузер не видел ничего
+/// (см. отладочную сессию `ws-disconnect-toast-no-show`, GAP-1 фазы 41.7).
 ///
 /// # Convenience
 ///
@@ -85,44 +105,40 @@ pub async fn start_server(
                     Ok((stream, peer_addr)) => {
                         let tls = tls_acceptor.clone();
                         let app_clone = app.clone();
+                        // Токен ЭТОГО инстанса сервера уезжает внутрь задачи
+                        // соединения — без него «Остановить сервер» гасило лишь
+                        // цикл accept, а уже установленные соединения жили
+                        // вечно (детали в select! ниже).
+                        let conn_shutdown = shutdown.clone();
+                        let conn_shutdown_for_req = shutdown.clone();
                         tokio::spawn(async move {
-                            match tls.accept(stream).await {
-                                Ok(tls_stream) => {
-                                    let io = TokioIo::new(tls_stream);
-                                    // Use ServiceExt::oneshot to consume Router per-request
-                                    let hyper_service = hyper::service::service_fn(move |mut req| {
-                                        // Inject ConnectInfo so tower_governor's PeerIpKeyExtractor
-                                        // can derive the client IP for per-IP rate limiting on
-                                        // /auth_login. The manual hyper accept-loop (no axum::serve)
-                                        // otherwise leaves ConnectInfo absent → the extractor fails
-                                        // with "Unable to extract key!" → 500 on every login.
-                                        req.extensions_mut()
-                                            .insert(axum::extract::ConnectInfo(peer_addr));
-                                        // Clone Router for each request — Router is cheap Clone
-                                        app_clone.clone().oneshot(req)
-                                    });
-                                    // `.with_upgrades()` is REQUIRED for WebSocket support.
-                                    // axum's `WebSocketUpgrade` emits a 101 response and then
-                                    // awaits `hyper::upgrade::on(req)` inside `on_upgrade` to
-                                    // obtain the upgraded stream. That upgrade future only ever
-                                    // resolves when the hyper connection is driven with
-                                    // `.with_upgrades()`. Without it, hyper writes the 101, the
-                                    // connection future completes, and the socket is closed ~1s
-                                    // later — the client sees "101 Switching Protocols" then
-                                    // "network connection was lost", on a reconnect loop, and the
-                                    // server-side `handle_ws_socket` never runs. (See debug
-                                    // session ui-ws-toast-reports-flicker, Bug A.)
-                                    if let Err(e) = hyper::server::conn::http1::Builder::new()
-                                        .serve_connection(io, hyper_service)
-                                        .with_upgrades()
-                                        .await
-                                    {
-                                        tracing::debug!("HTTP connection error from {peer_addr}: {e}");
-                                    }
+                            // Отмена токена дропает future соединения, закрывая
+                            // TCP-сокет. Это закрывает обычные (в т.ч.
+                            // keep-alive) HTTP-соединения: после «Остановить
+                            // сервер» LAN-браузер не должен продолжать дёргать
+                            // API по уже открытому соединению.
+                            // ВАЖНО: апгрейженных WebSocket'ов это НЕ касается —
+                            // `hyper::upgrade::on` отдаёт владение IO задаче,
+                            // которую axum спаунит в `on_upgrade`, и дроп этого
+                            // future её сокет не закрывает (проверено рантаймом:
+                            // тест `ws_close_on_server_stop` оставался красным).
+                            // WS закрывается третьей ветвью `select!` внутри
+                            // `http::ws::handle_ws_socket` по `ServerShutdown`.
+                            // Гонка охватывает и TLS-рукопожатие: зависший
+                            // handshake тоже не должен переживать остановку.
+                            tokio::select! {
+                                _ = conn_shutdown.cancelled() => {
+                                    tracing::debug!(
+                                        "server stopped — dropping live connection from {peer_addr}"
+                                    );
                                 }
-                                Err(e) => {
-                                    tracing::warn!("TLS accept error from {peer_addr}: {e}");
-                                }
+                                () = serve_connection_inner(
+                                    tls,
+                                    stream,
+                                    app_clone,
+                                    peer_addr,
+                                    conn_shutdown_for_req,
+                                ) => {}
                             }
                         });
                     }
@@ -136,6 +152,63 @@ pub async fn start_server(
 
     tracing::info!("HTTPS server stopped");
     Ok(())
+}
+
+/// Обслужить ОДНО принятое TCP-соединение: TLS-рукопожатие → hyper HTTP/1.1
+/// сервис из axum `Router`.
+///
+/// Вынесено из `start_server` отдельной функцией, чтобы `tokio::select!` в
+/// задаче соединения мог гонять эту работу против `shutdown.cancelled()` одним
+/// выражением: отмена дропает возвращённый future, закрывая сокет.
+async fn serve_connection_inner(
+    tls: TlsAcceptor,
+    stream: tokio::net::TcpStream,
+    app: Router,
+    peer_addr: SocketAddr,
+    shutdown: CancellationToken,
+) {
+    match tls.accept(stream).await {
+        Ok(tls_stream) => {
+            let io = TokioIo::new(tls_stream);
+            // Use ServiceExt::oneshot to consume Router per-request
+            let hyper_service = hyper::service::service_fn(move |mut req: hyper::Request<_>| {
+                // Inject ConnectInfo so tower_governor's PeerIpKeyExtractor
+                // can derive the client IP for per-IP rate limiting on
+                // /auth_login. The manual hyper accept-loop (no axum::serve)
+                // otherwise leaves ConnectInfo absent → the extractor fails
+                // with "Unable to extract key!" → 500 on every login.
+                req.extensions_mut()
+                    .insert(axum::extract::ConnectInfo(peer_addr));
+                // Токен остановки этого инстанса сервера — для обработчиков,
+                // переживающих запрос (WS-сокет, см. `ServerShutdown`).
+                req.extensions_mut()
+                    .insert(ServerShutdown(shutdown.clone()));
+                // Clone Router for each request — Router is cheap Clone
+                app.clone().oneshot(req)
+            });
+            // `.with_upgrades()` is REQUIRED for WebSocket support.
+            // axum's `WebSocketUpgrade` emits a 101 response and then
+            // awaits `hyper::upgrade::on(req)` inside `on_upgrade` to
+            // obtain the upgraded stream. That upgrade future only ever
+            // resolves when the hyper connection is driven with
+            // `.with_upgrades()`. Without it, hyper writes the 101, the
+            // connection future completes, and the socket is closed ~1s
+            // later — the client sees "101 Switching Protocols" then
+            // "network connection was lost", on a reconnect loop, and the
+            // server-side `handle_ws_socket` never runs. (See debug
+            // session ui-ws-toast-reports-flicker, Bug A.)
+            if let Err(e) = hyper::server::conn::http1::Builder::new()
+                .serve_connection(io, hyper_service)
+                .with_upgrades()
+                .await
+            {
+                tracing::debug!("HTTP connection error from {peer_addr}: {e}");
+            }
+        }
+        Err(e) => {
+            tracing::warn!("TLS accept error from {peer_addr}: {e}");
+        }
+    }
 }
 
 /// Вспомогательная функция: биндит `addr`, затем запускает [`start_server`].
