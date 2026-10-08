@@ -10,6 +10,12 @@
 // Фаза 41.7 (D-18): сокет теперь открывает и оболочка Admin/Manager (Layout.svelte),
 // поэтому тост «Соединение с сервером потеряно» (showReconnectingToast) может
 // появиться на любом экране админа — принято, придушивание по экранам отвергнуто.
+// Инварианты индикации обрыва (оба обязаны держаться одновременно):
+//   * НЕ БОЛЬШЕ одного тоста за эпизод — флаг `reconnecting` (введён против
+//     спама Bug A, сессия `ui-ws-toast-reports-flicker`);
+//   * НЕ МЕНЬШЕ одного — тост залипающий, без TTL, снимается на `onopen`
+//     (сессия `ws-disconnect-toast-no-show`: транзиентный тост истекал раньше,
+//     чем пользователь успевал переключиться из десктопного окна в браузер).
 // NOTE: 'request_status_changed' — NOT 'request_updated' (06-CONTEXT sync).
 
 import type { WsEvent } from '../../bindings-phase6';
@@ -45,14 +51,46 @@ function dispatch(event: WsEvent): void {
   handlers.forEach((h) => h(event));
 }
 
+// id залипающего тоста обрыва — нужен, чтобы снять его на успешном `onopen`.
+let reconnectToastId: string | null = null;
+
+// Импорт ленивый ИСТОРИЧЕСКИ («avoid circular deps») — обоснование неверно:
+// `stores/toast.svelte.ts` не импортирует вообще ничего, цикл невозможен, и тот
+// же специфаер статически импортируют ~50 модулей, так что по сети тут ничего
+// не тянется. Оставлен ленивым только чтобы не менять форму модуля, но
+// `.catch` больше НЕ глотает молча: невидимая ошибка стоила этой сессии
+// лишних витков (отладочная сессия `ws-disconnect-toast-no-show`).
 function showReconnectingToast(): void {
-  // Import lazily to avoid circular deps; toast is not critical
   import('$lib/stores/toast.svelte')
     .then(({ pushToast }) => {
-      pushToast('warning', 'Соединение с сервером потеряно. Переподключение…');
+      // sticky: индикация ДЛЯЩЕГОСЯ состояния. Обычный тост живёт 5000 мс, а
+      // оба сценария обрыва (кнопка «Остановить сервер», Cmd+Q) пользователь
+      // запускает в ДРУГОМ окне — к моменту переключения в LAN-браузер
+      // транзиентный тост уже истекал, и D-18 выглядел как «не показывается
+      // вообще». Снимается в `ws.onopen` ниже.
+      reconnectToastId = pushToast('warning', 'Соединение с сервером потеряно. Переподключение…', {
+        sticky: true,
+      });
     })
-    .catch(() => {
-      // Non-fatal if toast fails.
+    .catch((e) => {
+      // Non-fatal, но молчать нельзя — иначе отладка обрыва слепая.
+      console.error('[ws] не удалось показать тост обрыва соединения', e);
+    });
+}
+
+/** Снять залипающий тост обрыва, если он висит. */
+function clearReconnectingToast(): void {
+  const id = reconnectToastId;
+  if (id === null) {
+    return;
+  }
+  reconnectToastId = null;
+  import('$lib/stores/toast.svelte')
+    .then(({ removeToast }) => {
+      removeToast(id);
+    })
+    .catch((e) => {
+      console.error('[ws] не удалось снять тост обрыва соединения', e);
     });
 }
 
@@ -70,8 +108,10 @@ function connectBrowser(): void {
 
   ws.onopen = () => {
     if (reconnecting) {
-      // Successfully reconnected after a failure.
+      // Successfully reconnected after a failure — эпизод закрыт, залипающую
+      // индикацию обрыва снимаем.
       reconnecting = false;
+      clearReconnectingToast();
     }
     reconnectDelay = 1000; // Reset backoff on success.
   };
@@ -147,8 +187,11 @@ export async function connectWs(): Promise<() => void> {
         }
         // Reset reconnect state so a future first-consumer connectWs() call
         // starts a fresh backoff/toast cycle instead of inheriting stale state.
+        // Залипающий тост тоже снимаем: намеренное отключение последнего
+        // потребителя — не «потеря связи», висеть индикации не за чем.
         reconnecting = false;
         reconnectDelay = 1000;
+        clearReconnectingToast();
       };
     }
   }

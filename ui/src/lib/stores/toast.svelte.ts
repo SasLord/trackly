@@ -6,6 +6,19 @@ export interface ToastItem {
   id: string;
   kind: ToastKind;
   message: string;
+  /** Залипающий тост: без TTL, снимается только `removeToast`/кликом. */
+  sticky?: boolean;
+}
+
+export interface PushToastOptions {
+  /**
+   * Не снимать по TTL. Для индикации ДЛЯЩЕГОСЯ состояния — например «соединение
+   * с сервером потеряно»: такой тост обязан дожить до возврата пользователя в
+   * окно браузера, а не истечь за 5 с (отладочная сессия
+   * `ws-disconnect-toast-no-show`). Вызывающий сам снимает его `removeToast(id)`,
+   * когда состояние закончилось.
+   */
+  sticky?: boolean;
 }
 
 const TTL: Record<ToastKind, number> = {
@@ -19,16 +32,33 @@ const MAX_TOASTS = 10;
 
 export const toastStore = $state({ items: [] as ToastItem[] });
 
-export function pushToast(kind: ToastKind, message: string): void {
+/** Возвращает id созданного (или уже существующего залипающего) тоста. */
+export function pushToast(kind: ToastKind, message: string, opts?: PushToastOptions): string {
+  const sticky = opts?.sticky === true;
+
+  // Залипающие тосты дедуплицируются по тексту. Без этого флапающее соединение
+  // (connect/disconnect по кругу) копило бы стопку одинаковых несгораемых
+  // тостов — ровно симптом Bug A из сессии `ui-ws-toast-reports-flicker`, но уже
+  // без спасительного TTL. С дедупом их не больше одного одновременно.
+  if (sticky) {
+    const existing = toastStore.items.find((t) => t.sticky && t.message === message);
+    if (existing) {
+      return existing.id;
+    }
+  }
+
   const id = crypto.randomUUID();
   // Enforce max toast limit — drop oldest if over limit.
   if (toastStore.items.length >= MAX_TOASTS) {
     toastStore.items = toastStore.items.slice(toastStore.items.length - MAX_TOASTS + 1);
   }
-  toastStore.items = [...toastStore.items, { id, kind, message }];
-  setTimeout(() => {
-    toastStore.items = toastStore.items.filter((t) => t.id !== id);
-  }, TTL[kind]);
+  toastStore.items = [...toastStore.items, { id, kind, message, sticky }];
+  if (!sticky) {
+    setTimeout(() => {
+      toastStore.items = toastStore.items.filter((t) => t.id !== id);
+    }, TTL[kind]);
+  }
+  return id;
 }
 
 export function removeToast(id: string): void {
