@@ -34,6 +34,14 @@
 //!     совпадают в обе стороны, пустой разбор краснит гейт;
 //!   * `behaviour_files_have_real_scenario_for_every_broadcasting_row` —
 //!     слой (2) привязан к реальным `#[tokio::test] async fn scenario_*`;
+//!   * `selftest_broadcast_*`, `selftest_exempt_*`, `selftest_scan_stats_*` —
+//!     порядок «рассылка ПОСЛЕ записи» (WR-06: `BroadcastBeforeWriter`,
+//!     `BroadcastWithoutWrite`) и механика Exempt (WR-07: `ExemptBroadcasts`);
+//!   * `mutation_early_broadcast_in_every_broadcasts_row_*`,
+//!     `mutation_broadcast_moved_before_write_*`,
+//!     `mutation_broadcast_in_every_exempt_row_*` — свипы по ВСЕМ строкам
+//!     Broadcasts/Exempt реестра и именованные переносы на реальных исходниках;
+//!     `gate_new_checks_measured_something` — гейт не зелёный при нулевом измерении;
 //!   * `mutation_*` — мутации реальных исходников в памяти (файлы на диске не
 //!     трогаются), якорь уникален (`matches(anchor).count() == 1`), красный
 //!     результат сверяется с зелёным исходным (разностная проверка);
@@ -49,7 +57,8 @@ use entities_support::fixture::{
 };
 use entities_support::registry::*;
 use entities_support::scan::{
-    first_test_item_range, inventory, owns_writer_outside_tests, parse_fns, prepare, scan, Kind,
+    first_test_item_range, inventory, owns_writer_outside_tests, parse_fns, prepare, scan,
+    scan_with_stats, writer_call_ranges, Kind,
 };
 use entities_support::scenarios::{assert_behaviour_file_covers, check_behaviour_file};
 use trackly_app::dto::printer::WsEvent;
@@ -640,6 +649,301 @@ impl B { pub fn go(&self) {} }
     assert!(has(&vs, "go", Kind::DuplicateFn), "{:?}", kinds(&vs));
 }
 
+// ---- selftest порядка «рассылка ПОСЛЕ записи» (WR-06) и механики Exempt (WR-07) ----
+
+const BCAST_TOP: &str = "self.broadcast_entities(\"create\", vec![1], vec![], vec![]);";
+
+#[test]
+fn selftest_broadcast_before_writer_is_red() {
+    let src = r#"
+impl S {
+    pub async fn create(&self, x: i64) -> R {
+        self.broadcast_entities("create", vec![x], vec![], vec![]);
+        let row = self
+            .writer
+            .execute(move |c| { Ok(x) })
+            .await?;
+        Ok(row)
+    }
+}
+"#;
+    let reg = [row("create", Verdict::Broadcasts)];
+    let vs = scan(SYN, src, &reg);
+    assert!(
+        has(&vs, "create", Kind::BroadcastBeforeWriter),
+        "{:?}",
+        kinds(&vs)
+    );
+    assert!(
+        !has(&vs, "create", Kind::BroadcastInsideWriter),
+        "рассылка ДО записи не внутри скобок: {:?}",
+        kinds(&vs)
+    );
+    // Контроль: чистая фикстура остаётся зелёной.
+    let clean = scan(SYN, SYN_CLEAN, &reg);
+    assert!(clean.is_empty(), "{:?}", kinds(&clean));
+}
+
+#[test]
+fn selftest_broadcast_between_two_writers_is_red() {
+    let two = |between: &str, after: &str| {
+        format!(
+            r#"
+impl S {{
+    pub async fn create(&self, x: i64) -> R {{
+        self.writer.execute(move |c| {{ Ok(x) }}).await?;
+        {between}
+        self.writer.execute(move |c| {{ Ok(x) }}).await?;
+        {after}
+        Ok(())
+    }}
+}}
+"#
+        )
+    };
+    let reg = [row("create", Verdict::Broadcasts)];
+    let red = scan(SYN, &two(BCAST_TOP, ""), &reg);
+    assert!(
+        has(&red, "create", Kind::BroadcastBeforeWriter),
+        "{:?}",
+        kinds(&red)
+    );
+    let green = scan(SYN, &two("", BCAST_TOP), &reg);
+    assert!(green.is_empty(), "{:?}", kinds(&green));
+}
+
+fn archive_like(before: &str, after: &str) -> String {
+    format!(
+        r#"
+impl S {{
+    pub async fn archive(&self, id: i64) -> R {{
+        {before}
+        self.set_archived(id).await?;
+        {after}
+        Ok(())
+    }}
+
+    async fn set_archived(&self, id: i64) -> R {{
+        self.writer.execute(move |c| {{ Ok(id) }}).await
+    }}
+}}
+"#
+    )
+}
+
+#[test]
+fn selftest_broadcast_before_delegated_write_is_red() {
+    let call = "self.broadcast_entities(\"archive\", vec![1], vec![], vec![]);";
+    let reg = [
+        row("archive", Verdict::Broadcasts),
+        row("set_archived", Verdict::Exempt(EXEMPT_REASON)),
+    ];
+    let red = scan(SYN, &archive_like(call, ""), &reg);
+    assert!(
+        has(&red, "archive", Kind::BroadcastBeforeWriter),
+        "{:?}",
+        kinds(&red)
+    );
+    let green = scan(SYN, &archive_like("", call), &reg);
+    assert!(green.is_empty(), "{:?}", kinds(&green));
+}
+
+fn transitive_like(before: &str, after: &str) -> String {
+    format!(
+        r#"
+impl S {{
+    pub async fn create(&self, x: i64) -> R {{
+        {before}
+        let row = self.prepare_row(x).await?;
+        {after}
+        Ok(row)
+    }}
+
+    async fn prepare_row(&self, x: i64) -> R {{
+        self.insert_row(x).await
+    }}
+
+    async fn insert_row(&self, x: i64) -> R {{
+        self.writer.execute(move |c| {{ Ok(x) }}).await
+    }}
+}}
+"#
+    )
+}
+
+#[test]
+fn selftest_broadcast_before_transitive_delegate_is_red() {
+    let reg = [
+        row("create", Verdict::Broadcasts),
+        row("insert_row", Verdict::Exempt(EXEMPT_REASON)),
+    ];
+    let red = scan(SYN, &transitive_like(BCAST_TOP, ""), &reg);
+    assert!(
+        has(&red, "create", Kind::BroadcastBeforeWriter),
+        "{:?}",
+        kinds(&red)
+    );
+    assert!(
+        !has(&red, "create", Kind::BroadcastWithoutWrite),
+        "транзитивный владелец записи не найден: {:?}",
+        kinds(&red)
+    );
+}
+
+#[test]
+fn selftest_broadcast_after_transitive_delegate_is_green() {
+    let reg = [
+        row("create", Verdict::Broadcasts),
+        row("insert_row", Verdict::Exempt(EXEMPT_REASON)),
+    ];
+    let green = scan(SYN, &transitive_like("", BCAST_TOP), &reg);
+    assert!(green.is_empty(), "{:?}", kinds(&green));
+}
+
+#[test]
+fn selftest_broadcasts_row_without_any_write_is_red() {
+    // Запись идёт через чужой объект: сканер её не видит и обязан покраснеть.
+    let src = r#"
+impl S {
+    pub async fn create(&self, x: i64) -> R {
+        let row = self.other_repo.insert(x).await?;
+        self.broadcast_entities("create", vec![row], vec![], vec![]);
+        Ok(row)
+    }
+}
+"#;
+    let reg = [row("create", Verdict::Broadcasts)];
+    let vs = scan(SYN, src, &reg);
+    assert!(
+        has(&vs, "create", Kind::BroadcastWithoutWrite),
+        "{:?}",
+        kinds(&vs)
+    );
+}
+
+#[test]
+fn selftest_broadcast_inside_writer_is_not_double_reported() {
+    let src = r#"
+impl S {
+    pub async fn create(&self) {
+        self.writer.execute(move |c| {
+            self.broadcast_entities("create", vec![1], vec![], vec![]);
+            Ok(())
+        }).await.unwrap();
+    }
+}
+"#;
+    let reg = [row("create", Verdict::Broadcasts)];
+    let vs = scan(SYN, src, &reg);
+    assert!(
+        has(&vs, "create", Kind::BroadcastInsideWriter),
+        "{:?}",
+        kinds(&vs)
+    );
+    assert!(
+        !has(&vs, "create", Kind::BroadcastBeforeWriter),
+        "рассылка внутри writer отчитана дважды: {:?}",
+        kinds(&vs)
+    );
+}
+
+#[test]
+fn selftest_recursive_call_is_not_a_write_point() {
+    // Саморекурсия не делает функцию «владельцем записи» и не даёт точки записи.
+    let src = r#"
+impl S {
+    pub async fn create(&self, n: i64) -> R {
+        self.broadcast_entities("create", vec![n], vec![], vec![]);
+        if n > 0 { return self.create(n - 1).await; }
+        Ok(())
+    }
+}
+"#;
+    let reg = [row("create", Verdict::Broadcasts)];
+    let vs = scan(SYN, src, &reg);
+    assert!(
+        has(&vs, "create", Kind::BroadcastWithoutWrite),
+        "{:?}",
+        kinds(&vs)
+    );
+}
+
+#[test]
+fn selftest_exempt_row_with_broadcast_is_red() {
+    let src = r#"
+impl S {
+    pub async fn seed(&self) {
+        self.writer.execute(|c| Ok(())).await.unwrap();
+        self.broadcast_entities("seed", vec![], vec![], vec![]);
+    }
+    pub async fn wrap(&self) {
+        self.broadcast_entities("wrap", vec![], vec![], vec![]);
+    }
+}
+"#;
+    let reg = [
+        row("seed", Verdict::Exempt(EXEMPT_REASON)),
+        row("wrap", Verdict::Exempt(EXEMPT_REASON)),
+    ];
+    let vs = scan(SYN, src, &reg);
+    assert!(has(&vs, "seed", Kind::ExemptBroadcasts), "{:?}", kinds(&vs));
+    assert!(has(&vs, "wrap", Kind::ExemptBroadcasts), "{:?}", kinds(&vs));
+}
+
+#[test]
+fn selftest_exempt_row_with_broadcast_inside_writer_is_red() {
+    let src = r#"
+impl S {
+    pub async fn seed(&self) {
+        self.writer.execute(move |c| {
+            self.broadcast_entities("seed", vec![], vec![], vec![]);
+            Ok(())
+        }).await.unwrap();
+    }
+}
+"#;
+    let reg = [row("seed", Verdict::Exempt(EXEMPT_REASON))];
+    let vs = scan(SYN, src, &reg);
+    assert!(
+        has(&vs, "seed", Kind::BroadcastInsideWriter),
+        "{:?}",
+        kinds(&vs)
+    );
+    assert!(
+        !has(&vs, "seed", Kind::ExemptBroadcasts),
+        "{:?}",
+        kinds(&vs)
+    );
+}
+
+#[test]
+fn selftest_scan_stats_count_checked_rows() {
+    let reg = [row("create", Verdict::Broadcasts)];
+    let (vs, stats) = scan_with_stats(SYN, SYN_CLEAN, &reg);
+    assert!(vs.is_empty(), "{:?}", kinds(&vs));
+    assert_eq!(stats.broadcasts_ordered, 1);
+    assert_eq!(stats.exempt_checked, 0);
+
+    let src = r#"
+impl S {
+    pub async fn seed(&self) {
+        self.writer.execute(|c| Ok(())).await.unwrap();
+    }
+}
+"#;
+    let reg = [row("seed", Verdict::Exempt(EXEMPT_REASON))];
+    let (vs, stats) = scan_with_stats(SYN, src, &reg);
+    assert!(vs.is_empty(), "{:?}", kinds(&vs));
+    assert_eq!(stats.broadcasts_ordered, 0);
+    assert_eq!(stats.exempt_checked, 1);
+
+    // Строка Broadcasts без точки записи ничего не «измерила».
+    let none = "impl S { pub async fn create(&self) { self.broadcast_entities(\"create\", vec![], vec![], vec![]); } }";
+    let reg = [row("create", Verdict::Broadcasts)];
+    let (_, stats) = scan_with_stats(SYN, none, &reg);
+    assert_eq!(stats.broadcasts_ordered, 0);
+}
+
 // ---- selftest слоя (2): scenarios.rs ----------------------------------------
 
 fn bc(funcs: &[&'static str]) -> Vec<Entry> {
@@ -938,6 +1242,258 @@ fn mutation_new_pub_fn_after_mid_file_test_module_in_act_service_is_red() {
         "функция после тестового модуля посреди файла осталась невидимой: {:?}",
         kinds(&after)
     );
+}
+
+// ---- мутации порядка и Exempt на РЕАЛЬНЫХ исходниках (WR-06, WR-07) ----------
+
+/// Вызов рассылки, вставляемый мутациями (метка = имя функции).
+fn probe_call(label: &str) -> String {
+    format!("self.broadcast_entities(\"{label}\", Vec::new(), Vec::new(), Vec::new());")
+}
+
+/// Единственная функция `func` исходника и проверка, что её тело открыто `{`.
+fn unique_fn(src: &str, file: &str, func: &str) -> entities_support::scan::FnInfo {
+    let fns: Vec<_> = parse_fns(&prepare(src))
+        .into_iter()
+        .filter(|f| f.name == func)
+        .collect();
+    assert_eq!(
+        fns.len(),
+        1,
+        "{file}::{func}: имя функции неуникально или функции нет"
+    );
+    let fi = fns.into_iter().next().expect("one fn");
+    assert_eq!(
+        src.as_bytes()[fi.body.0],
+        b'{',
+        "{file}::{func}: тело не открыто `{{`"
+    );
+    fi
+}
+
+#[test]
+fn mutation_early_broadcast_in_every_broadcasts_row_turns_gate_red() {
+    let mut checked = 0usize;
+    for e in REGISTRY.iter().filter(|e| e.verdict == Verdict::Broadcasts) {
+        let src = read_service(e.file);
+        let fi = unique_fn(&src, e.file, e.func);
+        // Разностная проверка: на исходном тексте нарушения порядка нет.
+        let before = scan(e.file, &src, REGISTRY);
+        assert!(
+            !has(&before, e.func, Kind::BroadcastBeforeWriter)
+                && !has(&before, e.func, Kind::BroadcastWithoutWrite),
+            "{}::{}: красная уже до мутации: {:?}",
+            e.file,
+            e.func,
+            kinds(&before)
+        );
+        let mut mutated = src.clone();
+        mutated.insert_str(fi.body.0 + 1, &probe_call(e.func));
+        assert_ne!(mutated, src, "мутация не применилась");
+        let after = scan(e.file, &mutated, REGISTRY);
+        assert!(
+            has(&after, e.func, Kind::BroadcastBeforeWriter),
+            "{}::{}: рассылка в начале тела не покраснела: {:?}",
+            e.file,
+            e.func,
+            kinds(&after)
+        );
+        checked += 1;
+    }
+    assert_eq!(
+        checked,
+        REGISTRY
+            .iter()
+            .filter(|e| e.verdict == Verdict::Broadcasts)
+            .count(),
+        "свип обработал не все строки Broadcasts"
+    );
+    assert!(checked >= 30, "свип по Broadcasts измерил только {checked}");
+}
+
+/// Мутация якорем: уникальность утверждена ДО замены.
+fn replace_unique(src: &str, anchor: &str, with: &str) -> String {
+    assert_eq!(
+        src.matches(anchor).count(),
+        1,
+        "якорь неуникален или исчез: {anchor}"
+    );
+    src.replacen(anchor, with, 1)
+}
+
+#[test]
+fn mutation_broadcast_moved_before_write_on_real_sources_is_red() {
+    // (A) place_service::create: перенос вызова из хвоста в начало тела.
+    let f = "place_service.rs";
+    let src = read_service(f);
+    let tail = "self.broadcast_entities(\"create\", place_ids, Vec::new(), Vec::new());";
+    let sig = "pub async fn create(&self, caller: &Identity, new: PlaceNew) -> Result<PlaceDto, AppError> {";
+    let moved = replace_unique(&src, tail, "");
+    let moved = replace_unique(
+        &moved,
+        sig,
+        &format!("{sig}\n        {}", probe_call("create")),
+    );
+    assert_ne!(moved, src, "мутация (A) не применилась");
+    let base = scan(f, &src, REGISTRY);
+    assert!(
+        !has(&base, "create", Kind::BroadcastBeforeWriter),
+        "(A) красная до мутации: {:?}",
+        kinds(&base)
+    );
+    let after = scan(f, &moved, REGISTRY);
+    assert!(
+        has(&after, "create", Kind::BroadcastBeforeWriter),
+        "(A) перенос рассылки выше записи не покраснел: {:?}",
+        kinds(&after)
+    );
+
+    // (B) place_service::archive: запись делегирована set_archived.
+    let anchor = "self.set_archived(caller.user_id, id, version, true, \"archive\")";
+    let mutated = replace_unique(
+        &src,
+        anchor,
+        &format!("{}\n        {anchor}", probe_call("archive")),
+    );
+    assert_ne!(mutated, src, "мутация (B) не применилась");
+    assert!(
+        !has(&base, "archive", Kind::BroadcastBeforeWriter),
+        "(B) красная до мутации: {:?}",
+        kinds(&base)
+    );
+    let after = scan(f, &mutated, REGISTRY);
+    assert!(
+        has(&after, "archive", Kind::BroadcastBeforeWriter),
+        "(B) рассылка до делегированной записи не покраснела: {:?}",
+        kinds(&after)
+    );
+
+    // (C) device_service::create -> create_without_broadcast -> insert_new_and_get.
+    let f = "device_service.rs";
+    let src = read_service(f);
+    let anchor = "let outcome = self.create_without_broadcast(new).await?;";
+    let mutated = replace_unique(
+        &src,
+        anchor,
+        &format!("{}\n        {anchor}", probe_call("create")),
+    );
+    assert_ne!(mutated, src, "мутация (C) не применилась");
+    let base = scan(f, &src, REGISTRY);
+    assert!(
+        !has(&base, "create", Kind::BroadcastBeforeWriter),
+        "(C) красная до мутации: {:?}",
+        kinds(&base)
+    );
+    let after = scan(f, &mutated, REGISTRY);
+    assert!(
+        has(&after, "create", Kind::BroadcastBeforeWriter),
+        "(C) рассылка до транзитивно делегированной записи не покраснела: {:?}",
+        kinds(&after)
+    );
+}
+
+#[test]
+fn mutation_broadcast_in_every_exempt_row_turns_gate_red() {
+    let mut checked = 0usize;
+    let mut writer_owning = 0usize;
+    let mut files: BTreeSet<&str> = BTreeSet::new();
+    for e in REGISTRY
+        .iter()
+        .filter(|e| matches!(e.verdict, Verdict::Exempt(_)))
+    {
+        let src = read_service(e.file);
+        let fi = unique_fn(&src, e.file, e.func);
+        let before = scan(e.file, &src, REGISTRY);
+        assert!(
+            !has(&before, e.func, Kind::ExemptBroadcasts)
+                && !has(&before, e.func, Kind::BroadcastInsideWriter),
+            "{}::{}: красная уже до мутации: {:?}",
+            e.file,
+            e.func,
+            kinds(&before)
+        );
+        let call = probe_call(e.func);
+
+        let mut mutated = src.clone();
+        mutated.insert_str(fi.body.0 + 1, &call);
+        let after = scan(e.file, &mutated, REGISTRY);
+        assert!(
+            has(&after, e.func, Kind::ExemptBroadcasts),
+            "{}::{}: рассылка в Exempt-функции не покраснела: {:?}",
+            e.file,
+            e.func,
+            kinds(&after)
+        );
+
+        if fi.owns_write {
+            writer_owning += 1;
+            let (open, _) = *writer_call_ranges(&prepare(&src), &fi)
+                .first()
+                .expect("owns_write, но диапазонов writer нет");
+            let mut inside = src.clone();
+            inside.insert_str(open + 1, &call);
+            let after = scan(e.file, &inside, REGISTRY);
+            assert!(
+                has(&after, e.func, Kind::BroadcastInsideWriter),
+                "{}::{}: рассылка внутри writer в Exempt-функции не покраснела: {:?}",
+                e.file,
+                e.func,
+                kinds(&after)
+            );
+        }
+        files.insert(e.file);
+        checked += 1;
+    }
+    assert_eq!(
+        checked,
+        REGISTRY
+            .iter()
+            .filter(|e| matches!(e.verdict, Verdict::Exempt(_)))
+            .count(),
+        "свип обработал не все строки Exempt"
+    );
+    assert!(checked >= 20, "свип по Exempt измерил только {checked}");
+    assert!(
+        writer_owning >= 3,
+        "Exempt-функций, владеющих writer, только {writer_owning}"
+    );
+    for must in ["group_place.rs", "group_membership.rs"] {
+        assert!(
+            files.contains(must),
+            "{must} не попал в свип Exempt (T-41.7-30): {files:?}"
+        );
+    }
+}
+
+#[test]
+fn gate_new_checks_measured_something() {
+    let (mut ordered, mut exempt) = (0usize, 0usize);
+    let mut violations: Vec<String> = Vec::new();
+    for f in SCOPE_FILES {
+        let (vs, stats) = scan_with_stats(f, &read_service(f), REGISTRY);
+        ordered += stats.broadcasts_ordered;
+        exempt += stats.exempt_checked;
+        violations.extend(vs.iter().map(|v| v.to_string()));
+    }
+    let broadcasts_rows = REGISTRY
+        .iter()
+        .filter(|e| e.verdict == Verdict::Broadcasts)
+        .count();
+    let exempt_rows = REGISTRY
+        .iter()
+        .filter(|e| matches!(e.verdict, Verdict::Exempt(_)))
+        .count();
+    assert_eq!(
+        ordered, broadcasts_rows,
+        "проверка порядка отработала не на каждой строке Broadcasts"
+    );
+    assert_eq!(
+        exempt, exempt_rows,
+        "механика Exempt отработала не на каждой строке Exempt"
+    );
+    assert!(ordered >= 30, "проверка порядка измерила только {ordered}");
+    assert!(exempt >= 20, "механика Exempt измерила только {exempt}");
+    assert!(violations.is_empty(), "нарушения: {violations:?}");
 }
 
 // ---- гард области -------------------------------------------------------------

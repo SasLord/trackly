@@ -18,16 +18,29 @@
 //!   посреди файла, а нетестовый код после него обязан оставаться видимым —
 //!   иначе новая `pub async fn` в этой зоне прошла бы гейт незамеченной.
 //!   Вырезанный диапазон заменяется пробелами в обоих текстах.
-//! * [`scan`] — правила вердиктов: `NoVerdict`, `MissingBroadcast`,
-//!   `BroadcastInsideWriter` (D-04: событие до коммита недопустимо),
-//!   `ReadOnlyOwnsWriter`, `ReadOnlyCallsWriter`, `StaleRow`, `DuplicateFn`,
-//!   `DeadCodeAllowLeft`.
+//! * [`scan`] / [`scan_with_stats`] — правила вердиктов: `NoVerdict`,
+//!   `MissingBroadcast`, `BroadcastInsideWriter` (D-04: событие до коммита
+//!   недопустимо), `BroadcastBeforeWriter` (D-04: рассылка обязана стоять
+//!   ПОСЛЕ последней точки записи тела), `BroadcastWithoutWrite` (строка
+//!   Broadcasts, в теле которой сканер не нашёл ни одной точки записи),
+//!   `ExemptBroadcasts` (строка Exempt не рассылает: освобождение =
+//!   «событие не из этой функции»), `ReadOnlyOwnsWriter`,
+//!   `ReadOnlyCallsWriter`, `StaleRow`, `DuplicateFn`, `DeadCodeAllowLeft`.
 //!
-//! ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ. Правило `ReadOnlyCallsWriter` видит только вызовы
-//! `self.<имя>(` / `Self::<имя>(` владельцев записи ТОГО ЖЕ файла. Вызовы
-//! владельцев записи через другой объект, макрос или из другого файла
-//! (`group_place::*`, репозитории) оно НЕ ловит; такие места закрывает слой (2)
-//! — поведенческие сценарии с реальным захватом события.
+//! ТОЧКА ЗАПИСИ — не только `writer.execute(..)`: запись может быть
+//! делегирована self-методу (`archive` пишет через `set_archived`,
+//! `device::create` — через `create_without_broadcast` -> `insert_new_and_get`).
+//! Поэтому множество «владельцев записи» файла замыкается фикспойнтом: функция,
+//! вызывающая `self.<владелец>(` / `Self::<владелец>(`, сама владеет записью,
+//! а вызов такого метода — точка записи наравне с `writer.execute(..)`.
+//!
+//! ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ. Точки записи ищутся ТОЛЬКО в том же файле
+//! (`writer.execute(` и вызовы `self.<имя>(` / `Self::<имя>(` его владельцев).
+//! Запись через другой объект, макрос или из другого файла (`group_place::*`,
+//! репозитории) сканер НЕ видит: строку Broadcasts без единой видимой точки
+//! записи он краснит громко (`BroadcastWithoutWrite`), а не пропускает; строку
+//! ReadOnly с такой записью правило `ReadOnlyCallsWriter` НЕ ловит — такие места
+//! закрывает слой (2) — поведенческие сценарии с реальным захватом события.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -52,6 +65,19 @@ pub enum Kind {
     StaleRow,
     DuplicateFn,
     DeadCodeAllowLeft,
+    BroadcastBeforeWriter,
+    BroadcastWithoutWrite,
+    ExemptBroadcasts,
+}
+
+/// Что гейт реально измерил (D-08: зелёный, ничего не измерив, недопустим).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScanStats {
+    /// Строки Broadcasts, у которых проверка порядка отработала (есть и вызов
+    /// рассылки, и хотя бы одна точка записи).
+    pub broadcasts_ordered: usize,
+    /// Строки Exempt, прошедшие механическую проверку «не рассылает».
+    pub exempt_checked: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -460,11 +486,88 @@ fn broadcast_calls(p: &Prepared, lo: usize, hi: usize) -> Vec<(usize, Option<Str
     out
 }
 
+/// Диапазоны скобок каждого `writer.execute( .. )` в теле функции.
+pub fn writer_call_ranges(p: &Prepared, f: &FnInfo) -> Vec<(usize, usize)> {
+    writer_ranges(p.skeleton.as_bytes(), &p.skeleton, f.body.0, f.body.1 + 1)
+}
+
+/// Регэксп вызова `self.<имя>(` / `Self::<имя>(` любого из `names`; имя — в
+/// группе 1. `None` на пустом множестве.
+fn self_call_re(names: &BTreeSet<String>) -> Option<Regex> {
+    if names.is_empty() {
+        return None;
+    }
+    let alt: Vec<String> = names.iter().map(|n| regex::escape(n)).collect();
+    Some(
+        Regex::new(&format!(
+            r"(?:\bself\s*\.|\bSelf\s*::)\s*({})\s*\(",
+            alt.join("|")
+        ))
+        .expect("regex"),
+    )
+}
+
+/// Имена функций файла, транзитивно владеющих записью: начальное множество —
+/// `owns_write`, дальше фикспойнт «зовёт self-метод из множества».
+fn writing_fns(p: &Prepared, fns: &[FnInfo]) -> BTreeSet<String> {
+    let mut set: BTreeSet<String> = fns
+        .iter()
+        .filter(|f| f.owns_write)
+        .map(|f| f.name.clone())
+        .collect();
+    loop {
+        let Some(re) = self_call_re(&set) else { break };
+        let mut grew = false;
+        for f in fns {
+            if set.contains(&f.name) {
+                continue;
+            }
+            let body = &p.skeleton[f.body.0..=f.body.1];
+            let calls_other = re
+                .captures_iter(body)
+                .any(|c| c.get(1).is_some_and(|m| m.as_str() != f.name));
+            if calls_other {
+                set.insert(f.name.clone());
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+    set
+}
+
+/// Точки записи тела `f`: скобки `writer.execute(..)` и скобки вызовов
+/// транзитивных владельцев записи (кроме самой `f`, рекурсия не запись).
+fn write_points(p: &Prepared, f: &FnInfo, writing: &BTreeSet<String>) -> Vec<(usize, usize)> {
+    let mut out = writer_call_ranges(p, f);
+    if let Some(re) = self_call_re(writing) {
+        let sk = p.skeleton.as_bytes();
+        let (open, close) = f.body;
+        for c in re.captures_iter(&p.skeleton[open..=close]) {
+            if c.get(1).is_some_and(|m| m.as_str() == f.name) {
+                continue;
+            }
+            let paren = open + c.get(0).expect("m").end() - 1;
+            if let Some(end) = match_close(sk, paren, b'(', b')') {
+                out.push((paren, end));
+            }
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Правила
 // ---------------------------------------------------------------------------
 
 pub fn scan(rel: &str, src: &str, registry: &[Entry]) -> Vec<Violation> {
+    scan_with_stats(rel, src, registry).0
+}
+
+pub fn scan_with_stats(rel: &str, src: &str, registry: &[Entry]) -> (Vec<Violation>, ScanStats) {
+    let mut stats = ScanStats::default();
     let p = prepare(src);
     let fns = parse_fns(&p);
     let mut out: Vec<Violation> = Vec::new();
@@ -485,6 +588,7 @@ pub fn scan(rel: &str, src: &str, registry: &[Entry]) -> Vec<Violation> {
         .filter(|f| f.owns_write)
         .map(|f| f.name.clone())
         .collect();
+    let writing = writing_fns(&p, &fns);
 
     // Повторы имён.
     let mut count: BTreeMap<&str, usize> = BTreeMap::new();
@@ -543,8 +647,10 @@ pub fn scan(rel: &str, src: &str, registry: &[Entry]) -> Vec<Violation> {
                     ));
                 }
                 let wr = writer_ranges(p.skeleton.as_bytes(), &p.skeleton, open, close + 1);
+                let mut inside: BTreeSet<usize> = BTreeSet::new();
                 for (paren, _) in &calls {
                     if wr.iter().any(|(a, b)| paren > a && paren < b) {
+                        inside.insert(*paren);
                         out.push(v(
                             &f.name,
                             Kind::BroadcastInsideWriter,
@@ -553,8 +659,58 @@ pub fn scan(rel: &str, src: &str, registry: &[Entry]) -> Vec<Violation> {
                         ));
                     }
                 }
+                // D-04: рассылка СТРОГО ПОСЛЕ последней точки записи тела.
+                if !calls.is_empty() {
+                    let points = write_points(&p, f, &writing);
+                    match points.iter().map(|(_, e)| *e).max() {
+                        None => out.push(v(
+                            &f.name,
+                            Kind::BroadcastWithoutWrite,
+                            "вердикт Broadcasts, но сканер не нашёл в теле ни одной точки записи (writer.execute(..) или вызов self-метода, владеющего записью): запись идёт через другой файл/объект/макрос — порядок не проверяем, гейт краснеет громко"
+                                .into(),
+                        )),
+                        Some(last_end) => {
+                            stats.broadcasts_ordered += 1;
+                            for (paren, _) in &calls {
+                                if inside.contains(paren) {
+                                    continue;
+                                }
+                                if *paren < last_end {
+                                    out.push(v(
+                                        &f.name,
+                                        Kind::BroadcastBeforeWriter,
+                                        "broadcast_entities стоит раньше конца последней точки записи тела: событие обязано идти ПОСЛЕ записи (D-04)"
+                                            .into(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            Verdict::Exempt(_) => {}
+            Verdict::Exempt(_) => {
+                // D-08: освобождение = «событие не из этой функции»; рассылка в
+                // Exempt-функции противоречит собственной причине и удваивает событие.
+                stats.exempt_checked += 1;
+                let wr = writer_ranges(p.skeleton.as_bytes(), &p.skeleton, open, close + 1);
+                for (paren, _) in broadcast_calls(&p, open, close) {
+                    if wr.iter().any(|(a, b)| paren > *a && paren < *b) {
+                        out.push(v(
+                            &f.name,
+                            Kind::BroadcastInsideWriter,
+                            "Exempt-функция рассылает внутри скобок writer.execute(..): событие до коммита (D-04)"
+                                .into(),
+                        ));
+                    } else {
+                        out.push(v(
+                            &f.name,
+                            Kind::ExemptBroadcasts,
+                            "Exempt-функция рассылает: либо вердикт Broadcasts, либо убрать вызов (освобождение = 'эта функция не шлёт событие')"
+                                .into(),
+                        ));
+                    }
+                }
+            }
             Verdict::ReadOnly => {
                 if f.owns_write {
                     out.push(v(
@@ -608,5 +764,5 @@ pub fn scan(rel: &str, src: &str, registry: &[Entry]) -> Vec<Violation> {
         ));
     }
 
-    out
+    (out, stats)
 }
