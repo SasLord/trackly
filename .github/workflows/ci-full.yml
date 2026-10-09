@@ -24,7 +24,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # 75, а не 45: Windows не умещался. Замеры 2026-10-08 (прогон 37862639613):
+    # macOS 15м55с и ubuntu 27м19с проходили целиком, а windows был убит на 45м09с
+    # («exceeded the maximum execution time of 45m0s») — причём ПОСЛЕ успешных
+    # `cargo fmt --check`, `cargo clippy` и всего `cargo test`; срезало на шаге
+    # `cargo build --release -p trackly-app`. Для масштаба: полная релизная
+    # Windows-сборка в release.yml (компиляция + NSIS, холодный чекаут) занимает
+    # 29м07с, то есть job'у нужно ~65-70 минут. НЕ срезать обратно как
+    # «подозрительно большой»: красный по таймауту job скипает всё за собой
+    # (procmon) и превращает ci-full в сигнал, на который перестают смотреть.
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
