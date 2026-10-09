@@ -506,7 +506,9 @@ async fn display_number_space_covers_returns_in_both_directions() {
             .await
             .expect("create #44")
             .expect_created("create #44");
-        return_item(&svc, &a44, 0).await.expect("solo return of #44");
+        return_item(&svc, &a44, 0)
+            .await
+            .expect("solo return of #44");
 
         // The shared occupied endpoint (live hint / D-01 pre-check) sees the
         // return under its canonical display "44в1" (case-insensitive).

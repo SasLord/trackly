@@ -455,7 +455,11 @@ async fn deleting_non_last_return_does_not_renumber_remaining() {
             "deleting a sibling return must not change the remaining act number"
         );
         assert_eq!(ret2_after.sub_number, Some(2));
-        assert!(ret2_after.number.ends_with("в2"), "got: {}", ret2_after.number);
+        assert!(
+            ret2_after.number.ends_with("в2"),
+            "got: {}",
+            ret2_after.number
+        );
     })
     .await
     .expect("deleting_non_last budget");

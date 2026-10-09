@@ -18,10 +18,7 @@ use trackly_core::domain::acts::ActType;
 
 #[test]
 fn format_handover() {
-    assert_eq!(
-        format_act_number(ActType::Handover, "42", None, None),
-        "42"
-    );
+    assert_eq!(format_act_number(ActType::Handover, "42", None, None), "42");
 }
 
 #[test]
