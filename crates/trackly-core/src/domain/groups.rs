@@ -200,6 +200,10 @@ pub struct GroupRow {
     pub version: i64,
     pub created_at_utc: i64,
     pub updated_at_utc: i64,
+    /// Устройство-якорь группы (D-13/D-15); `None` у обычной группы.
+    pub anchor_device_id: Option<i64>,
+    /// Имя якорного устройства (подзапрос); `None` у обычной группы.
+    pub anchor_device_name: Option<String>,
 }
 
 /// Данные для создания группы.
@@ -245,6 +249,8 @@ pub struct MemberDeviceRow {
     /// Полный путь места из `place_full_paths`; `None`, если у устройства нет места.
     pub place_path: Option<String>,
     pub status_name: Option<String>,
+    /// Код статуса (`device_statuses.code`): по нему таблица состава выбирает тон (D-09).
+    pub status_code: Option<String>,
 }
 
 /// Название: trim, пустое — «Укажите название.», длиннее `NAME_MAX_CHARS` — ошибка.

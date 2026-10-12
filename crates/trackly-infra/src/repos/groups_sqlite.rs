@@ -26,7 +26,9 @@ pub struct SqliteGroupRepository;
 
 /// Колонки группы (алиас `g`) в порядке, который ждёт `group_from_row_at`.
 const GROUP_COLS: &str = "g.id, g.type_id, g.name, g.seq, g.place_id, g.parent_group_id, \
-                          g.version, g.created_at_utc, g.updated_at_utc";
+                          g.version, g.created_at_utc, g.updated_at_utc, g.anchor_device_id, \
+                          (SELECT dv.name FROM devices dv WHERE dv.id = g.anchor_device_id) \
+                          AS anchor_device_name";
 
 /// Сообщение о цикле вложенности.
 const CYCLE_MESSAGE: &str = "Нельзя вложить группу в саму себя или в свою вложенную группу.";
@@ -50,6 +52,8 @@ fn group_from_row_at(row: &rusqlite::Row<'_>, o: usize) -> rusqlite::Result<Grou
         version: row.get(o + 6)?,
         created_at_utc: row.get(o + 7)?,
         updated_at_utc: row.get(o + 8)?,
+        anchor_device_id: row.get(o + 9)?,
+        anchor_device_name: row.get(o + 10)?,
     })
 }
 
@@ -249,6 +253,79 @@ impl SqliteGroupRepository {
         tx.query_row(&sql, rusqlite::params![device_id], group_from_row)
             .optional()
             .map_err(map_rusqlite)
+    }
+
+    /// Группа, у которой это устройство — якорь (D-13/D-15); `None` для обычного
+    /// устройства и для члена. Охрана удаления/вывода строится на этом примитиве.
+    pub fn anchor_group_of_device_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        device_id: i64,
+    ) -> Result<Option<GroupRow>, AppError> {
+        let sql = [
+            "SELECT ",
+            GROUP_COLS,
+            " FROM groups g WHERE g.anchor_device_id = ?1 AND g.deleted_at_utc IS NULL",
+        ]
+        .concat();
+        tx.query_row(&sql, rusqlite::params![device_id], group_from_row)
+            .optional()
+            .map_err(map_rusqlite)
+    }
+
+    /// Назначить устройство якорем группы. `version` и `updated_at_utc` намеренно НЕ
+    /// трогаются: метод вызывается сразу после `insert_group_in_tx` в той же транзакции,
+    /// лишний bump сломал бы CAS открытой карточки. Повторное назначение того же
+    /// устройства якорем другой группы падает на уникальном индексе `idx_groups_anchor`.
+    pub fn set_anchor_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        group_id: i64,
+        device_id: i64,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "UPDATE groups SET anchor_device_id = ?2 WHERE id = ?1",
+            rusqlite::params![group_id, device_id],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
+    /// Записать происхождение детали, только пока оно не задано (D-33): повторный
+    /// разбор не перезатирает прежнюю группу. `true`, если запись произошла.
+    pub fn set_device_origin_if_null_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        device_id: i64,
+        group_id: i64,
+    ) -> Result<bool, AppError> {
+        let affected = tx
+            .execute(
+                "UPDATE devices SET origin_group_id = ?2
+                 WHERE id = ?1 AND origin_group_id IS NULL",
+                rusqlite::params![device_id, group_id],
+            )
+            .map_err(map_rusqlite)?;
+        Ok(affected > 0)
+    }
+
+    /// Число живых «деталей» прямого состава группы: живые устройства `group_devices`
+    /// без самого якоря этой группы (D-20).
+    pub fn count_live_parts_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        group_id: i64,
+    ) -> Result<i64, AppError> {
+        tx.query_row(
+            "SELECT COUNT(*)
+             FROM group_devices gd
+             JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+             WHERE gd.group_id = ?1
+               AND d.id IS NOT (SELECT anchor_device_id FROM groups WHERE id = ?1)",
+            rusqlite::params![group_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)
     }
 
     /// Группа, «запирающая» устройство: только с `place_id IS NOT NULL`. Так D-21
@@ -638,7 +715,7 @@ impl SqliteGroupRepository {
         let mut stmt = conn
             .prepare(
                 "SELECT d.id, COALESCE(dt.name, ''), d.name, d.inventory_number,
-                        d.serial_number, d.place_id, pfp.full_path, ds.name
+                        d.serial_number, d.place_id, pfp.full_path, ds.name, ds.code
                  FROM group_devices gd
                  JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
                  LEFT JOIN device_types dt ON dt.id = d.type_id
@@ -659,6 +736,7 @@ impl SqliteGroupRepository {
                     place_id: r.get(5)?,
                     place_path: r.get(6)?,
                     status_name: r.get(7)?,
+                    status_code: r.get(8)?,
                 })
             })
             .map_err(map_rusqlite)?
