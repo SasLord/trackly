@@ -527,7 +527,7 @@ impl ReportService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            query_device_snapshot(&conn, &filter, "В работе")
+            query_device_snapshot(&conn, &filter, "в_работе")
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -543,7 +543,7 @@ impl ReportService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            query_device_snapshot(&conn, &filter, "На складе")
+            query_device_snapshot(&conn, &filter, "на_складе")
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -790,11 +790,11 @@ impl ReportService {
                     },
                     ReportCountEntry {
                         key: "in_use".into(),
-                        count: count_device_snapshot(&conn, &filter, "В работе").unwrap_or(0),
+                        count: count_device_snapshot(&conn, &filter, "в_работе").unwrap_or(0),
                     },
                     ReportCountEntry {
                         key: "in_stock".into(),
-                        count: count_device_snapshot(&conn, &filter, "На складе").unwrap_or(0),
+                        count: count_device_snapshot(&conn, &filter, "на_складе").unwrap_or(0),
                     },
                 ]
             } else if domain == "cartridges" {
@@ -1745,11 +1745,12 @@ fn query_movements_inner(
     Ok(ReportResponse { rows, total })
 }
 
-/// Snapshot report for devices by status name.
+/// Snapshot report for devices by status code (`device_statuses.code`, not the
+/// display name: a renamed status must not silently empty the report, 41.1 D-03).
 fn query_device_snapshot(
     conn: &rusqlite::Connection,
     filter: &ReportFilter,
-    default_status_name: &str,
+    default_status_code: &str,
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
@@ -1762,10 +1763,10 @@ fn query_device_snapshot(
         owned_params.push(Box::new(status_id));
     } else {
         clauses.push(format!(
-            "d.status_id = (SELECT id FROM device_statuses WHERE name = ?{} LIMIT 1)",
+            "d.status_id = (SELECT id FROM device_statuses WHERE code = ?{} LIMIT 1)",
             next_idx(&owned_params)
         ));
-        owned_params.push(Box::new(default_status_name.to_string()));
+        owned_params.push(Box::new(default_status_code.to_string()));
     }
     // D-28: subtree-inclusive place filter — choosing a place captures it
     // and every place nested under it, not just an exact place_id match.
@@ -2504,11 +2505,12 @@ fn count_acts_inner(
         .map_err(map_rusqlite)
 }
 
-/// COUNT(*) variant of query_device_snapshot — same WHERE clauses, no row collection.
+/// COUNT(*) variant of query_device_snapshot — same WHERE clauses, no row collection;
+/// status is matched by `device_statuses.code` (41.1 D-03).
 fn count_device_snapshot(
     conn: &rusqlite::Connection,
     filter: &ReportFilter,
-    default_status_name: &str,
+    default_status_code: &str,
 ) -> Result<i64, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
@@ -2521,10 +2523,10 @@ fn count_device_snapshot(
         owned_params.push(Box::new(status_id));
     } else {
         clauses.push(format!(
-            "d.status_id = (SELECT id FROM device_statuses WHERE name = ?{} LIMIT 1)",
+            "d.status_id = (SELECT id FROM device_statuses WHERE code = ?{} LIMIT 1)",
             next_idx(&owned_params)
         ));
-        owned_params.push(Box::new(default_status_name.to_string()));
+        owned_params.push(Box::new(default_status_code.to_string()));
     }
     // D-28: subtree-inclusive place filter — mirrors query_device_snapshot.
     if let Some(place_id) = filter.place_id {
