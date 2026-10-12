@@ -300,17 +300,29 @@ impl DashboardService {
             // ----------------------------------------------------------------
             // DASH-05: Printer counts (D-13: problematic = offline+error alerts)
             // ----------------------------------------------------------------
-            // printers table has no deleted_at_utc — count all rows.
+            // Мягкое удаление живёт на devices (printers.deleted_at_utc нет), поэтому
+            // все три счётчика джойнят devices и считают только живые устройства
+            // (Phase 41.1, D-37). Поллер скрытый принтер не опрашивает — его активный
+            // alert никогда не погаснет, и без фильтра он вечно висел бы в
+            // offline/problematic.
             let printer_total: i64 = conn
-                .query_row("SELECT COUNT(*) FROM printers", [], |r| r.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM printers p \
+                     JOIN devices d ON d.id = p.device_id \
+                     WHERE d.deleted_at_utc IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
                 .map_err(map_rusqlite)?;
 
             // Offline count: printers with active 'offline' alert (unacknowledged = active).
             // printer_alerts has UNIQUE(printer_id) — no DISTINCT needed.
             let printer_offline: i64 = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM printer_alerts \
-                     WHERE alert_type = 'offline'",
+                    "SELECT COUNT(*) FROM printer_alerts a \
+                     JOIN printers p ON p.id = a.printer_id \
+                     JOIN devices d ON d.id = p.device_id \
+                     WHERE a.alert_type = 'offline' AND d.deleted_at_utc IS NULL",
                     [],
                     |r| r.get(0),
                 )
@@ -319,8 +331,10 @@ impl DashboardService {
             // Problematic: printers with offline or error alerts (D-13).
             let printer_problematic: i64 = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM printer_alerts \
-                     WHERE alert_type IN ('offline', 'error')",
+                    "SELECT COUNT(*) FROM printer_alerts a \
+                     JOIN printers p ON p.id = a.printer_id \
+                     JOIN devices d ON d.id = p.device_id \
+                     WHERE a.alert_type IN ('offline', 'error') AND d.deleted_at_utc IS NULL",
                     [],
                     |r| r.get(0),
                 )

@@ -27,6 +27,12 @@ pub struct SqlitePrinterRepository;
 ///     `devices.place_id` — `d.place_id` itself is ALSO selected directly
 ///     (as `device_place_id`), needed to prefill a `PlacePicker` by id when
 ///     a printer is chosen for an Install operation (Plan 16).
+///
+/// Мягкое удаление (Phase 41.1, D-37): `list` скрывает принтеры, чьё
+/// устройство удалено (`d.deleted_at_utc IS NULL`), но строка `printers`
+/// НЕ удаляется — community, профиль OID и USB-хост переживают удаление и
+/// возвращаются вместе с устройством. `get` / `get_by_device_id` не
+/// фильтруются: детальная карточка и восстановление не должны ломаться.
 const SELECT_PRINTERS: &str = "
     SELECT p.id, p.device_id, p.ip_address, p.snmp_version, p.vendor,
            p.oid_profile_id, p.last_seen_utc, p.usb_host_device_id,
@@ -332,7 +338,11 @@ impl PrinterRepository for SqlitePrinterRepository {
 
         let total: i64 = conn
             .query_row(
-                &format!("SELECT COUNT(*) FROM printers p WHERE {STATUS_FILTER}"),
+                &format!(
+                    "SELECT COUNT(*) FROM printers p \
+                     LEFT JOIN devices d ON d.id = p.device_id \
+                     WHERE d.deleted_at_utc IS NULL AND {STATUS_FILTER}"
+                ),
                 params![filter.status.as_deref()],
                 |r| r.get(0),
             )
@@ -341,7 +351,7 @@ impl PrinterRepository for SqlitePrinterRepository {
         let mut stmt = conn
             .prepare(&format!(
                 "{SELECT_PRINTERS} \
-                 WHERE {STATUS_FILTER} \
+                 WHERE d.deleted_at_utc IS NULL AND {STATUS_FILTER} \
                  ORDER BY p.id DESC \
                  LIMIT ?2 OFFSET ?3"
             ))
