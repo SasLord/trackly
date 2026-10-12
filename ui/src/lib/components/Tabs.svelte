@@ -57,8 +57,10 @@
   // Underline variant (switch-bar): transcribed from Tabs.dc.html tabStyle(state)
   .tabs-underline {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
+    row-gap: var(--tr-space-2xs);
 
     .tab {
       display: inline-flex;

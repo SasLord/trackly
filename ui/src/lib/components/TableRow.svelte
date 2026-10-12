@@ -3,6 +3,7 @@
   // mode (chevron/name/toggle). Source of truth for values: TableRows.dc.html (D-09/D-10),
   // see .planning/phases/25-dropdown/25-01-PLAN.md <interfaces>.
   import type { Snippet } from 'svelte';
+  import RowChevron from './icons/RowChevron.svelte';
 
   interface Props {
     /** Background var(--tr-row-selected) + 3px accent inset box-shadow on the first cell. */
@@ -21,6 +22,12 @@
     groupColspan?: number;
     /** Group-row-mode only: fires on click of the row OR the chevron button. */
     onToggleGroup?: () => void;
+    /** Форвард на <tr> в обоих режимах. preventDefault здесь НЕ вызывается:
+     *  родное контекстное меню гасит строка-потребитель там, где открывает
+     *  меню приложения (одинаково в Tauri и в LAN-браузере). */
+    oncontextmenu?: (e: MouseEvent) => void;
+    /** Форвард на <tr> в обоих режимах (раскрыть состав / открыть просмотр). */
+    ondblclick?: (e: MouseEvent) => void;
     /** Appended to the rendered <tr>'s class list for consumer-supplied local CSS. */
     class?: string;
     /**
@@ -39,6 +46,8 @@
     groupName,
     groupColspan = 1,
     onToggleGroup,
+    oncontextmenu,
+    ondblclick,
     class: className = '',
     children,
   }: Props = $props();
@@ -52,31 +61,22 @@
 </script>
 
 {#if group}
-  <tr class="tr-row tr-row-group {className}" onclick={onToggleGroup}>
+  <tr class="tr-row tr-row-group {className}" onclick={onToggleGroup} {oncontextmenu} {ondblclick}>
     <td class="tr-row-group-name" colspan={groupColspan}>
-      <button
-        type="button"
-        class="tr-row-chevron"
-        class:expanded={groupExpanded}
-        aria-label={groupExpanded ? 'Свернуть' : 'Развернуть'}
-        onclick={handleChevronClick}
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path
-            d="M6 4l4 4-4 4"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
+      <RowChevron expanded={groupExpanded} onclick={handleChevronClick} />
       {groupName}
     </td>
     {@render children?.()}
   </tr>
 {:else}
-  <tr class="tr-row {className}" class:selected class:indent class:last>
+  <tr
+    class="tr-row {className}"
+    class:selected
+    class:indent
+    class:last
+    {oncontextmenu}
+    {ondblclick}
+  >
     {@render children?.()}
   </tr>
 {/if}
@@ -105,7 +105,7 @@
   //     matches a focused element carrying THIS component's scope class — but the
   //     focusable cell lives in the CONSUMER's scope, so the rule never fired and
   //     the global `*:focus-visible` outward ring won (30-09 UAT regression).
-  // Group rows are excluded — they use `.tr-row-chevron`'s own inset ring below.
+  // Group rows are excluded — they use `RowChevron`'s own inset ring.
   // Colour + thickness match the app-wide focus ring (global.scss `*:focus-visible`
   // = `0 0 0 3px var(--tr-focus-ring)`), just drawn INSET so it isn't clipped by the
   // list/master container edge. Use the SAME `--tr-focus-ring` token, not the solid
@@ -162,34 +162,5 @@
   .tr-row-group-name {
     font-weight: var(--tr-font-weight-semibold);
     white-space: nowrap;
-  }
-
-  .tr-row-chevron {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    padding: 0;
-    border-radius: var(--tr-radius-xs);
-    margin-right: var(--tr-space-2xs);
-    background: transparent;
-    border: none;
-    color: var(--tr-text-secondary);
-    cursor: pointer;
-    transform: none;
-    // This ONE transition stays at .15s (TableRows.dc value, verbatim) — not the
-    // usual .12s micro-transition used elsewhere in the design system.
-    transition: transform 0.15s;
-
-    &.expanded {
-      transform: rotate(90deg);
-    }
-
-    &:focus-visible {
-      outline: none;
-      // Same unified focus-ring token as the row's first-cell ring above.
-      box-shadow: inset 0 0 0 2px var(--tr-focus-ring);
-    }
   }
 </style>
