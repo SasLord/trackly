@@ -150,6 +150,8 @@ impl GroupSnapshot {
             device_count: self.counts.get(&row.id).copied().unwrap_or(0),
             direct_device_count: self.direct.get(&row.id).copied().unwrap_or(0),
             nested_group_count: self.nested.get(&row.id).copied().unwrap_or(0),
+            anchor_device_id: row.anchor_device_id,
+            anchor_device_name: row.anchor_device_name.clone(),
         })
     }
 }
@@ -295,6 +297,7 @@ impl GroupService {
                     place_id: d.place_id,
                     place_path: d.place_path,
                     status_name: d.status_name,
+                    status_code: d.status_code,
                 })
                 .collect();
             let child_groups = repo

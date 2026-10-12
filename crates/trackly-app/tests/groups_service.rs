@@ -958,3 +958,84 @@ async fn rights_write_employee_forbidden_manager_allowed() {
         .is_ok());
     assert!(ctx.groups.delete_group(&manager, made.id).await.is_ok());
 }
+
+// ---------------------------------------------------------------------------
+// anchor_ (Phase 41.1 Plan 06: якорь группы и status_code состава)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_plain_group_dto_has_no_anchor() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let g = seed_group(&ctx, arm, "АРМ #1", 1, None, None).await;
+    seed_device(&ctx, "Монитор #2", "INV-P1", "SN-P1", None, Some(g)).await;
+
+    let dto = ctx.groups.get_group(&admin(), g).await.unwrap();
+    assert_eq!(dto.anchor_device_id, None);
+    assert_eq!(dto.anchor_device_name, None);
+    let listed = ctx.groups.list_groups(&admin()).await.unwrap();
+    let in_list = listed.iter().find(|d| d.id == g).unwrap();
+    assert_eq!(in_list.anchor_device_id, None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_group_dto_carries_device_id_and_name() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let g = seed_group(&ctx, arm, "АРМ #1", 1, None, None).await;
+    let anchor = seed_device(&ctx, "Системный блок #4", "INV-A1", "SN-A1", None, Some(g)).await;
+    let part = seed_device(&ctx, "Планка памяти", "INV-A2", "SN-A2", None, Some(g)).await;
+    exec(
+        &ctx,
+        "UPDATE groups SET anchor_device_id = ?1 WHERE id = ?2",
+        vec![int(anchor), int(g)],
+    )
+    .await;
+
+    let dto = ctx.groups.get_group(&admin(), g).await.unwrap();
+    assert_eq!(dto.anchor_device_id, Some(anchor));
+    assert_eq!(dto.anchor_device_name.as_deref(), Some("Системный блок #4"));
+    assert_ne!(dto.anchor_device_id, Some(part));
+    // D-13: якорь - часть состава, счётчики и таблица состава его включают.
+    assert_eq!(dto.direct_device_count, 2);
+    let comp = ctx.groups.composition(&admin(), g).await.unwrap();
+    assert!(comp.devices.iter().any(|d| d.device_id == anchor));
+    let listed = ctx.groups.list_groups(&admin()).await.unwrap();
+    let in_list = listed.iter().find(|d| d.id == g).unwrap();
+    assert_eq!(in_list.anchor_device_id, Some(anchor));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_composition_members_carry_status_code() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let g = seed_group(&ctx, arm, "АРМ #1", 1, None, None).await;
+    let first = seed_device(&ctx, "Системный блок #4", "INV-C1", "SN-C1", None, Some(g)).await;
+    let second = seed_device(&ctx, "Монитор #2", "INV-C2", "SN-C2", None, Some(g)).await;
+    exec(
+        &ctx,
+        "UPDATE devices SET status_id = (SELECT id FROM device_statuses WHERE code = 'на_складе') \
+         WHERE id = ?1",
+        vec![int(first)],
+    )
+    .await;
+    exec(
+        &ctx,
+        "UPDATE devices SET status_id = (SELECT id FROM device_statuses WHERE code = 'в_работе') \
+         WHERE id = ?1",
+        vec![int(second)],
+    )
+    .await;
+
+    let comp = ctx.groups.composition(&admin(), g).await.unwrap();
+    let code_of = |id: i64| {
+        comp.devices
+            .iter()
+            .find(|d| d.device_id == id)
+            .unwrap()
+            .status_code
+            .clone()
+    };
+    assert_eq!(code_of(first).as_deref(), Some("на_складе"));
+    assert_eq!(code_of(second).as_deref(), Some("в_работе"));
+}

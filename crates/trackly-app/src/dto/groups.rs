@@ -41,6 +41,11 @@ pub struct GroupDto {
     pub direct_device_count: i64,
     #[specta(type = i32)]
     pub nested_group_count: i64,
+    /// Устройство-якорь группы (D-13/D-15); `None` у обычной группы. По нему UI
+    /// отличает якорные группы и скрывает «Вывести из состава» у якоря (D-14).
+    #[specta(type = Option<i32>)]
+    pub anchor_device_id: Option<i64>,
+    pub anchor_device_name: Option<String>,
 }
 
 /// Создание группы. `name = None` — имя по умолчанию «{тип} #{seq}».
@@ -68,6 +73,8 @@ pub struct GroupMemberDeviceDto {
     /// Сокращённый путь считает сервер (`compute_place_path_short_with_conn`).
     pub place_path_short: Option<String>,
     pub status_name: Option<String>,
+    /// Код статуса: таблица состава выбирает тон по нему (D-09).
+    pub status_code: Option<String>,
 }
 
 /// Состав группы: прямые устройства и прямые вложенные группы (D-03).
