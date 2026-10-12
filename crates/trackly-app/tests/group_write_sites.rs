@@ -2291,3 +2291,158 @@ fn write_site_gate_mutation_birth_inventory_name_trap() {
     assert_eq!(v.len(), 1, "{v:?}");
     assert!(v[0].contains("новое место") && v[0].contains("some_new_service.rs"));
 }
+
+// ===========================================================================
+// Plan 41.1-09: охрана якоря (D-14, D-36) — страж источника
+// ===========================================================================
+//
+// Инвентарь серверных путей, которыми якорь можно убрать из группы (от сервисов,
+// не от экранов): `DeviceService::delete_soft`, `release_device_in_tx` (акты S3-S7,
+// удаление устройства), `GroupService::remove_devices`, `GroupService::delete_group`
+// (запись разбора). Охрана якоря — `anchor_group_of_device_in_tx(` — стоит ДО записи
+// в каждом из трёх первых; в четвёртом — `count_live_parts_in_tx(`. Счёт вхождений
+// слеп к порядку, поэтому страж проверяет ещё и номер строки охраны против записи, а
+// мутации включают ПЕРЕСТАНОВКУ охраны ниже записи.
+
+const ANCHOR_GUARD: &str = "anchor_group_of_device_in_tx(";
+
+/// Номер (с 0) первой строки с вызовом `needle` (комментарии и определения не в счёт).
+fn first_call_line(src: &str, needle: &str) -> Option<usize> {
+    src.lines().position(|l| count_calls(l, &[needle]) > 0)
+}
+
+/// Дефекты охраны: число вхождений и порядок «охрана выше записи».
+fn anchor_guard_defects(label: &str, scope: &str, guard: &str, write: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let n = count_calls(scope, &[guard]);
+    if n != 1 {
+        out.push(format!("{label}: `{guard}` встречается {n} раз, ожидали 1"));
+    }
+    match (first_call_line(scope, guard), first_call_line(scope, write)) {
+        (Some(g), Some(w)) if g < w => {}
+        (Some(g), Some(w)) => out.push(format!(
+            "{label}: охрана (строка {g}) стоит НЕ выше записи `{write}` (строка {w})"
+        )),
+        (None, _) => out.push(format!("{label}: охраны `{guard}` нет")),
+        (_, None) => out.push(format!("{label}: записи `{write}` не найдено")),
+    }
+    out
+}
+
+/// Область тела метода: от `start` до первого `end` после него.
+fn body_between<'a>(src: &'a str, start: &str, end: &str) -> &'a str {
+    let s = src
+        .find(start)
+        .unwrap_or_else(|| panic!("не найдено начало {start:?}"));
+    let rest = &src[s..];
+    let e = rest
+        .find(end)
+        .unwrap_or_else(|| panic!("не найден конец {end:?}"));
+    &rest[..e]
+}
+
+/// Источники трёх охран: (метка, область, охрана, запись).
+fn anchor_guard_scopes() -> Vec<(&'static str, String, &'static str, &'static str)> {
+    let dev = include_str!("../src/services/device_service.rs");
+    let mem = include_str!("../src/services/group_membership.rs");
+    let grp = include_str!("../src/services/group_service.rs");
+    vec![
+        (
+            "DeviceService::delete_soft",
+            body_between(dev, "pub async fn delete_soft(", "pub fn state_hints").to_string(),
+            ANCHOR_GUARD,
+            "repo.delete_soft_in_tx(",
+        ),
+        (
+            "release_device_in_tx",
+            body_between(
+                mem,
+                "pub(crate) fn release_device_in_tx(",
+                "pub(crate) fn release_if_locked_device_in_tx(",
+            )
+            .to_string(),
+            ANCHOR_GUARD,
+            "group_of_device_in_tx(",
+        ),
+        (
+            "GroupService::remove_devices",
+            body_between(grp, "pub async fn remove_devices(", "// ---- вложенность").to_string(),
+            ANCHOR_GUARD,
+            "release_device_in_tx(",
+        ),
+        (
+            "GroupService::delete_group",
+            body_between(
+                grp,
+                "pub async fn delete_group(",
+                "pub async fn move_group(",
+            )
+            .to_string(),
+            "count_live_parts_in_tx(",
+            "delete_group_in_tx(",
+        ),
+    ]
+}
+
+#[test]
+fn s11_anchor_guards_present_in_sources() {
+    for (label, scope, guard, write) in anchor_guard_scopes() {
+        let defects = anchor_guard_defects(label, &scope, guard, write);
+        assert!(defects.is_empty(), "{defects:?}");
+    }
+    // Вне этих областей охрана якоря не размножена: ровно по одному вхождению в файле.
+    let dev = include_str!("../src/services/device_service.rs");
+    let mem = include_str!("../src/services/group_membership.rs");
+    let grp = include_str!("../src/services/group_service.rs");
+    assert_eq!(count_calls(dev, &[ANCHOR_GUARD]), 1);
+    assert_eq!(count_calls(mem, &[ANCHOR_GUARD]), 1);
+    assert_eq!(count_calls(grp, &[ANCHOR_GUARD]), 1);
+    // Сосед (мутационный гейт S1) не задет: его выражение по-прежнему ровно одно.
+    assert_eq!(
+        dev.matches("groups.locked_group_for_device_in_tx(&tx, id)?")
+            .count(),
+        1
+    );
+}
+
+/// Мутации стража: УДАЛЕНИЕ охраны и ПЕРЕСТАНОВКА её ниже записи (счётчик ловит
+/// первое и слеп ко второму — поэтому порядок проверяется отдельно).
+#[test]
+fn s11_anchor_guard_mutations_are_detected() {
+    for (label, scope, guard, write) in anchor_guard_scopes() {
+        // Якорь мутации уникален: ровно одна строка с охраной.
+        let guard_lines: Vec<usize> = scope
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| count_calls(l, &[guard]) > 0)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(guard_lines.len(), 1, "{label}: якорь мутации не уникален");
+        let gi = guard_lines[0];
+        let lines: Vec<&str> = scope.lines().collect();
+
+        // (a) удаление: имя охраны заменено на постороннее.
+        let deleted = scope.replace(guard, "some_other_lookup_in_tx(");
+        assert!(
+            !anchor_guard_defects(label, &deleted, guard, write).is_empty(),
+            "{label}: удаление охраны не замечено"
+        );
+
+        // (b) перестановка: строка охраны перенесена за первую строку записи.
+        let wi = first_call_line(&scope, write).expect("запись");
+        assert!(gi < wi, "{label}: исходник уже нарушен");
+        let mut moved: Vec<&str> = lines.clone();
+        let guard_line = moved.remove(gi);
+        // после удаления строки охраны индекс записи сдвинулся на -1; вставляем сразу за ней
+        moved.insert(wi, guard_line);
+        let reordered = moved.join("\n");
+        // счётчик вхождений такую мутацию пропускает...
+        assert_eq!(count_calls(&reordered, &[guard]), 1, "{label}");
+        // ...а порядок — нет.
+        let defects = anchor_guard_defects(label, &reordered, guard, write);
+        assert!(
+            defects.iter().any(|d| d.contains("НЕ выше записи")),
+            "{label}: перестановка охраны ниже записи не замечена: {defects:?}"
+        );
+    }
+}
