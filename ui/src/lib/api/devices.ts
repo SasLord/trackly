@@ -9,6 +9,7 @@ import type {
   DeviceNew,
   DevicePatch,
   DeviceSaveOutcome,
+  DeviceStatusDto,
   NumberFieldInput,
   Pagination,
   PrinterCreateBlockDto,
@@ -80,6 +81,9 @@ export const devices = {
     apiCall<DeviceGroup[]>('devices_list_grouped', { filter, pagination }),
 
   statusCounts: () => apiCall<StatusCount[]>('devices_status_counts'),
+
+  // Фаза 41.1 (D-06/D-09): единый серверный справочник статусов устройств.
+  statuses: () => apiCall<DeviceStatusDto[]>('device_statuses_list'),
 
   listByIds: (ids: number[]) => apiCall<DeviceDto[]>('devices_list_by_ids', { ids }),
 
