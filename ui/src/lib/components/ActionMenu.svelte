@@ -6,7 +6,12 @@
    * (единственный режим, пропа `portal` нет): правый край выровнен по
    * правому краю триггера, при нехватке места снизу панель открывается вверх.
    * Причина — `overflow` скроллящихся контейнеров (DetailPanel, тело Modal)
-   * обрезает или раздвигает непортальную панель (UAT фазы 41, тест 5). */
+   * обрезает или раздвигает непортальную панель (UAT фазы 41, тест 5).
+   *
+   * Фаза 41.1: `openAt(x, y)` открывает панель у точки (контекстное меню
+   * строки по правому клику); `trigger="none"` не рисует кнопку-триггер —
+   * тогда меню открывается только через `openAt`. Подавление родного
+   * контекстного меню — забота строки-потребителя, не этого компонента. */
 
   interface Props {
     label?: string;
@@ -34,6 +39,9 @@
      *  сбрасывает шаг подтверждения перехода в настройки при закрытии).
      *  Необязателен — существующие вызовы не меняются. */
     onOpenChange?: (_open: boolean) => void;
+    /** 'button' (по умолчанию) — обычная кнопка-триггер. 'none' — кнопки нет,
+     *  панель открывается только вызовом `openAt(x, y)` (контекстное меню). */
+    trigger?: 'button' | 'none';
     children: Snippet;
   }
 
@@ -44,13 +52,34 @@
     panelMinWidth,
     disabled = false,
     onOpenChange,
+    trigger = 'button',
     children,
   }: Props = $props();
+
+  interface PointAnchor {
+    x: number;
+    y: number;
+  }
+  type Anchor = HTMLElement | PointAnchor;
 
   let open = $state(false);
   let rootEl = $state<HTMLElement | null>(null);
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let panelEl = $state<HTMLElement | null>(null);
+  /** Виртуальный якорь (точка курсора) для `openAt`; null — якорем служит триггер. */
+  let pointAnchor = $state<PointAnchor | null>(null);
+  /** Элемент, державший фокус до `openAt` — туда возвращается фокус при закрытии. */
+  let returnEl: HTMLElement | null = null;
+
+  /** Открыть панель у точки (clientX/clientY): левый край у курсора, 4px ниже;
+   *  у правого края окна панель прижимается правым краем к курсору, снизу —
+   *  открывается вверх. */
+  export function openAt(x: number, y: number) {
+    if (disabled) return;
+    returnEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    pointAnchor = { x, y };
+    open = true;
+  }
 
   function menuItems(): HTMLElement[] {
     return panelEl ? Array.from(panelEl.querySelectorAll<HTMLElement>('[role="menuitem"]')) : [];
@@ -58,7 +87,15 @@
 
   function close(returnFocus = false) {
     open = false;
-    if (returnFocus) triggerEl?.focus();
+    if (returnFocus) {
+      if (trigger === 'none') {
+        if (returnEl?.isConnected) returnEl.focus();
+      } else {
+        triggerEl?.focus();
+      }
+    }
+    pointAnchor = null;
+    returnEl = null;
   }
 
   $effect(() => {
@@ -156,11 +193,40 @@
    *  min/max-width CSS (280–420px, UI-SPEC §3) — kept local to this
    *  component rather than generalizing dropdownAnchor for a single
    *  consumer. */
-  function actionMenuPortalPosition(node: HTMLElement, anchor: HTMLElement | null) {
+  function actionMenuPortalPosition(node: HTMLElement, anchor: Anchor | null) {
     let anchorEl = anchor;
+
+    function repositionAtPoint(point: PointAnchor) {
+      const gap = 4;
+      const maxHeight = 280;
+      const edge = 8;
+
+      node.style.position = 'fixed';
+      if (point.x + node.offsetWidth > window.innerWidth - edge) {
+        node.style.left = 'auto';
+        node.style.right = `${window.innerWidth - point.x}px`;
+      } else {
+        node.style.left = `${point.x}px`;
+        node.style.right = 'auto';
+      }
+
+      const spaceBelow = window.innerHeight - point.y;
+      const neededHeight = Math.min(maxHeight, node.scrollHeight || maxHeight);
+      if (spaceBelow >= neededHeight + gap) {
+        node.style.top = `${point.y + gap}px`;
+        node.style.bottom = 'auto';
+      } else {
+        node.style.bottom = `${window.innerHeight - point.y + gap}px`;
+        node.style.top = 'auto';
+      }
+    }
 
     function reposition() {
       if (!anchorEl) return;
+      if (!(anchorEl instanceof HTMLElement)) {
+        repositionAtPoint(anchorEl);
+        return;
+      }
       const rect = anchorEl.getBoundingClientRect();
       const gap = 4;
       const maxHeight = 280;
@@ -186,7 +252,7 @@
     window.addEventListener('resize', reposition);
 
     return {
-      update(newAnchor: HTMLElement | null) {
+      update(newAnchor: Anchor | null) {
         anchorEl = newAnchor;
         reposition();
       },
@@ -199,29 +265,34 @@
 </script>
 
 <div class="action-menu" bind:this={rootEl}>
-  <button
-    type="button"
-    class:action-menu-trigger={variant !== 'ghost-md'}
-    class:action-menu-trigger--ghost-sm={variant === 'ghost-sm'}
-    class:tr-btn-ghost-icon={variant === 'ghost-md'}
-    aria-haspopup="menu"
-    aria-expanded={open}
-    aria-label={label}
-    {disabled}
-    bind:this={triggerEl}
-    onclick={() => (open = !open)}
-    onkeydown={onTriggerKeydown}
-  >
-    {#if icon}
-      {@render icon()}
-    {:else}
-      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-        <circle cx="9" cy="3.5" r="1.5" fill="currentColor" />
-        <circle cx="9" cy="9" r="1.5" fill="currentColor" />
-        <circle cx="9" cy="14.5" r="1.5" fill="currentColor" />
-      </svg>
-    {/if}
-  </button>
+  {#if trigger !== 'none'}
+    <button
+      type="button"
+      class:action-menu-trigger={variant !== 'ghost-md'}
+      class:action-menu-trigger--ghost-sm={variant === 'ghost-sm'}
+      class:tr-btn-ghost-icon={variant === 'ghost-md'}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      aria-label={label}
+      {disabled}
+      bind:this={triggerEl}
+      onclick={() => {
+        pointAnchor = null;
+        open = !open;
+      }}
+      onkeydown={onTriggerKeydown}
+    >
+      {#if icon}
+        {@render icon()}
+      {:else}
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <circle cx="9" cy="3.5" r="1.5" fill="currentColor" />
+          <circle cx="9" cy="9" r="1.5" fill="currentColor" />
+          <circle cx="9" cy="14.5" r="1.5" fill="currentColor" />
+        </svg>
+      {/if}
+    </button>
+  {/if}
   {#if open}
     <div
       class="action-menu-panel"
@@ -230,7 +301,7 @@
       style:min-width={panelMinWidth}
       bind:this={panelEl}
       use:portal
-      use:actionMenuPortalPosition={triggerEl}
+      use:actionMenuPortalPosition={pointAnchor ?? triggerEl}
       onkeydown={onPanelKeydown}
       onclick={() => close(true)}
     >
@@ -339,5 +410,20 @@
     &:hover {
       background: var(--tr-row-hover);
     }
+  }
+
+  // Разделитель между группами пунктов (<hr role="separator">). В навигацию
+  // стрелками не входит: menuItems() выбирает только [role="menuitem"].
+  .action-menu-panel :global(hr) {
+    border: 0;
+    border-top: 1px solid var(--tr-border);
+    margin: var(--tr-space-2xs) 0;
+  }
+
+  // Опасный пункт внутри панели. Потребители объявляют свой локальный
+  // .menu-danger (рамка/цвет); общий — только цвет, :where сохраняет
+  // низкую специфичность, чтобы не перебивать их правила.
+  .action-menu-panel :global(:where(button.menu-danger)) {
+    color: var(--tr-danger-text);
   }
 </style>
