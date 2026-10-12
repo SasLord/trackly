@@ -2,6 +2,7 @@
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import DeviceContextMenu from './DeviceContextMenu.svelte';
+  import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import type { DeviceDto } from '../../bindings';
 
   interface Props {
@@ -33,27 +34,10 @@
 
   const isHighlighted = $derived(highlightId !== null && device.id === highlightId);
 
-  // ---------------------------------------------------------------------------
-  // Placeholder status mapping (Plan 04 wires seeded lookups)
-  // ---------------------------------------------------------------------------
-  type BadgeVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
-
-  const STATUS_LABELS: Record<number, string> = {
-    1: 'На складе',
-    2: 'В работе',
-    3: 'На ремонте',
-    4: 'Списано',
-  };
-
-  const STATUS_VARIANTS: Record<number, BadgeVariant> = {
-    1: 'default',
-    2: 'accent',
-    3: 'warning',
-    4: 'destructive',
-  };
-
-  const statusLabel = $derived(STATUS_LABELS[device.status_id] ?? `Статус ${device.status_id}`);
-  const statusVariant = $derived(STATUS_VARIANTS[device.status_id] ?? 'default');
+  // Подпись и тон статуса — из единого справочника (фаза 41.1, D-06/D-09):
+  // подпись по id, тон по code. Хардкода «id -> подпись» здесь нет.
+  const label = $derived(statusLabel(device.status_id));
+  const tone = $derived(statusTone(device.status_code));
 </script>
 
 <TableRow class={isLastInGroup ? 'group-last-child' : undefined} selected={isHighlighted}>
@@ -69,11 +53,11 @@
   <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>
   {#if showStatus}
     <td class="cell cell-status">
-      <Badge variant={statusVariant}>{statusLabel}</Badge>
+      <Badge variant={tone.variant} appearance={tone.appearance}>{label}</Badge>
     </td>
   {/if}
   <td class="cell cell-actions">
-    <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} statusName={statusLabel} />
+    <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} statusName={label} />
   </td>
 </TableRow>
 

@@ -5,6 +5,13 @@
   import Input from '$lib/components/Input.svelte';
   import Tabs from '$lib/components/Tabs.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
+  import { onMount } from 'svelte';
+  import {
+    deviceStatusesStore,
+    ensureLoaded,
+    orderedStatuses,
+    statusLabel,
+  } from '$lib/stores/deviceStatuses.svelte';
 
   interface Props {
     searchQuery: string;
@@ -42,13 +49,23 @@
     }, 250);
   }
 
-  const STATUSES = [
-    { id: null, label: 'Все' },
-    { id: 1, label: 'На складе' },
-    { id: 2, label: 'В работе' },
-    { id: 3, label: 'На ремонте' },
-    { id: 4, label: 'Списано' },
-  ] as const;
+  // Справочник грузится лениво из onMount, не из $effect (запись в $state).
+  onMount(() => {
+    void ensureLoaded();
+  });
+
+  // Вкладки: «Все» + статусы в порядке sort_order из справочника (D-08). Пока
+  // справочник не загружен, вкладки строятся из ключей counts по возрастанию id
+  // с подписью «Статус {id}» — экран не блокируется.
+  const statusTabs = $derived(
+    deviceStatusesStore.state === 'ready'
+      ? orderedStatuses().map((s) => ({ id: s.id, label: s.name }))
+      : [...counts.keys()].sort((x, y) => x - y).map((id) => ({ id, label: statusLabel(id) })),
+  );
+  const tabModel = $derived([
+    { id: null as number | null, label: 'Все' },
+    ...statusTabs.map((s) => ({ id: s.id as number | null, label: s.label })),
+  ]);
 
   // Total count = sum of all status counts.
   const totalCount = $derived(Array.from(counts.values()).reduce((sum, c) => sum + c, 0));
@@ -58,10 +75,10 @@
     return counts.get(id) ?? 0;
   }
 
-  // Adapter for Tabs' string-keyed contract — STATUSES uses number | null ids.
+  // Adapter for Tabs' string-keyed contract — tabModel uses number | null ids.
   // String(null) === 'null', which is the exact inverse mapping used in onchange below.
   const tabItems = $derived(
-    STATUSES.map((s) => ({ key: String(s.id), label: s.label, count: getCount(s.id) })),
+    tabModel.map((s) => ({ key: String(s.id), label: s.label, count: getCount(s.id) })),
   );
 </script>
 

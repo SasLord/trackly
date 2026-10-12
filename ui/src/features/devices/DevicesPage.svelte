@@ -4,6 +4,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { ensureLoaded as ensureStatusesLoaded } from '$lib/stores/deviceStatuses.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { apiCall } from '$lib/api/client';
@@ -131,6 +132,7 @@
   });
 
   onMount(() => {
+    void ensureStatusesLoaded();
     refresh();
     refreshCounts();
   });

@@ -93,7 +93,7 @@
 
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
-  import Select from '$lib/components/Select.svelte';
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Button from '$lib/components/Button.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
@@ -110,6 +110,12 @@
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { devices } from './api';
+  import {
+    ensureLoaded as ensureStatusesLoaded,
+    orderedStatuses,
+    statusIdByCode,
+    statusLabel,
+  } from '$lib/stores/deviceStatuses.svelte';
   import { groups } from '$lib/api/groups';
   import type {
     DeviceDto,
@@ -122,17 +128,6 @@
     PrinterCreateBlockDto,
     TemplateContextDto,
   } from '../../bindings';
-
-  // Seed status ids (see STATUSES below / device_service.rs::resolve_status_id):
-  // 1 = На складе, 2 = В работе, 3 = На ремонте, 4 = Списано.
-  const STORAGE_STATUS_ID = 1;
-
-  const STATUSES = [
-    { id: 1, label: 'На складе' },
-    { id: 2, label: 'В работе' },
-    { id: 3, label: 'На ремонте' },
-    { id: 4, label: 'Списано' },
-  ];
 
   interface Props {
     target: DeviceDto | null;
@@ -197,6 +192,14 @@
   let name = $state(target?.name ?? '');
   let placeId = $state<number | null>(target?.place_id ?? null);
   let statusId = $state(target ? String(target.status_id) : '');
+  // Фаза 41.1 (D-04/D-06): опции статуса — серверный справочник в порядке
+  // sort_order, вручную выбираются все шесть. Пока справочник не загружен,
+  // подпись текущего статуса — «Статус {id}», экран не блокируется.
+  const statusOptions = $derived(orderedStatuses().map((o) => ({ id: o.id, label: o.name })));
+  const selectedStatusLabel = $derived(statusId === '' ? '' : statusLabel(Number(statusId)));
+  function noExpandStatus(): { id: number; label: string }[] {
+    return [];
+  }
   let inventoryNo = $state(target?.inventory_no ?? '');
   // Phase 40.3 Plan 07 (UAT-defect fix): captured ONCE from `target` at
   // mount, never recomputed from the live `inventoryNo` $state — comparing
@@ -392,8 +395,17 @@
   $effect(() => {
     // Plan 41-24: у члена группы с местом место не меняется, чекбокс скрыт —
     // поэтому и неявную смену статуса не применяем.
-    if (!readonly && !lockedByGroup && isStoragePlace && storageStatusSuggested) {
-      statusId = String(STORAGE_STATUS_ID);
+    // Фаза 41.1 (D-09): id склада берётся из справочника по code; пока он не
+    // загружен, ничего не делаем (эффект перезапустится, когда стор заполнится).
+    const storageId = statusIdByCode('на_складе');
+    if (
+      !readonly &&
+      !lockedByGroup &&
+      isStoragePlace &&
+      storageStatusSuggested &&
+      storageId !== null
+    ) {
+      statusId = String(storageId);
     }
   });
 
@@ -478,6 +490,7 @@
   // onRegisterSubmit with the new closure.
   onMount(() => {
     onRegisterSubmit(handleSubmit);
+    void ensureStatusesLoaded();
 
     let cancelled = false;
     apiCall<number[]>('cartridge_storage_place_ids', {})
@@ -1006,18 +1019,30 @@
     <label class="label" for="f-status">
       Статус <span class="required" aria-hidden="true">*</span>
     </label>
-    <Select
+    <Dropdown
+      variant="select"
+      flat={true}
+      searchable={false}
       id="f-status"
-      value={statusId}
+      value={selectedStatusLabel}
+      placeholder="— выберите статус —"
+      searchPlaceholder="Поиск"
       invalid={!!fieldErrors['status_id']}
       disabled={readonly}
-      onchange={(v) => (statusId = v)}
-    >
-      <option value="">— выберите статус —</option>
-      {#each STATUSES as s}
-        <option value={String(s.id)}>{s.label}</option>
-      {/each}
-    </Select>
+      loading={false}
+      groups={statusOptions}
+      getGroupId={(o) => o.id}
+      getGroupName={(o) => o.label}
+      getGroupCount={() => 0}
+      isGroupExpandable={() => false}
+      isGroupSelected={(o) => String(o.id) === statusId}
+      onExpandGroup={noExpandStatus}
+      getMemberId={(o) => o.id}
+      getMemberName={(o) => o.label}
+      onSearch={() => {}}
+      onPickGroup={(o) => (statusId = String(o.id))}
+      onPickMember={() => {}}
+    />
     {#if fieldErrors['status_id']}
       <p class="field-error">{fieldErrors['status_id']}</p>
     {/if}

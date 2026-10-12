@@ -7,6 +7,7 @@
   import TableRow from '$lib/components/TableRow.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import { devices } from './api';
   import type { DeviceDto, DeviceGroup } from '../../bindings';
 
@@ -57,25 +58,9 @@
   let children = $state<DeviceDto[] | null>(null);
   let loadingChildren = $state(false);
 
-  // Status label for repr device.
-  type BadgeVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
-  const STATUS_LABELS: Record<number, string> = {
-    1: 'На складе',
-    2: 'В работе',
-    3: 'На ремонте',
-    4: 'Списано',
-  };
-  const STATUS_VARIANTS: Record<number, BadgeVariant> = {
-    1: 'default',
-    2: 'accent',
-    3: 'warning',
-    4: 'destructive',
-  };
-
-  const statusLabel = $derived(
-    STATUS_LABELS[group.repr.status_id] ?? `Статус ${group.repr.status_id}`,
-  );
-  const statusVariant = $derived(STATUS_VARIANTS[group.repr.status_id] ?? 'default');
+  // Подпись и тон статуса представителя — из единого справочника (фаза 41.1).
+  const label = $derived(statusLabel(group.repr.status_id));
+  const tone = $derived(statusTone(group.repr.status_code));
 
   // ITEM-1: «разное» для смешанной группы по condition_distinct_count
   const conditionDisplay = $derived(
@@ -160,7 +145,7 @@
   <td class="cell cell-truncate" title={conditionDisplay}>{conditionDisplay}</td>
   {#if showStatus}
     <td class="cell cell-status">
-      <Badge variant={statusVariant}>{statusLabel}</Badge>
+      <Badge variant={tone.variant} appearance={tone.appearance}>{label}</Badge>
     </td>
   {/if}
   <!-- Actions column: count badge for multi-device groups -->
