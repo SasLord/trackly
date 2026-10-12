@@ -294,7 +294,8 @@ fn list_subtree_contents_impl(
 
     let sql = format!(
         "{cte}SELECT 'device' AS kind, d.id, d.name, d.inventory_number,
-                pfp.full_path, ds.name AS status_name, pev.effective_variant
+                pfp.full_path, ds.name AS status_name, pev.effective_variant,
+                ds.code AS status_code
          FROM devices d
          JOIN place_full_paths pfp ON pfp.place_id = d.place_id
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
@@ -304,7 +305,8 @@ fn list_subtree_contents_impl(
            AND d.place_id {place_filter}
          UNION ALL
          SELECT 'printer' AS kind, d.id, d.name, d.inventory_number,
-                pfp.full_path, ds.name AS status_name, pev.effective_variant
+                pfp.full_path, ds.name AS status_name, pev.effective_variant,
+                ds.code AS status_code
          FROM devices d
          JOIN place_full_paths pfp ON pfp.place_id = d.place_id
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
@@ -314,7 +316,8 @@ fn list_subtree_contents_impl(
            AND d.place_id {place_filter}
          UNION ALL
          SELECT 'cartridge' AS kind, c.id, (m.brand || ' ' || m.model) AS name, c.code,
-                pfp.full_path, cs.name AS status_name, pev.effective_variant
+                pfp.full_path, cs.name AS status_name, pev.effective_variant,
+                NULL AS status_code
          FROM cartridges c
          JOIN place_full_paths pfp ON pfp.place_id = c.place_id
          JOIN cartridge_models m ON m.id = c.model_id
@@ -341,6 +344,7 @@ fn list_subtree_contents_impl(
                 full_path,
                 place_path_short,
                 status_name: row.get(5)?,
+                status_code: row.get(7)?,
             })
         })
         .map_err(map_rusqlite)?;

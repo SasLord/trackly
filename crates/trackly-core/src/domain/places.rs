@@ -186,6 +186,10 @@ pub struct PlaceContentRow {
     /// non-empty `full_path` deterministically returns a non-empty string.
     pub place_path_short: String,
     pub status_name: Option<String>,
+    /// Машинный ключ статуса (`device_statuses.code`) для устройств и принтеров;
+    /// `None` у картриджей (их статусы вне справочника кодов, D-07). UI выбирает
+    /// тон бейджа по нему, а не по русской подписи `status_name` (D-06, D-09).
+    pub status_code: Option<String>,
 }
 
 /// Default sibling ordering (D-05): `sort_order` wins if set, else `level` (floors,

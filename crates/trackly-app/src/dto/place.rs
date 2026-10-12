@@ -213,6 +213,8 @@ pub struct PlaceContentDto {
     /// device/cartridge list `place_path_short` field.
     pub place_path_short: String,
     pub status_name: Option<String>,
+    /// Машинный ключ статуса для устройств и принтеров, `None` у картриджей.
+    pub status_code: Option<String>,
 }
 
 impl From<PlaceContentRow> for PlaceContentDto {
@@ -225,6 +227,7 @@ impl From<PlaceContentRow> for PlaceContentDto {
             full_path: row.full_path,
             place_path_short: row.place_path_short,
             status_name: row.status_name,
+            status_code: row.status_code,
         }
     }
 }

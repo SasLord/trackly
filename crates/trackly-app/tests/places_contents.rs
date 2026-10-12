@@ -333,3 +333,198 @@ async fn list_children_and_list_all_survive_partial_sort_order_without_panicking
     .await
     .expect("test timed out");
 }
+
+// ---------------------------------------------------------------------------
+// status_code (Phase 41.1 Plan 04, D-06/D-07/D-09): строка содержимого несёт
+// машинный ключ статуса рядом с подписью — UI выбирает тон бейджа по нему,
+// а не по русскому имени. Картриджи остаются вне справочника кодов (None).
+// ---------------------------------------------------------------------------
+
+/// Вставляет устройство с заданным типом и статусом, выбранным по `code`
+/// (числовые id статусов не зашиты — V047 добавляет новые через MAX+1).
+async fn insert_device_with_status(
+    svc: &PlaceService,
+    place_id: i64,
+    name: &str,
+    type_id: i64,
+    status_code: &str,
+) {
+    let name = name.to_string();
+    let status_code = status_code.to_string();
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, place_id, status_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (?1, ?2, ?3, (SELECT id FROM device_statuses WHERE code = ?4), 1, 0, 0)",
+                rusqlite::params![type_id, name, place_id, status_code],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("insert fixture device with status");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_subtree_contents_devices_carry_status_code_next_to_status_name() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "Каб. 101", None))
+            .await
+            .expect("create room");
+        insert_device_with_status(&svc, room.id, "Монитор №1", 1, "на_списание").await;
+        insert_device_with_status(&svc, room.id, "Монитор №2", 1, "на_складе").await;
+        insert_device_with_status(&svc, room.id, "Монитор №3", 1, "в_ремонте").await;
+
+        let contents = svc
+            .list_subtree_contents(&admin, room.id, false)
+            .await
+            .expect("list_subtree_contents");
+        assert_eq!(contents.len(), 3);
+
+        let by_name = |n: &str| {
+            contents
+                .iter()
+                .find(|r| r.name == n)
+                .unwrap_or_else(|| panic!("нет строки {n}"))
+        };
+        assert_eq!(by_name("Монитор №1").kind, "device");
+        assert_eq!(
+            by_name("Монитор №1").status_code.as_deref(),
+            Some("на_списание")
+        );
+        assert_eq!(
+            by_name("Монитор №1").status_name.as_deref(),
+            Some("На списание")
+        );
+        assert_eq!(
+            by_name("Монитор №2").status_code.as_deref(),
+            Some("на_складе")
+        );
+        assert_eq!(
+            by_name("Монитор №2").status_name.as_deref(),
+            Some("На складе")
+        );
+        assert_eq!(
+            by_name("Монитор №3").status_code.as_deref(),
+            Some("в_ремонте")
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_subtree_contents_status_code_survives_status_rename() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "Каб. 102", None))
+            .await
+            .expect("create room");
+        insert_device_with_status(&svc, room.id, "Монитор №1", 1, "на_ремонте").await;
+
+        // Подпись статуса меняется, машинный ключ — нет (D-01, D-02).
+        svc.writer
+            .execute(|conn| {
+                conn.execute(
+                    "UPDATE device_statuses SET name = 'Переименован' WHERE code = 'на_ремонте'",
+                    [],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("rename status");
+
+        let contents = svc
+            .list_subtree_contents(&admin, room.id, false)
+            .await
+            .expect("list_subtree_contents");
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].status_name.as_deref(), Some("Переименован"));
+        assert_eq!(contents[0].status_code.as_deref(), Some("на_ремонте"));
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_subtree_contents_printer_carries_status_code() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "Каб. 103", None))
+            .await
+            .expect("create room");
+        // device_types id=2 = «Принтер» (сид V001); ветка printer выбирается по типу.
+        insert_device_with_status(&svc, room.id, "Принтер №1", 2, "в_работе").await;
+
+        let contents = svc
+            .list_subtree_contents(&admin, room.id, false)
+            .await
+            .expect("list_subtree_contents");
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].kind, "printer");
+        assert_eq!(contents[0].status_code.as_deref(), Some("в_работе"));
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_subtree_contents_cartridge_has_no_status_code() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "Каб. 104", None))
+            .await
+            .expect("create room");
+        let place_id = room.id;
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO cartridge_models \
+                     (brand, model, created_at_utc, updated_at_utc, version) \
+                     VALUES ('Бренд', 'Модель-1', 0, 0, 1)",
+                    [],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                let model_id = conn.last_insert_rowid();
+                conn.execute(
+                    "INSERT INTO cartridges \
+                     (code, model_id, status_id, place_id, created_at_utc, updated_at_utc, version) \
+                     VALUES ('C-TEST-1', ?1, 1, ?2, 0, 0, 1)",
+                    rusqlite::params![model_id, place_id],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("insert fixture cartridge");
+
+        let contents = svc
+            .list_subtree_contents(&admin, room.id, false)
+            .await
+            .expect("list_subtree_contents");
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].kind, "cartridge");
+        assert!(
+            contents[0].status_name.is_some(),
+            "подпись статуса картриджа остаётся"
+        );
+        assert_eq!(contents[0].status_code, None);
+    })
+    .await
+    .expect("test timed out");
+}
