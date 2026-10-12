@@ -264,6 +264,7 @@ pub const REGISTRY: &[Entry] = &[
     ro(DEVICE, "autocomplete"),
     ro(DEVICE, "list_grouped"),
     ro(DEVICE, "status_counts"),
+    ro(DEVICE, "list_statuses"),
     ro(DEVICE, "import_csv_preview"),
     b(DEVICE, "import_csv_commit"),
     ro(DEVICE, "export_csv"),

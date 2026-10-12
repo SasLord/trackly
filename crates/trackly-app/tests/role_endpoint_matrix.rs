@@ -4639,3 +4639,44 @@ fn groups_http_route_completeness() {
     );
     assert_eq!(in_source.len(), 15);
 }
+
+/// Справочник статусов устройств (Phase 41.1, D-06): `Action::ReadData`.
+/// Отдельная функция, а не кейс монолита: фильтр cargo по имени теста
+/// не видит кейсов внутри `role_endpoint_matrix_test`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn device_statuses_role_matrix() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+
+        let (status, _) = gt_post(
+            &env,
+            &env.employee_cookie,
+            "device_statuses_list",
+            json!({}),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "employee → device_statuses_list → ожидался 403, получен {status}"
+        );
+
+        for (who, cookie) in [
+            ("manager", &env.manager_cookie),
+            ("admin", &env.admin_cookie),
+        ] {
+            let (status, body) = gt_post(&env, cookie, "device_statuses_list", json!({})).await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "{who} → device_statuses_list → ожидался 200, получен {status}"
+            );
+            let items = body.as_array().unwrap_or_else(|| {
+                panic!("{who}: ответ не массив (spa_fallback вместо роута?): {body}")
+            });
+            assert_eq!(items.len(), 6, "{who}: ожидалось шесть статусов");
+        }
+    })
+    .await
+    .expect("device_statuses_role_matrix exceeded 60s");
+}

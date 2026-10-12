@@ -19,11 +19,12 @@ use crate::dto::device::{
     CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
     DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
 };
+use crate::dto::device_status::DeviceStatusDto;
 use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
 use crate::dto::printer::PrinterCreateBlockDto;
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
-    build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
+    build_device_statuses_list, build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
     build_devices_create_single_with_number_check, build_devices_delete, build_devices_export_csv,
     build_devices_get, build_devices_import_csv_commit, build_devices_import_csv_preview,
     build_devices_list, build_devices_list_by_ids, build_devices_list_grouped,
@@ -326,6 +327,20 @@ pub async fn handler_status_counts(
     ))
 }
 
+pub async fn handler_device_statuses_list(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<Vec<DeviceStatusDto>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_device_statuses_list(&ctx, &identity)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_list_by_ids(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -427,6 +442,10 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/devices_autocomplete", post(handler_autocomplete))
         .route("/api/v1/devices_list_grouped", post(handler_list_grouped))
         .route("/api/v1/devices_status_counts", post(handler_status_counts))
+        .route(
+            "/api/v1/device_statuses_list",
+            post(handler_device_statuses_list),
+        )
         .route("/api/v1/devices_list_by_ids", post(handler_list_by_ids))
         // Scope extension: bulk create
         .route("/api/v1/devices_bulk_create", post(handler_bulk_create))

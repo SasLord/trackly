@@ -10,6 +10,7 @@ pub mod act;
 pub mod auth;
 pub mod cartridge;
 pub mod device;
+pub mod device_status;
 pub mod group_types;
 pub mod groups;
 pub mod health;

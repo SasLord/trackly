@@ -47,6 +47,7 @@ use crate::dto::device::{
     DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, RowError,
     StatusCount, STATE_HINTS,
 };
+use crate::dto::device_status::DeviceStatusDto;
 use crate::dto::number_template::{
     NumberFieldInput, NumberWarningDto, NumberWarningKind, TemplateContextDto,
 };
@@ -1117,6 +1118,40 @@ impl DeviceService {
             .into_iter()
             .map(|(status_id, count)| StatusCount { status_id, count })
             .collect())
+    }
+
+    /// Справочник статусов устройств в порядке жизненного цикла (D-06, D-08).
+    ///
+    /// Только статусы с машинным `code`; статусы картриджей сюда не входят (D-07).
+    pub async fn list_statuses(&self) -> Result<Vec<DeviceStatusDto>, AppError> {
+        let readers = self.readers.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, code, name, sort_order FROM device_statuses \
+                     WHERE code IS NOT NULL ORDER BY sort_order, id",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(DeviceStatusDto {
+                        id: r.get(0)?,
+                        code: r.get(1)?,
+                        name: r.get(2)?,
+                        sort_order: r.get(3)?,
+                    })
+                })
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok::<_, AppError>(rows)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
     }
 
     // -----------------------------------------------------------------------
