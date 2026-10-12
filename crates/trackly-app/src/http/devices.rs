@@ -24,12 +24,12 @@ use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
 use crate::dto::printer::PrinterCreateBlockDto;
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
-    build_device_statuses_list, build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
-    build_devices_create_single_with_number_check, build_devices_delete, build_devices_export_csv,
-    build_devices_get, build_devices_import_csv_commit, build_devices_import_csv_preview,
-    build_devices_list, build_devices_list_by_ids, build_devices_list_grouped,
-    build_devices_search, build_devices_state_hints, build_devices_status_counts,
-    build_devices_update,
+    build_device_statuses_list, build_devices_autocomplete, build_devices_bulk_create,
+    build_devices_create, build_devices_create_single_with_number_check, build_devices_delete,
+    build_devices_export_csv, build_devices_get, build_devices_import_csv_commit,
+    build_devices_import_csv_preview, build_devices_list, build_devices_list_by_ids,
+    build_devices_list_grouped, build_devices_search, build_devices_state_hints,
+    build_devices_status_counts, build_devices_update,
 };
 
 // ---------------------------------------------------------------------------
