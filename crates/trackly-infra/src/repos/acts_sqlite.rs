@@ -702,8 +702,14 @@ mod tests {
     #[test]
     fn device_status_codes_seeded() {
         let (conn, _g) = fresh_conn();
-        for code in ["на_складе", "в_работе", "на_ремонте", "списано"]
-        {
+        for code in [
+            "на_складе",
+            "в_работе",
+            "на_ремонте",
+            "списано",
+            "в_ремонте",
+            "на_списание",
+        ] {
             let id: i64 = conn
                 .query_row(
                     "SELECT id FROM device_statuses WHERE code = ?1",

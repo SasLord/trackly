@@ -32,8 +32,12 @@ fn device_statuses_seed_matches_d_migrations_01() {
         vec![
             "На складе".to_string(),
             "В работе".to_string(),
-            "На ремонте".to_string(),
+            "Ожидает ремонта".to_string(),
             "Списано".to_string(),
+            // V047: новые статусы идут по id после «Списано»; порядок
+            // жизненного цикла задаёт sort_order, а не id.
+            "В ремонте".to_string(),
+            "На списание".to_string(),
         ]
     );
 }

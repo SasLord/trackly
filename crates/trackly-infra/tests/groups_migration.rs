@@ -147,7 +147,7 @@ fn migration_v045_v046_preserves_existing_rows() {
 
     let report = migrations::run(&mut conn).expect("upgrade V044 -> latest");
     assert_eq!(report.schema_version, migrations::max_known_version());
-    assert_eq!(migrations::max_known_version(), 46);
+    assert!(migrations::max_known_version() >= 46);
 
     assert_eq!(act_items(&conn), items_before, "act_items must survive");
     assert_eq!(
