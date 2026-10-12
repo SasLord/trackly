@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-12T19:13:24.726Z"
+last_updated: "2026-10-12T19:25:41.804Z"
 last_activity: 2026-10-12
 progress:
   total_phases: 21
   completed_phases: 11
   total_plans: 189
-  completed_plans: 170
+  completed_plans: 171
   percent: 52
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 4 of 22
+Plan: 5 of 22
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -583,6 +583,7 @@ Last activity: 2026-10-12
 | Phase 41.7 P10 | 40min | 2 tasks | 2 files |
 | Phase 41.1 P01 | 40min | 3 tasks | 7 files |
 | Phase 41.1 P02 | 25min | 3 tasks | 9 files |
+| Phase 41.1 P04 | 15min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1278,6 +1279,7 @@ Recent decisions affecting current work:
 - [Phase 41.1]: 41.1-01: переименование статуса по code, id новых не зашиты, порядок цикла по sort_order
 - [Phase 41.1]: 41.1-01: запрет мягкого удаления якоря группы живёт в сервисе (FK RESTRICT его не ловит)
 - [Phase 41.1-02]: общий .menu-danger в ActionMenu через :where и --tr-danger-text, чтобы не перебивать локальные правила потребителей
+- [Phase 41.1]: [41.1-04] status_code в содержимом места: device/printer = ds.code, cartridge = NULL (D-07)
 
 ### Pending Todos
 
@@ -1480,7 +1482,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-12T19:13:24.716Z
+Last session: 2026-10-12T19:25:35.753Z
 Stopped at: Phase 41.1 context gathered
 Resume file: None
 
