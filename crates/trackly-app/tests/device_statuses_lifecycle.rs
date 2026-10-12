@@ -71,7 +71,7 @@ async fn employee_is_forbidden_before_db_access() {
     };
     let res = build_device_statuses_list(&ctx, &employee).await;
     assert!(
-        matches!(res, Err(AppError::Forbidden { .. })),
+        matches!(res, Err(AppError::Forbidden)),
         "ожидался Forbidden, получено {res:?}"
     );
 }
