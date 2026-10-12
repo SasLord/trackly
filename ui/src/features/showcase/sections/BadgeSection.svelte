@@ -54,6 +54,18 @@
       <Badge variant="destructive" appearance="count">12</Badge>
     </div>
   </div>
+
+  <div class="tone-row">
+    <h3 class="tone-label">Статусы устройств</h3>
+    <div class="appearance-group">
+      <Badge variant="default" appearance="soft">На складе</Badge>
+      <Badge variant="accent" appearance="soft">В работе</Badge>
+      <Badge variant="warning" appearance="dot">Ожидает ремонта</Badge>
+      <Badge variant="warning" appearance="soft">В ремонте</Badge>
+      <Badge variant="destructive" appearance="dot">На списание</Badge>
+      <Badge variant="destructive" appearance="soft">Списано</Badge>
+    </div>
+  </div>
 </section>
 
 <style lang="scss">
@@ -86,6 +98,7 @@
 
   .appearance-group {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--tr-space-md);
   }

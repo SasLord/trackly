@@ -5,7 +5,12 @@
 
 <div class="toast-host" aria-live="polite" aria-atomic="false">
   {#each toastStore.items as item (item.id)}
-    <Toast kind={item.kind} message={item.message} onClose={() => removeToast(item.id)} />
+    <Toast
+      kind={item.kind}
+      message={item.message}
+      link={item.link}
+      onClose={() => removeToast(item.id)}
+    />
   {/each}
 </div>
 

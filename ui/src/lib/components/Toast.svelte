@@ -1,13 +1,15 @@
 <script lang="ts">
-  import type { ToastKind } from '$lib/stores/toast.svelte';
+  import type { ToastKind, ToastLink } from '$lib/stores/toast.svelte';
 
   interface Props {
     kind: ToastKind;
     message: string;
+    /** Внутренняя ссылка (`#/...`), уже отфильтрованная в pushToast. */
+    link?: ToastLink;
     onClose: () => void;
   }
 
-  const { kind, message, onClose }: Props = $props();
+  const { kind, message, link, onClose }: Props = $props();
 
   const roleMap: Record<ToastKind, string> = {
     info: 'status',
@@ -19,6 +21,9 @@
 
 <div class="toast toast-{kind}" role={roleMap[kind]} aria-live="polite">
   <span class="toast-message">{message}</span>
+  {#if link}
+    <a class="toast-link" href={link.href} onclick={onClose}>{link.label}</a>
+  {/if}
   <button class="toast-close" onclick={onClose} aria-label="Закрыть уведомление">×</button>
 </div>
 
@@ -55,6 +60,20 @@
     font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     line-height: var(--tr-line-height-body);
+  }
+
+  .toast-link {
+    flex-shrink: 0;
+    margin-left: var(--tr-space-xs);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
+    line-height: var(--tr-line-height-body);
+    color: var(--tr-accent-text);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
   }
 
   .toast-close {

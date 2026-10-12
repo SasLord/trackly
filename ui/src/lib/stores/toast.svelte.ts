@@ -2,12 +2,20 @@
 
 export type ToastKind = 'success' | 'error' | 'info' | 'warning';
 
+/** Внутренняя ссылка тоста: только маршрут hash-роутера (`#/...`). */
+export interface ToastLink {
+  label: string;
+  href: string;
+}
+
 export interface ToastItem {
   id: string;
   kind: ToastKind;
   message: string;
   /** Залипающий тост: без TTL, снимается только `removeToast`/кликом. */
   sticky?: boolean;
+  /** Необязательная ссылка после текста (например, «Открыть группы»). */
+  link?: ToastLink;
 }
 
 export interface PushToastOptions {
@@ -19,6 +27,20 @@ export interface PushToastOptions {
    * когда состояние закончилось.
    */
   sticky?: boolean;
+  /**
+   * Ссылка в тосте. Принимается только `href` вида `#/...` (внутренний маршрут)
+   * и непустой `label`; всё остальное молча отбрасывается — тост не должен
+   * становиться открытой переадресацией на внешний адрес (T-41.1-02-01).
+   */
+  link?: ToastLink;
+}
+
+/** Нормализует ссылку: только `#/...` и непустая подпись, иначе undefined. */
+function sanitizeLink(link: ToastLink | undefined): ToastLink | undefined {
+  if (!link) return undefined;
+  const label = link.label?.trim();
+  if (!label || typeof link.href !== 'string' || !link.href.startsWith('#/')) return undefined;
+  return { label, href: link.href };
 }
 
 const TTL: Record<ToastKind, number> = {
@@ -35,6 +57,7 @@ export const toastStore = $state({ items: [] as ToastItem[] });
 /** Возвращает id созданного (или уже существующего залипающего) тоста. */
 export function pushToast(kind: ToastKind, message: string, opts?: PushToastOptions): string {
   const sticky = opts?.sticky === true;
+  const link = sanitizeLink(opts?.link);
 
   // Залипающие тосты дедуплицируются по тексту. Без этого флапающее соединение
   // (connect/disconnect по кругу) копило бы стопку одинаковых несгораемых
@@ -82,7 +105,7 @@ export function pushToast(kind: ToastKind, message: string, opts?: PushToastOpti
       toastStore.items = toastStore.items.filter((t) => !dropped.has(t.id));
     }
   }
-  toastStore.items = [...toastStore.items, { id, kind, message, sticky }];
+  toastStore.items = [...toastStore.items, { id, kind, message, sticky, link }];
   if (!sticky) {
     setTimeout(() => {
       toastStore.items = toastStore.items.filter((t) => t.id !== id);

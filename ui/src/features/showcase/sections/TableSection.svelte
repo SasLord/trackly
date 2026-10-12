@@ -4,6 +4,8 @@
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
+  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import RowChevron from '$lib/components/icons/RowChevron.svelte';
 
   type BadgeVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
 
@@ -288,6 +290,22 @@
       </TableRow>
     </Table>
   </div>
+
+  <div class="variant-block">
+    <h3 class="variant-label">Шеврон строки и меню действий с разделителем</h3>
+    <div class="primitives-row">
+      <RowChevron expanded={false} onclick={() => {}} />
+      <RowChevron expanded={true} onclick={() => {}} />
+      <ActionMenu variant="ghost-sm" label="Действия строки">
+        <button type="button" role="menuitem">Открыть</button>
+        <button type="button" role="menuitem">Изменить</button>
+        <button type="button" role="menuitem">Переместить</button>
+        <!-- svelte-ignore a11y_no_redundant_roles -->
+        <hr role="separator" />
+        <button type="button" role="menuitem" class="menu-danger">Удалить</button>
+      </ActionMenu>
+    </div>
+  </div>
 </section>
 
 <style lang="scss">
@@ -318,6 +336,12 @@
     font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-secondary);
     text-transform: uppercase;
+  }
+
+  .primitives-row {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-md);
   }
 
   .group-pill-cell {
