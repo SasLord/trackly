@@ -30,7 +30,10 @@ pub struct SqliteDeviceRepository;
 /// SELECT с полным набором колонок в том порядке, который ожидает `from_row`.
 /// LEFT JOIN place_full_paths добавляет `pfp.full_path` как столбец с индексом 15;
 /// LEFT JOIN place_effective_variant добавляет `pev.effective_variant` как индекс 16
-/// (Phase 39.1 Plan 03). `from_row` НИКОГДА не читает индекс 16 — он используется
+/// (Phase 39.1 Plan 03). Phase 41.1 Plan 07 дописала в конец ещё два столбца:
+/// `status_code` — индекс 17 (`COALESCE` подзапроса к `device_statuses`) и
+/// `d.origin_group_id` — индекс 18; `from_row` читает их всегда. `from_row` НИКОГДА
+/// не читает индекс 16 — он используется
 /// только `from_row_with_short_path`, вызываемым из `list`/`search_fts`/`list_by_ids`
 /// (Phase 40 Plan 26 — `list_by_ids` питает раскрытые группы списка устройств, поэтому
 /// сокращённый путь ему нужен так же, как `list`/`search_fts`; D-19 по-прежнему верно
@@ -41,7 +44,9 @@ const SELECT_DEVICES: &str = "
     SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, d.model,
            d.condition, d.complectation, d.place_id, d.status_id, d.notes,
            d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc,
-           pfp.full_path AS place_path, pev.effective_variant AS place_variant
+           pfp.full_path AS place_path, pev.effective_variant AS place_variant,
+           COALESCE((SELECT s.code FROM device_statuses s WHERE s.id = d.status_id), '') AS status_code,
+           d.origin_group_id AS origin_group_id
     FROM devices d
     LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
     LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
@@ -69,6 +74,8 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
         deleted_at_utc: row.get(14)?,
         full_path: row.get(15)?, // pfp.full_path from LEFT JOIN
         place_path_short: None,
+        status_code: row.get(17)?, // device_statuses.code (индекс 16 — effective_variant)
+        origin_group_id: row.get(18)?, // devices.origin_group_id
     })
 }
 
@@ -371,6 +378,37 @@ impl SqliteDeviceRepository {
             });
         }
         self.get_in_tx(tx, device_id)
+    }
+
+    /// Status-only UPDATE внутри транзакции (Phase 41.1 Plan 07, D-15).
+    ///
+    /// Нужен разбору группы для смены статуса на «На списание». Меняет ТОЛЬКО
+    /// статус: колонку места метод не затрагивает, поэтому не относится к писателям
+    /// места и не попадает в реестр write-site'ов. `version` инкрементируется,
+    /// `updated_at_utc` обновляется. Для несуществующего или мягко удалённого
+    /// устройства — `AppError::NotFound`.
+    pub fn set_status_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        id: i64,
+        status_id: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        let affected = tx
+            .execute(
+                "UPDATE devices SET status_id = ?2, version = version + 1, \
+                 updated_at_utc = ?3 \
+                 WHERE id = ?1 AND deleted_at_utc IS NULL",
+                rusqlite::params![id, status_id, now_utc],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "device",
+                id,
+            });
+        }
+        Ok(())
     }
 
     /// UPDATE status_id + place_id + condition внутри транзакции — used by
@@ -976,7 +1014,10 @@ impl DeviceRepository for SqliteDeviceRepository {
              SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, \
                     d.model, d.condition, d.complectation, d.place_id, d.status_id, \
                     d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc, \
-                    pfp.full_path AS place_path, pev.effective_variant AS place_variant \
+                    pfp.full_path AS place_path, pev.effective_variant AS place_variant, \
+                    COALESCE((SELECT s.code FROM device_statuses s WHERE s.id = d.status_id), '') \
+                        AS status_code, \
+                    d.origin_group_id AS origin_group_id \
              FROM devices d \
              LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
              LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id \
@@ -1314,6 +1355,18 @@ impl DeviceRepository for SqliteDeviceRepository {
         // discipline as `list`/`search_fts`.
         let (sep_ends, sep_last_two) = read_path_display_separators(conn);
 
+        // Phase 41.1 Plan 07: id→code справочника статусов, один раз за вызов
+        // (три SQL-ветки агрегируют `MAX(d.status_id)` и не трогаем их).
+        let status_codes: std::collections::HashMap<i64, String> = {
+            let mut st = conn
+                .prepare("SELECT id, COALESCE(code, '') FROM device_statuses")
+                .map_err(map_rusqlite)?;
+            let it = st
+                .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+                .map_err(map_rusqlite)?;
+            it.collect::<Result<_, _>>().map_err(map_rusqlite)?
+        };
+
         let mut groups = Vec::new();
         for row_result in rows {
             let (
@@ -1380,6 +1433,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 created_at_utc,
                 updated_at_utc,
                 deleted_at_utc: None,
+                status_code: status_codes.get(&status_id).cloned().unwrap_or_default(),
+                origin_group_id: None,
             };
 
             groups.push(DeviceGroupRow {

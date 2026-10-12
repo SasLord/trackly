@@ -148,6 +148,13 @@ pub struct DeviceRow {
     pub updated_at_utc: i64,
     pub deleted_at_utc: Option<i64>,
     pub version: i64,
+    /// Машинный ключ статуса (`device_statuses.code`) для `status_id`. Меню строки
+    /// и тон бейджа решаются по нему, а не по русской подписи (Phase 41.1, D-02/D-06).
+    pub status_code: String,
+    /// Неэксклюзивная ссылка на группу разбора, из которой деталь происходит
+    /// (`devices.origin_group_id`, Phase 41.1, D-16). Вход и выход из других групп
+    /// её не меняют. В `list_grouped` у представителя группы всегда `None`.
+    pub origin_group_id: Option<i64>,
 }
 
 /// A grouped device row for non-unique devices (D-Group-01).
