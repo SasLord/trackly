@@ -56,6 +56,12 @@ pub struct GroupCreateDto {
     pub name: Option<String>,
     #[specta(type = Option<i32>)]
     pub place_id: Option<i32>,
+    /// Создание группы ОТ устройства (быстрые действия Phase 41.1): место группы
+    /// берётся у устройства, устройство входит в состав, для замещения и разбора
+    /// становится якорем. `None` — прежнее создание. Клиент без поля работает как раньше.
+    #[serde(default)]
+    #[specta(type = Option<i32>)]
+    pub source_device_id: Option<i64>,
 }
 
 /// Строка устройства в составе группы (столбцы `PlaceContents`, D-05).

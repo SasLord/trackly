@@ -142,6 +142,7 @@ async fn make_anchor_group(
                 type_id,
                 name: Some(group_name.to_string()),
                 place_id: None,
+                source_device_id: None,
             },
         )
         .await

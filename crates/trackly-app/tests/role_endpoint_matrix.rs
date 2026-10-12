@@ -4019,6 +4019,7 @@ async fn groups_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Resul
                 type_id: 999999,
                 name: None,
                 place_id: None,
+                source_device_id: None,
             },
         )
         .await
@@ -4226,6 +4227,64 @@ async fn groups_role_matrix_tauri_path() {
             "Case 82: Employee → build {name} ({kind:?}) → ожидали Forbidden, получили {res:?}"
         );
     }
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 41.1 plan 11: groups_create с source_device_id — роль проверяется ДО любой
+// логики источника (T-41.1-11-01), на обоих транспортах.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn groups_create_with_source_device_is_gated_by_role() {
+    use trackly_app::dto::groups::GroupCreateDto;
+    use trackly_app::tauri_cmds::groups as g;
+
+    let env = gt_env().await;
+    let arm = groups_type_id(&env, "workstation").await;
+    let device = groups_seed_device(&env, "Системный блок #4", "INV-SRC-1").await;
+    let before = gt_db_i64(&env.ctx, "SELECT COUNT(*) FROM groups", vec![]).await;
+
+    // HTTP: employee получает 403 и с источником.
+    let (status, _) = gt_post(
+        &env,
+        &env.employee_cookie,
+        "groups_create",
+        json!({ "dto": { "type_id": arm, "name": null, "place_id": null,
+                          "source_device_id": device } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "HTTP employee с источником");
+
+    // Tauri-путь: тот же отказ.
+    let res = g::build_groups_create(
+        &env.ctx,
+        &env.employee,
+        GroupCreateDto {
+            type_id: arm,
+            name: None,
+            place_id: None,
+            source_device_id: Some(device),
+        },
+    )
+    .await;
+    assert!(
+        matches!(res, Err(AppError::Forbidden)),
+        "Tauri employee с источником: {res:?}"
+    );
+    let after = gt_db_i64(&env.ctx, "SELECT COUNT(*) FROM groups", vec![]).await;
+    assert_eq!(before, after, "группа не создана");
+
+    // Manager с источником проходит гейт и создаёт группу.
+    let (status, body) = gt_post(
+        &env,
+        &env.manager_cookie,
+        "groups_create",
+        json!({ "dto": { "type_id": arm, "name": null, "place_id": null,
+                          "source_device_id": device } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "manager с источником: {body}");
     env.ctx.shutdown.cancel();
 }
 

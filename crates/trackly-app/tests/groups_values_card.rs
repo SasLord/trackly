@@ -276,6 +276,7 @@ async fn arm_group(ctx: &AppCtx) -> i64 {
                 type_id: arm,
                 name: None,
                 place_id: None,
+                source_device_id: None,
             },
         )
         .await
@@ -327,6 +328,7 @@ async fn group_of_type(ctx: &AppCtx, type_id: i64) -> GroupCardDto {
                 type_id,
                 name: None,
                 place_id: None,
+                source_device_id: None,
             },
         )
         .await

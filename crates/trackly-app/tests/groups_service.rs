@@ -471,6 +471,7 @@ fn create_dto(type_id: i64, name: Option<&str>, place_id: Option<i32>) -> GroupC
         type_id,
         name: name.map(str::to_string),
         place_id,
+        source_device_id: None,
     }
 }
 

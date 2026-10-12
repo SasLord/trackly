@@ -73,6 +73,7 @@ async fn scenario_create_group() {
                     type_id,
                     name: Some("АРМ Иванова И.И.".to_string()),
                     place_id: Some(place as i32),
+                    source_device_id: None,
                 },
             )
             .await
@@ -91,6 +92,7 @@ async fn scenario_create_group() {
                     type_id,
                     name: Some("АРМ Петрова П.П.".to_string()),
                     place_id: None,
+                    source_device_id: None,
                 },
             )
             .await
