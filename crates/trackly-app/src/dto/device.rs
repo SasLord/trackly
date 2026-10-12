@@ -64,6 +64,13 @@ pub struct DeviceDto {
     pub created_at_utc: i64,
     #[specta(type = i32)]
     pub updated_at_utc: i64,
+    /// Машинный ключ статуса (`device_statuses.code`): меню строки и тон бейджа
+    /// решаются по нему, а не по русской подписи (Phase 41.1, D-02/D-06).
+    pub status_code: String,
+    /// Неэксклюзивная ссылка на группу разбора (`devices.origin_group_id`,
+    /// Phase 41.1, D-16). Вход и выход из других групп её не меняет.
+    #[specta(type = Option<i32>)]
+    pub origin_group_id: Option<i64>,
 }
 
 impl From<DeviceRow> for DeviceDto {
@@ -85,6 +92,8 @@ impl From<DeviceRow> for DeviceDto {
             status_id: row.status_id,
             created_at_utc: row.created_at_utc,
             updated_at_utc: row.updated_at_utc,
+            status_code: row.status_code,
+            origin_group_id: row.origin_group_id,
         }
     }
 }
@@ -438,6 +447,8 @@ mod tests {
             status_id: 2,
             created_at_utc: 1_700_000_000,
             updated_at_utc: 1_700_001_000,
+            status_code: "в_работе".to_string(),
+            origin_group_id: Some(7),
         };
         let json = serde_json::to_string(&dto).expect("serialize");
         let back: DeviceDto = serde_json::from_str(&json).expect("deserialize");
@@ -482,6 +493,8 @@ mod tests {
             status_id: 1,
             created_at_utc: 0,
             updated_at_utc: 0,
+            status_code: "на_складе".to_string(),
+            origin_group_id: None,
         };
         let json = serde_json::to_string(&dto).expect("serialize");
         assert!(

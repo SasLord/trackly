@@ -985,3 +985,104 @@ async fn update_clears_place_id_via_json_null_without_touching_name() {
     .await
     .expect("update_clears_place_id_via_json_null_without_touching_name exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.1 Plan 07: status_code и origin_group_id в DeviceDto
+// ---------------------------------------------------------------------------
+
+/// id статуса по машинному коду (числовые id не зашиваем: порядок цикла в V047
+/// задаёт sort_order, а id новых статусов — MAX+1).
+async fn status_id_by_code(svc: &DeviceService, code: &'static str) -> i64 {
+    let readers = svc.readers.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT id FROM device_statuses WHERE code = ?1",
+            rusqlite::params![code],
+            |r| r.get::<_, i64>(0),
+        )
+    })
+    .await
+    .expect("spawn_blocking")
+    .expect("status by code")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn get_returns_status_code_and_follows_status_change() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let on_stock = status_id_by_code(&svc, "на_складе").await;
+        let written_off = status_id_by_code(&svc, "списано").await;
+
+        let mut new = minimal_new("Ноутбук Lenovo");
+        new.status_id = on_stock;
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create")
+            .expect_created("create");
+        assert_eq!(dto.status_code, "на_складе");
+        assert_eq!(svc.get(dto.id).await.expect("get").status_code, "на_складе");
+
+        let patch = DevicePatch {
+            status_id: Some(written_off),
+            ..Default::default()
+        };
+        let updated = svc
+            .update(&admin_caller(), dto.id, dto.version, patch)
+            .await
+            .expect("update")
+            .expect_created("update");
+        assert_eq!(updated.status_code, "списано");
+        assert_eq!(svc.get(dto.id).await.expect("get").status_code, "списано");
+    })
+    .await
+    .expect("get_returns_status_code_and_follows_status_change exceeded 30 s budget");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_returns_status_code_on_every_row() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let on_stock = status_id_by_code(&svc, "на_складе").await;
+        let in_use = status_id_by_code(&svc, "в_работе").await;
+
+        for (name, sid) in [("Ноутбук А", on_stock), ("Ноутбук Б", in_use)] {
+            let mut new = minimal_new(name);
+            new.status_id = sid;
+            svc.create(new).await.expect("create");
+        }
+
+        let resp = svc
+            .list(DeviceFilter::default(), Pagination::default())
+            .await
+            .expect("list");
+        assert_eq!(resp.items.len(), 2);
+        for item in &resp.items {
+            let expected = if item.status_id == on_stock {
+                "на_складе"
+            } else {
+                "в_работе"
+            };
+            assert_eq!(item.status_code, expected, "{}", item.name);
+        }
+    })
+    .await
+    .expect("list_returns_status_code_on_every_row exceeded 30 s budget");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn new_device_has_no_origin_group() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let dto = svc
+            .create(minimal_new("Ноутбук Lenovo"))
+            .await
+            .expect("create")
+            .expect_created("create");
+        assert_eq!(dto.origin_group_id, None);
+        assert_eq!(svc.get(dto.id).await.expect("get").origin_group_id, None);
+    })
+    .await
+    .expect("new_device_has_no_origin_group exceeded 30 s budget");
+}
