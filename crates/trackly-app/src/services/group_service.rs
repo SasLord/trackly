@@ -18,8 +18,8 @@ use rusqlite::Connection;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::domain::group_values;
 use trackly_core::domain::groups::{
-    validate_name, GroupNew, GroupRow, GroupTypeRow, GroupValueRow, PropertyDataType,
-    MAX_DEVICES_PER_BATCH, MAX_REFS_PER_PROPERTY,
+    validate_name, GroupBehavior, GroupNew, GroupRow, GroupTypeRow, GroupValueRow,
+    PropertyDataType, MAX_DEVICES_PER_BATCH, MAX_REFS_PER_PROPERTY,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::group_types::GroupTypeRepository;
@@ -30,9 +30,10 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::{
-    SqliteGroupRepository, SqliteGroupTypeRepository, SqlitePlaceRepository,
+    SqliteDeviceRepository, SqliteGroupRepository, SqliteGroupTypeRepository, SqlitePlaceRepository,
 };
 
+use crate::dto::device::DeviceDto;
 use crate::dto::groups::{
     DeviceMembershipDto, GroupAddDevicesResultDto, GroupCardDto, GroupCompositionDto,
     GroupCreateDto, GroupDeleteResultDto, GroupDto, GroupMemberDeviceDto, GroupMoveResultDto,
@@ -52,6 +53,12 @@ use crate::services::plural::ru_plural;
 const SEARCH_QUERY_MAX_CHARS: usize = 100;
 /// Потолок числа кандидатов в выдаче поиска.
 const SEARCH_RESULT_LIMIT: usize = 50;
+/// `device_types.id` типа «Устройство» (seed V001; тот же `type_id = 1`, что показывает
+/// раздел «Устройства»). Любой другой тип — принтер, который якорем группы быть не может (D-38).
+const DEVICE_TYPE_ID: i64 = 1;
+/// Коды статусов `device_statuses.code`: по коду, а не по числовому id.
+const STATUS_CODE_WRITTEN_OFF: &str = "списано";
+const STATUS_CODE_TO_WRITE_OFF: &str = "на_списание";
 
 /// Сервис групп. `Arc`-поля делают `Clone` дешёвым.
 #[derive(Clone)]
@@ -439,14 +446,63 @@ impl GroupService {
         let places_repo = self.places_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let type_id = dto.type_id;
-        let place_id = dto.place_id.map(i64::from);
+        let source_device_id = dto.source_device_id;
+        let dto_place_id = dto.place_id.map(i64::from);
 
-        let out = self
+        let (out, source_place) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let gtype = type_repo.get_type(&tx, type_id)?;
-                if let Some(pid) = place_id {
+                let behavior = GroupBehavior::from_str_lenient(&gtype.behavior);
+                // С источником место группы берётся у устройства (ниже), `dto.place_id`
+                // игнорируется: так `groups.place_id` и `devices.place_id` не расходятся (D-13).
+                let mut place_id = dto_place_id;
+                let devices_repo = SqliteDeviceRepository;
+                let mut source: Option<trackly_core::domain::devices::DeviceRow> = None;
+                if let Some(sid) = source_device_id {
+                    let device = match devices_repo.get_in_tx(&tx, sid) {
+                        Ok(d) => d,
+                        Err(AppError::NotFound { .. }) => {
+                            return Err(source_device_error("Устройство не найдено.".to_string()))
+                        }
+                        Err(e) => return Err(e),
+                    };
+                    if device.deleted_at_utc.is_some() {
+                        return Err(source_device_error(
+                            "Устройство удалено и не может входить в группу.".to_string(),
+                        ));
+                    }
+                    // D-38: якорем бывает только «Устройство»; проверка раньше остальных.
+                    if device.type_id != DEVICE_TYPE_ID {
+                        return Err(source_device_error(
+                            "Группу можно создать только от устройства. \
+                             Принтер можно добавить в уже существующую группу."
+                                .to_string(),
+                        ));
+                    }
+                    if device.status_code == STATUS_CODE_WRITTEN_OFF {
+                        return Err(source_device_error(
+                            "Устройство со статусом «Списано» в группу не добавляется.".to_string(),
+                        ));
+                    }
+                    if device.status_code == STATUS_CODE_TO_WRITE_OFF {
+                        return Err(source_device_error(
+                            "Устройство со статусом «На списание» в группу не добавляется."
+                                .to_string(),
+                        ));
+                    }
+                    if let Some(existing) = repo.group_of_device_in_tx(&tx, sid)? {
+                        return Err(source_device_error(format!(
+                            "Устройство «{}» уже входит в группу «{}». \
+                             Сначала выведите его из состава.",
+                            device.name, existing.name
+                        )));
+                    }
+                    // Текущее место устройства — не «выбор места»: архивность не проверяется.
+                    place_id = device.place_id;
+                    source = Some(device);
+                } else if let Some(pid) = place_id {
                     let place = match places_repo.get(&tx, pid) {
                         Ok(p) => p,
                         Err(AppError::NotFound { .. }) => {
@@ -470,7 +526,53 @@ impl GroupService {
                     },
                     now,
                 )?;
+                let mut source_place: Option<i64> = None;
+                if let Some(device) = source {
+                    // Устройство входит в состав; его место не меняется и строк
+                    // `place_movements` создание не пишет (группа берёт место устройства).
+                    repo.add_device_in_tx(&tx, id, device.id, now)?;
+                    if matches!(
+                        behavior,
+                        Some(GroupBehavior::Substitute) | Some(GroupBehavior::Teardown)
+                    ) {
+                        repo.set_anchor_in_tx(&tx, id, device.id)?;
+                    }
+                    if behavior == Some(GroupBehavior::Teardown) {
+                        // «На разбор» → «На списание»; статус ищется по коду (D-04, D-15).
+                        let status_id: i64 = tx
+                            .query_row(
+                                "SELECT id FROM device_statuses WHERE code = ?1",
+                                rusqlite::params![STATUS_CODE_TO_WRITE_OFF],
+                                |r| r.get(0),
+                            )
+                            .map_err(map_rusqlite)?;
+                        let before = DeviceDto::from(device.clone());
+                        devices_repo.set_status_in_tx(&tx, device.id, status_id, now)?;
+                        let after = DeviceDto::from(devices_repo.get_in_tx(&tx, device.id)?);
+                        audit_repo.insert(
+                            &tx,
+                            AuditEntry {
+                                entity_type: "device",
+                                entity_id: device.id,
+                                action: "update",
+                                user_id,
+                                before_json: Some(to_json(&before)?),
+                                after_json: Some(to_json(&after)?),
+                                payload_json: Some(to_json(&serde_json::json!({
+                                    "group_id": id,
+                                    "reason": "teardown",
+                                }))?),
+                                created_at_utc: now,
+                            },
+                        )?;
+                    }
+                    source_place = device.place_id;
+                }
                 let out = group_dto_on(&tx, &repo, &type_repo, id)?;
+                let payload_json = match source_device_id {
+                    Some(sid) => Some(to_json(&serde_json::json!({ "source_device_id": sid }))?),
+                    None => None,
+                };
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -480,19 +582,21 @@ impl GroupService {
                         user_id,
                         before_json: None,
                         after_json: Some(to_json(&out)?),
-                        payload_json: None,
+                        payload_json,
                         created_at_utc: now,
                     },
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(out)
+                Ok((out, source_place))
             })
             .await?;
 
         // После коммита, вне writer-замыкания. Без места place_ids пуст, событие всё
-        // равно идёт: group_ids = [id] (D-17).
-        let place_ids: Vec<i64> = place_id.into_iter().collect();
-        let device_ids: Vec<i64> = Vec::new();
+        // равно идёт: group_ids = [id] (D-17). Создание от устройства несёт его id и место.
+        let (place_ids, device_ids): (Vec<i64>, Vec<i64>) = match source_device_id {
+            Some(sid) => (source_place.into_iter().collect(), vec![sid]),
+            None => (dto_place_id.into_iter().collect(), Vec::new()),
+        };
         let group_ids = vec![out.id];
         self.broadcast_entities("create_group", place_ids, device_ids, group_ids);
         Ok(out)
@@ -704,6 +808,32 @@ fn device_ids_error(message: String) -> AppError {
     }
 }
 
+fn source_device_error(message: String) -> AppError {
+    AppError::Validation {
+        field: "source_device_id".to_string(),
+        message,
+    }
+}
+
+/// Сетевой принтер (D-32): у принтера задан IP. USB-принтер (`ip_address IS NULL`)
+/// в группу входить может.
+fn is_network_printer_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    device_id: i64,
+) -> Result<bool, AppError> {
+    let n: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM printers WHERE device_id = ?1 AND ip_address IS NOT NULL",
+            rusqlite::params![device_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)?;
+    Ok(n > 0)
+}
+
+const NETWORK_PRINTER_MESSAGE: &str =
+    "Сетевой принтер не может входить в группу: его используют несколько рабочих мест.";
+
 fn push_unique_place(out: &mut Vec<i64>, id: i64) {
     if !out.contains(&id) {
         out.push(id);
@@ -726,6 +856,7 @@ impl GroupService {
 
         let now = self.clock.unix_seconds();
         let user_id = caller.user_id;
+        let type_repo = self.type_repo.clone();
 
         let (result, added) = self
             .writer
@@ -733,6 +864,10 @@ impl GroupService {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let deps = GroupMoveDeps::new();
                 let group = deps.groups.get_group_in_tx(&tx, group_id)?;
+                // Поведение группы-приёмника читается один раз до цикла.
+                let target_behavior = GroupBehavior::from_str_lenient(
+                    &type_repo.get_type(&tx, group.type_id)?.behavior,
+                );
 
                 let mut added: Vec<i64> = Vec::new();
                 let mut changed_places: Vec<i64> = Vec::new();
@@ -760,9 +895,36 @@ impl GroupService {
                             device.name, existing.name
                         )));
                     }
+                    // Серверные отказы бессмысленных действий (D-05, D-32): скрытые пункты
+                    // UI — только UX. Порядок: статус, затем сетевой принтер.
+                    if device.status_code == STATUS_CODE_WRITTEN_OFF {
+                        return Err(device_ids_error(format!(
+                            "Устройство «{}» со статусом «Списано» в группу не добавляется.",
+                            device.name
+                        )));
+                    }
+                    // «На списание» входит только в разбор: деталь на списание — нормальный
+                    // случай записи разбора (D-18/D-35).
+                    if device.status_code == STATUS_CODE_TO_WRITE_OFF
+                        && target_behavior != Some(GroupBehavior::Teardown)
+                    {
+                        return Err(device_ids_error(format!(
+                            "Устройство «{}» со статусом «На списание» в группу не добавляется.",
+                            device.name
+                        )));
+                    }
+                    if is_network_printer_in_tx(&tx, *device_id)? {
+                        return Err(device_ids_error(NETWORK_PRINTER_MESSAGE.to_string()));
+                    }
                     deps.groups
                         .add_device_in_tx(&tx, group_id, *device_id, now)?;
                     added.push(*device_id);
+                    // D-16/D-33: происхождение пишется только пока NULL; результат
+                    // `false` (уже записано) не ошибка.
+                    if target_behavior == Some(GroupBehavior::Teardown) {
+                        deps.groups
+                            .set_device_origin_if_null_in_tx(&tx, *device_id, group_id)?;
+                    }
 
                     // D-21: место присваивает только группа С местом.
                     if let Some(place) = group.place_id {
