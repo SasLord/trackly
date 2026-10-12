@@ -571,6 +571,22 @@ impl GroupService {
                 let before = group_dto_on(&tx, &repo, &type_repo, id)?;
                 let released = before.direct_device_count;
                 let nested = before.nested_group_count;
+                // Phase 41.1 (D-20): запись разбора с живыми деталями не удаляется,
+                // иначе теряется происхождение деталей. Детали считаются без якоря.
+                if before.type_behavior == "teardown" {
+                    let parts = repo.count_live_parts_in_tx(&tx, id)?;
+                    if parts > 0 {
+                        return Err(AppError::Validation {
+                            field: "id".to_string(),
+                            message: format!(
+                                "Группу «{}» нельзя удалить: в ней {} {}. Сначала выведите детали из состава.",
+                                before.name,
+                                parts,
+                                ru_plural(parts, "деталь", "детали", "деталей")
+                            ),
+                        });
+                    }
+                }
                 repo.delete_group_in_tx(&tx, id)?;
                 audit_repo.insert(
                     &tx,
@@ -830,6 +846,27 @@ impl GroupService {
                     let member_of = deps.groups.group_of_device_in_tx(&tx, *device_id)?;
                     if member_of.map(|g| g.id) != Some(group_id) {
                         continue;
+                    }
+                    // Phase 41.1 (D-14): якорь нельзя вывести из состава сбоку.
+                    if let Some(anchor_group) =
+                        deps.groups.anchor_group_of_device_in_tx(&tx, *device_id)?
+                    {
+                        if anchor_group.id == group_id {
+                            let device_name: String = tx
+                                .query_row(
+                                    "SELECT name FROM devices WHERE id = ?1",
+                                    rusqlite::params![device_id],
+                                    |r| r.get(0),
+                                )
+                                .unwrap_or_default();
+                            return Err(AppError::Validation {
+                                field: "device_ids".to_string(),
+                                message: format!(
+                                    "Устройство «{}» — якорь группы «{}»: вывести его из состава нельзя. Чтобы расформировать группу, удалите её в разделе «Группы».",
+                                    device_name, anchor_group.name
+                                ),
+                            });
+                        }
                     }
                     if release_device_in_tx(
                         &tx,

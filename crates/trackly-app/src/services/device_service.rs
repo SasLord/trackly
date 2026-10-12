@@ -891,6 +891,24 @@ impl DeviceService {
                     })?;
                 let before_place_id = before.as_ref().and_then(|b| b.place_id);
 
+                // Phase 41.1 (GRP-10, D-14): якорь группы не удаляется, пока группа
+                // существует. FK `ON DELETE RESTRICT` мягкое удаление (UPDATE
+                // deleted_at_utc) не ловит, поэтому охрана живёт здесь, в транзакции
+                // writer, строго ДО записи.
+                if let Some(group) = groups.anchor_group_of_device_in_tx(&tx, id)? {
+                    let device_name = before
+                        .as_ref()
+                        .map(|b| b.name.clone())
+                        .unwrap_or_default();
+                    return Err(AppError::Validation {
+                        field: "id".to_string(),
+                        message: format!(
+                            "Устройство «{}» — якорь группы «{}». Сначала удалите группу в разделе «Группы»: после этого устройство снова станет обычным.",
+                            device_name, group.name
+                        ),
+                    });
+                }
+
                 repo.delete_soft_in_tx(&tx, id, version, now)?;
 
                 // Phase 41 (GRP-05, S8): удалённое устройство не остаётся «мёртвым»

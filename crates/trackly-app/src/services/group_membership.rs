@@ -24,6 +24,25 @@ pub(crate) fn release_device_in_tx(
     user_id: Option<i64>,
     now: i64,
 ) -> Result<Option<i64>, AppError> {
+    // Phase 41.1 (D-14, D-36): якорь группы нельзя вывести из состава ни одним путём
+    // (акт, restore, удаление). Временное ограничение фазы 41.1: передача якоря актом
+    // снимается в фазе 41.2 («выбор группы в акте»), где якорь передаётся вместе с группой.
+    if let Some(anchor_group) = groups.anchor_group_of_device_in_tx(tx, device_id)? {
+        let device_name: String = tx
+            .query_row(
+                "SELECT name FROM devices WHERE id = ?1",
+                rusqlite::params![device_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
+        return Err(AppError::Validation {
+            field: "id".to_string(),
+            message: format!(
+                "Устройство «{}» — якорь группы «{}»: передать его актом нельзя, пока группа существует. Передача группы целиком актом появится позже (выбор группы в акте).",
+                device_name, anchor_group.name
+            ),
+        });
+    }
     let Some(group) = groups.group_of_device_in_tx(tx, device_id)? else {
         return Ok(None);
     };
