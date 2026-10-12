@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-12T18:13:33.786Z"
-last_activity: 2026-10-12 -- Phase 41.1 planning complete
+last_updated: "2026-10-12T18:48:17.949Z"
+last_activity: 2026-10-12
 progress:
   total_phases: 21
   completed_phases: 11
   total_plans: 189
-  completed_plans: 167
+  completed_plans: 168
   percent: 52
 ---
 
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 42 — умный подбор принтера в заявке
+**Current focus:** Phase 41.1 — groups-devices-integration
 
 ## Current Position
 
-Phase: 42
-Plan: Not started
+Phase: 41.1 (groups-devices-integration) — EXECUTING
+Plan: 2 of 22
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -137,7 +137,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-12 -- Phase 41.1 planning complete
+Last activity: 2026-10-12
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -581,6 +581,7 @@ Last activity: 2026-10-12 -- Phase 41.1 planning complete
 | Phase 41.7 P08 | ~2h | 2 tasks | 2 files |
 | Phase 41.7 P09 | 2h | 2 tasks | 2 files |
 | Phase 41.7 P10 | 40min | 2 tasks | 2 files |
+| Phase 41.1 P01 | 40min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -1273,6 +1274,8 @@ Recent decisions affecting current work:
 - [Phase 41.7]: [41.7-08] act_service: single deduped place list feeds both event and ActDto.changed_place_ids (D-03); broadcast unconditional outside if number_changed (P4); device_ids/group_ids empty (Q4)
 - [Phase 41.7]: [41.7-09] device_service: EntitiesChanged unconditional, outside NumberSpaceChanged conditions (P4); batch ops send one event after loop; D-01 N>=200 covered by CSV import (bulk capped at 100)
 - [Phase 41.7]: Plan 10: transition broadcast covers the cartridge, the auto-returned cartridge and a backfilled printer; place snapshot taken inside the same writer transaction
+- [Phase 41.1]: 41.1-01: переименование статуса по code, id новых не зашиты, порядок цикла по sort_order
+- [Phase 41.1]: 41.1-01: запрет мягкого удаления якоря группы живёт в сервисе (FK RESTRICT его не ловит)
 
 ### Pending Todos
 
@@ -1475,9 +1478,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-09T18:18:40.617Z
+Last session: 2026-10-12T18:48:14.096Z
 Stopped at: Phase 41.1 context gathered
-Resume file: .planning/phases/41.1-groups-devices-integration/41.1-CONTEXT.md
+Resume file: None
 
 None
 
