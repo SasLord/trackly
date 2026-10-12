@@ -54,6 +54,7 @@
       full_path: device.full_path ?? '',
       place_path_short: device.place_path_short ?? '',
       status_name: statusName,
+      status_code: device.status_code,
     };
   }
 
