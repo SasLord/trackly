@@ -16,6 +16,11 @@
   import DocumentAcceptanceModal from '../acts/DocumentAcceptanceModal.svelte';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
   import { devices } from './api';
+  import {
+    deviceListFlags,
+    shouldHideAnchorMembers,
+    type AnchorMembersState,
+  } from './deviceListMode';
   import type { DeviceDto, DeviceFilter, DeviceGroup, Pagination } from '../../bindings';
 
   // ---------------------------------------------------------------------------
@@ -61,9 +66,14 @@
   // DeviceGroupRow reports its key on toggle; keys survive list refreshes.
   let expandedGroups = $state(new Set<string>());
 
+  const pagination = $state<Pagination>({ offset: 0, limit: 50 });
+
+  const searchActive = $derived(searchQuery.trim().length > 0);
+
   // type_id=1 ("Устройство") hardcoded — /devices section shows only Устройства.
   // group_by_condition: false — DevicesPage схлопывает разные condition в одну группу (ITEM-1).
-  const baseFilter = $derived<DeviceFilter>({
+  // Без флагов якорных групп: флаги дописывает ТОЛЬКО deviceListFlags (ниже).
+  const rawFilter = $derived<DeviceFilter>({
     type_id: 1,
     place_id: null,
     status_id: statusFilter,
@@ -73,9 +83,30 @@
     group_by_condition: false,
   });
 
-  const pagination = $state<Pagination>({ offset: 0, limit: 50 });
+  // Контекст режима списка (фаза 41.1, D-10): поиск, вкладка статуса и переход
+  // «Перейти к устройству» (focusId = highlightId, W3) отключают скрытие членов
+  // якорных групп. highlightId нигде не сбрасывается, поэтому focusId отключает
+  // скрытие на всё время жизни страницы (осознанно, см. SUMMARY плана 19).
+  const listCtx = $derived({ searchActive, statusFilter, focusId: highlightId });
+  const hideActive = $derived(shouldHideAnchorMembers(listCtx));
 
-  const searchActive = $derived(searchQuery.trim().length > 0);
+  // Фильтр основного списка: плоский режим или свёртка одинаковых (якоря исключены
+  // из свёртки, D-11). Экспорт CSV (exportCsv) флагов НЕ ставит — выгрузка по всем.
+  const baseFilter = $derived<DeviceFilter>(
+    grouped
+      ? { ...rawFilter, ...deviceListFlags('grouped', listCtx) }
+      : { ...rawFilter, ...deviceListFlags('flat', listCtx) },
+  );
+
+  // D-11/D-34: якоря отдельным вызовом рядом со свёрткой; K для футера плоского списка.
+  let anchorItems = $state<DeviceDto[]>([]);
+  let hiddenMemberCount = $state(0);
+
+  // D-12: раскрытие состава якоря. Живёт здесь (а не в строке), по group_id,
+  // и переживает перезагрузку списка. Set переприсваивается — иначе нет реактивности.
+  let expandedAnchors = $state(new Set<number>());
+  let anchorMembers = $state<Record<number, AnchorMembersState>>({});
+  const ANCHOR_MEMBERS_LIMIT = 200;
 
   // ---------------------------------------------------------------------------
   // Data loading
@@ -89,18 +120,33 @@
         items = resp.items;
         total = resp.total;
         groups = [];
+        anchorItems = [];
+        hiddenMemberCount = 0;
       } else if (grouped) {
-        // Grouped mode — show non-unique devices as collapsible groups.
-        groups = await devices.listGrouped(baseFilter, pagination);
+        // Grouped mode — show non-unique devices as collapsible groups. Якоря не
+        // участвуют в свёртке (exclude_anchors) и выводятся отдельным вызовом (D-11).
+        const [grouping, anchors] = await Promise.all([
+          devices.listGrouped(baseFilter, pagination),
+          devices.list(
+            { ...rawFilter, ...deviceListFlags('anchors', listCtx) },
+            { offset: 0, limit: ANCHOR_MEMBERS_LIMIT },
+          ),
+        ]);
+        groups = grouping;
+        anchorItems = anchors.items;
         items = [];
         total = 0;
+        hiddenMemberCount = 0;
       } else {
         // Flat list mode.
         const resp = await devices.list(baseFilter, pagination);
         items = resp.items;
         total = resp.total;
         groups = [];
+        anchorItems = [];
+        hiddenMemberCount = resp.hidden_member_count ?? 0;
       }
+      void reloadExpandedAnchors();
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -110,6 +156,94 @@
     } finally {
       loading = false;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Раскрытие состава якоря (D-12)
+  // ---------------------------------------------------------------------------
+  async function fetchAnchorMembers(groupId: number): Promise<AnchorMembersState> {
+    const resp = await devices.list(
+      {
+        type_id: null,
+        place_id: null,
+        status_id: null,
+        state: null,
+        name_prefix: null,
+        include_deleted: false,
+        group_by_condition: false,
+        ...deviceListFlags('members', listCtx),
+        member_of_group_id: groupId,
+      },
+      { offset: 0, limit: ANCHOR_MEMBERS_LIMIT },
+    );
+    return { loading: false, items: resp.items, total: resp.total };
+  }
+
+  /** Ошибка загрузки состава: тост и сворачивание строки назад. */
+  function failAnchor(groupIds: number[]) {
+    pushToast('error', 'Не удалось загрузить состав группы.');
+    const next = new Set(expandedAnchors);
+    const cache = { ...anchorMembers };
+    for (const id of groupIds) {
+      next.delete(id);
+      delete cache[id];
+    }
+    expandedAnchors = next;
+    anchorMembers = cache;
+  }
+
+  async function loadAnchorMembers(groupId: number) {
+    anchorMembers = { ...anchorMembers, [groupId]: { loading: true, items: [], total: 0 } };
+    try {
+      const state = await fetchAnchorMembers(groupId);
+      anchorMembers = { ...anchorMembers, [groupId]: state };
+    } catch {
+      failAnchor([groupId]);
+    }
+  }
+
+  /**
+   * После перезагрузки списка состав раскрытых якорей перечитывается; кеш свёрнутых
+   * отбрасывается (иначе при следующем раскрытии он был бы устаревшим). Старый
+   * состав остаётся на экране до прихода нового: строка не мигает «Загрузкой».
+   */
+  async function reloadExpandedAnchors() {
+    const ids = [...expandedAnchors];
+    const results = await Promise.all(
+      ids.map((id) =>
+        fetchAnchorMembers(id).then(
+          (state) => [id, state] as const,
+          () => [id, null] as const,
+        ),
+      ),
+    );
+    const fresh: Record<number, AnchorMembersState> = {};
+    const failed: number[] = [];
+    for (const [id, state] of results) {
+      if (state) fresh[id] = state;
+      else failed.push(id);
+    }
+    // Якорь, раскрытый, пока шла перезагрузка, не теряет свою запись (иначе он
+    // остался бы с «Загрузкой…» навсегда).
+    for (const id of expandedAnchors) {
+      if (!(id in fresh) && !failed.includes(id) && anchorMembers[id]) {
+        fresh[id] = anchorMembers[id];
+      }
+    }
+    anchorMembers = fresh;
+    if (failed.length > 0) failAnchor(failed);
+  }
+
+  function toggleAnchor(groupId: number) {
+    const next = new Set(expandedAnchors);
+    if (next.has(groupId)) {
+      next.delete(groupId);
+      expandedAnchors = next;
+      return;
+    }
+    next.add(groupId);
+    expandedAnchors = next;
+    if (!anchorMembers[groupId]) void loadAnchorMembers(groupId);
   }
 
   async function refreshCounts() {
@@ -296,6 +430,12 @@
       {searchActive}
       {expandedGroups}
       {highlightId}
+      {anchorItems}
+      {expandedAnchors}
+      {anchorMembers}
+      onToggleAnchor={toggleAnchor}
+      {hiddenMemberCount}
+      {hideActive}
       onExpandToggle={(key, isExpanded) => {
         if (isExpanded) {
           expandedGroups.add(key);

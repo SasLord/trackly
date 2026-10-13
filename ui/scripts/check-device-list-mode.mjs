@@ -36,11 +36,11 @@
 //        (пикер акта, модалка массового добавления), поставивший флаг, краснит
 //        гейт, а не меняет поведение молча.
 //
-//    Правила [A] и [B] проверяют файлы, только когда PAGE_MANDATORY = true;
-//    пока страница ещё не подключена (задача 1 плана 19), печатается явный SKIP.
-//    Как только страница подключена, константа переводится в true: отсутствие
-//    файла или вызовов после этого нарушение, а не SKIP. Self-test проверяет
-//    оба режима.
+//    Правила [A] и [B] при PAGE_MANDATORY = false дают явный SKIP для страницы,
+//    которая модуль ещё не подключила (так было в задаче 1 плана 19). Задача 3
+//    подключила страницу и перевела константу в true: отсутствие файла или
+//    вызовов после этого нарушение, а не SKIP (SKIP-able файл молчал бы вечно).
+//    Self-test проверяет оба режима.
 //
 // Self-test (`--selftest`): мутанты РЕАЛЬНОГО deviceListMode.ts (якорь каждого
 // встречается ровно один раз, иначе replace молча отключил бы соседний фрагмент)
@@ -73,7 +73,7 @@ const MIN_SCANNED_FILES = 50;
 const SELFTEST_MIN_SCANNED_FILES = 1;
 
 // Задача 3 плана 19 подключила страницу: после этого SKIP для [A]/[B] недопустим.
-const PAGE_MANDATORY = false;
+const PAGE_MANDATORY = true;
 
 const KINDS = ['flat', 'grouped', 'anchors', 'members'];
 const CTX_KEYS = ['searchActive', 'statusFilter', 'focusId'];
@@ -395,6 +395,12 @@ export function checkPage(src) {
       msg: `строка ${lineOf(text, own.index)}: собственное выражение ${own[0]} вне deviceListFlags (флаги ставит только модуль)`,
     });
   }
+  // K и признак скрытия доходят до DeviceList (иначе футер молча остаётся прежним).
+  for (const prop of ['hideActive', 'hiddenMemberCount', 'anchorItems']) {
+    if (!new RegExp(`\\{${prop}\\}|\\b${prop}\\s*=\\s*\\{`).test(text)) {
+      out.push({ code: 'A', msg: `DeviceList не получает ${prop} ({${prop}} или ${prop}={...})` });
+    }
+  }
   if (!MEMBER_RE.test(text)) {
     out.push({ code: 'A', msg: 'нет member_of_group_id: раскрытие состава якоря не загружается' });
   }
@@ -635,6 +641,7 @@ const CLEAN_PAGE = `<script lang="ts">
     await devices.list({ type_id: null, ...deviceListFlags('members', listCtx), member_of_group_id: groupId }, p);
   }
 </script>
+<DeviceList {anchorItems} {hiddenMemberCount} {hideActive} />
 `;
 
 // Фикстура страницы с видами в тернарнике не годится для проверки «все четыре вида»:
@@ -752,6 +759,16 @@ function structuralMutants() {
       files: fixtureMap({
         [PAGE_FILE]: page(', member_of_group_id: groupId', '', 'member'),
       }),
+      expect: ['A'],
+    },
+    {
+      name: '[A] DeviceList не получает hideActive',
+      files: fixtureMap({ [PAGE_FILE]: page(' {hideActive} />', ' />', 'hideActiveProp') }),
+      expect: ['A'],
+    },
+    {
+      name: '[A] DeviceList не получает hiddenMemberCount',
+      files: fixtureMap({ [PAGE_FILE]: page(' {hiddenMemberCount}', '', 'hiddenProp') }),
       expect: ['A'],
     },
     {
