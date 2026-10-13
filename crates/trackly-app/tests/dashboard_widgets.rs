@@ -376,3 +376,112 @@ async fn dashboard_low_stock_cartridge_model_basis_matches_legacy_grouping() {
     .await
     .expect("dashboard_low_stock_cartridge_model_basis_matches_legacy_grouping budget")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.1 Plan 21 (D-08): сводка devices_by_status идёт в порядке
+// жизненного цикла статусов (sort_order), а не по алфавиту имени.
+// ---------------------------------------------------------------------------
+
+/// Создаёт `count` устройств в статусе с данным code (id статуса берётся из
+/// справочника подзапросом, числовых id в тесте нет).
+async fn seed_devices_in_status(writer: &WriterHandle, code: &str, count: i64) {
+    let code = code.to_string();
+    writer
+        .execute(move |conn| {
+            for i in 0..count {
+                conn.execute(
+                    "INSERT INTO devices (type_id, name, status_id, \
+                     created_at_utc, updated_at_utc, version) \
+                     VALUES (1, ?1, (SELECT id FROM device_statuses WHERE code = ?2), \
+                     1700000000, 1700000000, 1)",
+                    params![format!("Устройство {code} {i}"), code],
+                )
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
+            }
+            Ok(())
+        })
+        .await
+        .expect("seed devices in status");
+}
+
+fn dashboard_service(writer: Arc<WriterHandle>, readers: Arc<ReaderPool>) -> DashboardService {
+    let clock =
+        Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+    DashboardService::new(writer, readers, clock, Arc::new(AppConfig::default()))
+}
+
+/// Фикстура расходится с алфавитом: по `ORDER BY s.name` порядок был бы
+/// «В работе, В ремонте, На складе, На списание, Ожидает ремонта, Списано»,
+/// по `ORDER BY s.id` — «Списано» шло бы до двух новых статусов.
+/// Счётчики разные (1..6), чтобы GROUP BY не мог тихо склеить статусы.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dashboard_devices_by_status_follows_lifecycle_order() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (writer, readers) = build_test_db();
+        // Вставка в обратном порядке цикла: порядок вывода не зависит от порядка записи.
+        for (code, count) in [
+            ("списано", 6),
+            ("на_списание", 5),
+            ("в_ремонте", 4),
+            ("на_ремонте", 3),
+            ("в_работе", 2),
+            ("на_складе", 1),
+        ] {
+            seed_devices_in_status(&writer, code, count).await;
+        }
+
+        let svc = dashboard_service(writer, readers);
+        let dto = svc
+            .get_all_widgets(&Identity::trusted_admin(), None)
+            .await
+            .unwrap();
+
+        let got: Vec<(&str, i64)> = dto
+            .devices_by_status
+            .iter()
+            .map(|s| (s.status_name.as_str(), s.count))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("На складе", 1),
+                ("В работе", 2),
+                ("Ожидает ремонта", 3),
+                ("В ремонте", 4),
+                ("На списание", 5),
+                ("Списано", 6),
+            ]
+        );
+        assert_eq!(dto.devices_total, 21);
+    })
+    .await
+    .expect("timeout")
+}
+
+/// Статусы без устройств в сводку не попадают (INNER JOIN), порядок цикла при
+/// этом сохраняется.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dashboard_devices_by_status_skips_empty_statuses() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (writer, readers) = build_test_db();
+        seed_devices_in_status(&writer, "списано", 1).await;
+        seed_devices_in_status(&writer, "в_ремонте", 2).await;
+
+        let svc = dashboard_service(writer, readers);
+        let dto = svc
+            .get_all_widgets(&Identity::trusted_admin(), None)
+            .await
+            .unwrap();
+
+        let got: Vec<(&str, i64)> = dto
+            .devices_by_status
+            .iter()
+            .map(|s| (s.status_name.as_str(), s.count))
+            .collect();
+        assert_eq!(got, [("В ремонте", 2), ("Списано", 1)]);
+    })
+    .await
+    .expect("timeout")
+}

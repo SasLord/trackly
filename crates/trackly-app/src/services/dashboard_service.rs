@@ -89,7 +89,7 @@ impl DashboardService {
                          JOIN device_statuses s ON s.id = d.status_id \
                          WHERE d.deleted_at_utc IS NULL \
                          GROUP BY d.status_id \
-                         ORDER BY s.name",
+                         ORDER BY s.sort_order, s.id",
                     )
                     .map_err(map_rusqlite)?;
                 let rows = stmt
