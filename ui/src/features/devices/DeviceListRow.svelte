@@ -1,7 +1,8 @@
 <script lang="ts">
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
-  import DeviceContextMenu from './DeviceContextMenu.svelte';
+  import DeviceRowMenu from './DeviceRowMenu.svelte';
+  import { isOwnKeyEvent, isRowOverlayEvent } from './deviceRowMenu';
   import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import type { DeviceDto } from '../../bindings';
 
@@ -11,7 +12,7 @@
     onDelete: () => void;
     /** When true, renders a stronger bottom border to visually close the group. */
     isLastInGroup?: boolean;
-    /** Plan 03-05 (DEV-14): pass-through к DeviceContextMenu. */
+    /** Plan 03-05 (DEV-14): pass-through к DeviceRowMenu. */
     onPrintAcceptance?: (_d: DeviceDto) => void;
     /** ITEM-3: when true, shows the «Статус» column. Hide on filtered status tabs. */
     showStatus?: boolean;
@@ -38,10 +39,63 @@
   // подпись по id, тон по code. Хардкода «id -> подпись» здесь нет.
   const label = $derived(statusLabel(device.status_id));
   const tone = $derived(statusTone(device.status_code));
+
+  // Меню строки (фаза 41.1, план 17; D-21, D-25, D-26). Кебаб, правый клик и
+  // клавиатура открывают ОДНО меню DeviceRowMenu; двойной клик — просмотр.
+  let menuRef = $state<ReturnType<typeof DeviceRowMenu> | null>(null);
+  let firstCellEl = $state<HTMLElement | null>(null);
+
+  // Родное контекстное меню гасится ТОЛЬКО здесь и одинаково в Tauri и в
+  // LAN-браузере (ветвей по транспорту нет). Охрана — первым оператором:
+  // внутри открытой модалки меню DeviceRowMenu (она стоит внутри строки)
+  // остаётся родное меню браузера — копировать/вставить в поле названия.
+  function handleContextMenu(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
+    e.preventDefault();
+    if (e.clientX === 0 && e.clientY === 0 && firstCellEl) {
+      // Событие от клавиши контекстного меню: координат у него нет.
+      void menuRef?.openFromElement(firstCellEl);
+    } else {
+      void menuRef?.openAt(e.clientX, e.clientY);
+    }
+  }
+
+  function handleDblClick(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
+    // Двойной клик по кебабу, ссылке или кнопке не открывает просмотр.
+    if ((e.target as HTMLElement | null)?.closest?.('button, a')) return;
+    window.getSelection()?.removeAllRanges();
+    void menuRef?.openView();
+  }
+
+  function handleCellKeydown(e: KeyboardEvent) {
+    if (!isOwnKeyEvent(e.target, e.currentTarget)) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      void menuRef?.openView();
+    } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      e.preventDefault();
+      if (firstCellEl) void menuRef?.openFromElement(firstCellEl);
+    }
+  }
 </script>
 
-<TableRow class={isLastInGroup ? 'group-last-child' : undefined} selected={isHighlighted}>
-  <td id="device-row-{device.id}" class="cell cell-name" title={device.name}>{device.name}</td>
+<TableRow
+  class={isLastInGroup ? 'group-last-child' : undefined}
+  selected={isHighlighted}
+  oncontextmenu={handleContextMenu}
+  ondblclick={handleDblClick}
+>
+  <td
+    id="device-row-{device.id}"
+    class="cell cell-name"
+    title={device.name}
+    role="button"
+    tabindex="0"
+    aria-haspopup="menu"
+    bind:this={firstCellEl}
+    onkeydown={handleCellKeydown}>{device.name}</td
+  >
   <td class="cell cell-numeric" title={device.inventory_no ?? ''}
     ><span class="tr-mono">{device.inventory_no ?? '—'}</span></td
   >
@@ -57,7 +111,14 @@
     </td>
   {/if}
   <td class="cell cell-actions">
-    <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} statusName={label} />
+    <DeviceRowMenu
+      bind:this={menuRef}
+      {device}
+      trigger="button"
+      {onEdit}
+      onChanged={onDelete}
+      {onPrintAcceptance}
+    />
   </td>
 </TableRow>
 

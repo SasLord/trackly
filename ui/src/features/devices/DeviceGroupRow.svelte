@@ -6,6 +6,7 @@
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
+  import { isRowOverlayEvent } from './deviceRowMenu';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import { devices } from './api';
@@ -113,6 +114,15 @@
     }
   });
 
+  // Двойной клик по свёртке: ЯВНО раскрыть состав. Два одиночных клика двойного
+  // уже дважды переключили строку, поэтому toggle здесь дал бы третье
+  // переключение; у свёртки нет сущности для просмотра (D-26).
+  function handleGroupDblClick(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
+    window.getSelection()?.removeAllRanges();
+    if (!expanded) void toggleExpand();
+  }
+
   // After a mutation (edit/delete) let the parent refresh first (onEdit/onDelete
   // triggers refresh() in DevicesPage), then the component remounts with children=null
   // and the $effect above reloads them if still expanded.
@@ -133,6 +143,7 @@
   groupName={group.repr.name}
   groupColspan={4}
   onToggleGroup={toggleExpand}
+  ondblclick={handleGroupDblClick}
 >
   <!-- groupColspan={4} merges Наименование + Инв.№ + Серийный № + Модель columns;
        TableRow's own group-mode chevron + merged name cell replace the hand-rolled
