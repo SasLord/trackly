@@ -27,6 +27,7 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { statusTone } from '$lib/stores/deviceStatuses.svelte';
   import {
     notifyPlaceContentChanged,
     placeContentEventsStore,
@@ -81,21 +82,30 @@
     cartridge: 'Картридж',
   };
 
-  // status_name is a free-text string (device_statuses.name / cartridge_statuses.name,
-  // Plan 08/12) — no status_id crosses the wire on PlaceContentDto, so variant is
-  // matched by the seeded name text itself (V001__init_pragmas_and_lookups.sql),
-  // not by id (unlike DeviceListRow/CartridgeListRow, which have the id).
-  const STATUS_VARIANT_BY_NAME: Record<string, 'default' | 'accent' | 'warning' | 'destructive'> = {
+  // Устройства и принтеры (Phase 41.1, D-09): тон бейджа решает
+  // statusTone(row.status_code) из стора статусов устройств — ключ code, а не
+  // русское имя, поэтому переименование статуса тон не теряет. Подпись —
+  // row.status_name с сервера. У картриджей status_code всегда null.
+  //
+  // D-07: статусы картриджей вне справочника устройств (свой справочник,
+  // cartridge_statuses, V001); для них остаётся отдельная карта «имя -> тон».
+  // Гейт check-device-status-labels освобождает её по правилу [B] только при
+  // имени с префиксом CARTRIDGE_ и без слов устройственных статусов.
+  const CARTRIDGE_STATUS_VARIANT_BY_NAME: Record<
+    string,
+    'default' | 'accent' | 'warning' | 'destructive'
+  > = {
     'На складе': 'default',
     'В работе': 'accent',
-    'На ремонте': 'warning',
     'На заправке': 'warning',
     Списано: 'destructive',
   };
 
-  function statusVariant(name: string | null): 'default' | 'accent' | 'warning' | 'destructive' {
+  function cartridgeStatusVariant(
+    name: string | null,
+  ): 'default' | 'accent' | 'warning' | 'destructive' {
     if (!name) return 'default';
-    return STATUS_VARIANT_BY_NAME[name] ?? 'default';
+    return CARTRIDGE_STATUS_VARIANT_BY_NAME[name] ?? 'default';
   }
 
   // GAP-8 (39-UAT.md, Прогон 3): row click used to navigate straight to the
@@ -416,7 +426,14 @@
           {/if}
           <td class="cell" onclick={() => openView(row)}>
             {#if row.status_name}
-              <Badge variant={statusVariant(row.status_name)}>{row.status_name}</Badge>
+              {#if row.kind === 'cartridge'}
+                <Badge variant={cartridgeStatusVariant(row.status_name)}>{row.status_name}</Badge>
+              {:else}
+                <Badge
+                  variant={statusTone(row.status_code).variant}
+                  appearance={statusTone(row.status_code).appearance}>{row.status_name}</Badge
+                >
+              {/if}
             {:else}
               —
             {/if}

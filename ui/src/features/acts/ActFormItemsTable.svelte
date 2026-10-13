@@ -18,6 +18,8 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { devices } from '$lib/api/devices';
+  import { ensureLoaded, statusIdByCode } from '$lib/stores/deviceStatuses.svelte';
+  import { pushToast } from '$lib/stores/toast.svelte';
   import type { DeviceDto, DeviceGroup } from '../../bindings';
 
   export interface FormItemRow {
@@ -141,14 +143,27 @@
   async function fetchGroups(idx: number, query: string) {
     loadingByRow[idx] = true;
     try {
+      // D-09: id статуса «на складе» берётся из справочника по code, а не
+      // литералом. Без справочника запрос с неверным id молча показал бы не
+      // тех устройств, поэтому поиск не выполняется, а пользователь видит ошибку.
+      await ensureLoaded();
+      const storageStatusId = statusIdByCode('на_складе');
+      if (storageStatusId === null) {
+        suggestionsByRow[idx] = [];
+        pushToast(
+          'error',
+          'Справочник статусов не загружен — поиск устройств недоступен. Обновите страницу.',
+        );
+        return;
+      }
       // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
-      // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).
+      // name+model+inv_no=NULL) с count + ids. Фильтр — статус «на_складе».
       // group_by_condition: true — сохраняет DEF-2B разбивку по condition (ITEM-1).
       const groups = await devices.listGrouped(
         {
           type_id: null,
           place_id: null,
-          status_id: 1,
+          status_id: storageStatusId,
           state: null,
           name_prefix: query,
           include_deleted: false,
