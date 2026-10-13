@@ -107,6 +107,49 @@ async fn scenario_create_group() {
     .expect("scenario_create_group вышел за бюджет");
 }
 
+/// Phase 41.1 plan 11: создание группы ОТ устройства. Реестр сценарием не считает
+/// (префикс не `scenario_`); существующий `scenario_create_group` описывает ветку
+/// без источника и остаётся как есть.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn p4_create_group_from_device_event_carries_device_and_place() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let place = seed_place(&ctx, "Кабинет 101").await;
+        let other_place = seed_place(&ctx, "Кабинет 102").await;
+        let type_id = type_id_by_code(&ctx, "workstation").await;
+        let device = seed_device(&ctx, 1, "Системный блок #4", "INV-EV-1", Some(place), None).await;
+        // Посторонние устройство и место: лишний id в событии уронит сравнение.
+        let _bystander =
+            seed_device(&ctx, 1, "Монитор #2", "INV-EV-2", Some(other_place), None).await;
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        let g = ctx
+            .groups
+            .create_group(
+                &admin(),
+                GroupCreateDto {
+                    type_id,
+                    name: Some("АРМ Сидорова С.С.".to_string()),
+                    place_id: None,
+                    source_device_id: Some(device),
+                },
+            )
+            .await
+            .expect("create from device");
+        let (places, devices, groups) = assert_one_entities(&mut rx, "create_group от устройства");
+        assert_eq!(
+            sorted(places),
+            vec![place],
+            "place_ids == [место устройства]"
+        );
+        assert_eq!(sorted(devices), vec![device], "device_ids == [устройство]");
+        assert_eq!(sorted(groups), vec![g.id], "group_ids == [id]");
+    })
+    .await
+    .expect("p4_create_group_from_device вышел за бюджет");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn scenario_update_group() {
     tokio::time::timeout(BUDGET, async {

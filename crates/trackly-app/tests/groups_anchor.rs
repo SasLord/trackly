@@ -585,3 +585,454 @@ async fn anchor_http_devices_delete_rejects_anchor() {
     assert!(body.contains("якорь группы"), "{body}");
     assert!(device_alive(&ctx, anchor).await, "устройство живо");
 }
+
+// ===========================================================================
+// Phase 41.1 Plan 11: создание группы от устройства (GRD-01..03), серверные
+// отказы быстрых действий, происхождение детали (D-33). Числовые id типов и
+// статусов не зашиты: тип группы берётся по behavior, статус — по code.
+// ===========================================================================
+
+/// Устройство произвольного типа (1 — «Устройство», 2 — принтер).
+async fn seed_typed_device(
+    ctx: &AppCtx,
+    type_id: i64,
+    name: &str,
+    inv: &str,
+    place: Option<i64>,
+) -> i64 {
+    let (name, inv) = (name.to_string(), inv.to_string());
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices (type_id, name, inventory_number, place_id, status_id, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, ?3, ?4, 1, 1700000000, 1700000000, 1)",
+                params![type_id, name, inv, place],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed typed device")
+}
+
+/// Принтер: устройство типа 2 + строка `printers`. `ip = Some` — сетевой,
+/// `ip = None` — USB (задан `usb_host_device_id`, D-32).
+async fn seed_printer(ctx: &AppCtx, name: &str, inv: &str, ip: Option<&'static str>) -> i64 {
+    let id = seed_typed_device(ctx, 2, name, inv, None).await;
+    let host = if ip.is_none() {
+        Some(seed_device(ctx, &format!("Хост {name}"), &format!("{inv}-H"), None).await)
+    } else {
+        None
+    };
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO printers (device_id, ip_address, usb_host_device_id, \
+                 created_at_utc, updated_at_utc) VALUES (?1, ?2, ?3, 1700000000, 1700000000)",
+                params![id, ip, host],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("seed printer");
+    id
+}
+
+async fn set_status_by_code(ctx: &AppCtx, device: i64, code: &'static str) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET status_id = (SELECT id FROM device_statuses WHERE code = ?2) \
+                 WHERE id = ?1",
+                params![device, code],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set status");
+}
+
+async fn status_code_of(ctx: &AppCtx, device: i64) -> String {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT s.code FROM devices d JOIN device_statuses s ON s.id = d.status_id \
+                 WHERE d.id = ?1",
+                params![device],
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("status code")
+}
+
+async fn origin_of(ctx: &AppCtx, device: i64) -> Option<i64> {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT origin_group_id FROM devices WHERE id = ?1",
+                params![device],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("origin")
+}
+
+async fn count_all(ctx: &AppCtx, table: &'static str) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                .map_err(map_rusqlite)
+        })
+        .await
+        .expect("count")
+}
+
+async fn create_from(
+    ctx: &AppCtx,
+    behavior: &'static str,
+    name: &str,
+    source: i64,
+) -> Result<trackly_app::dto::groups::GroupDto, AppError> {
+    let type_id = type_by_behavior(ctx, behavior).await;
+    ctx.groups
+        .create_group(
+            &admin(),
+            GroupCreateDto {
+                type_id,
+                name: Some(name.to_string()),
+                place_id: None,
+                source_device_id: Some(source),
+            },
+        )
+        .await
+}
+
+async fn plain_group(ctx: &AppCtx, behavior: &'static str, name: &str) -> i64 {
+    let type_id = type_by_behavior(ctx, behavior).await;
+    ctx.groups
+        .create_group(
+            &admin(),
+            GroupCreateDto {
+                type_id,
+                name: Some(name.to_string()),
+                place_id: None,
+                source_device_id: None,
+            },
+        )
+        .await
+        .expect("plain group")
+        .id
+}
+
+// ---- Test 1-3: три поведения создания от устройства -------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_create_container_from_device_takes_place_and_membership() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let place = seed_place(&ctx, "Кабинет 214").await;
+    let dev = seed_device(&ctx, "Системный блок #4", "INV-C-1", Some(place)).await;
+    let moves_before = count_all(&ctx, "place_movements").await;
+    let version = device_version(&ctx, dev).await;
+    let status_before = status_code_of(&ctx, dev).await;
+
+    let g = create_from(&ctx, "container", "АРМ #21", dev)
+        .await
+        .expect("создание от устройства");
+
+    assert_eq!(g.place_id, Some(place), "место группы = месту устройства");
+    assert_eq!(g.anchor_device_id, None, "контейнер без якоря");
+    assert_eq!(member_rows(&ctx, dev).await, 1, "устройство в составе");
+    assert_eq!(
+        status_code_of(&ctx, dev).await,
+        status_before,
+        "статус прежний"
+    );
+    assert_eq!(
+        device_version(&ctx, dev).await,
+        version,
+        "устройство не тронуто"
+    );
+    assert_eq!(
+        count_all(&ctx, "place_movements").await,
+        moves_before,
+        "создание не пишет place_movements"
+    );
+    let dev_place = scalar_i64(&ctx, "SELECT place_id FROM devices WHERE id = ?1", dev).await;
+    assert_eq!(dev_place, place, "место устройства прежнее");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_create_substitute_from_device_sets_anchor_and_keeps_status() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let dev = seed_device(&ctx, "Монитор #2", "INV-S-1", None).await;
+    let status_before = status_code_of(&ctx, dev).await;
+
+    let g = create_from(&ctx, "substitute", "Замена #1", dev)
+        .await
+        .expect("substitute");
+
+    assert_eq!(g.anchor_device_id, Some(dev));
+    assert_eq!(member_rows(&ctx, dev).await, 1);
+    assert_eq!(
+        status_code_of(&ctx, dev).await,
+        status_before,
+        "статус прежний"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_create_teardown_from_device_sets_anchor_and_write_off_status() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let place = seed_place(&ctx, "Склад 3").await;
+    let dev = seed_device(&ctx, "Системный блок #9", "INV-T-1", Some(place)).await;
+    let version = device_version(&ctx, dev).await;
+    let audit_before = count_all(&ctx, "audit_log").await;
+
+    let g = create_from(&ctx, "teardown", "Разбор #1", dev)
+        .await
+        .expect("teardown");
+
+    assert_eq!(g.anchor_device_id, Some(dev));
+    assert_eq!(status_code_of(&ctx, dev).await, "на_списание");
+    assert_eq!(device_version(&ctx, dev).await, version + 1, "version +1");
+    let dev_place = scalar_i64(&ctx, "SELECT place_id FROM devices WHERE id = ?1", dev).await;
+    assert_eq!(dev_place, place, "место прежнее");
+    let device_audit = scalar_i64(
+        &ctx,
+        "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'device' AND entity_id = ?1 \
+         AND action = 'update'",
+        dev,
+    )
+    .await;
+    assert_eq!(device_audit, 1, "audit_log по устройству");
+    assert!(
+        count_all(&ctx, "audit_log").await >= audit_before + 2,
+        "аудит группы и устройства"
+    );
+}
+
+// ---- Test 4: отказы создания ------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_create_from_device_rejections_leave_no_group() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let groups_before = count_all(&ctx, "groups").await;
+
+    // Уже член другой группы.
+    let member = seed_device(&ctx, "Монитор #5", "INV-R-1", None).await;
+    let other = plain_group(&ctx, "container", "АРМ #30").await;
+    ctx.groups
+        .add_devices(&admin(), other, vec![member])
+        .await
+        .expect("add");
+    let groups_with_other = count_all(&ctx, "groups").await;
+    let msg = validation(
+        create_from(&ctx, "container", "АРМ #31", member)
+            .await
+            .expect_err("в группе"),
+        "source_device_id",
+    );
+    assert!(
+        msg.contains("Монитор #5") && msg.contains("АРМ #30"),
+        "{msg}"
+    );
+
+    // Списано.
+    let written_off = seed_device(&ctx, "Монитор #6", "INV-R-2", None).await;
+    set_status_by_code(&ctx, written_off, "списано").await;
+    let msg = validation(
+        create_from(&ctx, "container", "АРМ #32", written_off)
+            .await
+            .expect_err("списано"),
+        "source_device_id",
+    );
+    assert!(msg.contains("«Списано»"), "{msg}");
+
+    // На списание.
+    let to_write_off = seed_device(&ctx, "Монитор #7", "INV-R-3", None).await;
+    set_status_by_code(&ctx, to_write_off, "на_списание").await;
+    let msg = validation(
+        create_from(&ctx, "substitute", "Замена #2", to_write_off)
+            .await
+            .expect_err("на списание"),
+        "source_device_id",
+    );
+    assert!(msg.contains("«На списание»"), "{msg}");
+
+    // D-38: сетевой и USB-принтер якорем быть не могут.
+    let net = seed_printer(&ctx, "Сетевой принтер", "INV-R-4", Some("192.0.2.10")).await;
+    let usb = seed_printer(&ctx, "Принтер USB", "INV-R-5", None).await;
+    for printer in [net, usb] {
+        let msg = validation(
+            create_from(&ctx, "substitute", "Замена #3", printer)
+                .await
+                .expect_err("принтер"),
+            "source_device_id",
+        );
+        assert!(msg.contains("только от устройства"), "{msg}");
+    }
+
+    assert_eq!(
+        count_all(&ctx, "groups").await,
+        groups_with_other,
+        "ни один отказ не оставил группу"
+    );
+    assert!(groups_with_other > groups_before);
+    assert_eq!(status_code_of(&ctx, to_write_off).await, "на_списание");
+
+    // Контраст D-32: USB-принтер в УЖЕ существующую группу входит, сетевой — нет.
+    let target = plain_group(&ctx, "container", "АРМ #33").await;
+    ctx.groups
+        .add_devices(&admin(), target, vec![usb])
+        .await
+        .expect("USB-принтер вступает в группу");
+    assert_eq!(member_rows(&ctx, usb).await, 1);
+    let msg = validation(
+        ctx.groups
+            .add_devices(&admin(), target, vec![net])
+            .await
+            .expect_err("сетевой"),
+        "device_ids",
+    );
+    assert!(
+        msg.contains("Сетевой принтер не может входить в группу"),
+        "{msg}"
+    );
+    assert_eq!(member_rows(&ctx, net).await, 0);
+}
+
+// ---- Test 5: откат -----------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_create_teardown_failure_rolls_back_everything() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let dev = seed_device(&ctx, "Системный блок #11", "INV-RB-1", None).await;
+    let status_before = status_code_of(&ctx, dev).await;
+    let version = device_version(&ctx, dev).await;
+    // Тип создаётся до снимка счётчиков (иначе он сам изменит число строк).
+    type_by_behavior(&ctx, "teardown").await;
+    ctx.writer
+        .execute(|conn| {
+            conn.execute_batch(
+                "CREATE TRIGGER fail_status BEFORE UPDATE OF status_id ON devices \
+                 BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("trigger");
+    let groups = count_all(&ctx, "groups").await;
+    let members = count_all(&ctx, "group_devices").await;
+    let audit = count_all(&ctx, "audit_log").await;
+
+    let err = create_from(&ctx, "teardown", "Разбор #2", dev)
+        .await
+        .expect_err("сбой на смене статуса");
+    assert!(format!("{err:?}").contains("boom"), "{err:?}");
+
+    assert_eq!(count_all(&ctx, "groups").await, groups, "groups");
+    assert_eq!(
+        count_all(&ctx, "group_devices").await,
+        members,
+        "group_devices"
+    );
+    assert_eq!(count_all(&ctx, "audit_log").await, audit, "audit_log");
+    assert_eq!(status_code_of(&ctx, dev).await, status_before);
+    assert_eq!(device_version(&ctx, dev).await, version);
+}
+
+// ---- Test 6: отказы add_devices ----------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_add_devices_status_rules() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let container = plain_group(&ctx, "container", "АРМ #40").await;
+    let teardown = plain_group(&ctx, "teardown", "Разбор #5").await;
+
+    let written_off = seed_device(&ctx, "Монитор #8", "INV-A-1", None).await;
+    set_status_by_code(&ctx, written_off, "списано").await;
+    for g in [container, teardown] {
+        let msg = validation(
+            ctx.groups
+                .add_devices(&admin(), g, vec![written_off])
+                .await
+                .expect_err("списано"),
+            "device_ids",
+        );
+        assert!(
+            msg.contains("Монитор #8") && msg.contains("«Списано»"),
+            "{msg}"
+        );
+    }
+    assert_eq!(member_rows(&ctx, written_off).await, 0);
+
+    let to_write_off = seed_device(&ctx, "Планка памяти", "INV-A-2", None).await;
+    set_status_by_code(&ctx, to_write_off, "на_списание").await;
+    let msg = validation(
+        ctx.groups
+            .add_devices(&admin(), container, vec![to_write_off])
+            .await
+            .expect_err("контейнер"),
+        "device_ids",
+    );
+    assert!(msg.contains("«На списание»"), "{msg}");
+    assert_eq!(member_rows(&ctx, to_write_off).await, 0);
+    // В разбор деталь «На списание» входит (D-18/D-35).
+    ctx.groups
+        .add_devices(&admin(), teardown, vec![to_write_off])
+        .await
+        .expect("в разбор можно");
+    assert_eq!(member_rows(&ctx, to_write_off).await, 1);
+}
+
+// ---- Test 7: происхождение (D-33) --------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anchor_origin_is_written_once_and_survives_other_groups() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let a = plain_group(&ctx, "teardown", "Разбор #A").await;
+    let b = plain_group(&ctx, "container", "АРМ #B").await;
+    let c = plain_group(&ctx, "teardown", "Разбор #C").await;
+    assert!(a != c);
+    let part = seed_device(&ctx, "Планка памяти", "INV-O-1", None).await;
+    assert_eq!(origin_of(&ctx, part).await, None, "до разбора пусто");
+
+    ctx.groups
+        .add_devices(&admin(), a, vec![part])
+        .await
+        .expect("в A");
+    assert_eq!(origin_of(&ctx, part).await, Some(a), "origin = A");
+
+    ctx.groups
+        .remove_devices(&admin(), a, vec![part])
+        .await
+        .expect("из A");
+    assert_eq!(origin_of(&ctx, part).await, Some(a), "вывод не обнуляет");
+
+    ctx.groups
+        .add_devices(&admin(), b, vec![part])
+        .await
+        .expect("в контейнер B");
+    assert_eq!(origin_of(&ctx, part).await, Some(a), "контейнер не меняет");
+
+    ctx.groups
+        .remove_devices(&admin(), b, vec![part])
+        .await
+        .expect("из B");
+    ctx.groups
+        .add_devices(&admin(), c, vec![part])
+        .await
+        .expect("в разбор C");
+    assert_eq!(
+        origin_of(&ctx, part).await,
+        Some(a),
+        "повторный разбор не перезаписывает"
+    );
+}
