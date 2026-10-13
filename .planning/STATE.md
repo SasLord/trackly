@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 12 of 22 завершено (волны 1-3: 01-07, 09, 10, 22) — далее волна 4: планы 11, 12, 13
+Plan: 12 of 22 завершено (волны 1-3: 01-07, 09, 10, 22; волна 4: 11, 12) — далее волна 4: план 13
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -1495,7 +1495,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-10-13T12:13:07.604Z
-Stopped at: Completed 41.1-10-PLAN.md
+Stopped at: Completed 41.1-12-PLAN.md
 Resume file: None
 
 None
