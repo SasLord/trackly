@@ -10,6 +10,14 @@
   // из названий не разбирает.
   //
   // Переименование: только «Название».
+  //
+  // Phase 41.1 (GRD-01, D-29/D-30): режим «от устройства» — `presetAnchorDevice`
+  // (вместе с `presetTypeId`). Тип заблокирован, «на основе устройства» — строка
+  // только для чтения, а не чекбокс; перед созданием показывается callout
+  // последствий по ПОВЕДЕНИЮ типа (`behavior`), а не по его имени. Проверок типа
+  // устройства здесь нет: пункт меню у принтера скрыт планом 16, граница — сервер
+  // (groups_create отвергает не-устройство, «Списано»/«На списание», занятое).
+  // После создания пользователь остаётся в списке: тост несёт ссылку на группу.
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -17,6 +25,7 @@
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { GroupDto, GroupTypeDto } from '../../bindings';
 
@@ -26,11 +35,20 @@
     group?: GroupDto | null;
     /** Тип, предзаполненный и заблокированный (вызов из меню узла-типа). */
     presetTypeId?: number | null;
+    /** Устройство-основа (быстрое действие): группа создаётся от него. Нужен и `presetTypeId`. */
+    presetAnchorDevice?: { id: number; name: string } | null;
     onClose: () => void;
     onSaved: (_group: GroupDto) => void;
   }
 
-  const { mode, group = null, presetTypeId = null, onClose, onSaved }: Props = $props();
+  const {
+    mode,
+    group = null,
+    presetTypeId = null,
+    presetAnchorDevice = null,
+    onClose,
+    onSaved,
+  }: Props = $props();
 
   const isRename = $derived(mode === 'rename');
 
@@ -57,6 +75,21 @@
   );
   const defaultNameHint = $derived(
     selectedType ? `Если оставить пустым — «${selectedType.name} #${nextSeq}»` : '',
+  );
+
+  // Последствия «от устройства» — по значению behavior типа (не по имени).
+  const CONSEQUENCE_BY_BEHAVIOR: Record<string, string> = {
+    container:
+      'Группа возьмёт место устройства. Перемещать устройство отдельно от группы будет нельзя.',
+    substitute:
+      'В списке устройств останется одна строка с раскрытием состава. Инвентарный и серийный номера останутся на устройстве. Удалить устройство, пока группа существует, будет нельзя.',
+    teardown:
+      'Устройство перейдёт в статус «На списание» и станет записью разбора. Удалить запись разбора, пока в ней есть детали, будет нельзя.',
+  };
+  const consequence = $derived(
+    presetAnchorDevice && selectedType
+      ? (CONSEQUENCE_BY_BEHAVIOR[selectedType.behavior] ?? null)
+      : null,
   );
 
   const modalTitle = $derived(isRename ? 'Переименовать группу' : 'Создать группу');
@@ -116,7 +149,10 @@
       return;
     }
     serverErr = err?.message ?? 'Не удалось сохранить группу.';
-    pushToast('error', serverErr);
+    // От устройства отказ сервера по правилам (VALIDATION/CONFLICT) — это текст в форме,
+    // а не сбой связи: тост дублировал бы его; остальные ошибки — тостом, как раньше.
+    const isRuleRejection = err?.code === 'VALIDATION' || err?.code === 'CONFLICT';
+    if (!(presetAnchorDevice && isRuleRejection)) pushToast('error', serverErr);
   }
 
   async function handleSubmit() {
@@ -134,8 +170,18 @@
           // Пусто — имя по умолчанию формирует сервер.
           name: trimmed === '' ? null : trimmed,
           place_id: null,
+          ...(presetAnchorDevice ? { source_device_id: presetAnchorDevice.id } : {}),
         });
-        pushToast('success', 'Группа создана');
+        // Создание от устройства берёт место устройства и (для разбора) меняет статус:
+        // счётчики дерева «Места» инвалидируем здесь же, где вызван groups.create (INV-7).
+        if (saved.place_id !== null) notifyPlaceContentChanged([saved.place_id]);
+        if (presetAnchorDevice) {
+          pushToast('success', 'Создана группа «' + saved.name + '»', {
+            link: { label: 'Открыть группу', href: '#/groups?id=' + saved.id },
+          });
+        } else {
+          pushToast('success', 'Группа создана');
+        }
       }
       onSaved(saved);
     } catch (e) {
@@ -180,6 +226,13 @@
       </div>
     {/if}
 
+    {#if !isRename && presetAnchorDevice}
+      <div class="form-field">
+        <span class="form-label">На основе:</span>
+        <span class="anchor-value">{presetAnchorDevice.name}</span>
+      </div>
+    {/if}
+
     <div class="form-field" class:has-error={nameErr !== null}>
       <label class="form-label" for="gf-name">Название</label>
       <Input
@@ -200,6 +253,10 @@
         <span class="field-error">{nameErr}</span>
       {/if}
     </div>
+
+    {#if consequence}
+      <div class="consequence" role="note">{consequence}</div>
+    {/if}
 
     {#if serverErr}
       <div class="server-error">{serverErr}</div>
@@ -230,6 +287,20 @@
     font-size: var(--tr-font-size-label);
     font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
+  }
+
+  .anchor-value {
+    font: var(--tr-text-body);
+    color: var(--tr-text-primary);
+  }
+
+  .consequence {
+    padding: var(--tr-space-xs) var(--tr-space-md);
+    background: var(--tr-warning-soft);
+    border-radius: var(--tr-radius-xs);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--tr-warning-text);
   }
 
   .field-hint {
