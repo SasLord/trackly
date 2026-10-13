@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 21 of 22 завершено (волны 1-8: 01-19, 21, 22) — далее волна 9: план 20 (граница фазы, checkpoint)
+Plan: 21 of 22 завершено (волны 1-8: 01-19, 21, 22) — далее волна 9: план 20, граница фазы (autonomous: false)
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
