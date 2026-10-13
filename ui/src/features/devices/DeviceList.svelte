@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { push } from 'svelte-spa-router';
   import Table from '$lib/components/Table.svelte';
+  import Button from '$lib/components/Button.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
   import DeviceGroupRow from './DeviceGroupRow.svelte';
+  import { footerText, type AnchorMembersState } from './deviceListMode';
   import type { DeviceDto, DeviceGroup } from '../../bindings';
 
   interface Props {
@@ -23,6 +26,17 @@
     showStatus?: boolean;
     /** GAP-8: cross-section focus id — see DeviceListRow.svelte's doc-comment. */
     highlightId?: number | null;
+    /** D-11: в режиме «Свернуть одинаковые» якоря выводятся отдельно, рядом со строками свёртки. */
+    anchorItems?: DeviceDto[];
+    /** group_id раскрытых якорей: живёт в DevicesPage и переживает перезагрузку списка. */
+    expandedAnchors?: Set<number>;
+    /** Состав раскрытых якорей по group_id. */
+    anchorMembers?: Record<number, AnchorMembersState>;
+    onToggleAnchor?: (_groupId: number) => void;
+    /** K для футера «(+K в составе групп)» (D-34): hidden_member_count сервера. */
+    hiddenMemberCount?: number;
+    /** Скрытие членов якорных групп сейчас включено (shouldHideAnchorMembers). */
+    hideActive?: boolean;
   }
 
   const {
@@ -39,6 +53,12 @@
     onPrintAcceptance,
     showStatus = true,
     highlightId = null,
+    anchorItems = [],
+    expandedAnchors = new Set<number>(),
+    anchorMembers = {},
+    onToggleAnchor,
+    hiddenMemberCount = 0,
+    hideActive = false,
   }: Props = $props();
 
   // GAP-8: scroll the highlighted row into view once it's actually rendered
@@ -57,12 +77,26 @@
     }
   });
 
-  const showGroups = $derived(grouped && !searchActive && groups.length > 0);
-  const isEmpty = $derived(!loading && (showGroups ? groups.length === 0 : items.length === 0));
+  // Якоря в режиме свёртки выводятся отдельными строками (D-11), поэтому список,
+  // состоящий из одних якорей, тоже «свёрнутый», а не пустой.
+  const showGroups = $derived(
+    grouped && !searchActive && (groups.length > 0 || anchorItems.length > 0),
+  );
+  const isEmpty = $derived(
+    !loading && (showGroups ? groups.length === 0 && anchorItems.length === 0 : items.length === 0),
+  );
   // Mirrors the exact skeleton-branch condition of the pre-migration 3-way
   // if/else — used both as Table's `loading` prop and to gate the footer
   // (footer only rendered in the "real table" branch, matching prior behavior).
-  const skeletonLoading = $derived(loading && items.length === 0 && groups.length === 0);
+  const skeletonLoading = $derived(
+    loading && items.length === 0 && groups.length === 0 && anchorItems.length === 0,
+  );
+
+  const memberColspan = $derived(showStatus ? 8 : 7);
+
+  function openGroup(groupId: number) {
+    void push(`#/groups?id=${groupId}`);
+  }
 
   // In grouped mode, singletons (count == 1) render as plain DeviceListRow.
   // Groups with count > 1 render as expandable DeviceGroupRow.
@@ -98,9 +132,63 @@
       {#if showGroups}
         Свёрнуто: {groups.length}
       {:else}
-        Показано {items.length} из {total}
+        {footerText({ shown: items.length, total, hidden: hiddenMemberCount, hideActive })}
       {/if}
     </span>
+  {/if}
+{/snippet}
+
+<!-- Строка устройства; для якоря (D-12) под ней раскрывается состав группы
+     плоским списком: устройства группы и вложенных групп без якоря. -->
+{#snippet rowWithMembers(device: DeviceDto)}
+  {@const groupId = device.anchor_group_id ?? null}
+  {@const isOpen = groupId !== null && expandedAnchors.has(groupId)}
+  <DeviceListRow
+    {device}
+    {onEdit}
+    {onDelete}
+    {onPrintAcceptance}
+    {showStatus}
+    {highlightId}
+    expanded={isOpen}
+    onToggleExpand={onToggleAnchor}
+  />
+  {#if groupId !== null && isOpen}
+    {@const st = anchorMembers[groupId] ?? { loading: true, items: [], total: 0 }}
+    {#if st.loading}
+      <tr class="members-row">
+        <td colspan={memberColspan} class="members-note">Загрузка…</td>
+      </tr>
+    {:else if st.items.length === 0}
+      <tr class="members-row">
+        <td colspan={memberColspan} class="members-note">
+          <span>Состав пуст. Добавьте устройства в разделе «Группы».</span>
+          <span class="members-link">
+            <Button variant="link" onclick={() => openGroup(groupId)}>Открыть группу</Button>
+          </span>
+        </td>
+      </tr>
+    {:else}
+      {#each st.items as member, i (member.id)}
+        <DeviceListRow
+          device={member}
+          {onEdit}
+          {onDelete}
+          {onPrintAcceptance}
+          {showStatus}
+          {highlightId}
+          indent
+          isLastInGroup={i === st.items.length - 1}
+        />
+      {/each}
+      {#if st.total > st.items.length}
+        <tr class="members-row">
+          <td colspan={memberColspan} class="members-note">
+            Показаны первые {st.items.length} из {st.total}. Остальные — в разделе «Группы».
+          </td>
+        </tr>
+      {/if}
+    {/if}
   {/if}
 {/snippet}
 
@@ -116,6 +204,9 @@
   fillHeight
 >
   {#if showGroups}
+    {#each anchorItems as anchor (anchor.id)}
+      {@render rowWithMembers(anchor)}
+    {/each}
     {#each groups as group (group.repr.id)}
       {#if group.count > 1}
         <!-- Multi-device group: expandable row with chevron and count badge -->
@@ -130,19 +221,12 @@
         />
       {:else}
         <!-- Singleton group (count == 1): render as plain row, no chevron -->
-        <DeviceListRow
-          device={group.repr}
-          {onEdit}
-          {onDelete}
-          {onPrintAcceptance}
-          {showStatus}
-          {highlightId}
-        />
+        {@render rowWithMembers(group.repr)}
       {/if}
     {/each}
   {:else}
     {#each items as device (device.id)}
-      <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} {highlightId} />
+      {@render rowWithMembers(device)}
     {/each}
   {/if}
 </Table>
@@ -162,6 +246,22 @@
   }
   .th-actions {
     width: 40px;
+  }
+
+  // Строки-заглушки раскрытого состава якоря: по образцу DeviceGroupRow.children-loading.
+  .members-row td {
+    background: var(--tr-bg);
+  }
+
+  .members-note {
+    padding: var(--tr-space-2xs) var(--tr-space-md);
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
+    border-bottom: 1px solid var(--tr-border);
+  }
+
+  .members-link {
+    margin-left: var(--tr-space-xs);
   }
 
   .pagination-info {

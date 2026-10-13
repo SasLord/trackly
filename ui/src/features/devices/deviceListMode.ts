@@ -9,6 +9,8 @@
 // вызывающий, кто их ставит, — DevicesPage, и только через `deviceListFlags`.
 // Пикеры актов, автодополнение, массовое добавление и экспорт CSV флагов не ставят.
 
+import type { DeviceDto } from '../../bindings';
+
 /** Контекст страницы, от которого зависит, прячутся ли члены якорных групп. */
 export interface ListModeContext {
   /** Введён непустой поисковый запрос (после trim). */
@@ -86,4 +88,11 @@ export function footerText(input: FooterInput): string {
   const base = `Показано ${input.shown} из ${input.total}`;
   if (input.hideActive && input.hidden > 0) return `${base} (+${input.hidden} в составе групп)`;
   return base;
+}
+
+/** Состав раскрытого якоря (D-12): грузит DevicesPage, кеш по group_id. */
+export interface AnchorMembersState {
+  loading: boolean;
+  items: DeviceDto[];
+  total: number;
 }

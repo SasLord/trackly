@@ -1,6 +1,7 @@
 <script lang="ts">
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
+  import RowChevron from '$lib/components/icons/RowChevron.svelte';
   import DeviceRowMenu from './DeviceRowMenu.svelte';
   import { isOwnKeyEvent, isRowOverlayEvent } from './deviceRowMenu';
   import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
@@ -21,6 +22,12 @@
      *  selected/highlighted + carries a stable DOM id for scrollIntoView
      *  when it matches. */
     highlightId?: number | null;
+    /** Якорная строка (фаза 41.1, D-12): состав раскрыт. */
+    expanded?: boolean;
+    /** Якорная строка: шеврон просит раскрыть/свернуть состав группы. */
+    onToggleExpand?: (_groupId: number) => void;
+    /** Строка состава якоря: отступ первой ячейки (D-12, UI-SPEC 9.4). */
+    indent?: boolean;
   }
 
   const {
@@ -31,7 +38,29 @@
     onPrintAcceptance,
     showStatus = true,
     highlightId = null,
+    expanded = false,
+    onToggleExpand,
+    indent = false,
   }: Props = $props();
+
+  // Якорь (D-12): устройство, на котором держится группа. Строка остаётся полной
+  // строкой устройства, к имени добавляются шеврон, бейдж группы и счётчик состава.
+  const anchorGroupId = $derived(device.anchor_group_id ?? null);
+  const isAnchor = $derived(anchorGroupId !== null);
+
+  // Шеврон и ссылка-бейдж гасят click собственным обработчиком: строка не должна
+  // реагировать на клики по вложенным управляющим элементам. Двойной клик по ним
+  // отсекает handleDblClick строки (`closest('button, a')`, D-26); отдельной
+  // привязки dblclick на вложенных элементах нет сознательно: гейт
+  // check-device-row-menu читает любую привязку ondblclick= как привязку строки.
+  function stopClick(e: MouseEvent) {
+    e.stopPropagation();
+  }
+
+  function handleChevronClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (anchorGroupId !== null) onToggleExpand?.(anchorGroupId);
+  }
 
   const isHighlighted = $derived(highlightId !== null && device.id === highlightId);
 
@@ -83,6 +112,7 @@
 <TableRow
   class={isLastInGroup ? 'group-last-child' : undefined}
   selected={isHighlighted}
+  {indent}
   oncontextmenu={handleContextMenu}
   ondblclick={handleDblClick}
 >
@@ -94,8 +124,29 @@
     tabindex="0"
     aria-haspopup="menu"
     bind:this={firstCellEl}
-    onkeydown={handleCellKeydown}>{device.name}</td
+    onkeydown={handleCellKeydown}
   >
+    {#if isAnchor}
+      <span class="anchor-cell">
+        <RowChevron {expanded} onclick={handleChevronClick} />
+        <span class="anchor-name">{device.name}</span>
+        <a
+          class="anchor-link"
+          href={'#/groups?id=' + anchorGroupId}
+          title={'Открыть группу «' + device.anchor_group_name + '»'}
+          aria-label={'Открыть группу «' + device.anchor_group_name + '»'}
+          onclick={stopClick}
+        >
+          <Badge variant="accent" appearance="soft" size="sm">{device.anchor_group_name}</Badge>
+        </a>
+        <Badge variant="accent" appearance="count" size="sm">
+          <span class="tr-mono">{device.anchor_member_count ?? 0} шт.</span>
+        </Badge>
+      </span>
+    {:else}
+      {device.name}
+    {/if}
+  </td>
   <td class="cell cell-numeric" title={device.inventory_no ?? ''}
     ><span class="tr-mono">{device.inventory_no ?? '—'}</span></td
   >
@@ -146,6 +197,36 @@
   .cell-name {
     width: 25%;
     max-width: 200px;
+  }
+
+  // Якорная строка (D-12): имя 600/14px + бейдж-ссылка на группу + счётчик состава.
+  // Фон строки не меняется: --tr-group зарезервирован под свёртку одинаковых.
+  .anchor-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
+    min-width: 0;
+  }
+
+  .anchor-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: var(--tr-font-weight-semibold);
+  }
+
+  .anchor-link {
+    display: inline-flex;
+    flex-shrink: 0;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .anchor-cell > :global(.badge-m) {
+    flex-shrink: 0;
   }
 
   .cell-numeric {
