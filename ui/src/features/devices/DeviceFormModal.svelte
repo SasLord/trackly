@@ -62,15 +62,36 @@
      * the narrower type is expected, so existing callers with fewer-arg
      * handlers stay valid without changes.
      */
-    onSaved: (result?: { typeId: number; placeId: number | null }) => void;
+    onSaved: (result?: {
+      typeId: number;
+      placeId: number | null;
+      /** Фаза 41.1 (D-35): созданные устройства (create-режим) — нужны
+       *  вызывающему, чтобы добавить их в запись разбора вторым вызовом. */
+      created?: DeviceDto[];
+    }) => void;
     /** Phase 40.3 Plan 05 (D-02): предзаданный тип для create-режима —
      *  например, «Завести принтер» на экране «Принтеры» открывает этот
      *  модал с `initialTypeId={2}`. Игнорируется, когда `target !== null`
      *  (правка всегда использует `target.type_id`, см. $effect ниже). */
     initialTypeId?: number;
+    /** Фаза 41.1 (D-18): предзаполнение места в create-режиме. */
+    presetPlaceId?: number | null;
+    /** Фаза 41.1 (D-18): код статуса по умолчанию в create-режиме. */
+    presetStatusCode?: string;
+    /** Фаза 41.1 (D-16): запись разбора, из которой создаётся деталь. */
+    originGroup?: { id: number; name: string } | null;
   }
 
-  const { open, target, onClose, onSaved, initialTypeId }: Props = $props();
+  const {
+    open,
+    target,
+    onClose,
+    onSaved,
+    initialTypeId,
+    presetPlaceId = null,
+    presetStatusCode,
+    originGroup = null,
+  }: Props = $props();
 
   const DEVICE_TYPE_ID = 1;
   const PRINTER_TYPE_ID = 2;
@@ -168,8 +189,8 @@
     onClose();
   }
 
-  function handleBodySaved(placeId: number | null) {
-    onSaved({ typeId, placeId });
+  function handleBodySaved(placeId: number | null, created?: DeviceDto[]) {
+    onSaved({ typeId, placeId, created });
   }
 </script>
 
@@ -185,6 +206,9 @@
       onRegisterSubmit={(fn) => (bodySubmitFn = fn)}
       onPopupChange={(popup) => (numberPopup = popup)}
       onNavigateToGroup={handleNavigateToGroup}
+      {presetPlaceId}
+      {presetStatusCode}
+      {originGroup}
     />
   {/key}
 

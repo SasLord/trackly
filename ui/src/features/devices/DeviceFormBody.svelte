@@ -144,7 +144,7 @@
      *  tree's content counters for the affected place(s) without an extra
      *  request — this form already holds the final value in `placeId`
      *  above (just persisted via `devices.update`/`devices.bulkCreate`). */
-    onSaved: (_placeId: number | null) => void;
+    onSaved: (_placeId: number | null, _created?: DeviceDto[]) => void;
     /** Expose submit-button state to parent's footer snippet. */
     onLoading: (_loading: boolean) => void;
     onCanSubmitChange: (_can: boolean) => void;
@@ -167,6 +167,16 @@
      *  подписи под заблокированным полем «Место». Необязательный: без него
      *  имя группы показывается обычным текстом. */
     onNavigateToGroup?: (_groupId: number) => void;
+    /** Фаза 41.1 (D-18): предзаполнение места в create-режиме (например, место
+     *  группы разбора). Игнорируется при `target !== null`. `null` — поле
+     *  пустое и обязательное. */
+    presetPlaceId?: number | null;
+    /** Фаза 41.1 (D-18): код статуса по умолчанию в create-режиме
+     *  (`на_складе`); поле остаётся редактируемым. Игнорируется при правке. */
+    presetStatusCode?: string;
+    /** Фаза 41.1 (D-16): запись разбора, из которой создаётся деталь
+     *  (create-режим). При правке источник — `target.origin_group_*`. */
+    originGroup?: { id: number; name: string } | null;
   }
 
   const {
@@ -180,6 +190,9 @@
     onRegisterSubmit,
     onPopupChange = () => {},
     onNavigateToGroup,
+    presetPlaceId = null,
+    presetStatusCode,
+    originGroup = null,
   }: Props = $props();
 
   const PRINTER_TYPE_ID = 2;
@@ -190,8 +203,32 @@
   // these are always fresh: no stale closures, no missing resets.
   // ---------------------------------------------------------------------------
   let name = $state(target?.name ?? '');
-  let placeId = $state<number | null>(target?.place_id ?? null);
+  let placeId = $state<number | null>(target ? target.place_id : presetPlaceId);
   let statusId = $state(target ? String(target.status_id) : '');
+  // Фаза 41.1 (D-18): статус по умолчанию для create-режима ставится, как
+  // только справочник загружен; дальше поле полностью ручное. Флаг не
+  // реактивный намеренно — применяем ровно один раз.
+  let presetStatusApplied = false;
+  $effect(() => {
+    if (presetStatusApplied || target !== null || !presetStatusCode) return;
+    const id = statusIdByCode(presetStatusCode);
+    if (id === null) return;
+    presetStatusApplied = true;
+    statusId = String(id);
+  });
+  // Фаза 41.1 (D-16): происхождение — ссылка на запись разбора (не на
+  // устройство). Правка: из DeviceDto; создание: из переданной записи.
+  const originRef = $derived<{ id: number; name: string } | null>(
+    target
+      ? target.origin_group_id !== null
+        ? { id: target.origin_group_id, name: target.origin_group_name ?? '' }
+        : null
+      : originGroup,
+  );
+  function openOrigin(id: number) {
+    if (onNavigateToGroup) onNavigateToGroup(id);
+    else window.location.hash = '#/groups?id=' + id;
+  }
   // Фаза 41.1 (D-04/D-06): опции статуса — серверный справочник в порядке
   // sort_order, вручную выбираются все шесть. Пока справочник не загружен,
   // подпись текущего статуса — «Статус {id}», экран не блокируется.
@@ -712,7 +749,7 @@
     if (outcome.outcome === 'created') {
       pendingConfirm = null;
       pushToast('success', typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано');
-      onSaved(placeId);
+      onSaved(placeId, [outcome]);
       return;
     }
     if (outcome.kind === 'mismatch') {
@@ -822,9 +859,9 @@
             place_id: placeId,
             status_id: parseInt(statusId, 10),
           };
-          await devices.bulkCreate(newDevice, qty);
+          const createdList = await devices.bulkCreate(newDevice, qty);
           pushToast('success', `Создано ${qty} устройств`);
-          onSaved(placeId);
+          onSaved(placeId, createdList);
         }
       }
     } catch (e: unknown) {
@@ -1071,6 +1108,17 @@
             onclick={() => membership && onNavigateToGroup?.(membership.group_id)}
             >{membership.group_name}</Button
           >{:else}{membership.group_name}{/if}»
+      </p>
+    {/if}
+    {#if originRef && !readonly}
+      <!-- readonly-экземпляр живёт в PlaceEntityViewModal, где происхождение
+           показывает собственное поле «Из разбора» (без дубля). -->
+      <p class="group-lock-note">
+        Из разбора: <Button
+          variant="link"
+          size="sm"
+          onclick={() => originRef && openOrigin(originRef.id)}>{originRef.name}</Button
+        >
       </p>
     {/if}
     {#if isStoragePlace && !readonly && !lockedByGroup}
