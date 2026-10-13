@@ -27,6 +27,86 @@ use crate::repos::place_path_settings::read_path_display_separators;
 #[derive(Debug, Default, Clone)]
 pub struct SqliteDeviceRepository;
 
+/// Phase 41.1 Plan 12: SQL-фрагменты якорных групп. Макросы раскрываются в строковые
+/// литералы, поэтому `concat!` собирает из них СТАТИЧЕСКИЕ строки запросов
+/// (текст пользователя в SQL не попадает, флаги идут целочисленными параметрами).
+///
+/// id устройств-якорей живых групп. `IS NOT NULL` обязателен: `NOT IN` с NULL в
+/// списке даёт пустой результат (Pitfall 3).
+macro_rules! anchor_ids_sql {
+    () => {
+        "SELECT anchor_device_id FROM groups \
+         WHERE anchor_device_id IS NOT NULL AND deleted_at_utc IS NULL"
+    };
+}
+
+/// id устройств — членов якорных групп (включая вложенные группы), кроме самого
+/// якоря. `UNION` (не `UNION ALL`) защищает рекурсию от цикла.
+macro_rules! anchor_members_sql {
+    () => {
+        "WITH RECURSIVE a(gid, anchor) AS ( \
+           SELECT id, anchor_device_id FROM groups \
+           WHERE anchor_device_id IS NOT NULL AND deleted_at_utc IS NULL \
+           UNION \
+           SELECT g.id, a.anchor FROM groups g JOIN a ON g.parent_group_id = a.gid \
+           WHERE g.deleted_at_utc IS NULL) \
+         SELECT gd.device_id FROM group_devices gd JOIN a ON a.gid = gd.group_id \
+         WHERE gd.device_id <> a.anchor"
+    };
+}
+
+/// Предикат «член поддерева группы `$grp` без её якоря» для `d.id IN (...)`.
+macro_rules! group_subtree_members_sql {
+    ($grp:literal) => {
+        concat!(
+            "WITH RECURSIVE sub(id) AS ( \
+               SELECT id FROM groups WHERE id = ",
+            $grp,
+            " AND deleted_at_utc IS NULL \
+               UNION \
+               SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id \
+               WHERE g.deleted_at_utc IS NULL) \
+             SELECT gd.device_id FROM group_devices gd JOIN sub ON sub.id = gd.group_id \
+             WHERE gd.device_id IS NOT (SELECT anchor_device_id FROM groups WHERE id = ",
+            $grp,
+            ")"
+        )
+    };
+}
+
+/// Флаги `list_grouped` для алиаса `$d`: `?5` exclude_anchors, `?6` hide_anchor_members.
+/// Применяются и во внешнем `WHERE`, и в подзапросах `d2` выбора места набора:
+/// иначе путь представителя брался бы с исключённого устройства.
+macro_rules! grouped_flag_predicates {
+    ($d:literal) => {
+        concat!(
+            "(?5 = 0 OR ",
+            $d,
+            ".id NOT IN (",
+            anchor_ids_sql!(),
+            ")) AND (?6 = 0 OR ",
+            $d,
+            ".id NOT IN (",
+            anchor_members_sql!(),
+            "))"
+        )
+    };
+}
+
+/// Флаги `list`: `?6` hide_anchor_members, `?7` anchors_only, `?8` exclude_anchors,
+/// `?9` member_of_group_id (NULL = не задан). Без флагов все четыре условия истинны.
+const LIST_FLAG_PREDICATES: &str = concat!(
+    "(?6 = 0 OR d.id NOT IN (",
+    anchor_members_sql!(),
+    ")) AND (?7 = 0 OR d.id IN (",
+    anchor_ids_sql!(),
+    ")) AND (?8 = 0 OR d.id NOT IN (",
+    anchor_ids_sql!(),
+    ")) AND (?9 IS NULL OR d.id IN (",
+    group_subtree_members_sql!("?9"),
+    "))"
+);
+
 /// SELECT с полным набором колонок в том порядке, который ожидает `from_row`.
 /// LEFT JOIN place_full_paths добавляет `pfp.full_path` как столбец с индексом 15;
 /// LEFT JOIN place_effective_variant добавляет `pev.effective_variant` как индекс 16
@@ -198,6 +278,36 @@ fn build_fts_query(user_input: &str) -> String {
 /// Вспомогательные методы для использования внутри rusqlite-транзакций.
 /// `DeviceService` использует эти методы внутри `writer.execute` closures.
 impl SqliteDeviceRepository {
+    /// Phase 41.1 Plan 12 (D-34): сколько живых устройств скрывает флаг
+    /// `hide_anchor_members` при тех же `include_deleted`/`status_id`/`type_id`,
+    /// что у `list`. Идёт в футер «Показано N из M (+K в составе групп)».
+    /// Остальные флаги фильтра (anchors_only, member_of_group_id) не учитываются:
+    /// K отвечает на вопрос «сколько спрятано в обычном виде списка».
+    pub fn count_hidden_anchor_members(
+        &self,
+        conn: &Connection,
+        filter: &DeviceFilter,
+    ) -> Result<i64, AppError> {
+        conn.query_row(
+            concat!(
+                "SELECT COUNT(*) FROM devices d WHERE
+                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
+                   (?2 IS NULL OR d.status_id = ?2) AND
+                   (?3 IS NULL OR d.type_id = ?3) AND
+                   d.id IN (",
+                anchor_members_sql!(),
+                ")"
+            ),
+            rusqlite::params![
+                filter.include_deleted as i64,
+                filter.status_id,
+                filter.type_id
+            ],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)
+    }
+
     /// INSERT в пределах транзакции. Возвращает новый `id`.
     pub fn create_in_tx(
         &self,
@@ -702,17 +812,40 @@ impl DeviceRepository for SqliteDeviceRepository {
         let include_deleted = filter.include_deleted;
         let status_id = filter.status_id;
         let type_id = filter.type_id;
+        // Phase 41.1 Plan 12: флаги якорных групп (opt-in, по умолчанию выключены).
+        let hide = filter.hide_anchor_members as i64;
+        let only = filter.anchors_only as i64;
+        let excl = filter.exclude_anchors as i64;
+        let member_of = filter.member_of_group_id;
         // T-02-03-05: max limit 200.
         let limit = (page.limit.min(200)) as i64;
         let offset = page.offset as i64;
 
+        // Static SQL: LIST_FLAG_PREDICATES собран `concat!` из литералов, флаги и
+        // id группы идут параметрами ?6..?9. COUNT и SELECT делят один предикат,
+        // поэтому `total` и число строк не расходятся.
         let total: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM devices d WHERE
+                &format!(
+                    "SELECT COUNT(*) FROM devices d WHERE
                    (?1 = 1 OR d.deleted_at_utc IS NULL) AND
                    (?2 IS NULL OR d.status_id = ?2) AND
-                   (?3 IS NULL OR d.type_id = ?3)",
-                rusqlite::params![include_deleted as i64, status_id, type_id],
+                   (?3 IS NULL OR d.type_id = ?3) AND
+                   {LIST_FLAG_PREDICATES}"
+                ),
+                rusqlite::params![
+                    include_deleted as i64,
+                    status_id,
+                    type_id,
+                    // ?4/?5 (LIMIT/OFFSET) в COUNT не используются; индексы
+                    // выровнены со SELECT, чтобы предикат был общим.
+                    limit,
+                    offset,
+                    hide,
+                    only,
+                    excl,
+                    member_of
+                ],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -722,7 +855,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 "{SELECT_DEVICES} WHERE
                    (?1 = 1 OR d.deleted_at_utc IS NULL) AND
                    (?2 IS NULL OR d.status_id = ?2) AND
-                   (?3 IS NULL OR d.type_id = ?3)
+                   (?3 IS NULL OR d.type_id = ?3) AND
+                   {LIST_FLAG_PREDICATES}
                  ORDER BY d.name
                  LIMIT ?4 OFFSET ?5"
             ))
@@ -731,7 +865,17 @@ impl DeviceRepository for SqliteDeviceRepository {
         let (sep_ends, sep_last_two) = read_path_display_separators(conn);
         let rows = stmt
             .query_map(
-                rusqlite::params![include_deleted as i64, status_id, type_id, limit, offset],
+                rusqlite::params![
+                    include_deleted as i64,
+                    status_id,
+                    type_id,
+                    limit,
+                    offset,
+                    hide,
+                    only,
+                    excl,
+                    member_of
+                ],
                 from_row_with_short_path(&sep_ends, &sep_last_two),
             )
             .map_err(map_rusqlite)?;
@@ -1176,7 +1320,8 @@ impl DeviceRepository for SqliteDeviceRepository {
         // (T-03.3-01 / T-18-01). The only user-controlled value is `match_expr`,
         // built by `build_fts_query` and bound via `rusqlite::params!` as ?4.
 
-        let sql_grouped_by_model_no_query = "SELECT
+        let sql_grouped_by_model_no_query = concat!(
+            "SELECT
                    MIN(d.id)                            AS repr_id,
                    COUNT(*)                             AS cnt,
                    GROUP_CONCAT(d.id)                   AS id_list,
@@ -1205,6 +1350,9 @@ impl DeviceRepository for SqliteDeviceRepository {
                      AND d2.model IS d.model
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
+                     AND ",
+            grouped_flag_predicates!("d2"),
+            "
                  )
                  LEFT JOIN place_effective_variant pev ON pev.place_id = (
                    SELECT MAX(d2.place_id)
@@ -1214,14 +1362,21 @@ impl DeviceRepository for SqliteDeviceRepository {
                      AND d2.model IS d.model
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
+                     AND ",
+            grouped_flag_predicates!("d2"),
+            "
                  )
                  WHERE d.deleted_at_utc IS NULL
-                   AND (?1 IS NULL OR d.status_id = ?1)
+                   AND (?1 IS NULL OR d.status_id = ?1) AND ",
+            grouped_flag_predicates!("d"),
+            "
                  GROUP BY d.type_id, d.name, d.model
                  ORDER BY cnt DESC, d.name ASC
-                 LIMIT ?2 OFFSET ?3";
+                 LIMIT ?2 OFFSET ?3"
+        );
 
-        let sql_grouped_by_model_with_query = "SELECT
+        let sql_grouped_by_model_with_query = concat!(
+            "SELECT
                    MIN(d.id)                            AS repr_id,
                    COUNT(*)                             AS cnt,
                    GROUP_CONCAT(d.id)                   AS id_list,
@@ -1251,6 +1406,9 @@ impl DeviceRepository for SqliteDeviceRepository {
                      AND d2.model IS d.model
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
+                     AND ",
+            grouped_flag_predicates!("d2"),
+            "
                  )
                  LEFT JOIN place_effective_variant pev ON pev.place_id = (
                    SELECT MAX(d2.place_id)
@@ -1260,15 +1418,22 @@ impl DeviceRepository for SqliteDeviceRepository {
                      AND d2.model IS d.model
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
+                     AND ",
+            grouped_flag_predicates!("d2"),
+            "
                  )
                  WHERE d.deleted_at_utc IS NULL
-                   AND (?1 IS NULL OR d.status_id = ?1)
+                   AND (?1 IS NULL OR d.status_id = ?1) AND ",
+            grouped_flag_predicates!("d"),
+            "
                    AND devices_fts MATCH ?4
                  GROUP BY d.type_id, d.name, d.model
                  ORDER BY cnt DESC, d.name ASC
-                 LIMIT ?2 OFFSET ?3";
+                 LIMIT ?2 OFFSET ?3"
+        );
 
-        let sql_without_condition = "SELECT
+        let sql_without_condition = concat!(
+            "SELECT
                    MIN(d.id)                            AS repr_id,
                    COUNT(*)                             AS cnt,
                    GROUP_CONCAT(d.id)                   AS id_list,
@@ -1296,6 +1461,9 @@ impl DeviceRepository for SqliteDeviceRepository {
                      AND d2.name = d.name
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
+                     AND ",
+            grouped_flag_predicates!("d2"),
+            "
                  )
                  LEFT JOIN place_effective_variant pev ON pev.place_id = (
                    SELECT MAX(d2.place_id)
@@ -1304,12 +1472,18 @@ impl DeviceRepository for SqliteDeviceRepository {
                      AND d2.name = d.name
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
+                     AND ",
+            grouped_flag_predicates!("d2"),
+            "
                  )
                  WHERE d.deleted_at_utc IS NULL
-                   AND (?1 IS NULL OR d.status_id = ?1)
+                   AND (?1 IS NULL OR d.status_id = ?1) AND ",
+            grouped_flag_predicates!("d"),
+            "
                  GROUP BY d.type_id, d.name
                  ORDER BY d.name
-                 LIMIT ?2 OFFSET ?3";
+                 LIMIT ?2 OFFSET ?3"
+        );
 
         // AUTO-03: text filter (name_prefix) only participates in SQL when
         // group_by_condition=true — the false-branch (DevicesPage) keeps its
@@ -1339,17 +1513,16 @@ impl DeviceRepository for SqliteDeviceRepository {
 
         let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
 
-        let rows = match &match_expr {
-            Some(match_expr) => stmt
-                .query_map(
-                    rusqlite::params![status_id, limit, offset, match_expr],
-                    group_row_tuple,
-                )
-                .map_err(map_rusqlite)?,
-            None => stmt
-                .query_map(rusqlite::params![status_id, limit, offset], group_row_tuple)
-                .map_err(map_rusqlite)?,
-        };
+        // ?4 — FTS-выражение (только в `sql_grouped_by_model_with_query`, иначе NULL и
+        // в SQL не упоминается), ?5 — exclude_anchors, ?6 — hide_anchor_members.
+        let excl = filter.exclude_anchors as i64;
+        let hide = filter.hide_anchor_members as i64;
+        let rows = stmt
+            .query_map(
+                rusqlite::params![status_id, limit, offset, match_expr, excl, hide],
+                group_row_tuple,
+            )
+            .map_err(map_rusqlite)?;
 
         // Phase 39.1 Plan 03: read once for the whole result set (D-17), same
         // discipline as `list`/`search_fts`.

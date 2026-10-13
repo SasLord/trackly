@@ -637,6 +637,7 @@ impl DeviceService {
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
             group_by_condition: false,
+            ..Default::default()
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
@@ -1089,6 +1090,7 @@ impl DeviceService {
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
             group_by_condition: filter.group_by_condition,
+            ..Default::default()
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
@@ -1580,6 +1582,7 @@ impl DeviceService {
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
             group_by_condition: false,
+            ..Default::default()
         };
         // Use a very large limit to fetch all rows for export.
         let domain_page = trackly_core::domain::devices::Pagination {

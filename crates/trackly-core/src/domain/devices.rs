@@ -104,6 +104,17 @@ pub struct DeviceFilter {
     /// Если false (по умолчанию, страница Устройств) — группировка по
     /// `(type_id, name)`, сортировка по имени; поведение не изменено Phase 18.
     pub group_by_condition: bool,
+    /// Phase 41.1 (D-10), opt-in: скрыть устройства, входящие в якорные группы
+    /// (включая вложенные), кроме самого якоря. Пикеры актов флаг не ставят.
+    pub hide_anchor_members: bool,
+    /// Phase 41.1, opt-in: вернуть только якорные устройства.
+    pub anchors_only: bool,
+    /// Phase 41.1 (D-11), opt-in: исключить якорные устройства (используется
+    /// в `list_grouped`, чтобы якорь не попадал в свёртку одинаковых).
+    pub exclude_anchors: bool,
+    /// Phase 41.1, opt-in: вернуть устройства группы и её вложенных групп
+    /// без якоря этой группы.
+    pub member_of_group_id: Option<i64>,
 }
 
 /// Pagination parameters for list queries.
