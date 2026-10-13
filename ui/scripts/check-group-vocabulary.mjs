@@ -101,6 +101,28 @@ const ALLOWLIST = [
     file: 'src/features/devices/DeviceRowMenu.svelte',
     markers: ['якорь группы', 'Открыть группу', 'Сначала удалите группу в разделе «Группы»'],
   },
+  {
+    // 41.1-19: подпись футера списка «Устройства» — «(+K в составе групп)» (D-34).
+    // Единственный литерал со словом «групп» в модуле режимов списка.
+    file: 'src/features/devices/deviceListMode.ts',
+    markers: ['в составе групп'],
+  },
+  {
+    // 41.1-19: якорная строка — бейдж-ссылка на группу (aria-label/title).
+    file: 'src/features/devices/DeviceListRow.svelte',
+    markers: ['Открыть группу'],
+  },
+  {
+    // 41.1-19: раскрытие состава якоря — ссылка в пустом составе и строка
+    // «Остальные — в разделе «Группы»».
+    file: 'src/features/devices/DeviceList.svelte',
+    markers: ['Открыть группу', 'в разделе «Группы»'],
+  },
+  {
+    // 41.1-19: тост ошибки загрузки состава группы при раскрытии якоря.
+    file: 'src/features/devices/DevicesPage.svelte',
+    markers: ['Не удалось загрузить состав группы.'],
+  },
 ];
 
 function allowEntryFor(relPath) {
@@ -397,6 +419,54 @@ function runSelfTest() {
       name: 'негатив (41.1-16): подсказка модалки отказа с переносом строки внутри маркера',
       file: 'src/features/devices/DeviceRowMenu.svelte',
       src: '<p>Сначала удалите\n группу в разделе «Группы»</p>',
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.1-19): хвост футера «в составе групп» в deviceListMode.ts',
+      file: 'src/features/devices/deviceListMode.ts',
+      src: 'return `${base} (+${input.hidden} в составе групп)`;',
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.1-19): прочая надпись про группу в deviceListMode.ts (маркер узкий)',
+      file: 'src/features/devices/deviceListMode.ts',
+      src: "return 'Показаны члены группы';",
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.1-19): якорная строка — «Открыть группу» в DeviceListRow',
+      file: 'src/features/devices/DeviceListRow.svelte',
+      src: "<a aria-label={'Открыть группу «' + name + '»'}>x</a>",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.1-19): прочая надпись про группу в DeviceListRow (маркер узкий)',
+      file: 'src/features/devices/DeviceListRow.svelte',
+      src: '<span>Группа не найдена</span>',
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.1-19): две надписи раскрытия состава в DeviceList',
+      file: 'src/features/devices/DeviceList.svelte',
+      src: '<span>Остальные — в разделе «Группы».</span><Button>Открыть группу</Button>',
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.1-19): прочая надпись про группу в DeviceList (маркеры узкие)',
+      file: 'src/features/devices/DeviceList.svelte',
+      src: '<span>Состав группы пуст</span>',
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.1-19): тост состава группы в DevicesPage',
+      file: 'src/features/devices/DevicesPage.svelte',
+      src: "pushToast('error', 'Не удалось загрузить состав группы.');",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.1-19): прочая надпись про группу в DevicesPage (маркер узкий)',
+      file: 'src/features/devices/DevicesPage.svelte',
+      src: "pushToast('error', 'Группа недоступна');",
       expectViolations: 1,
     },
     {

@@ -1,0 +1,369 @@
+[
+  {
+    "name": "shouldHideAnchorMembers: без поиска, вкладка «Все», без перехода -> true",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": false,
+      "statusFilter": null,
+      "focusId": null
+    },
+    "expected": true
+  },
+  {
+    "name": "shouldHideAnchorMembers: без поиска, вкладка «Все», переход к устройству 42 -> false",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": false,
+      "statusFilter": null,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldHideAnchorMembers: без поиска, вкладка статуса 5, без перехода -> false",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": false,
+      "statusFilter": 5,
+      "focusId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldHideAnchorMembers: без поиска, вкладка статуса 5, переход к устройству 42 -> false",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": false,
+      "statusFilter": 5,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldHideAnchorMembers: поиск, вкладка «Все», без перехода -> false",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": true,
+      "statusFilter": null,
+      "focusId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldHideAnchorMembers: поиск, вкладка «Все», переход к устройству 42 -> false",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": true,
+      "statusFilter": null,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldHideAnchorMembers: поиск, вкладка статуса 5, без перехода -> false",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": true,
+      "statusFilter": 5,
+      "focusId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldHideAnchorMembers: поиск, вкладка статуса 5, переход к устройству 42 -> false",
+    "fn": "shouldHideAnchorMembers",
+    "input": {
+      "searchActive": true,
+      "statusFilter": 5,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "deviceListFlags flat: скрытие включено",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "flat",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": true,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags flat: скрытие выключено (поиск)",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "flat",
+      "ctx": {
+        "searchActive": true,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags grouped: скрытие включено",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "grouped",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": true,
+      "anchors_only": false,
+      "exclude_anchors": true
+    }
+  },
+  {
+    "name": "deviceListFlags grouped: скрытие выключено (поиск)",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "grouped",
+      "ctx": {
+        "searchActive": true,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": true
+    }
+  },
+  {
+    "name": "deviceListFlags anchors: скрытие включено",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "anchors",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": true,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags anchors: скрытие выключено (поиск)",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "anchors",
+      "ctx": {
+        "searchActive": true,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": true,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags members: скрытие включено",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "members",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags members: скрытие выключено (поиск)",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "members",
+      "ctx": {
+        "searchActive": true,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags grouped: вкладка статуса — hide=false, но якорь всё равно не сворачивается",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "grouped",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": 5,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": true
+    }
+  },
+  {
+    "name": "deviceListFlags grouped: одно лишь focusId — hide=false, exclude_anchors=true",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "grouped",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": null,
+        "focusId": 42
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": true
+    }
+  },
+  {
+    "name": "deviceListFlags flat: одно лишь focusId — hide=false",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "flat",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": null,
+        "focusId": 42
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags flat: одна лишь вкладка статуса — hide=false",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "flat",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": 5,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags anchors: вкладка статуса не меняет флаги якорей",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "anchors",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": 5,
+        "focusId": 42
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": true,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "footerText: скрытых нет — хвоста нет",
+    "fn": "footerText",
+    "input": {
+      "shown": 50,
+      "total": 120,
+      "hidden": 0,
+      "hideActive": true
+    },
+    "expected": "Показано 50 из 120"
+  },
+  {
+    "name": "footerText: скрытие выключено, K > 0 — хвоста нет",
+    "fn": "footerText",
+    "input": {
+      "shown": 7,
+      "total": 7,
+      "hidden": 4,
+      "hideActive": false
+    },
+    "expected": "Показано 7 из 7"
+  },
+  {
+    "name": "footerText: скрытие включено и K > 0 — хвост есть",
+    "fn": "footerText",
+    "input": {
+      "shown": 50,
+      "total": 120,
+      "hidden": 13,
+      "hideActive": true
+    },
+    "expected": "Показано 50 из 120 (+13 в составе групп)"
+  },
+  {
+    "name": "footerText: K = 1",
+    "fn": "footerText",
+    "input": {
+      "shown": 1,
+      "total": 1,
+      "hidden": 1,
+      "hideActive": true
+    },
+    "expected": "Показано 1 из 1 (+1 в составе групп)"
+  },
+  {
+    "name": "footerText: пустой список, скрытие выключено",
+    "fn": "footerText",
+    "input": {
+      "shown": 0,
+      "total": 0,
+      "hidden": 0,
+      "hideActive": false
+    },
+    "expected": "Показано 0 из 0"
+  },
+  {
+    "name": "footerText: shown и total различаются, K тоже — каждое число на своём месте",
+    "fn": "footerText",
+    "input": {
+      "shown": 3,
+      "total": 9,
+      "hidden": 2,
+      "hideActive": true
+    },
+    "expected": "Показано 3 из 9 (+2 в составе групп)"
+  }
+]

@@ -95,11 +95,24 @@ const ROW_FILES = [
   'src/features/printers/PrinterListRow.svelte',
 ];
 // Обязательные: отсутствие файла или привязок — нарушение, SKIP недопустим.
-// План 17 внёс DeviceListRow и DeviceGroupRow, план 19 (Task 1) внесёт PrinterListRow.
+// План 17 внёс DeviceListRow и DeviceGroupRow, план 19 (Task 1) — PrinterListRow.
 const MANDATORY_ROW_FILES = [
   'src/features/devices/DeviceListRow.svelte',
   'src/features/devices/DeviceGroupRow.svelte',
+  'src/features/printers/PrinterListRow.svelte',
 ];
+// Привязки, которые обязательная строка ОБЯЗАНА иметь (закрывает слепое пятно
+// плана 41.1-18: снятие `ondblclick=` не краснило ни F1 (считает охраны, а не
+// привязки), ни F0 (привязки есть, пока осталась хоть одна), и двойной клик молча
+// переставал открывать просмотр). Запись обязательна для КАЖДОГО файла из
+// MANDATORY_ROW_FILES: отсутствие записи — нарушение [F0] (самоинвалидация).
+// У DeviceGroupRow контекстного меню и клавиатурной привязки нет по построению
+// (плана 17: у свёртки нет сущности для меню, D-26).
+const REQUIRED_BINDINGS = {
+  'src/features/devices/DeviceListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
+  'src/features/devices/DeviceGroupRow.svelte': ['ondblclick'],
+  'src/features/printers/PrinterListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
+};
 
 // [D] Вторая реализация меню удалена в плане 41.1-17 и не должна вернуться.
 const LEGACY_MENU_FILE = 'src/features/devices/DeviceContextMenu.svelte';
@@ -478,7 +491,7 @@ function checkGuardedBody(body, attr) {
 }
 
 /** Правило [F] для одного файла. mandatory — отсутствие привязок нарушение. */
-export function checkRowFile(rel, src, mandatory) {
+export function checkRowFile(rel, src, mandatory, required = null) {
   const violations = [];
   const notes = [];
   if (src === null) {
@@ -502,6 +515,25 @@ export function checkRowFile(rel, src, mandatory) {
         `SKIP ${rel}: привязок oncontextmenu=/ondblclick=/onkeydown= нет (строка ещё не подключена)`,
       );
     return { violations, notes };
+  }
+  if (mandatory) {
+    if (required === null) {
+      violations.push({
+        code: 'F0',
+        file: rel,
+        msg: 'обязательный файл не внесён в REQUIRED_BINDINGS: не задано, какие привязки обязан иметь',
+      });
+    } else {
+      for (const attr of required) {
+        if (!bindings.some((b) => b.attr === attr)) {
+          violations.push({
+            code: 'F0',
+            file: rel,
+            msg: `обязательная привязка ${attr}= снята (охрана в теле обработчика осталась бы, а событие перестало бы доходить до него)`,
+          });
+        }
+      }
+    }
   }
   const mouse = bindings.filter((b) => b.attr !== 'onkeydown').length;
   const hasKey = bindings.some((b) => b.attr === 'onkeydown');
@@ -694,6 +726,7 @@ export function checkLegacyMenu(files) {
 /** Все структурные правила по карте «относительный путь -> исходник». */
 export function scanStructural(files, opts = {}) {
   const mandatory = opts.mandatory ?? MANDATORY_ROW_FILES;
+  const requiredBindings = opts.requiredBindings ?? REQUIRED_BINDINGS;
   const rowFiles = opts.rowFiles ?? ROW_FILES;
   const minScanned = opts.minScanned ?? MIN_SCANNED_FILES;
   const violations = [];
@@ -749,7 +782,7 @@ export function scanStructural(files, opts = {}) {
       notes.push(`SKIP ${rel}: <DeviceRowMenu не подключён, охрана событий строки не требуется`);
       continue;
     }
-    const r = checkRowFile(rel, src, isMandatory);
+    const r = checkRowFile(rel, src, isMandatory, requiredBindings[rel] ?? null);
     for (const v of r.violations) add(v);
     for (const n of r.notes) notes.push(n);
   }
@@ -1253,7 +1286,69 @@ async function selftest(cases) {
   // CLEAN_ROW уже содержит handleDblClick с `|| closest(...)` — он прошёл выше.
 
   // 5. Обязательный файл: нет файла / нет привязок — нарушение, необязательный — явный SKIP.
-  const mandatoryOpts = { ...SELFTEST_OPTS, mandatory: [ROW_PATH], rowFiles: [ROW_PATH] };
+  const ALL_BINDINGS = ['oncontextmenu', 'ondblclick', 'onkeydown'];
+  const mandatoryOpts = {
+    ...SELFTEST_OPTS,
+    mandatory: [ROW_PATH],
+    rowFiles: [ROW_PATH],
+    requiredBindings: { [ROW_PATH]: ALL_BINDINGS },
+  };
+  const cleanMandatory = scanStructural(fixtureMap(), mandatoryOpts);
+  if (cleanMandatory.violations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — чистая обязательная строка красная:\n  - ${cleanMandatory.violations.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
+  }
+  // 5a. Слепое пятно плана 41.1-18: снятая привязка при живой охране. Без
+  // REQUIRED_BINDINGS счёт F1 остаётся зелёным (охран не меньше привязок), F0 не
+  // срабатывает (привязки есть). Мутант обязан краснеть именно [F0] и ни одним
+  // из F1/F2/F3 — иначе доказано не то.
+  const unbind = [
+    ['ondblclick', ' ondblclick={handleDblClick}', 'ondblclick'],
+    ['oncontextmenu', ' oncontextmenu={handleContextMenu}', 'oncontextmenu'],
+    ['onkeydown', ' onkeydown={handleCellKeydown}', 'onkeydown'],
+  ];
+  for (const [attr, from, label] of unbind) {
+    const mutated = mutate(CLEAN_ROW, from, '', `снята привязка ${label}`);
+    const r = scanStructural(fixtureMap({ [ROW_PATH]: mutated }), mandatoryOpts);
+    const codes = new Set(r.violations.map((v) => v.code));
+    if (!codes.has('F0') || !r.violations.some((v) => v.msg.includes(`${attr}=`))) {
+      console.error(
+        `${TAG} SELFTEST FAIL — снятая привязка ${attr}= у обязательной строки не краснит [F0]`,
+      );
+      process.exit(1);
+    }
+    if (codes.has('F1') || codes.has('F2') || codes.has('F3')) {
+      console.error(
+        `${TAG} SELFTEST FAIL — мутант «снята ${attr}=» должен краснеть ТОЛЬКО [F0] (охрана-то на месте); иначе слепое пятно не доказано`,
+      );
+      process.exit(1);
+    }
+    // Тот же мутант на необязательной строке слеп по построению: это и есть дыра.
+    const optionalOpts = { ...SELFTEST_OPTS, rowFiles: [ROW_PATH] };
+    if (scanStructural(fixtureMap({ [ROW_PATH]: mutated }), optionalOpts).violations.length) {
+      console.error(
+        `${TAG} SELFTEST FAIL — контроль: без REQUIRED_BINDINGS мутант «снята ${attr}=» не должен краснеть (иначе F1 уже ловил его и правило лишнее)`,
+      );
+      process.exit(1);
+    }
+  }
+  // 5b. Самоинвалидация: обязательный файл без записи в REQUIRED_BINDINGS краснит [F0].
+  const noEntry = scanStructural(fixtureMap(), { ...mandatoryOpts, requiredBindings: {} });
+  if (!noEntry.violations.some((v) => v.code === 'F0' && v.msg.includes('REQUIRED_BINDINGS'))) {
+    console.error(
+      `${TAG} SELFTEST FAIL — обязательный файл без записи REQUIRED_BINDINGS не краснит`,
+    );
+    process.exit(1);
+  }
+  // 5c. Реальная конфигурация согласована: у каждого обязательного файла есть запись.
+  for (const f of MANDATORY_ROW_FILES) {
+    if (!Array.isArray(REQUIRED_BINDINGS[f]) || REQUIRED_BINDINGS[f].length === 0) {
+      console.error(`${TAG} SELFTEST FAIL — для обязательного ${f} нет записи в REQUIRED_BINDINGS`);
+      process.exit(1);
+    }
+  }
   const noFile = scanStructural(fixtureMap({ [ROW_PATH]: null }), mandatoryOpts);
   if (!noFile.violations.some((v) => v.code === 'F0')) {
     console.error(`${TAG} SELFTEST FAIL — отсутствие обязательного файла строки не краснит`);
