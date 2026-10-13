@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-12T23:13:40.588Z"
-last_activity: 2026-10-12
+last_updated: "2026-10-13T00:18:54.695Z"
+last_activity: 2026-10-13
 progress:
   total_phases: 21
   completed_phases: 11
   total_plans: 189
-  completed_plans: 177
+  completed_plans: 178
   percent: 52
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 10 of 22 завершено (волны 1-3: 01-07, 09, 10, 22) — далее волна 4: планы 11, 12, 13
+Plan: 11 of 22 завершено (волны 1-3: 01-07, 09, 10, 22) — далее волна 4: планы 11, 12, 13
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -137,7 +137,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-12
+Last activity: 2026-10-13
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -589,6 +589,7 @@ Last activity: 2026-10-12
 | Phase 41.1 P07 | 45min | 2 tasks | 5 files |
 | Phase 41.1 P09 | 120min | 2 tasks | 5 files |
 | Phase 41.1 P10 | 40min | 3 tasks | 8 files |
+| Phase 41.1 P11 | 2h | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -1289,6 +1290,7 @@ Recent decisions affecting current work:
 - [Phase 41.1-07]: origin_group_id у представителя list_grouped всегда None (агрегат MAX по группе); читается с get/list_by_ids
 - [Phase 41.1]: [41.1-09] Охрана якоря через anchor_group_of_device_in_tx; locked_group_for_device_in_tx в device_service.rs остаётся единственным (гейт S1)
 - [Phase 41.1]: [41.1-10] Тон бейджа статуса устройства решается по code (единственная таблица в сторе deviceStatuses), подпись по id из серверного справочника; стор грузится лениво из экранов
+- [Phase 41.1]: 41.1-11: создание группы от устройства — одна транзакция writer; type_id<>1 отсекается раньше остальных отказов (D-38); сетевой принтер отказывается только в add_devices (D-32) — атомарность быстрых действий, граница безопасности на сервере
 
 ### Pending Todos
 
@@ -1491,7 +1493,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-12T23:13:40.578Z
+Last session: 2026-10-13T00:18:51.008Z
 Stopped at: Completed 41.1-10-PLAN.md
 Resume file: None
 
