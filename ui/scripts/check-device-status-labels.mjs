@@ -830,7 +830,7 @@ function runSelfTest() {
       name: 'M23 [B] ссылка на CARTRIDGE_-карту, объявленную с устройственным ключом, тоже краснеет (объявление стоит ниже ссылки на неё)',
       files: fixtureFiles({
         places: (() => {
-          const decl = /  const CARTRIDGE_STATUS_VARIANT_BY_NAME[\s\S]*?\};\n/.exec(
+          const decl = / {2}const CARTRIDGE_STATUS_VARIANT_BY_NAME[\s\S]*?\};\n/.exec(
             CLEAN_PLACES,
           )[0];
           const moved = mutate(CLEAN_PLACES, decl, '');
