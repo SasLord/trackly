@@ -9,15 +9,25 @@
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import TonerGauge from './TonerGauge.svelte';
+  import DeviceRowMenu from '../devices/DeviceRowMenu.svelte';
+  import { isOwnKeyEvent, isRowOverlayEvent } from '../devices/deviceRowMenu';
   import type { PrinterDto } from '../../bindings-phase6';
+  import type { DeviceDto } from '../../bindings';
 
   interface Props {
     printer: PrinterDto;
     selected: boolean;
     onclick: () => void;
+    /** Фаза 41.1, план 18: «Опросить сейчас» — первый пункт меню принтера. */
+    onPoll: () => void;
+    onEdit: (_d: DeviceDto) => void;
+    /** Общий сигнал «перезагрузить список» (удаление, добавление в группу). */
+    onChanged: () => void;
+    onPrintAcceptance?: (_d: DeviceDto) => void;
   }
 
-  const { printer, selected, onclick }: Props = $props();
+  const { printer, selected, onclick, onPoll, onEdit, onChanged, onPrintAcceptance }: Props =
+    $props();
 
   // Badge variant по status (UI-SPEC §Badge-цвета статусов принтера).
   type BadgeVariant = 'success' | 'warning' | 'destructive' | 'default';
@@ -58,26 +68,71 @@
     printer.tonerLevels ? (Object.entries(printer.tonerLevels)[0] ?? null) : null,
   );
 
+  // USB-принтер: тот же признак, что и у подписи «USB» в ipText. Сетевой принтер
+  // используют несколько рабочих мест, членом одного АРМ он быть не может
+  // (D-32), поэтому групповые пункты меню ему не показываются. Сервер отказывает
+  // и сам (add_devices); здесь только зеркало, правило сборки пунктов живёт в
+  // deviceRowMenu.ts, а не в этом файле.
+  const isUsb = $derived(!printer.ipAddress && !!printer.usbHostDeviceId);
+
+  // Меню строки (фаза 41.1, план 18; D-24, D-25, D-26). Своей кнопки действий у
+  // принтера нет (раздел master-detail, клик по строке = выбор), поэтому меню
+  // открывается правым кликом и с клавиатуры, двойной клик открывает просмотр.
+  let menuRef = $state<ReturnType<typeof DeviceRowMenu> | null>(null);
+  let nameCellEl = $state<HTMLElement | null>(null);
+
+  // Родное контекстное меню гасится только здесь и одинаково в Tauri и в
+  // LAN-браузере (ветвей по транспорту нет). Охрана — первым оператором:
+  // DeviceRowMenu лежит внутри ячейки, а Modal не портальный, поэтому события
+  // из его модалок (поле названия группы, номер в просмотре) всплывают сюда.
+  function handleContextMenu(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
+    e.preventDefault();
+    if (e.clientX === 0 && e.clientY === 0 && nameCellEl) {
+      // Событие от клавиши контекстного меню: координат у него нет.
+      void menuRef?.openFromElement(nameCellEl);
+    } else {
+      void menuRef?.openAt(e.clientX, e.clientY);
+    }
+  }
+
+  function handleDblClick(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
+    window.getSelection()?.removeAllRanges();
+    void menuRef?.openView();
+  }
+
   function handleClick() {
     onclick();
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (!isOwnKeyEvent(e.target, e.currentTarget)) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onclick();
+    } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      e.preventDefault();
+      if (nameCellEl) void menuRef?.openFromElement(nameCellEl);
     }
   }
 </script>
 
-<TableRow {selected} class="printer-row">
+<TableRow
+  {selected}
+  class="printer-row"
+  oncontextmenu={handleContextMenu}
+  ondblclick={handleDblClick}
+>
   <td
     id="printer-row-{printer.id}"
     class="cell cell-name"
     role="button"
     tabindex="0"
     aria-pressed={selected}
+    aria-haspopup="menu"
     title={displayName}
+    bind:this={nameCellEl}
     onclick={handleClick}
     onkeydown={handleKeydown}
   >
@@ -92,6 +147,17 @@
         {/if}
       </span>
     </span>
+    <DeviceRowMenu
+      bind:this={menuRef}
+      device={null}
+      deviceId={printer.deviceId}
+      trigger="none"
+      groupActionsEnabled={isUsb}
+      {onPoll}
+      {onEdit}
+      {onChanged}
+      {onPrintAcceptance}
+    />
   </td>
   <td class="cell cell-status" onclick={handleClick}>
     <Badge variant={statusVariant}>{statusLabel}</Badge>

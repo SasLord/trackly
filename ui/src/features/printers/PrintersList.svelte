@@ -9,6 +9,7 @@
   import Table from '$lib/components/Table.svelte';
   import PrinterListRow from './PrinterListRow.svelte';
   import type { PrinterDto } from '../../bindings-phase6';
+  import type { DeviceDto } from '../../bindings';
 
   interface EmptyConfig {
     heading: string;
@@ -23,9 +24,24 @@
     selectedId: number | null;
     onSelect: (_id: number) => void;
     emptyConfig: EmptyConfig;
+    /** Фаза 41.1, план 18: пункты меню строки принтера. */
+    onPoll: (_id: number) => void;
+    onEdit: (_d: DeviceDto) => void;
+    onChanged: () => void;
+    onPrintAcceptance?: (_d: DeviceDto) => void;
   }
 
-  const { items, loading, selectedId, onSelect, emptyConfig }: Props = $props();
+  const {
+    items,
+    loading,
+    selectedId,
+    onSelect,
+    emptyConfig,
+    onPoll,
+    onEdit,
+    onChanged,
+    onPrintAcceptance,
+  }: Props = $props();
 
   // Mirrors ActsList's skeleton-branch condition — Table shows skeleton rows only
   // for the initial (items-still-empty) load; a background refresh with items
@@ -87,7 +103,15 @@
   fillHeight
 >
   {#each items as p (p.id)}
-    <PrinterListRow printer={p} selected={p.id === selectedId} onclick={() => onSelect(p.id)} />
+    <PrinterListRow
+      printer={p}
+      selected={p.id === selectedId}
+      onclick={() => onSelect(p.id)}
+      onPoll={() => onPoll(p.id)}
+      {onEdit}
+      {onChanged}
+      {onPrintAcceptance}
+    />
   {/each}
 </Table>
 
