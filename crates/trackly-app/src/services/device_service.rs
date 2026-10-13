@@ -89,6 +89,133 @@ pub struct DeviceService {
     pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
 }
 
+/// Phase 41.1 Plan 12 (D-12, D-19): обогащает строки списка информацией о группе,
+/// якоре и происхождении ПАЧКОЙ запросов `WHERE ... IN (...)` — без запроса на
+/// строку. Приватна и не владеет writer'ом (реестр write-site'ов её не видит).
+///
+/// Единственная динамика SQL — список `?1,?2,...` нужной длины; значения всегда
+/// параметры, текст пользователя в SQL не попадает (T-41.1-12-01). Вызывается
+/// только над строками страницы (потолок 200, `list_by_ids` — 1000), CTE ограничен
+/// деревом групп, `UNION` защищает рекурсию от цикла (T-41.1-12-02).
+fn enrich_devices<'a>(
+    conn: &rusqlite::Connection,
+    devices: impl IntoIterator<Item = &'a mut DeviceDto>,
+) -> Result<(), AppError> {
+    let mut devices: Vec<&mut DeviceDto> = devices.into_iter().collect();
+    if devices.is_empty() {
+        return Ok(());
+    }
+    let mut ids: Vec<i64> = devices.iter().map(|d| d.id).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let marks = (1..=ids.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    // 1. Членство: group_devices JOIN живая группа.
+    let mut membership: HashMap<i64, (i64, String)> = HashMap::new();
+    {
+        let sql = format!(
+            "SELECT gd.device_id, g.id, g.name FROM group_devices gd \
+             JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL \
+             WHERE gd.device_id IN ({marks})"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(map_rusqlite)?;
+        for row in rows {
+            let (device_id, group_id, name) = row.map_err(map_rusqlite)?;
+            membership.insert(device_id, (group_id, name));
+        }
+    }
+
+    // 2. Якоря: группа, у которой устройство — якорь, и число членов поддерева
+    //    без самого якоря (A4; мягко-удалённые устройства не считаются).
+    let mut anchors: HashMap<i64, (i64, String, i64)> = HashMap::new();
+    {
+        let sql = format!(
+            "WITH RECURSIVE t(root, gid) AS ( \
+               SELECT id, id FROM groups \
+               WHERE anchor_device_id IN ({marks}) AND deleted_at_utc IS NULL \
+               UNION \
+               SELECT t.root, g.id FROM groups g JOIN t ON g.parent_group_id = t.gid \
+               WHERE g.deleted_at_utc IS NULL) \
+             SELECT g.anchor_device_id, g.id, g.name, \
+                    (SELECT COUNT(*) FROM group_devices gd \
+                     JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL \
+                     WHERE gd.group_id IN (SELECT gid FROM t WHERE t.root = g.id) \
+                       AND gd.device_id <> g.anchor_device_id) \
+             FROM groups g \
+             WHERE g.anchor_device_id IN ({marks}) AND g.deleted_at_utc IS NULL"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(map_rusqlite)?;
+        for row in rows {
+            let (device_id, group_id, name, count) = row.map_err(map_rusqlite)?;
+            anchors.insert(device_id, (group_id, name, count));
+        }
+    }
+
+    // 3. Происхождение: id берётся с самого устройства (у представителя свёрнутого
+    //    набора `DeviceRow.origin_group_id` пуст), имя — у живой группы разбора.
+    let mut origins: HashMap<i64, (i64, Option<String>)> = HashMap::new();
+    {
+        let sql = format!(
+            "SELECT d.id, d.origin_group_id, g.name FROM devices d \
+             LEFT JOIN groups g ON g.id = d.origin_group_id AND g.deleted_at_utc IS NULL \
+             WHERE d.origin_group_id IS NOT NULL AND d.id IN ({marks})"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            })
+            .map_err(map_rusqlite)?;
+        for row in rows {
+            let (device_id, group_id, name) = row.map_err(map_rusqlite)?;
+            origins.insert(device_id, (group_id, name));
+        }
+    }
+
+    for dto in devices.iter_mut() {
+        if let Some((gid, name)) = membership.get(&dto.id) {
+            dto.group_id = Some(*gid);
+            dto.group_name = Some(name.clone());
+        }
+        if let Some((gid, name, count)) = anchors.get(&dto.id) {
+            dto.anchor_group_id = Some(*gid);
+            dto.anchor_group_name = Some(name.clone());
+            dto.anchor_member_count = Some(*count);
+        }
+        if let Some((gid, name)) = origins.get(&dto.id) {
+            dto.origin_group_id = Some(*gid);
+            dto.origin_group_name = name.clone();
+        }
+    }
+    Ok(())
+}
+
 impl DeviceService {
     /// Construct a new `DeviceService`.
     ///
@@ -604,7 +731,9 @@ impl DeviceService {
         let repo = self.repo.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.get(&conn, id).map(DeviceDto::from)
+            let mut dto = DeviceDto::from(repo.get(&conn, id)?);
+            enrich_devices(&conn, std::iter::once(&mut dto))?;
+            Ok(dto)
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -637,16 +766,28 @@ impl DeviceService {
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
             group_by_condition: false,
-            ..Default::default()
+            hide_anchor_members: filter.hide_anchor_members,
+            anchors_only: filter.anchors_only,
+            exclude_anchors: filter.exclude_anchors,
+            member_of_group_id: filter.member_of_group_id,
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
             limit: page.limit,
         };
 
-        let (rows, total) = tokio::task::spawn_blocking(move || {
+        let (items, total, hidden_member_count) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.list(&conn, &domain_filter, &domain_page)
+            let (rows, total) = repo.list(&conn, &domain_filter, &domain_page)?;
+            // D-34: K только при включённом скрытии, иначе запрос не делается.
+            let hidden_member_count = if domain_filter.hide_anchor_members {
+                repo.count_hidden_anchor_members(&conn, &domain_filter)?
+            } else {
+                0
+            };
+            let mut items: Vec<DeviceDto> = rows.into_iter().map(DeviceDto::from).collect();
+            enrich_devices(&conn, items.iter_mut())?;
+            Ok::<_, AppError>((items, total, hidden_member_count))
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -654,8 +795,9 @@ impl DeviceService {
         })??;
 
         Ok(DeviceListResponse {
-            items: rows.into_iter().map(DeviceDto::from).collect(),
+            items,
             total,
+            hidden_member_count,
         })
     }
 
@@ -975,18 +1117,24 @@ impl DeviceService {
             limit: page.limit,
         };
 
-        let (rows, total) = tokio::task::spawn_blocking(move || {
+        let (items, total) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.search_fts(&conn, &query, &domain_page)
+            let (rows, total) = repo.search_fts(&conn, &query, &domain_page)?;
+            let mut items: Vec<DeviceDto> = rows.into_iter().map(DeviceDto::from).collect();
+            enrich_devices(&conn, items.iter_mut())?;
+            Ok::<_, AppError>((items, total))
         })
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })??;
 
+        // D-10: поиск флагов скрытия не принимает по построению (`search_fts`
+        // не знает о якорных группах), поэтому K всегда 0.
         Ok(DeviceListResponse {
-            items: rows.into_iter().map(DeviceDto::from).collect(),
+            items,
             total,
+            hidden_member_count: 0,
         })
     }
 
@@ -1090,32 +1238,36 @@ impl DeviceService {
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
             group_by_condition: filter.group_by_condition,
-            ..Default::default()
+            hide_anchor_members: filter.hide_anchor_members,
+            anchors_only: filter.anchors_only,
+            exclude_anchors: filter.exclude_anchors,
+            member_of_group_id: filter.member_of_group_id,
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
             limit: page.limit,
         };
 
-        let group_rows = tokio::task::spawn_blocking(move || {
+        let groups = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.list_grouped(&conn, &domain_filter, &domain_page)
+            let group_rows = repo.list_grouped(&conn, &domain_filter, &domain_page)?;
+            let mut groups: Vec<DeviceGroup> = group_rows
+                .into_iter()
+                .map(|g| DeviceGroup {
+                    repr: DeviceDto::from(g.repr),
+                    count: g.count as u64,
+                    ids: g.ids.into_iter().map(|id| id as i32).collect(),
+                    condition_distinct_count: g.condition_distinct_count,
+                    place_distinct_count: g.place_distinct_count,
+                })
+                .collect();
+            enrich_devices(&conn, groups.iter_mut().map(|g| &mut g.repr))?;
+            Ok::<_, AppError>(groups)
         })
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })??;
-
-        let groups = group_rows
-            .into_iter()
-            .map(|g| DeviceGroup {
-                repr: DeviceDto::from(g.repr),
-                count: g.count as u64,
-                ids: g.ids.into_iter().map(|id| id as i32).collect(),
-                condition_distinct_count: g.condition_distinct_count,
-                place_distinct_count: g.place_distinct_count,
-            })
-            .collect();
 
         Ok(groups)
     }
@@ -1582,7 +1734,12 @@ impl DeviceService {
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
             group_by_condition: false,
-            ..Default::default()
+            // Выгрузка идёт по ВСЕМ устройствам: члены якорных групп не скрываются
+            // и фильтр якорей из запроса не берётся (отчёт не должен терять детали).
+            hide_anchor_members: false,
+            anchors_only: false,
+            exclude_anchors: false,
+            member_of_group_id: None,
         };
         // Use a very large limit to fetch all rows for export.
         let domain_page = trackly_core::domain::devices::Pagination {
@@ -1700,14 +1857,17 @@ impl DeviceService {
 
         let rows = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.list_by_ids(&conn, &ids)
+            let rows = repo.list_by_ids(&conn, &ids)?;
+            let mut items: Vec<DeviceDto> = rows.into_iter().map(DeviceDto::from).collect();
+            enrich_devices(&conn, items.iter_mut())?;
+            Ok::<_, AppError>(items)
         })
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })??;
 
-        Ok(rows.into_iter().map(DeviceDto::from).collect())
+        Ok(rows)
     }
 
     // -----------------------------------------------------------------------

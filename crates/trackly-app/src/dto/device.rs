@@ -71,6 +71,20 @@ pub struct DeviceDto {
     /// Phase 41.1, D-16). Вход и выход из других групп её не меняет.
     #[specta(type = Option<i32>)]
     pub origin_group_id: Option<i64>,
+    /// Группа, в которой состоит устройство (`group_devices`). Заполняется
+    /// обогащением на путях чтения со списком; на остальных путях `None`.
+    #[specta(type = Option<i32>)]
+    pub group_id: Option<i64>,
+    pub group_name: Option<String>,
+    /// Группа, для которой устройство является якорем (Phase 41.1, D-12).
+    #[specta(type = Option<i32>)]
+    pub anchor_group_id: Option<i64>,
+    pub anchor_group_name: Option<String>,
+    /// Число устройств в поддереве группы-якоря без самого якоря (A4).
+    #[specta(type = Option<i32>)]
+    pub anchor_member_count: Option<i64>,
+    /// Имя группы разбора, из которой деталь пришла (`origin_group_id`).
+    pub origin_group_name: Option<String>,
 }
 
 impl From<DeviceRow> for DeviceDto {
@@ -94,6 +108,12 @@ impl From<DeviceRow> for DeviceDto {
             updated_at_utc: row.updated_at_utc,
             status_code: row.status_code,
             origin_group_id: row.origin_group_id,
+            group_id: None,
+            group_name: None,
+            anchor_group_id: None,
+            anchor_group_name: None,
+            anchor_member_count: None,
+            origin_group_name: None,
         }
     }
 }
@@ -302,6 +322,24 @@ pub struct DeviceFilter {
     /// Если false (по умолчанию, страница Устройств) — свёртка одинаковых по
     /// (type_id, name), сортировка по имени; не изменено Phase 18.
     pub group_by_condition: bool,
+    /// Phase 41.1 (D-10), opt-in: скрыть членов якорных групп (включая вложенные),
+    /// кроме самого якоря. Пикеры актов флаг не ставят и видят все устройства;
+    /// страница «Устройства» ставит его только на вкладке «Все» и не в режиме
+    /// поиска (`search` флагов не принимает).
+    #[serde(default)]
+    pub hide_anchor_members: bool,
+    /// Phase 41.1, opt-in: только якорные устройства.
+    #[serde(default)]
+    pub anchors_only: bool,
+    /// Phase 41.1 (D-11), opt-in: исключить якоря (для `list_grouped`: якорь не
+    /// попадает в свёртку одинаковых).
+    #[serde(default)]
+    pub exclude_anchors: bool,
+    /// Phase 41.1, opt-in: состав группы и её вложенных групп без якоря
+    /// (раскрытие якорной строки).
+    #[serde(default)]
+    #[specta(type = Option<i32>)]
+    pub member_of_group_id: Option<i64>,
 }
 
 /// Параметры пагинации.
@@ -328,6 +366,11 @@ pub struct DeviceListResponse {
     pub items: Vec<DeviceDto>,
     #[specta(type = u32)]
     pub total: u64,
+    /// K для футера «Показано N из M (+K в составе групп)» (D-34): сколько
+    /// устройств скрыл `hide_anchor_members`. Считается только при включённом
+    /// флаге, иначе 0.
+    #[specta(type = i32)]
+    pub hidden_member_count: i64,
 }
 
 /// Набор одинаковых устройств, свёрнутых в одну строку (DEV-11 / D-Group-01).
@@ -449,6 +492,12 @@ mod tests {
             updated_at_utc: 1_700_001_000,
             status_code: "в_работе".to_string(),
             origin_group_id: Some(7),
+            group_id: Some(3),
+            group_name: Some("Разбор 3".to_string()),
+            anchor_group_id: Some(3),
+            anchor_group_name: Some("Разбор 3".to_string()),
+            anchor_member_count: Some(2),
+            origin_group_name: Some("Разбор 7".to_string()),
         };
         let json = serde_json::to_string(&dto).expect("serialize");
         let back: DeviceDto = serde_json::from_str(&json).expect("deserialize");
@@ -495,6 +544,12 @@ mod tests {
             updated_at_utc: 0,
             status_code: "на_складе".to_string(),
             origin_group_id: None,
+            group_id: None,
+            group_name: None,
+            anchor_group_id: None,
+            anchor_group_name: None,
+            anchor_member_count: None,
+            origin_group_name: None,
         };
         let json = serde_json::to_string(&dto).expect("serialize");
         assert!(
