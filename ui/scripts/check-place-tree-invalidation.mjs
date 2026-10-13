@@ -645,7 +645,7 @@ function checkStore(storeSrc, violations) {
  *     `acts.delete`/soft-delete+undo). Функция, ОБРАМЛЯЮЩАЯ маркер, обязана
  *     звать `notifyPlaceContentChanged(`.
  *
- * ---- Полный перечень write-site на момент этого коммита (12) ----
+ * ---- Полный перечень write-site на момент этого коммита (13) ----
  *   1. PlaceContents.svelte — `<PlaceEntityViewModal onChanged={...}>`
  *      (правка предмета через «Просмотр» со страницы «Места»).
  *   2. CartridgesPage.svelte — `handleFormSuccess` (форма «Редактировать»).
@@ -664,12 +664,15 @@ function checkStore(storeSrc, violations) {
  *      «Данные устройства» со страницы принтера, WR-07 — найден ЭТИМ
  *      гейтом при построении реестра, ни одним из трёх раундов
  *      верификации).
- *  11. DeviceContextMenu.svelte — `<PlaceEntityViewModal onChanged=
- *      {handleViewChanged}>` (правка через «Просмотр» из кебаб-меню списка
- *      «Устройства», WR-08 — тоже найден ЭТИМ гейтом, не раундами
- *      верификации; `handleViewChanged` буквально отбрасывал аргумент).
+ *  11. DeviceRowMenu.svelte (прежде DeviceContextMenu.svelte, удалён в
+ *      41.1) — `<PlaceEntityViewModal onChanged={handleViewChanged}>`
+ *      (правка через «Просмотр» из меню строки списка «Устройства»,
+ *      WR-08 — тоже найден ЭТИМ гейтом, не раундами верификации;
+ *      `handleViewChanged` буквально отбрасывал аргумент).
  *  12. PlaceContents.svelte — `handleMoveConfirm` (массовый перенос,
  *      DIRECT_CALL_MARKERS, покрыт с Phase 40).
+ *  13. GroupFormModal.svelte — `handleSubmit` (`groups.create`, создание
+ *      группы от устройства, DIRECT_CALL_MARKERS, фаза 41.1 план 17).
  *
  * ---- Что гейт ловит АВТОМАТИЧЕСКИ (без правки самого гейта) ----
  *   - Новый `.svelte`-файл под `ui/src/features`, рендерящий любой
@@ -764,6 +767,18 @@ const DIRECT_CALL_MARKERS = [
     exportName: 'groups',
     method: 'setParent',
     label: 'вложение группы (groups.setParent)',
+  },
+  // Фаза 41.1 (план 17), перечень от серверных мутаций, W7: создание группы ОТ УСТРОЙСТВА
+  // (быстрое действие в меню строки) берёт место устройства и рассылает place_ids, а для
+  // teardown ещё и меняет статус устройства. Без маркера гейт «перечисляй от серверных
+  // мутаций, а не от экранов» (урок 40.1: три раунда верификации по одному экрану) эту
+  // мутацию не видел бы. Единственный вызов лежит в GroupFormModal.handleSubmit.
+  {
+    module: '$lib/api/groups',
+    exportName: 'groups',
+    method: 'create',
+    label:
+      'создание группы (groups.create; от устройства рассылает place_ids и меняет статус для teardown)',
   },
 ];
 

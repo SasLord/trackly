@@ -49,6 +49,11 @@
 //        печатает явный SKIP; обязательный (MANDATORY_ROW_FILES) без привязок
 //        или без самого файла — нарушение.
 //
+//    [D] вторая реализация меню не возвращается (план 41.1-17, D-21): файла
+//        src/features/devices/DeviceContextMenu.svelte нет; идентификатор
+//        DeviceContextMenu не встречается в src вне комментариев; классы
+//        `ctx-menu-` допустимы только в src/features/cartridges/.
+//
 // Усиление относительно текста плана: полярность охраны проверяется (overlay
 // без `!`, own-key только с `!`): охрана с обратной полярностью выходит на
 // СВОИХ событиях строки и убивает меню.
@@ -89,9 +94,19 @@ const ROW_FILES = [
   'src/features/devices/DeviceGroupRow.svelte',
   'src/features/printers/PrinterListRow.svelte',
 ];
-// Обязательные: отсутствие файла или привязок — нарушение. План 17 добавляет
-// DeviceListRow и DeviceGroupRow, план 19 (Task 1) — PrinterListRow.
-const MANDATORY_ROW_FILES = [];
+// Обязательные: отсутствие файла или привязок — нарушение, SKIP недопустим.
+// План 17 внёс DeviceListRow и DeviceGroupRow, план 19 (Task 1) внесёт PrinterListRow.
+const MANDATORY_ROW_FILES = [
+  'src/features/devices/DeviceListRow.svelte',
+  'src/features/devices/DeviceGroupRow.svelte',
+];
+
+// [D] Вторая реализация меню удалена в плане 41.1-17 и не должна вернуться.
+const LEGACY_MENU_FILE = 'src/features/devices/DeviceContextMenu.svelte';
+const LEGACY_MENU_IDENT = /\bDeviceContextMenu\b/;
+const LEGACY_CLASS = /\bctx-menu-/;
+// Общие .ctx-menu-* стили живут только у картриджных меню.
+const LEGACY_CLASS_ALLOWED_DIR = 'src/features/cartridges/';
 
 const BUILTIN_LABELS = ['Сформировать группу', 'Замещение группой', 'На разбор'];
 const OVERLAY_TOKENS = ['.modal-backdrop', '[role="dialog"]', '[role="menu"]'];
@@ -642,6 +657,40 @@ export function checkLiterals(files) {
   return violations;
 }
 
+/** [D] Возврат второй реализации меню строки (DeviceContextMenu / .ctx-menu-*). */
+export function checkLegacyMenu(files) {
+  const violations = [];
+  if (files.has(LEGACY_MENU_FILE)) {
+    violations.push({
+      code: 'D',
+      file: LEGACY_MENU_FILE,
+      msg: 'файл удалён в плане 41.1-17 (D-21): единственная реализация меню строки — ActionMenu через DeviceRowMenu',
+    });
+  }
+  for (const [rel, src] of files) {
+    const clean = stripComments(src);
+    const ident = LEGACY_MENU_IDENT.exec(clean);
+    if (ident) {
+      violations.push({
+        code: 'D',
+        file: rel,
+        msg: `строка ${lineOf(clean, ident.index)}: упоминание DeviceContextMenu в коде (импорт или использование удалённого меню)`,
+      });
+    }
+    if (!rel.startsWith(LEGACY_CLASS_ALLOWED_DIR)) {
+      const cls = LEGACY_CLASS.exec(clean);
+      if (cls) {
+        violations.push({
+          code: 'D',
+          file: rel,
+          msg: `строка ${lineOf(clean, cls.index)}: класс ctx-menu-* допустим только в ${LEGACY_CLASS_ALLOWED_DIR} (вторая реализация меню)`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 /** Все структурные правила по карте «относительный путь -> исходник». */
 export function scanStructural(files, opts = {}) {
   const mandatory = opts.mandatory ?? MANDATORY_ROW_FILES;
@@ -677,6 +726,7 @@ export function scanStructural(files, opts = {}) {
   if (moduleSrc === undefined) add({ code: 'C', file: MODULE_FILE, msg: 'файл модуля не найден' });
   else for (const v of checkModuleFile(moduleSrc)) add({ ...v, file: MODULE_FILE });
   for (const v of checkLiterals(files)) add(v);
+  for (const v of checkLegacyMenu(files)) add(v);
 
   // [F]: ROW_FILES + каждый .svelte с <DeviceRowMenu (обход, не ручной список).
   const rowSet = new Set(rowFiles);
@@ -1096,6 +1146,43 @@ function structuralMutants() {
         ),
       }),
       expect: ['F2'],
+    },
+    {
+      name: '[D] файл DeviceContextMenu.svelte вернулся',
+      files: fixtureMap({ [LEGACY_MENU_FILE]: '<div></div>\n' }),
+      expect: ['D'],
+    },
+    {
+      name: '[D] строка вернула импорт DeviceContextMenu',
+      files: fixtureMap({
+        [ROW_PATH]: row(
+          "  import { isRowOverlayEvent, isOwnKeyEvent } from './deviceRowMenu';",
+          "  import DeviceContextMenu from './DeviceContextMenu.svelte';\n  import { isRowOverlayEvent, isOwnKeyEvent } from './deviceRowMenu';",
+          'Dimport',
+        ),
+      }),
+      expect: ['D'],
+      absent: ['F1', 'F2', 'F3'],
+    },
+    {
+      name: '[D] класс ctx-menu-item в DeviceRowMenu',
+      files: fixtureMap({
+        [MENU_FILE]: menu(
+          '<button role="menuitem">',
+          '<button role="menuitem" class="ctx-menu-item">',
+          'Dclass',
+        ),
+      }),
+      expect: ['D'],
+    },
+    {
+      name: '[D] класс ctx-menu-item в картриджах допустим (не мутант, контроль)',
+      files: fixtureMap({
+        'src/features/cartridges/CartridgeContextMenu.svelte':
+          '<button class="ctx-menu-item">x</button>\n',
+      }),
+      expect: [],
+      absent: ['D'],
     },
     {
       name: '[F] новый файл, подключивший меню, ловится обходом (нет в ROW_FILES)',

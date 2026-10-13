@@ -1,6 +1,6 @@
 <script lang="ts">
   // Plan 04-05: CartridgeContextMenu — status-dependent kebab меню с portal + mousedown-outside close.
-  // По образцу DeviceContextMenu.svelte с добавлением status-based пунктов (D-Op-Transitions-01).
+  // По образцу прежнего DeviceContextMenu.svelte (удалён в 41.1) с добавлением status-based пунктов (D-Op-Transitions-01).
   import { portal } from '$lib/utils/portal';
   import type { CartridgeDto } from '../../bindings';
 
@@ -226,12 +226,30 @@
     font-family: var(--tr-font-family);
 
     // --tr-row-hover, NOT --tr-surface: `.ctx-menu-item` is a GLOBAL class shared
-    // with DeviceContextMenu, and in light theme --tr-surface == --tr-surface-raised
-    // (the menu bg), making the highlight invisible. Both consumers must use the
-    // same dedicated hover tint or the later-loaded rule wins and breaks the other.
+    // with ModelListRow (прежний DeviceContextMenu удалён в 41.1), and in light
+    // theme --tr-surface == --tr-surface-raised (the menu bg), making the
+    // highlight invisible. Both consumers must use the same dedicated hover tint
+    // or the later-loaded rule wins and breaks the other.
     &:hover {
       background: var(--tr-row-hover);
     }
+  }
+
+  // Focus highlight for menu items. Use `:focus`, NOT `:focus-visible`: we move
+  // focus into the menu programmatically (openMenu → tick → item.focus()), and
+  // browsers do not reliably apply `:focus-visible` to a scripted focus — so the
+  // highlight would not show. `:focus` always matches when the item is focused,
+  // which is exactly the ARIA-menu "active item" indicator. The app-wide outward
+  // ring is suppressed here (it would spill past the narrow portal), replaced by a
+  // background tint. Must be --tr-row-hover, NOT --tr-surface: the menu background
+  // is --tr-surface-raised and in LIGHT theme --tr-surface == --tr-surface-raised
+  // (both resolve to the same white), so a --tr-surface highlight was invisible.
+  // Перенесено из удалённого DeviceContextMenu.svelte (план 41.1-17): это правило
+  // было ТОЛЬКО там, но им пользуются картриджные меню и ModelListRow.
+  :global(.ctx-menu-item:focus) {
+    outline: none;
+    box-shadow: none;
+    background: var(--tr-row-hover);
   }
 
   :global(.ctx-menu-item--destructive) {
