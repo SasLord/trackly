@@ -1,0 +1,1030 @@
+[
+  {
+    "name": "buildMenuSections: полное меню: просмотр, правка, печать, группа, два быстрых, удалить",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": true,
+      "quickActions": [
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        },
+        {
+          "typeId": 9,
+          "label": "Действие Б"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        },
+        {
+          "kind": "quick",
+          "label": "Действие А",
+          "typeId": 7
+        },
+        {
+          "kind": "quick",
+          "label": "Действие Б",
+          "typeId": 9
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: без печати",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": true,
+      "quickActions": [
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        },
+        {
+          "kind": "quick",
+          "label": "Действие А",
+          "typeId": 7
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: групповые пункты невидимы (якорь или член): ровно один разделитель перед «Удалить»",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": []
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: групповые невидимы, но быстрые действия переданы: не протекают в меню",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": [
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        },
+        {
+          "typeId": 9,
+          "label": "Действие Б"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: групповые видимы, быстрых действий нет: один пункт «Добавить в группу»",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": true,
+      "quickActions": []
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: USB-принтер: опрос первым, в группе ровно один пункт",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": true,
+      "hasPrint": true,
+      "groupActionsVisible": true,
+      "quickActions": []
+    },
+    "expected": [
+      [
+        {
+          "kind": "poll",
+          "label": "Опросить сейчас"
+        }
+      ],
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: сетевой принтер: опрос есть, групповой секции нет",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": true,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": []
+    },
+    "expected": [
+      [
+        {
+          "kind": "poll",
+          "label": "Опросить сейчас"
+        }
+      ],
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: минимальное меню: только просмотр, правка и удаление",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": []
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: опрос без печати и без групповых",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": true,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": []
+    },
+    "expected": [
+      [
+        {
+          "kind": "poll",
+          "label": "Опросить сейчас"
+        }
+      ],
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: быстрые действия идут в переданном порядке и несут typeId",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": true,
+      "quickActions": [
+        {
+          "typeId": 12,
+          "label": "Действие В"
+        },
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        },
+        {
+          "typeId": 9,
+          "label": "Действие Б"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        },
+        {
+          "kind": "quick",
+          "label": "Действие В",
+          "typeId": 12
+        },
+        {
+          "kind": "quick",
+          "label": "Действие А",
+          "typeId": 7
+        },
+        {
+          "kind": "quick",
+          "label": "Действие Б",
+          "typeId": 9
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: всё сразу: опрос, печать, группа и быстрые действия",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": true,
+      "hasPrint": true,
+      "groupActionsVisible": true,
+      "quickActions": [
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        },
+        {
+          "typeId": 9,
+          "label": "Действие Б"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "kind": "poll",
+          "label": "Опросить сейчас"
+        }
+      ],
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        },
+        {
+          "kind": "quick",
+          "label": "Действие А",
+          "typeId": 7
+        },
+        {
+          "kind": "quick",
+          "label": "Действие Б",
+          "typeId": 9
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "isGroupActionAllowed: обычное устройство в работе",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "в_работе",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": true
+  },
+  {
+    "name": "isGroupActionAllowed: на складе",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "на_складе",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": true
+  },
+  {
+    "name": "isGroupActionAllowed: в ремонте",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "в_ремонте",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": true
+  },
+  {
+    "name": "isGroupActionAllowed: ожидает ремонта",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "на_ремонте",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": true
+  },
+  {
+    "name": "isGroupActionAllowed: USB-принтер (не сетевой) в работе",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "в_работе",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": true
+  },
+  {
+    "name": "isGroupActionAllowed: уже в группе (член)",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "в_работе",
+      "isMember": true,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": false
+  },
+  {
+    "name": "isGroupActionAllowed: якорь группы",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "в_работе",
+      "isMember": false,
+      "isAnchor": true,
+      "isNetworkPrinter": false
+    },
+    "expected": false
+  },
+  {
+    "name": "isGroupActionAllowed: сетевой принтер",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "на_складе",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": true
+    },
+    "expected": false
+  },
+  {
+    "name": "isGroupActionAllowed: статус «Списано»",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "списано",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": false
+  },
+  {
+    "name": "isGroupActionAllowed: статус «На списание»",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "на_списание",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": false
+  },
+  {
+    "name": "isGroupActionAllowed: член в статусе «Списано»",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "списано",
+      "isMember": true,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": false
+  },
+  {
+    "name": "isGroupActionAllowed: подпись вместо кода не блокирует (решение по code)",
+    "fn": "isGroupActionAllowed",
+    "input": {
+      "statusCode": "На списание",
+      "isMember": false,
+      "isAnchor": false,
+      "isNetworkPrinter": false
+    },
+    "expected": true
+  },
+  {
+    "name": "quickActionsFromTypes: пустой список типов",
+    "fn": "quickActionsFromTypes",
+    "input": [],
+    "expected": []
+  },
+  {
+    "name": "quickActionsFromTypes: выключенное быстрое действие пропускается даже с подписью",
+    "fn": "quickActionsFromTypes",
+    "input": [
+      {
+        "id": 1,
+        "sort_order": 1,
+        "quick_action_enabled": false,
+        "quick_action_label": "Действие А"
+      },
+      {
+        "id": 2,
+        "sort_order": 2,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие Б"
+      }
+    ],
+    "expected": [
+      {
+        "typeId": 2,
+        "label": "Действие Б"
+      }
+    ]
+  },
+  {
+    "name": "quickActionsFromTypes: включённое, но подпись null — пропускается",
+    "fn": "quickActionsFromTypes",
+    "input": [
+      {
+        "id": 1,
+        "sort_order": 1,
+        "quick_action_enabled": true,
+        "quick_action_label": null
+      },
+      {
+        "id": 2,
+        "sort_order": 2,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие Б"
+      }
+    ],
+    "expected": [
+      {
+        "typeId": 2,
+        "label": "Действие Б"
+      }
+    ]
+  },
+  {
+    "name": "quickActionsFromTypes: включённое с подписью из пробелов — пропускается",
+    "fn": "quickActionsFromTypes",
+    "input": [
+      {
+        "id": 1,
+        "sort_order": 1,
+        "quick_action_enabled": true,
+        "quick_action_label": "   "
+      },
+      {
+        "id": 2,
+        "sort_order": 2,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие Б"
+      }
+    ],
+    "expected": [
+      {
+        "typeId": 2,
+        "label": "Действие Б"
+      }
+    ]
+  },
+  {
+    "name": "quickActionsFromTypes: подпись обрезается по краям",
+    "fn": "quickActionsFromTypes",
+    "input": [
+      {
+        "id": 1,
+        "sort_order": 1,
+        "quick_action_enabled": true,
+        "quick_action_label": "  Действие А  "
+      }
+    ],
+    "expected": [
+      {
+        "typeId": 1,
+        "label": "Действие А"
+      }
+    ]
+  },
+  {
+    "name": "quickActionsFromTypes: порядок по sort_order типа, а не по id",
+    "fn": "quickActionsFromTypes",
+    "input": [
+      {
+        "id": 1,
+        "sort_order": 3,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие А"
+      },
+      {
+        "id": 2,
+        "sort_order": 1,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие Б"
+      },
+      {
+        "id": 3,
+        "sort_order": 2,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие В"
+      }
+    ],
+    "expected": [
+      {
+        "typeId": 2,
+        "label": "Действие Б"
+      },
+      {
+        "typeId": 3,
+        "label": "Действие В"
+      },
+      {
+        "typeId": 1,
+        "label": "Действие А"
+      }
+    ]
+  },
+  {
+    "name": "quickActionsFromTypes: равный sort_order — по возрастанию id (вход в обратном порядке)",
+    "fn": "quickActionsFromTypes",
+    "input": [
+      {
+        "id": 9,
+        "sort_order": 1,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие Б"
+      },
+      {
+        "id": 4,
+        "sort_order": 1,
+        "quick_action_enabled": true,
+        "quick_action_label": "Действие А"
+      }
+    ],
+    "expected": [
+      {
+        "typeId": 4,
+        "label": "Действие А"
+      },
+      {
+        "typeId": 9,
+        "label": "Действие Б"
+      }
+    ]
+  },
+  {
+    "name": "quickActionsFromTypes: все выключены — пустой результат",
+    "fn": "quickActionsFromTypes",
+    "input": [
+      {
+        "id": 1,
+        "sort_order": 1,
+        "quick_action_enabled": false,
+        "quick_action_label": "Действие А"
+      },
+      {
+        "id": 2,
+        "sort_order": 2,
+        "quick_action_enabled": false,
+        "quick_action_label": null
+      }
+    ],
+    "expected": []
+  },
+  {
+    "name": "quickActionsForDevice: устройство (type_id 1): действия есть",
+    "fn": "quickActionsForDevice",
+    "input": {
+      "types": [
+        {
+          "id": 1,
+          "sort_order": 1,
+          "quick_action_enabled": true,
+          "quick_action_label": "Действие А"
+        },
+        {
+          "id": 2,
+          "sort_order": 2,
+          "quick_action_enabled": true,
+          "quick_action_label": "Действие Б"
+        }
+      ],
+      "deviceTypeId": 1
+    },
+    "expected": [
+      {
+        "typeId": 1,
+        "label": "Действие А"
+      },
+      {
+        "typeId": 2,
+        "label": "Действие Б"
+      }
+    ]
+  },
+  {
+    "name": "quickActionsForDevice: принтер (type_id 2) при тех же типах: пусто",
+    "fn": "quickActionsForDevice",
+    "input": {
+      "types": [
+        {
+          "id": 1,
+          "sort_order": 1,
+          "quick_action_enabled": true,
+          "quick_action_label": "Действие А"
+        },
+        {
+          "id": 2,
+          "sort_order": 2,
+          "quick_action_enabled": true,
+          "quick_action_label": "Действие Б"
+        }
+      ],
+      "deviceTypeId": 2
+    },
+    "expected": []
+  },
+  {
+    "name": "quickActionsForDevice: другой не-устройство type_id 3: пусто",
+    "fn": "quickActionsForDevice",
+    "input": {
+      "types": [
+        {
+          "id": 1,
+          "sort_order": 1,
+          "quick_action_enabled": true,
+          "quick_action_label": "Действие А"
+        }
+      ],
+      "deviceTypeId": 3
+    },
+    "expected": []
+  },
+  {
+    "name": "quickActionsForDevice: type_id 0: пусто",
+    "fn": "quickActionsForDevice",
+    "input": {
+      "types": [
+        {
+          "id": 1,
+          "sort_order": 1,
+          "quick_action_enabled": true,
+          "quick_action_label": "Действие А"
+        }
+      ],
+      "deviceTypeId": 0
+    },
+    "expected": []
+  },
+  {
+    "name": "quickActionsForDevice: устройство и пустой список типов: пусто",
+    "fn": "quickActionsForDevice",
+    "input": {
+      "types": [],
+      "deviceTypeId": 1
+    },
+    "expected": []
+  },
+  {
+    "name": "isRowOverlayEvent: цель null",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "null"
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "isRowOverlayEvent: цель undefined",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "undefined"
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "isRowOverlayEvent: цель без closest (текстовый узел)",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "no-closest"
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "isRowOverlayEvent: closest попадает по .modal-backdrop",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "closest-hit-token",
+        "token": ".modal-backdrop"
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "isRowOverlayEvent: closest попадает по role=dialog",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "closest-hit-token",
+        "token": "[role=\"dialog\"]"
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "isRowOverlayEvent: closest попадает по role=menu",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "closest-hit-token",
+        "token": "[role=\"menu\"]"
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "isRowOverlayEvent: closest промахивается",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "closest-miss"
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "isRowOverlayEvent: closest на неизвестный селектор промахивается",
+    "fn": "isRowOverlayEvent",
+    "input": {
+      "target": {
+        "kind": "closest-hit-token",
+        "token": ".something-else"
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "isOwnKeyEvent: цель — сама ячейка",
+    "fn": "isOwnKeyEvent",
+    "input": {
+      "target": "A",
+      "currentTarget": "A"
+    },
+    "expected": true
+  },
+  {
+    "name": "isOwnKeyEvent: цель — вложенный элемент",
+    "fn": "isOwnKeyEvent",
+    "input": {
+      "target": "B",
+      "currentTarget": "A"
+    },
+    "expected": false
+  },
+  {
+    "name": "isOwnKeyEvent: оба null",
+    "fn": "isOwnKeyEvent",
+    "input": {
+      "target": null,
+      "currentTarget": null
+    },
+    "expected": false
+  },
+  {
+    "name": "isOwnKeyEvent: цель null, ячейка есть",
+    "fn": "isOwnKeyEvent",
+    "input": {
+      "target": null,
+      "currentTarget": "A"
+    },
+    "expected": false
+  },
+  {
+    "name": "isOwnKeyEvent: цель есть, ячейка null",
+    "fn": "isOwnKeyEvent",
+    "input": {
+      "target": "A",
+      "currentTarget": null
+    },
+    "expected": false
+  }
+]

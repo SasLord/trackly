@@ -119,9 +119,7 @@
     {#if !loading && loadErr === null && allGroups.length === 0}
       <div class="empty">
         <p class="empty-title">Групп пока нет</p>
-        <p class="empty-body">
-          Создайте группу быстрым действием в том же меню — например «Сформировать группу».
-        </p>
+        <p class="empty-body">Создайте группу быстрым действием в том же меню.</p>
       </div>
     {:else}
       <div class="form-field" class:has-error={fieldErr !== null}>
