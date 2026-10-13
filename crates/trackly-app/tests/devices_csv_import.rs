@@ -843,3 +843,156 @@ fn auto_map_mirrors_modal_aliases_and_stays_no_broader() {
         "«Расположение» маппится только ручным выбором поля «Место» на шаге 2"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.1 Plan 21 (GRD-04): статус из CSV сопоставляется со справочником
+// `device_statuses` (по подписи, регистронезависимо), а не жёстким `match`.
+// ---------------------------------------------------------------------------
+
+/// Импортирует CSV из двух колонок («Наименование», «Статус») и возвращает
+/// code статуса каждого устройства по имени. Подпись — второй элемент пары.
+async fn import_with_status_labels(
+    svc: &DeviceService,
+    rows: &[(&str, &str)],
+) -> std::collections::HashMap<String, String> {
+    use trackly_app::dto::device::{DeviceFilter, Pagination};
+
+    let mut text = String::from("Наименование;Статус\n");
+    for (name, label) in rows {
+        text.push_str(&format!("{name};{label}\n"));
+    }
+    let preview = svc
+        .import_csv_preview(text.into_bytes())
+        .await
+        .expect("preview");
+    let mapping = auto_map(&preview.headers);
+    let report = svc
+        .import_csv_commit(preview.token, mapping)
+        .await
+        .expect("commit");
+    assert_eq!(
+        report.inserted as usize,
+        rows.len(),
+        "failed: {:?}",
+        report.failed
+    );
+
+    svc.list(
+        DeviceFilter::default(),
+        Pagination {
+            offset: 0,
+            limit: 200,
+        },
+    )
+    .await
+    .expect("list")
+    .items
+    .into_iter()
+    .map(|d| (d.name, d.status_code))
+    .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_resolves_new_statuses_by_label_to_code() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let got = import_with_status_labels(
+            &svc,
+            &[
+                ("Ноутбук А", "В ремонте"),
+                ("Ноутбук Б", "На списание"),
+                ("Ноутбук В", "Ожидает ремонта"),
+                ("Ноутбук Г", "в работе"),
+                ("Ноутбук Д", "СПИСАНО"),
+            ],
+        )
+        .await;
+        assert_eq!(got["Ноутбук А"], "в_ремонте");
+        assert_eq!(got["Ноутбук Б"], "на_списание");
+        assert_eq!(got["Ноутбук В"], "на_ремонте");
+        assert_eq!(got["Ноутбук Г"], "в_работе");
+        assert_eq!(got["Ноутбук Д"], "списано");
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Обратная совместимость: файлы, выгруженные до V047, несут «На ремонте».
+/// Подпись ПРИНИМАЕТСЯ как псевдоним статуса с code на_ремонте (любой регистр).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_accepts_legacy_repair_label_as_alias() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let got = import_with_status_labels(
+            &svc,
+            &[
+                ("Старый файл А", "На ремонте"),
+                ("Старый файл Б", "на ремонте"),
+                ("Старый файл В", "НА РЕМОНТЕ"),
+            ],
+        )
+        .await;
+        for name in ["Старый файл А", "Старый файл Б", "Старый файл В"]
+        {
+            assert_eq!(got[name], "на_ремонте", "{name}");
+        }
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_unknown_or_empty_status_falls_back_to_in_stock() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let got = import_with_status_labels(
+            &svc,
+            &[("Без метки", ""), ("Странная метка", "Космический статус")],
+        )
+        .await;
+        assert_eq!(got["Без метки"], "на_складе");
+        assert_eq!(got["Странная метка"], "на_складе");
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Не вакуумный тест: статус переименован прямо в тесте. Новая подпись
+/// находится в справочнике (в том числе без учёта регистра), прежняя подпись
+/// больше не совпадает ни с чем и даёт статус по умолчанию. Жёсткий `match`
+/// по русским именам вёл бы себя наоборот.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_follows_dictionary_rename() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        svc.writer
+            .execute(|conn| {
+                conn.execute(
+                    "UPDATE device_statuses SET name = 'Чинится у подрядчика' WHERE code = 'в_ремонте'",
+                    [],
+                )
+                .map(|_| ())
+                .map_err(trackly_infra::error_conversions::map_rusqlite)
+            })
+            .await
+            .expect("rename status");
+
+        let got = import_with_status_labels(
+            &svc,
+            &[
+                ("Принтер А", "Чинится у подрядчика"),
+                ("Принтер Б", "чинится У подрядчика"),
+                ("Принтер В", "В ремонте"),
+            ],
+        )
+        .await;
+        assert_eq!(got["Принтер А"], "в_ремонте");
+        assert_eq!(got["Принтер Б"], "в_ремонте");
+        assert_eq!(
+            got["Принтер В"], "на_складе",
+            "прежняя подпись переименованного статуса неизвестна"
+        );
+    })
+    .await
+    .expect("timeout");
+}

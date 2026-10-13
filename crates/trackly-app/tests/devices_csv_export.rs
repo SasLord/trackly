@@ -601,3 +601,170 @@ async fn export_csv_place_column_stays_full_path_not_shortened() {
     .await
     .expect("timeout");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.1 Plan 21 (GRD-04): имя статуса в выгрузке берётся из справочника
+// `device_statuses`, а не из жёсткого соответствия id -> подпись.
+// ---------------------------------------------------------------------------
+
+/// id статуса по машинному code (через справочник, числа 5 и 6 не зашиты).
+async fn status_id_by_code(svc: &DeviceService, code: &str) -> i64 {
+    svc.list_statuses()
+        .await
+        .expect("list_statuses")
+        .into_iter()
+        .find(|s| s.code == code)
+        .unwrap_or_else(|| panic!("в справочнике нет статуса {code}"))
+        .id
+}
+
+async fn create_with_status(svc: &DeviceService, name: &str, code: &str) {
+    let status_id = status_id_by_code(svc, code).await;
+    svc.create(DeviceNew {
+        type_id: 1,
+        name: name.to_string(),
+        inventory_no: None,
+        serial_no: None,
+        model: None,
+        specs: None,
+        kit: None,
+        state: None,
+        place_id: None,
+        status_id,
+    })
+    .await
+    .expect("create device");
+}
+
+/// Колонка «Статус» выгрузки: имя устройства -> подпись статуса.
+fn exported_statuses(csv: &str) -> std::collections::HashMap<String, String> {
+    csv.trim_start_matches('\u{FEFF}')
+        .lines()
+        .skip(1)
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let cells: Vec<&str> = l.split(';').collect();
+            (cells[1].to_string(), cells[9].to_string())
+        })
+        .collect()
+}
+
+const ALL_STATUS_CODES: [(&str, &str); 6] = [
+    ("на_складе", "На складе"),
+    ("в_работе", "В работе"),
+    ("на_ремонте", "Ожидает ремонта"),
+    ("в_ремонте", "В ремонте"),
+    ("на_списание", "На списание"),
+    ("списано", "Списано"),
+];
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_status_column_covers_every_lifecycle_status() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (svc, _dir) = make_service();
+        for (code, _) in ALL_STATUS_CODES {
+            create_with_status(&svc, &format!("Устройство {code}"), code).await;
+        }
+
+        let csv = svc
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export");
+        let got = exported_statuses(&csv);
+
+        for (code, label) in ALL_STATUS_CODES {
+            assert_eq!(
+                got.get(&format!("Устройство {code}")).map(String::as_str),
+                Some(label),
+                "статус {code} в выгрузке"
+            );
+        }
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Не вакуумный тест: подпись в выгрузке следует за справочником. Статус
+/// переименован прямо в тесте; жёсткое соответствие id -> подпись вернуло бы
+/// старое имя (или «На складе»).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_status_name_follows_dictionary_rename() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (svc, _dir) = make_service();
+        create_with_status(&svc, "Принтер переименование", "в_ремонте").await;
+
+        svc.writer
+            .execute(|conn| {
+                conn.execute(
+                    "UPDATE device_statuses SET name = 'Чинится у подрядчика' WHERE code = 'в_ремонте'",
+                    [],
+                )
+                .map(|_| ())
+                .map_err(trackly_infra::error_conversions::map_rusqlite)
+            })
+            .await
+            .expect("rename status");
+
+        let csv = svc.export_csv(DeviceFilter::default()).await.expect("export");
+        let got = exported_statuses(&csv);
+        assert_eq!(
+            got.get("Принтер переименование").map(String::as_str),
+            Some("Чинится у подрядчика")
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Выгрузка -> загрузка в чистую БД сохраняет статус для всех шести кодов.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_import_round_trip_keeps_all_six_statuses() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (src, _dir_src) = make_service();
+        for (code, _) in ALL_STATUS_CODES {
+            create_with_status(&src, &format!("Устройство {code}"), code).await;
+        }
+        let csv = src
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export");
+
+        let (dst, _dir_dst) = make_service();
+        let preview = dst
+            .import_csv_preview(csv.into_bytes())
+            .await
+            .expect("preview");
+        let mapping: std::collections::HashMap<String, String> = [
+            ("Наименование".to_string(), "name".to_string()),
+            ("Статус".to_string(), "status".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let report = dst
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit");
+        assert_eq!(report.inserted, 6, "failed: {:?}", report.failed);
+
+        let page = dst
+            .list(
+                DeviceFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 200,
+                },
+            )
+            .await
+            .expect("list");
+        for (code, _) in ALL_STATUS_CODES {
+            let dev = page
+                .items
+                .iter()
+                .find(|d| d.name == format!("Устройство {code}"))
+                .unwrap_or_else(|| panic!("нет устройства {code}"));
+            assert_eq!(dev.status_code, code, "round-trip статуса {code}");
+        }
+    })
+    .await
+    .expect("timeout");
+}

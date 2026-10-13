@@ -75,3 +75,45 @@ async fn employee_is_forbidden_before_db_access() {
         "ожидался Forbidden, получено {res:?}"
     );
 }
+
+/// Выгрузка CSV не имеет собственной таблицы подписей: для КАЖДОГО статуса
+/// справочника устройство в этом статусе выгружается с подписью из справочника.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn csv_export_label_equals_dictionary_name_for_every_status() {
+    use trackly_app::dto::device::{DeviceFilter, DeviceNew};
+
+    let (ctx, _dir) = make_test_ctx().await;
+    let list = build_device_statuses_list(&ctx, &Identity::trusted_admin())
+        .await
+        .expect("list");
+    for s in &list {
+        ctx.devices
+            .create(DeviceNew {
+                type_id: 1,
+                name: format!("Проверка {}", s.code),
+                inventory_no: None,
+                serial_no: None,
+                model: None,
+                specs: None,
+                kit: None,
+                state: None,
+                place_id: None,
+                status_id: s.id,
+            })
+            .await
+            .expect("create");
+    }
+    let csv = ctx
+        .devices
+        .export_csv(DeviceFilter::default())
+        .await
+        .expect("export");
+    for s in &list {
+        let line = csv
+            .lines()
+            .find(|l| l.contains(&format!("Проверка {}", s.code)))
+            .unwrap_or_else(|| panic!("нет строки для {}", s.code));
+        let cells: Vec<&str> = line.split(';').collect();
+        assert_eq!(cells[9], s.name, "подпись статуса {}", s.code);
+    }
+}

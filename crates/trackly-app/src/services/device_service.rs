@@ -54,6 +54,99 @@ use crate::dto::number_template::{
 use crate::dto::printer::{PrinterCreateBlockDto, WsEvent};
 use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
 
+/// Машинный код статуса по умолчанию для CSV-импорта (пустая/неизвестная подпись).
+const STATUS_CODE_DEFAULT: &str = "на_складе";
+
+/// Код статуса, под которым в справочнике живёт бывший «На ремонте» (V047
+/// переименовал его, code не менялся).
+const STATUS_CODE_LEGACY_REPAIR: &str = "на_ремонте";
+
+/// Прежняя подпись этого статуса в пользовательских CSV (в нижнем регистре):
+/// файлы, выгруженные до V047, продолжают импортироваться.
+const LEGACY_REPAIR_LABEL_LOWER: &str = "на ремонте";
+
+/// Снимок справочника `device_statuses` на время одной операции CSV.
+///
+/// Сопоставление подписей идёт в Rust через `to_lowercase()`: `lower()` SQLite
+/// не сворачивает регистр кириллицы, а `LIKE` для неё тоже чувствителен.
+struct StatusLookup {
+    /// (id, name, code)
+    rows: Vec<(i64, String, String)>,
+    /// id статуса по умолчанию (найден по code, не числом).
+    default_id: i64,
+}
+
+impl StatusLookup {
+    fn from_rows(rows: Vec<(i64, String, String)>) -> Result<Self, AppError> {
+        let default_id = rows
+            .iter()
+            .find(|(_, _, code)| code == STATUS_CODE_DEFAULT)
+            .map(|(id, _, _)| *id)
+            .ok_or_else(|| AppError::Internal {
+                source_chain: format!(
+                    "device_statuses: нет статуса с code='{STATUS_CODE_DEFAULT}'"
+                ),
+            })?;
+        Ok(Self { rows, default_id })
+    }
+
+    async fn load(readers: Arc<ReaderPool>) -> Result<Self, AppError> {
+        let rows = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare("SELECT id, name, COALESCE(code, '') FROM device_statuses ORDER BY id")
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok::<_, AppError>(rows)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking status lookup: {e}"),
+        })??;
+        Self::from_rows(rows)
+    }
+
+    /// id статуса по подписи из CSV. Пустая или неизвестная подпись даёт статус
+    /// по умолчанию (прежнее поведение). Прежняя подпись «На ремонте» — псевдоним.
+    fn id_for_label(&self, label: Option<&str>) -> i64 {
+        let Some(label) = label.map(str::trim).filter(|l| !l.is_empty()) else {
+            return self.default_id;
+        };
+        let wanted = label.to_lowercase();
+        if let Some((id, _, _)) = self
+            .rows
+            .iter()
+            .find(|(_, name, _)| name.to_lowercase() == wanted)
+        {
+            return *id;
+        }
+        if wanted == LEGACY_REPAIR_LABEL_LOWER {
+            if let Some((id, _, _)) = self
+                .rows
+                .iter()
+                .find(|(_, _, code)| code == STATUS_CODE_LEGACY_REPAIR)
+            {
+                return *id;
+            }
+        }
+        self.default_id
+    }
+
+    /// Имя статуса из справочника; для неизвестного id (FK этого не допускает)
+    /// — нейтральная подпись.
+    fn name_for_id(&self, id: i64) -> String {
+        self.rows
+            .iter()
+            .find(|(row_id, _, _)| *row_id == id)
+            .map(|(_, name, _)| name.clone())
+            .unwrap_or_else(|| format!("Статус {id}"))
+    }
+}
+
 /// Application service for device management.
 ///
 /// `Arc`-wrapped fields make `Clone` O(1) — used by Tauri State and axum State.
@@ -1433,6 +1526,10 @@ impl DeviceService {
                 source_chain: format!("spawn_blocking: {e}"),
             })??;
 
+        // Справочник статусов — один раз на импорт (не на строку): подпись из
+        // ячейки сопоставляется со справочником в Rust, SQL из текста не строится.
+        let statuses = StatusLookup::load(self.readers.clone()).await?;
+
         let mut report = CsvImportReport {
             inserted: 0,
             failed: Vec::new(),
@@ -1474,7 +1571,8 @@ impl DeviceService {
             let row_index = (row_offset + 1) as u64; // 1-based for user display
 
             // Build DeviceNew from mapping.
-            let build_result = Self::build_device_new_from_row(row, &header_idx, &mapping);
+            let build_result =
+                Self::build_device_new_from_row(row, &header_idx, &mapping, &statuses);
             let (mut new_device, place_text) = match build_result {
                 Ok(d) => d,
                 Err(e) => {
@@ -1630,6 +1728,7 @@ impl DeviceService {
         row: &[String],
         header_idx: &HashMap<String, usize>,
         mapping: &HashMap<String, String>,
+        statuses: &StatusLookup,
     ) -> Result<(DeviceNew, Option<String>), String> {
         let get_field = |csv_col: &str| -> Option<String> {
             header_idx
@@ -1671,8 +1770,9 @@ impl DeviceService {
         // Resolve type_id from label (or default to 1 = "Устройство").
         // For CSV import, we use well-known seed IDs: type_id 1 = Устройство, 2 = Расходник.
         let type_id = Self::resolve_type_id(type_label.as_deref());
-        // Resolve status_id from label (or default to 1 = "На складе").
-        let status_id = Self::resolve_status_id(status_label.as_deref());
+        // Статус по подписи из справочника device_statuses (пустая/неизвестная
+        // подпись — статус по умолчанию «на складе», найденный по code).
+        let status_id = statuses.id_for_label(status_label.as_deref());
 
         // name is required.
         let name = name.ok_or_else(|| "Наименование обязательно для заполнения".to_string())?;
@@ -1700,17 +1800,6 @@ impl DeviceService {
         match label {
             Some("Расходник") | Some("расходник") => 2,
             _ => 1, // default: Устройство
-        }
-    }
-
-    /// Resolve status_id from a Russian status label.
-    /// Known seed values: 1 = На складе, 2 = В работе, 3 = На ремонте, 4 = Списано.
-    fn resolve_status_id(label: Option<&str>) -> i64 {
-        match label {
-            Some("В работе") | Some("в работе") => 2,
-            Some("На ремонте") | Some("на ремонте") => 3,
-            Some("Списано") | Some("списано") => 4,
-            _ => 1, // default: На складе
         }
     }
 
@@ -1748,6 +1837,7 @@ impl DeviceService {
         };
 
         use trackly_core::ports::devices::DeviceRepository;
+        let statuses_readers = readers.clone();
         let (rows, _total) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             repo.as_ref().list(&conn, &domain_filter, &domain_page)
@@ -1756,6 +1846,10 @@ impl DeviceService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking export_csv: {e}"),
         })??;
+
+        // Имена статусов — из справочника: новые статусы (в ремонте, на списание)
+        // не схлопываются в «на складе», а переименование видно в выгрузке.
+        let statuses = StatusLookup::load(statuses_readers).await?;
 
         struct ExportItems {
             items: Vec<DeviceDto>,
@@ -1788,8 +1882,8 @@ impl DeviceService {
         for device in &response.items {
             // Lookup type name from type_id (known seed values).
             let type_name = Self::type_id_to_name(device.type_id);
-            // Lookup status name from status_id.
-            let status_name = Self::status_id_to_name(device.status_id);
+            // Имя статуса — из справочника по status_id.
+            let status_name = statuses.name_for_id(device.status_id);
 
             wtr.write_record(&[
                 csv_safe(type_name),
@@ -1801,7 +1895,7 @@ impl DeviceService {
                 csv_safe(device.kit.as_deref().unwrap_or("")),
                 csv_safe(device.state.as_deref().unwrap_or("")),
                 csv_safe(device.full_path.as_deref().unwrap_or("")),
-                csv_safe(status_name),
+                csv_safe(&status_name),
             ])
             .map_err(|e| AppError::Internal {
                 source_chain: format!("csv writer row: {e}"),
@@ -1828,15 +1922,6 @@ impl DeviceService {
         match type_id {
             2 => "Расходник",
             _ => "Устройство",
-        }
-    }
-
-    fn status_id_to_name(status_id: i64) -> &'static str {
-        match status_id {
-            2 => "В работе",
-            3 => "На ремонте",
-            4 => "Списано",
-            _ => "На складе",
         }
     }
 
