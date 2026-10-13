@@ -3,17 +3,26 @@
   // Field label/value widget — covers the field-grid item duplicated across
   // ActDetail/CartridgeDetail/PrinterDetail, and is contract-compatible with
   // the acts window's former field-widget component (label/value, null -> '—').
+  import type { Snippet } from 'svelte';
+
   interface Props {
     label: string;
     value?: string | null;
+    /** Фаза 41.1: интерактивное значение (например, ссылка) вместо текста.
+     *  Если передано — `value` не показывается. */
+    children?: Snippet;
   }
 
-  const { label, value }: Props = $props();
+  const { label, value, children }: Props = $props();
 </script>
 
 <div class="field">
   <span class="field-label">{label}</span>
-  <span class="field-value">{value ?? '—'}</span>
+  {#if children}
+    <span class="field-value">{@render children()}</span>
+  {:else}
+    <span class="field-value">{value ?? '—'}</span>
+  {/if}
 </div>
 
 <style lang="scss">

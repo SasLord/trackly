@@ -27,6 +27,7 @@
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
+  import DetailField from '$lib/components/DetailField.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
   import DeviceFormBody from '../devices/DeviceFormBody.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
@@ -249,6 +250,22 @@
         onCanSubmitChange={() => {}}
         onRegisterSubmit={() => {}}
       />
+    {/if}
+
+    <!-- Фаза 41.1 (D-16/D-19): происхождение — ссылка на запись разбора, не на
+         устройство; в таймлайн перемещений не добавляется (41.5). -->
+    {#if !isCartridge && deviceDto && deviceDto.origin_group_id !== null}
+      {@const originId = deviceDto.origin_group_id}
+      <DetailField label="Из разбора">
+        <Button
+          variant="link"
+          size="sm"
+          onclick={async () => {
+            await push(`#/groups?id=${originId}`);
+            onClose();
+          }}>{deviceDto.origin_group_name ?? ''}</Button
+        >
+      </DetailField>
     {/if}
 
     <DetailSection heading="История перемещений">
