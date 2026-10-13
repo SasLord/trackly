@@ -86,6 +86,21 @@ const ALLOWLIST = [
     file: 'src/features/places/PlaceContents.svelte',
     markers: ['групп'],
   },
+  {
+    // 41.1-16: меню строки устройства. Единственная надпись пункта «Добавить в
+    // группу» (D-22: подписи быстрых действий приходят из типов групп, а не из
+    // литералов). Только этот литерал, не весь файл.
+    file: 'src/features/devices/deviceRowMenu.ts',
+    markers: ['Добавить в группу'],
+  },
+  {
+    // 41.1-16: надписи модалки отказа «Удалить нельзя» для якорного устройства
+    // (D-14). Маркеры поимённые: 'якорь группы', кнопка 'Открыть группу' и
+    // целая подсказка (она вынесена в константу, чтобы форматтер не разорвал
+    // её переносом строки). Любая другая надпись со словом «группа» красная.
+    file: 'src/features/devices/DeviceRowMenu.svelte',
+    markers: ['якорь группы', 'Открыть группу', 'Сначала удалите группу в разделе «Группы»'],
+  },
 ];
 
 function allowEntryFor(relPath) {
@@ -342,6 +357,46 @@ function runSelfTest() {
       name: 'негатив: «группы» из D-23 в другом файле «Мест»',
       file: 'src/features/places/PlaceMoveModal.svelte',
       src: '<p>переедут группы</p>',
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.1-16): «Добавить в группу» в deviceRowMenu.ts',
+      file: 'src/features/devices/deviceRowMenu.ts',
+      src: "const LABEL_ADD_TO_GROUP = 'Добавить в группу';",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.1-16): прочая надпись про группу в deviceRowMenu.ts (маркер узкий)',
+      file: 'src/features/devices/deviceRowMenu.ts',
+      src: "const A = 'Добавить в группу';\nconst B = 'Удалить группу';",
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.1-16): три надписи модалки отказа в DeviceRowMenu',
+      file: 'src/features/devices/DeviceRowMenu.svelte',
+      src: [
+        '<p>Устройство «{name}» — якорь группы «{g}». {HINT}</p>',
+        "const HINT = 'Сначала удалите группу в разделе «Группы»: после этого устройство снова станет обычным.';",
+        '<Button>Открыть группу</Button>',
+      ].join('\n'),
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.1-16): «Группа похожих» в DeviceRowMenu (deny-list не гасится маркерами)',
+      file: 'src/features/devices/DeviceRowMenu.svelte',
+      src: '<span>Открыть группу</span>\n<span>Группа похожих</span>',
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (41.1-16): прочая надпись про группу в DeviceRowMenu (маркеры узкие)',
+      file: 'src/features/devices/DeviceRowMenu.svelte',
+      src: '<span>Открыть группу</span>\n<span>Создать группу</span>',
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (41.1-16): подсказка модалки отказа с переносом строки внутри маркера',
+      file: 'src/features/devices/DeviceRowMenu.svelte',
+      src: '<p>Сначала удалите\n группу в разделе «Группы»</p>',
       expectViolations: 1,
     },
     {

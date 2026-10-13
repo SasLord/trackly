@@ -53,8 +53,10 @@ const UI_ROOT = path.resolve(__dirname, '..');
 const TAG = '[check-action-menu-portal]';
 
 const MENU_FILE = 'src/lib/components/ActionMenu.svelte';
-// Сколько вызовов <ActionMenu есть на момент написания гейта (инвентарь плана 41-27).
-const MIN_CALL_SITES = 13;
+// Сколько вызовов <ActionMenu есть в src/**/*.svelte (инвентарь плана 41.1-16):
+// 15 = сумма `grep -rc '<ActionMenu' src --include='*.svelte'` по файлам
+// (в плане 41-27 было 13; добавились DeviceRowMenu и витринный вызов плана 41.1-02).
+const MIN_CALL_SITES = 15;
 const SELFTEST_MIN_CALL_SITES = 2;
 
 /** Пробелы вместо всех символов, кроме переводов строк (длина сохраняется). */
