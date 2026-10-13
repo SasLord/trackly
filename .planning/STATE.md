@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-13T12:13:10.757Z"
+last_updated: "2026-10-13T12:19:08.974Z"
 last_activity: 2026-10-13
 progress:
   total_phases: 21
   completed_phases: 11
   total_plans: 189
-  completed_plans: 179
+  completed_plans: 180
   percent: 52
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 12 of 22 завершено (волны 1-3: 01-07, 09, 10, 22; волна 4: 11, 12) — далее волна 4: план 13
+Plan: 13 of 22 завершено (волны 1-3: 01-07, 09, 10, 22; волна 4: 11, 12, 13) — далее волна 5
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -591,6 +591,7 @@ Last activity: 2026-10-13
 | Phase 41.1 P10 | 40min | 3 tasks | 8 files |
 | Phase 41.1 P11 | 2h | 3 tasks | 7 files |
 | Phase 41.1 P12 | ~3h | 3 tasks | 6 files |
+| Phase 41.1 P13 | 1h | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1292,6 +1293,7 @@ Recent decisions affecting current work:
 - [Phase 41.1]: [41.1-09] Охрана якоря через anchor_group_of_device_in_tx; locked_group_for_device_in_tx в device_service.rs остаётся единственным (гейт S1)
 - [Phase 41.1]: [41.1-10] Тон бейджа статуса устройства решается по code (единственная таблица в сторе deviceStatuses), подпись по id из серверного справочника; стор грузится лениво из экранов
 - [Phase 41.1]: 41.1-11: создание группы от устройства — одна транзакция writer; type_id<>1 отсекается раньше остальных отказов (D-38); сетевой принтер отказывается только в add_devices (D-32) — атомарность быстрых действий, граница безопасности на сервере
+- [Phase 41.1]: [41.1-13] Освобождение картриджной карты в PlaceContents по правилу [B] и по объявлению CARTRIDGE_, а не по файлу; ключ устройственного статуса в такой карте отменяет освобождение
 
 ### Pending Todos
 
@@ -1494,8 +1496,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-13T12:13:07.604Z
-Stopped at: Completed 41.1-12-PLAN.md
+Last session: 2026-10-13T12:19:08.965Z
+Stopped at: Completed 41.1-13-PLAN.md
 Resume file: None
 
 None
