@@ -16,10 +16,13 @@
   import PrinterDetail from './PrinterDetail.svelte';
   import DiscoveryModal from './DiscoveryModal.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
+  import DocumentAcceptanceModal from '../acts/DocumentAcceptanceModal.svelte';
+  import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { printers } from './api';
   import type { PrinterDto, PrinterFilter } from '../../bindings-phase6';
   import type { WsEvent } from '../../bindings-phase6';
+  import type { DeviceDto } from '../../bindings';
 
   // GAP-8 (39-UAT.md, Прогон 3): cross-section focus from the Places
   // content-row «Перейти к принтеру» action — `#/devices?id=…`'s
@@ -37,6 +40,16 @@
   let detailLoading = $state(false);
   let discoveryOpen = $state(false);
   let createOpen = $state(false);
+  // Фаза 41.1, план 18: цели пунктов меню строки принтера.
+  let editTarget = $state<DeviceDto | null>(null);
+  let acceptanceDevice = $state<DeviceDto | null>(null);
+  let acceptancePayload = $state<{
+    deviceId: number;
+    giverName: string;
+    receiverName: string;
+    dateUtc: number;
+    deviceName: string;
+  } | null>(null);
 
   let filter = $state<PrinterFilter>({ status: null, search: null });
 
@@ -86,6 +99,75 @@
     } finally {
       listLoading = false;
     }
+  }
+
+  // «Опросить сейчас»: общее действие кнопки панели справа и пункта меню строки.
+  // Обновляет панель только если опрошенный принтер сейчас выбран.
+  function pollPrinter(id: number) {
+    printers
+      .refresh(id)
+      .then((dto) => {
+        if (selectedId === id) selectedPrinter = dto;
+        pushToast('success', 'Данные принтера обновлены');
+        void refresh();
+      })
+      .catch(() => {
+        pushToast('error', 'Принтер не отвечает на SNMP. Проверьте доступность и community.');
+      });
+  }
+
+  // Quick 260820-rdj (UAT gap-closure round 1, defect 2): отдельно от опроса —
+  // сохранение «Данных устройства» SNMP не запускает, только сверяет список и
+  // панель (тип записи мог смениться). Общая функция панели и модалки правки
+  // из меню строки.
+  function handleDeviceSaved(result?: { typeId: number }) {
+    const PRINTER_TYPE_ID = 2;
+    if (result && result.typeId !== PRINTER_TYPE_ID) {
+      // Больше не принтер — сбросить выбор (панель очистится через $effect) и
+      // перечитать список, чтобы устаревшая строка исчезла.
+      selectedId = null;
+      void refresh();
+      return;
+    }
+    // Тип не изменился — перечитать панель и список.
+    if (selectedId !== null) {
+      printers
+        .get(selectedId)
+        .then((dto) => {
+          selectedPrinter = dto;
+        })
+        .catch(() => {
+          // Некритично — перечитывание списка ниже всё равно выполняется.
+        });
+    }
+    void refresh();
+  }
+
+  // Удаление и добавление в группу из меню строки: перечитать список; если
+  // выбранного принтера в нём больше нет (мягко удалён вместе с устройством,
+  // D-37), сбросить выбор.
+  async function handleMenuChanged() {
+    await refresh();
+    if (selectedId !== null && !items.some((p) => p.id === selectedId)) {
+      selectedId = null;
+    }
+  }
+
+  // DEV-14 «Печать документа приёма» из меню строки принтера.
+  function handlePrintAcceptance(d: DeviceDto) {
+    acceptanceDevice = d;
+  }
+
+  function handleAcceptanceSubmit(payload: {
+    deviceId: number;
+    giverName: string;
+    receiverName: string;
+    dateUtc: number;
+  }) {
+    // Запомним имя устройства для подсказки имени файла, затем переключаем модалки.
+    const name = acceptanceDevice?.name ?? `dev-${payload.deviceId}`;
+    acceptanceDevice = null;
+    acceptancePayload = { ...payload, deviceName: name };
   }
 
   function handleWsEvent(event: WsEvent) {
@@ -180,6 +262,10 @@
           {selectedId}
           onSelect={(id) => (selectedId = id)}
           {emptyConfig}
+          onPoll={pollPrinter}
+          onEdit={(d) => (editTarget = d)}
+          onChanged={handleMenuChanged}
+          onPrintAcceptance={handlePrintAcceptance}
         />
       {/snippet}
       {#snippet detail()}
@@ -187,49 +273,9 @@
           printer={selectedPrinter}
           loading={detailLoading}
           onRefresh={() => {
-            if (selectedId !== null) {
-              printers
-                .refresh(selectedId)
-                .then((dto) => {
-                  selectedPrinter = dto;
-                  pushToast('success', 'Данные принтера обновлены');
-                  void refresh();
-                })
-                .catch(() => {
-                  pushToast(
-                    'error',
-                    'Принтер не отвечает на SNMP. Проверьте доступность и community.',
-                  );
-                });
-            }
+            if (selectedId !== null) pollPrinter(selectedId);
           }}
-          onDeviceSaved={(result) => {
-            // Quick 260820-rdj (UAT gap-closure round 1, defect 2): separate
-            // from onRefresh above — this path never triggers an SNMP poll,
-            // it just reconciles the list/detail after a «Данные устройства»
-            // save (which may have converted the record's type).
-            const PRINTER_TYPE_ID = 2;
-            if (result && result.typeId !== PRINTER_TYPE_ID) {
-              // No longer a printer — drop the selection (detail panel
-              // clears via the existing $effect) and reload the list so the
-              // now-stale row disappears.
-              selectedId = null;
-              void refresh();
-              return;
-            }
-            // Type unchanged (still a printer) — reload the detail + list.
-            if (selectedId !== null) {
-              printers
-                .get(selectedId)
-                .then((dto) => {
-                  selectedPrinter = dto;
-                })
-                .catch(() => {
-                  // Non-fatal — list refresh below still runs.
-                });
-            }
-            void refresh();
-          }}
+          onDeviceSaved={handleDeviceSaved}
         />
       {/snippet}
     </PrintersMasterDetail>
@@ -256,6 +302,39 @@
     if (newPlaceId !== null) notifyPlaceContentChanged([newPlaceId]);
     void refresh();
   }}
+/>
+
+<!-- Правка устройства из меню строки принтера. -->
+<DeviceFormModal
+  open={editTarget !== null}
+  target={editTarget}
+  onClose={() => (editTarget = null)}
+  onSaved={(result) => {
+    editTarget = null;
+    const placeId = result?.placeId ?? null;
+    if (placeId !== null) notifyPlaceContentChanged([placeId]);
+    handleDeviceSaved(result);
+  }}
+/>
+
+<!-- DEV-14: промежуточная модалка собирает сдающего/принимающего/дату, затем
+     PdfPreviewModal в режиме acceptance. -->
+<DocumentAcceptanceModal
+  open={acceptanceDevice !== null}
+  device={acceptanceDevice}
+  onClose={() => (acceptanceDevice = null)}
+  onSubmit={handleAcceptanceSubmit}
+/>
+
+<PdfPreviewModal
+  open={acceptancePayload !== null}
+  actId={null}
+  title={acceptancePayload
+    ? `Печать документа приёма: ${acceptancePayload.deviceName}`
+    : 'Печать документа приёма'}
+  mode="acceptance"
+  {acceptancePayload}
+  onClose={() => (acceptancePayload = null)}
 />
 
 <style lang="scss">

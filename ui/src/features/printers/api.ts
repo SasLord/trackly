@@ -29,8 +29,6 @@ export const printers = {
 
   create: (payload: PrinterCreateDto) => apiCall<PrinterDto>('printers_create', { payload }),
 
-  delete: (id: number, version: number) => apiCall<null>('printers_delete', { id, version }),
-
   discover: (ipStart: string, ipEnd: string, community: string) =>
     apiCall<DiscoveredPrinterDto[]>('printers_discover', { ipStart, ipEnd, community }),
 
