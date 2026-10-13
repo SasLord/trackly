@@ -121,7 +121,10 @@ fn v047_new_statuses_have_expected_codes_and_distinct_ids() {
     assert_eq!(repair.1, "В ремонте");
     assert_eq!(writeoff.1, "На списание");
     assert_ne!(repair.0, writeoff.0);
-    assert!(repair.0 > 4 && writeoff.0 > 4, "new ids go after the seeded 1..4");
+    assert!(
+        repair.0 > 4 && writeoff.0 > 4,
+        "new ids go after the seeded 1..4"
+    );
     assert_eq!(count(&conn, "SELECT COUNT(*) FROM device_statuses"), 6);
 }
 

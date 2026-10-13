@@ -124,7 +124,8 @@ fn v048_physical_delete_of_anchor_device_is_restricted() {
     let ty = insert_type(&conn);
     insert_group(&conn, ty, "АРМ #1", 1, Some(2)).expect("group");
     assert!(
-        conn.execute("DELETE FROM devices WHERE id = 2", []).is_err(),
+        conn.execute("DELETE FROM devices WHERE id = 2", [])
+            .is_err(),
         "physical DELETE of an anchor device must fail (RESTRICT)"
     );
     assert_eq!(count(&conn, "SELECT COUNT(*) FROM devices WHERE id = 2"), 1);
@@ -165,11 +166,16 @@ fn v048_group_delete_nulls_origin_but_keeps_device() {
     conn.execute("DELETE FROM groups WHERE id = ?1", params![group])
         .expect("delete group");
     let origin: Option<i64> = conn
-        .query_row("SELECT origin_group_id FROM devices WHERE id = 2", [], |r| {
-            r.get(0)
-        })
+        .query_row(
+            "SELECT origin_group_id FROM devices WHERE id = 2",
+            [],
+            |r| r.get(0),
+        )
         .expect("read origin");
-    assert_eq!(origin, None, "ON DELETE SET NULL on devices.origin_group_id");
+    assert_eq!(
+        origin, None,
+        "ON DELETE SET NULL on devices.origin_group_id"
+    );
     assert_eq!(count(&conn, "SELECT COUNT(*) FROM devices WHERE id = 2"), 1);
 }
 
