@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-13T13:11:18.929Z"
+last_updated: "2026-10-13T13:40:10.205Z"
 last_activity: 2026-10-13
 progress:
   total_phases: 21
   completed_phases: 11
   total_plans: 189
-  completed_plans: 183
+  completed_plans: 184
   percent: 52
 ---
 
@@ -594,6 +594,7 @@ Last activity: 2026-10-13
 | Phase 41.1 P13 | 1h | 3 tasks | 6 files |
 | Phase 41.1 P14 | 40min | 2 tasks | 2 files |
 | Phase 41.1 P21 | 100min | 2 tasks | 6 files |
+| Phase 41.1 P08 | 90m | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1298,6 +1299,7 @@ Recent decisions affecting current work:
 - [Phase 41.1]: [41.1-13] Освобождение картриджной карты в PlaceContents по правилу [B] и по объявлению CARTRIDGE_, а не по файлу; ключ устройственного статуса в такой карте отменяет освобождение
 - [Phase 41.1-14]: AddToGroupModal в features/groups/ (allowlist словаря); отказы VALIDATION/CONFLICT при создании от устройства — инлайн без тоста; поиск по группам делает Dropdown
 - [Phase 41.1]: [41.1-21] Прежняя подпись CSV «На ремонте» принимается как псевдоним code на_ремонте; пустая/неизвестная подпись даёт на_складе по code
+- [Phase 41.1]: [41.1-08] Rust-гейт статусов: область все crates/*/src; printers.rs:171 освобождён точной самоинвалидирующейся записью (долг: перевести на code); однословное списано нижним регистром = code
 
 ### Pending Todos
 
@@ -1500,8 +1502,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-13T13:11:18.919Z
-Stopped at: Completed 41.1-21-PLAN.md
+Last session: 2026-10-13T13:40:10.195Z
+Stopped at: Completed 41.1-08-PLAN.md
 Resume file: None
 
 None
