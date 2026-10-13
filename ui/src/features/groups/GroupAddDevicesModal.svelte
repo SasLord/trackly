@@ -30,6 +30,12 @@
   import { apiCall } from '$lib/api/client';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
+  import {
+    ensureLoaded,
+    orderedStatuses,
+    statusLabel,
+    statusTone,
+  } from '$lib/stores/deviceStatuses.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { DeviceDto, GroupAddDevicesResultDto, GroupDto, PlaceDto } from '../../bindings';
@@ -52,20 +58,12 @@
     { id: 1, label: 'Устройство' },
     { id: 2, label: 'Принтер' },
   ];
-  const STATUS_OPTIONS: Option[] = [
+  // Статусы устройств — из серверного справочника (стор), в порядке sort_order
+  // (Phase 41.1, D-06/D-08/D-09); локальных карт «id -> подпись» нет.
+  const statusOptions = $derived<Option[]>([
     { id: null, label: 'Все статусы' },
-    { id: 1, label: 'На складе' },
-    { id: 2, label: 'В работе' },
-    { id: 3, label: 'На ремонте' },
-    { id: 4, label: 'Списано' },
-  ];
-  type BadgeVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
-  const STATUS_VARIANTS: Record<number, BadgeVariant> = {
-    1: 'default',
-    2: 'accent',
-    3: 'warning',
-    4: 'destructive',
-  };
+    ...orderedStatuses().map((s) => ({ id: s.id, label: s.name })),
+  ]);
 
   const PAGE = 100;
   const FETCH_CAP = 1000;
@@ -85,7 +83,9 @@
   let placePath = $state<string | null>(null);
 
   const typeLabel = $derived(TYPE_OPTIONS.find((o) => o.id === typeId)?.label ?? '');
-  const statusLabel = $derived(STATUS_OPTIONS.find((o) => o.id === statusId)?.label ?? '');
+  const statusFilterLabel = $derived(
+    statusId === null ? '' : (statusOptions.find((o) => o.id === statusId)?.label ?? ''),
+  );
 
   // ---- Данные ---------------------------------------------------------------
   let rows = $state<DeviceDto[]>([]);
@@ -194,6 +194,7 @@
   }
 
   onMount(() => {
+    void ensureLoaded();
     void loadPage(true);
   });
   onDestroy(() => {
@@ -313,11 +314,11 @@
           id="gad-status"
           variant="select"
           flat={true}
-          value={statusLabel}
+          value={statusFilterLabel}
           placeholder="Все статусы"
           searchable={false}
           loading={false}
-          groups={STATUS_OPTIONS}
+          groups={statusOptions}
           getGroupId={(o) => String(o.id)}
           getGroupName={(o) => o.label}
           getGroupCount={() => 0}
@@ -384,8 +385,11 @@
               {d.place_path_short ?? '—'}
             </td>
             <td class="cell">
-              <Badge variant={STATUS_VARIANTS[d.status_id] ?? 'default'}>
-                {STATUS_OPTIONS.find((o) => o.id === d.status_id)?.label ?? `Статус ${d.status_id}`}
+              <Badge
+                variant={statusTone(d.status_code).variant}
+                appearance={statusTone(d.status_code).appearance}
+              >
+                {statusLabel(d.status_id)}
               </Badge>
             </td>
           </TableRow>

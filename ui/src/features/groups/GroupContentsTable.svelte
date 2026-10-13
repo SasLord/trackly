@@ -16,7 +16,7 @@
   // потолок пакета — отказ приходит с сервера и показывается Toast. Пометка
   // «уже в группе «…»» — подсказка (одним запросом groups.forDevices на
   // результат поиска), выбор занятого устройства НЕ блокируется.
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
@@ -30,6 +30,7 @@
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
+  import { ensureLoaded, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import type { AppError } from '$lib/api/errors';
   import type {
     GroupAddDevicesResultDto,
@@ -158,18 +159,12 @@
   }
 
   // ---- Отображение строки устройства ---------------------------------------
-  type BadgeVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
-  const STATUS_VARIANT_BY_NAME: Record<string, BadgeVariant> = {
-    'На складе': 'default',
-    'В работе': 'accent',
-    'На ремонте': 'warning',
-    'На заправке': 'warning',
-    Списано: 'destructive',
-  };
-  function statusVariant(name: string | null): BadgeVariant {
-    if (!name) return 'default';
-    return STATUS_VARIANT_BY_NAME[name] ?? 'default';
-  }
+  // Тон бейджа решает statusTone(status_code) из стора статусов устройств
+  // (Phase 41.1, D-09): ключ — машинный code, а не русское имя, поэтому
+  // переименование статуса тон не теряет. Подпись приходит с сервера как есть.
+  onMount(() => {
+    void ensureLoaded();
+  });
 
   function activateDevice(e: KeyboardEvent, d: GroupMemberDeviceDto): void {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -449,7 +444,10 @@
       <td class="cell" title={d.place_path ?? undefined}>{d.place_path_short ?? '—'}</td>
       <td class="cell">
         {#if d.status_name}
-          <Badge variant={statusVariant(d.status_name)}>{d.status_name}</Badge>
+          <Badge
+            variant={statusTone(d.status_code).variant}
+            appearance={statusTone(d.status_code).appearance}>{d.status_name}</Badge
+          >
         {:else}
           —
         {/if}
