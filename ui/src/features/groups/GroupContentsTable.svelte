@@ -25,6 +25,7 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import Button from '$lib/components/Button.svelte';
   import GroupAddDevicesModal from './GroupAddDevicesModal.svelte';
+  import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
   import { pluralizeRu } from '$lib/utils/pluralize';
@@ -408,6 +409,61 @@
     onChanged?.();
   }
 
+  // Фаза 41.1 (D-14): якорь нельзя вывести из состава — группа без якоря
+  // бессмысленна, расформировывают её удалением. Это вторая линия обороны:
+  // сервер и так отказывает (remove_devices, план 09). Якорь ищем у ВЛАДЕЛЬЦА
+  // строки — для вложенной группы это её собственный якорь, не корневой.
+  function anchorOf(ownerGroupId: number): number | null {
+    if (ownerGroupId === group.id) return group.anchor_device_id;
+    const stack: GroupDto[] = [...(comp?.child_groups ?? [])];
+    for (const c of Object.values(childComp)) stack.push(...(c.data?.child_groups ?? []));
+    return stack.find((g) => g.id === ownerGroupId)?.anchor_device_id ?? null;
+  }
+
+  // Фаза 41.1 (D-17/D-18/D-35): «Создать деталь» — форма устройства в
+  // create-режиме с местом записи разбора, затем ВТОРОЙ вызов groups.addDevices
+  // (происхождение ставит сервер, D-33). Атомарной операции нет намеренно: при
+  // сбое второго вызова деталь уже создана и лежит в месте группы — поэтому
+  // счётчики «Мест» инвалидируем ДО второго вызова, а ошибка называет созданное.
+  let detailModalOpen = $state(false);
+
+  async function handleDetailSaved(result?: { created?: DeviceDto[] }): Promise<void> {
+    detailModalOpen = false;
+    const created = result?.created ?? [];
+    if (created.length === 0) return;
+    const createdPlaceIds = Array.from(
+      new Set(created.map((d) => d.place_id).filter((id): id is number => id !== null)),
+    );
+    // Первый вызов (devices.create/bulkCreate) уже положил устройства в место —
+    // эта строка обязана стоять до groups.addDevices, иначе сбой второго вызова
+    // оставит счётчики устаревшими.
+    notifyPlaceContentChanged(createdPlaceIds);
+    try {
+      const res = await groups.addDevices({
+        group_id: group.id,
+        device_ids: created.map((d) => d.id),
+      });
+      notifyPlaceContentChanged(res.changed_place_ids);
+    } catch (e) {
+      const reason = errMessage(e, 'ошибка сервера');
+      if (created.length === 1) {
+        pushToast(
+          'error',
+          `Устройство «${created[0].name}» создано, но не добавлено в запись разбора: ${reason}. Добавьте его вручную через поиск в составе.`,
+        );
+      } else {
+        const noun = pluralizeRu(created.length, ['устройство', 'устройства', 'устройств']);
+        pushToast(
+          'error',
+          `Создано ${created.length} ${noun}, но они не добавлены в запись разбора: ${reason}. Найдите их поиском в составе.`,
+        );
+      }
+    }
+    // На обеих ветках состав и счётчики перечитываются.
+    await loadComposition();
+    onChanged?.();
+  }
+
   function pickItem(item: SearchItem): void {
     if (item.kind === 'group') void attachGroup(item.hit);
     else void addDevice(firstFree(item.group.ids));
@@ -453,7 +509,7 @@
         {/if}
       </td>
       <td class="col-menu">
-        {#if canEdit}
+        {#if canEdit && d.device_id !== anchorOf(ownerGroupId)}
           <ActionMenu variant="ghost-sm" label={`Действия: ${d.name}`}>
             <button
               type="button"
@@ -543,6 +599,9 @@
       />
     </div>
     <Button variant="secondary" onclick={() => (addModalOpen = true)}>Добавить несколько…</Button>
+    {#if group.type_behavior === 'teardown'}
+      <Button variant="secondary" onclick={() => (detailModalOpen = true)}>Создать деталь</Button>
+    {/if}
   </div>
 {/snippet}
 
@@ -576,6 +635,18 @@
 
 {#if addModalOpen}
   <GroupAddDevicesModal {group} onClose={() => (addModalOpen = false)} onAdded={handleModalAdded} />
+{/if}
+
+{#if detailModalOpen}
+  <DeviceFormModal
+    open={detailModalOpen}
+    target={null}
+    presetPlaceId={group.place_id}
+    presetStatusCode="на_складе"
+    originGroup={{ id: group.id, name: group.name }}
+    onClose={() => (detailModalOpen = false)}
+    onSaved={handleDetailSaved}
+  />
 {/if}
 
 <style lang="scss">
