@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-17T16:27:48.994Z"
-last_activity: 2026-10-17 -- Phase 41.1 planning complete
+last_updated: "2026-10-17T16:59:00.688Z"
+last_activity: 2026-10-17
 progress:
   total_phases: 24
   completed_phases: 11
   total_plans: 200
-  completed_plans: 189
+  completed_plans: 190
   percent: 46
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 22 of 22 исполнены; верификация gaps_found 4/6 — фаза НЕ завершена
+Plan: 23 of 33 исполнен (gap-closure, волна 1); верификация gaps_found 4/6 — фаза НЕ завершена
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -137,7 +137,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-17 -- Phase 41.1 planning complete
+Last activity: 2026-10-17
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -598,6 +598,7 @@ Last activity: 2026-10-17 -- Phase 41.1 planning complete
 | Phase 41.1 P16 | 1.5h | 3 tasks | 7 files |
 | Phase 41.1 P17 | 45m | 2 tasks | 8 files |
 | Phase 41.1 P18 | 30min | 2 tasks | 4 files |
+| Phase 41.1 P23 | 15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1307,6 +1308,7 @@ Recent decisions affecting current work:
 - [Phase 41.1-16]: Охрана событий строки с полярностью: isRowOverlayEvent( без отрицания, !isOwnKeyEvent( для keydown — обратная полярность убивает меню на своих событиях строки
 - [Phase 41.1]: [41.1-17] Правило :global(.ctx-menu-item:focus) было только в удалённом DeviceContextMenu — перенесено в CartridgeContextMenu; groups.create — маркер DIRECT_CALL_MARKERS (прежний гейт на мутации без notify остаётся зелёным)
 - [Phase 41.1]: [41.1-18] Rule [F] проверяет PrinterListRow уже при монтировании меню (SKIP исчез); план 19 только вносит файл в MANDATORY_ROW_FILES. Гейт не ловит снятую привязку ondblclick — находка для плана 19
+- [Phase 41.1]: [41.1-23] Сброс white-space/text-align/cursor на корне Modal (.modal-backdrop), не заплатками в потомках; .confirm-body не тронут
 
 ### Pending Todos
 
@@ -1509,7 +1511,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-13T17:57:17.058Z
+Last session: 2026-10-17T16:58:56.358Z
 Stopped at: Completed 41.1-19-PLAN.md
 Resume file: None
 
