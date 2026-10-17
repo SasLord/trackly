@@ -102,7 +102,11 @@
     void menuRef?.openView();
   }
 
-  function handleClick() {
+  // click всплывает из тех же модалок тем же путём, поэтому охрана и здесь
+  // первым оператором: иначе клик в модалке перевыбирает принтер и
+  // перезагружает панель справа (WR-02).
+  function handleClick(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
     onclick();
   }
 
