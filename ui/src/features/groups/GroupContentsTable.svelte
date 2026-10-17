@@ -502,7 +502,8 @@
         {#if d.status_name}
           <Badge
             variant={statusTone(d.status_code).variant}
-            appearance={statusTone(d.status_code).appearance}>{d.status_name}</Badge
+            appearance={statusTone(d.status_code).appearance}
+            muted={statusTone(d.status_code).muted}>{d.status_name}</Badge
           >
         {:else}
           —

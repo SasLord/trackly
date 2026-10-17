@@ -60,10 +60,10 @@
     <div class="appearance-group">
       <Badge variant="default" appearance="soft">На складе</Badge>
       <Badge variant="accent" appearance="soft">В работе</Badge>
-      <Badge variant="warning" appearance="dot">Ожидает ремонта</Badge>
       <Badge variant="warning" appearance="soft">В ремонте</Badge>
-      <Badge variant="destructive" appearance="dot">На списание</Badge>
+      <Badge variant="warning" appearance="soft" muted>Ожидает ремонта</Badge>
       <Badge variant="destructive" appearance="soft">Списано</Badge>
+      <Badge variant="destructive" appearance="soft" muted>На списание</Badge>
     </div>
   </div>
 </section>

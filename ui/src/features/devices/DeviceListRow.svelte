@@ -158,7 +158,7 @@
   <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>
   {#if showStatus}
     <td class="cell cell-status">
-      <Badge variant={tone.variant} appearance={tone.appearance}>{label}</Badge>
+      <Badge variant={tone.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>
     </td>
   {/if}
   <td class="cell cell-actions">

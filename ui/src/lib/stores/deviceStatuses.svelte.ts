@@ -21,6 +21,8 @@ export type StatusAppearance = 'soft' | 'solid' | 'dot' | 'count';
 export interface StatusTone {
   variant: StatusVariant;
   appearance: StatusAppearance;
+  /** Приглушённый чип: статус «ещё в очереди/помечен», тон тот же, ярче только действующий. */
+  muted?: boolean;
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
@@ -31,13 +33,15 @@ export const deviceStatusesStore = $state<{ items: DeviceStatusDto[]; state: Loa
 });
 
 // Единственная в приложении таблица тонов; ключ — code из справочника
-// (UI-SPEC §10.2).
+// (UI-SPEC §10.2, пересмотрено 2026-10-17: R-06 отменён). Все шесть статусов —
+// soft-чипы. Тон = насколько плохо, muted = ещё только в очереди/помечено:
+// пара «действующий / ожидающий» делит variant и различается яркостью.
 const TONES: Record<string, StatusTone> = {
   на_складе: { variant: 'default', appearance: 'soft' },
   в_работе: { variant: 'accent', appearance: 'soft' },
-  на_ремонте: { variant: 'warning', appearance: 'dot' },
+  на_ремонте: { variant: 'warning', appearance: 'soft', muted: true },
   в_ремонте: { variant: 'warning', appearance: 'soft' },
-  на_списание: { variant: 'destructive', appearance: 'dot' },
+  на_списание: { variant: 'destructive', appearance: 'soft', muted: true },
   списано: { variant: 'destructive', appearance: 'soft' },
 };
 const FALLBACK_TONE: StatusTone = { variant: 'default', appearance: 'soft' };

@@ -168,7 +168,7 @@
   <td class="cell cell-truncate" title={conditionDisplay}>{conditionDisplay}</td>
   {#if showStatus}
     <td class="cell cell-status">
-      <Badge variant={tone.variant} appearance={tone.appearance}>{label}</Badge>
+      <Badge variant={tone.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>
     </td>
   {/if}
   <!-- Actions column: count badge for multi-device groups -->
