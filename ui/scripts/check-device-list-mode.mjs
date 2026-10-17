@@ -39,7 +39,17 @@
 //        member_of_group_id) не встречаются в коде НИ В ОДНОМ другом файле src/.
 //        Набор файлов выводится обходом, не ручным списком: новый вызывающий
 //        (пикер акта, модалка массового добавления), поставивший флаг, краснит
-//        гейт, а не меняет поведение молча.
+//        гейт, а не меняет поведение молча;
+//    [G] DeviceGroupRow.svelte (план 24, GAP-1; файл обязателен всегда, не SKIP):
+//        [G1] импортирует groupIdsKey и visibleChildren из './deviceListMode';
+//        [G2] не рисует `{#each children` по сырому кешу (только visibleChildren);
+//        [G3] есть $effect, читающий expanded и idsKey и НЕ читающий
+//             `children === null` (до-фиксовый эффект ключа состава не знал);
+//        [G4] вложенный <DeviceListRow> получает onEdit= и onDelete= (путь
+//             «действие из меню -> refresh()» не рвётся).
+//        Вакуумная проверка: самотест читает замороженную до-фиксовую копию
+//        scripts/fixtures/device-list-mode/DeviceGroupRow.pre-fix.svelte.txt и
+//        требует от неё [G1], [G2], [G3]; на реальном файле ноль нарушений.
 //
 //    Правила [A] и [B] при PAGE_MANDATORY = false дают явный SKIP для страницы,
 //    которая модуль ещё не подключила (так было в задаче 1 плана 19). Задача 3
@@ -71,6 +81,11 @@ const TAG = '[check-device-list-mode]';
 const MODULE_FILE = 'src/features/devices/deviceListMode.ts';
 const PAGE_FILE = 'src/features/devices/DevicesPage.svelte';
 const LIST_FILE = 'src/features/devices/DeviceList.svelte';
+const GROUP_ROW_FILE = 'src/features/devices/DeviceGroupRow.svelte';
+const PRE_FIX_GROUP_ROW = path.join(
+  __dirname,
+  'fixtures/device-list-mode/DeviceGroupRow.pre-fix.svelte.txt',
+);
 const FIXTURE = path.join(__dirname, 'fixtures/device-list-mode/cases.json');
 const MIN_CASES = 18;
 // Сколько .svelte/.ts обязан увидеть структурный проход: меньше — гейт слеп.
@@ -469,6 +484,83 @@ export function checkList(src) {
   return out;
 }
 
+/** Конец открывающего тега `<Name ...>` (первый `>` вне фигурных скобок); -1 — не нашлось. */
+function tagEnd(text, from) {
+  let depth = 0;
+  let quote = null;
+  for (let i = from; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (depth > 0 && (c === '"' || c === "'" || c === '`')) {
+      quote = c;
+      continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    else if (c === '>' && depth === 0 && text[i - 1] !== '=') return i;
+  }
+  return -1;
+}
+
+/** Правило [G]: DeviceGroupRow.svelte (кеш детей псевдогруппы привязан к составу group.ids). */
+export function checkGroupRow(src) {
+  const text = stripComments(src);
+  const out = [];
+  const imp = /import\s*\{([^}]*)\}\s*from\s*['"]\.\/deviceListMode['"]/.exec(text);
+  const names = imp ? imp[1].split(',').map((n) => n.trim()) : [];
+  for (const need of ['groupIdsKey', 'visibleChildren']) {
+    if (!names.includes(need)) {
+      out.push({ code: 'G1', msg: `нет импорта ${need} из './deviceListMode'` });
+    }
+  }
+  const raw = /\{#each\s+children\b/.exec(text);
+  if (raw) {
+    out.push({
+      code: 'G2',
+      msg: `строка ${lineOf(text, raw.index)}: {#each} по сырому кешу children; рисовать надо visibleChildren(children, group.ids)`,
+    });
+  }
+  let keyedEffect = false;
+  const effRe = /\$effect\s*\(\s*\(\s*\)\s*=>\s*\{/g;
+  let m;
+  while ((m = effRe.exec(text)) !== null) {
+    const open = m.index + m[0].length - 1;
+    const close = readBalanced(text, open, '{', '}');
+    if (close === -1) continue;
+    const body = text.slice(open, close + 1);
+    if (
+      /\bexpanded\b/.test(body) &&
+      /\bidsKey\b/.test(body) &&
+      !/children\s*===\s*null/.test(body)
+    ) {
+      keyedEffect = true;
+    }
+  }
+  if (!keyedEffect) {
+    out.push({
+      code: 'G3',
+      msg: 'нет $effect, читающего expanded и idsKey без условия children === null (кеш детей должен быть привязан к ключу состава)',
+    });
+  }
+  const rowAt = text.indexOf('<DeviceListRow');
+  if (rowAt === -1) {
+    out.push({ code: 'G4', msg: 'нет вложенной строки <DeviceListRow>' });
+  } else {
+    const end = tagEnd(text, rowAt);
+    const tag = end === -1 ? text.slice(rowAt) : text.slice(rowAt, end + 1);
+    for (const attr of ['onDelete', 'onEdit']) {
+      if (!new RegExp(`\\b${attr}\\s*=`).test(tag)) {
+        out.push({ code: 'G4', msg: `у <DeviceListRow> нет атрибута ${attr}=` });
+      }
+    }
+  }
+  return out;
+}
+
 /** Правило [D]: opt-in флаги не встречаются в других файлах (обход, не список). */
 export function checkFlagHomes(files) {
   const out = [];
@@ -541,6 +633,13 @@ export function scanStructural(files, opts = {}) {
       continue;
     }
     for (const v of check(src)) violations.push({ ...v, file: rel });
+  }
+  // [G]: файл обязателен всегда (SKIP-able файл молчал бы вечно).
+  const rowSrc = files.get(GROUP_ROW_FILE);
+  if (rowSrc === undefined) {
+    violations.push({ code: 'G', file: GROUP_ROW_FILE, msg: 'обязательный файл не найден' });
+  } else {
+    for (const v of checkGroupRow(rowSrc)) violations.push({ ...v, file: GROUP_ROW_FILE });
   }
   for (const v of checkFlagHomes(files)) violations.push(v);
   return { violations, notes };
@@ -727,11 +826,25 @@ const CLEAN_LIST = `<script lang="ts">
 <span>{footerText({ shown: items.length, total, hidden: hiddenMemberCount, hideActive })}</span>
 `;
 
+const CLEAN_GROUP_ROW = `<script lang="ts">
+  import { groupIdsKey, visibleChildren } from './deviceListMode';
+  const idsKey = $derived(groupIdsKey(group.ids));
+  const shownChildren = $derived(visibleChildren(children ?? [], group.ids));
+  $effect(() => {
+    if (expanded && loadedKey !== idsKey && loadingKey !== idsKey) loadChildren(idsKey);
+  });
+</script>
+{#each shownChildren as child, i (child.id)}
+  <DeviceListRow device={child} onEdit={handleEdit} onDelete={handleDelete} isLastInGroup={i === shownChildren.length - 1} />
+{/each}
+`;
+
 function fixtureMap(extra = {}) {
   const m = new Map([
     [MODULE_FILE, 'export function x() { return 1; }\n'],
     [PAGE_FILE, CLEAN_PAGE_FULL],
     [LIST_FILE, CLEAN_LIST],
+    [GROUP_ROW_FILE, CLEAN_GROUP_ROW],
     [
       'src/bindings.ts',
       'export type F = { hide_anchor_members?: boolean; member_of_group_id?: number };\n',
@@ -751,6 +864,9 @@ const SELFTEST_OPTS = { minScanned: SELFTEST_MIN_SCANNED_FILES, pageMandatory: t
 function structuralMutants() {
   const page = (from, to, label) => mutate(CLEAN_PAGE_FULL, from, to, label);
   const list = (from, to, label) => mutate(CLEAN_LIST, from, to, label);
+  const row = (from, to, label) => mutate(CLEAN_GROUP_ROW, from, to, label);
+  const EFFECT_LINE =
+    'if (expanded && loadedKey !== idsKey && loadingKey !== idsKey) loadChildren(idsKey);';
   return [
     {
       name: "[A] нет вызова deviceListFlags('anchors'",
@@ -881,6 +997,83 @@ function structuralMutants() {
       expect: ['A'],
     },
     {
+      name: '[G1] убран импорт из deviceListMode',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          "  import { groupIdsKey, visibleChildren } from './deviceListMode';\n",
+          '',
+          'g1-none',
+        ),
+      }),
+      expect: ['G1'],
+    },
+    {
+      name: '[G1] импортирован только groupIdsKey',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row('{ groupIdsKey, visibleChildren }', '{ groupIdsKey }', 'g1-part'),
+      }),
+      expect: ['G1'],
+    },
+    {
+      name: '[G2] {#each} по сырому children',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row('{#each shownChildren as', '{#each children as', 'g2'),
+      }),
+      expect: ['G2'],
+    },
+    {
+      name: '[G3] эффект на children === null вместо ключа состава',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          EFFECT_LINE,
+          'if (expanded && children === null) loadChildren(group.ids);',
+          'g3-null',
+        ),
+      }),
+      expect: ['G3'],
+    },
+    {
+      name: '[G3] перестановка: idsKey заменён на group.ids и добавлено children === null',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          EFFECT_LINE,
+          'if (expanded && loadedKey !== group.ids && children === null) loadChildren(group.ids);',
+          'g3-perm',
+        ),
+      }),
+      expect: ['G3'],
+    },
+    {
+      name: '[G3] ключ состава есть, но в эффект добавлено children === null',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          EFFECT_LINE,
+          'if (expanded && children === null && loadedKey !== idsKey) loadChildren(idsKey);',
+          'g3-both',
+        ),
+      }),
+      expect: ['G3'],
+    },
+    {
+      name: '[G4] у <DeviceListRow> убран onDelete',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(' onDelete={handleDelete}', '', 'g4-delete'),
+      }),
+      expect: ['G4'],
+    },
+    {
+      name: '[G4] у <DeviceListRow> убран onEdit',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(' onEdit={handleEdit}', '', 'g4-edit'),
+      }),
+      expect: ['G4'],
+    },
+    {
+      name: '[G] DeviceGroupRow.svelte отсутствует (обязательный файл)',
+      files: fixtureMap({ [GROUP_ROW_FILE]: null }),
+      expect: ['G'],
+    },
+    {
       name: '[C] в модуле появился import',
       files: fixtureMap({ [MODULE_FILE]: "import { x } from './y';\nexport const a = x;\n" }),
       expect: ['C'],
@@ -933,6 +1126,46 @@ async function selftest(cases) {
         process.exit(1);
       }
     }
+  }
+  // 3б. Вакуумная проверка [G]: замороженная до-фиксовая DeviceGroupRow обязана краснеть
+  // на [G1], [G2], [G3], а реальная (исправленная) — быть чистой.
+  let preFix;
+  try {
+    preFix = fs.readFileSync(PRE_FIX_GROUP_ROW, 'utf8');
+  } catch {
+    console.error(
+      `${TAG} SELFTEST FAIL — нет замороженной до-фиксовой копии ${path.relative(UI_ROOT, PRE_FIX_GROUP_ROW)}`,
+    );
+    process.exit(1);
+  }
+  if (!/children\s*===\s*null/.test(preFix) || preFix.includes('groupIdsKey')) {
+    console.error(
+      `${TAG} SELFTEST FAIL — замороженная до-фиксовая копия подменена исправленной (в ней должно быть children === null и не должно быть groupIdsKey)`,
+    );
+    process.exit(1);
+  }
+  const preFixCodes = new Set(checkGroupRow(preFix).map((v) => v.code));
+  for (const code of ['G1', 'G2', 'G3']) {
+    if (!preFixCodes.has(code)) {
+      console.error(
+        `${TAG} SELFTEST FAIL — до-фиксовая DeviceGroupRow не дала [${code}] (получено [${[...preFixCodes].join(',') || 'ничего'}]): гейт вакуумен`,
+      );
+      process.exit(1);
+    }
+  }
+  let realRow;
+  try {
+    realRow = fs.readFileSync(path.join(UI_ROOT, GROUP_ROW_FILE), 'utf8');
+  } catch {
+    console.error(`${TAG} SELFTEST FAIL — не удалось прочитать ${GROUP_ROW_FILE}`);
+    process.exit(1);
+  }
+  const realRowViolations = checkGroupRow(realRow);
+  if (realRowViolations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — реальная DeviceGroupRow краснеет:\n  - ${realRowViolations.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
   }
   // 4. Режим «страница ещё не подключена»: явный SKIP, не молчание и не красное.
   const unconnected = scanStructural(
