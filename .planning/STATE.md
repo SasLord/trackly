@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 21 of 22 завершено (волны 1-8: 01-19, 21, 22) — далее волна 9: план 20, граница фазы (autonomous: false)
-Status: Ready to execute
+Plan: 22 of 22 исполнены; верификация gaps_found 4/6 — фаза НЕ завершена
+Status: Фаза 41.1 — закрытие пробелов. Следующая команда: /gsd-plan-phase 41.1 --gaps. Карта контекста: .planning/phases/41.1-groups-devices-integration/.continue-here.md
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
 R5 — счётчики вкладок «Отчётов» равны 0 в LAN-браузере — признан дефектом ВНЕ фазы 41
