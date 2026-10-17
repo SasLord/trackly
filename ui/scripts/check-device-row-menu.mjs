@@ -49,6 +49,21 @@
 //        печатает явный SKIP; обязательный (MANDATORY_ROW_FILES) без привязок
 //        или без самого файла — нарушение.
 //
+//    [F4] охрана click на ячейках строки (план 41.1-26, WR-02). `onclick` НЕ входит
+//        в общий BINDING_RE (он совпал бы с Button, RowChevron и ссылками), поэтому
+//        привязки `onclick={...}` ищутся только на открывающих тегах `<td` (конец
+//        тега считается с учётом `{...}`, чтобы `>` в выражении не обрезал его).
+//        Значение разрешается в тело функции файла и проверяется той же
+//        checkGuardedBody: первым оператором `if (isRowOverlayEvent(...)) return;`
+//        БЕЗ отрицания, до любого `onclick(`, preventDefault и т.д. Нарушения
+//        охраны: [F4] (нет, не та полярность, не первым оператором, не
+//        разрешилось); действие раньше охраны даёт ещё и [F3]. Перестановка
+//        `onclick(); if (isRowOverlayEvent(...)) return;` проходит счёт F1, но
+//        краснеет [F4]+[F3]. Файлы из REQUIRED_TD_CLICK_ROWS обязаны иметь хотя
+//        бы одну такую привязку (снятая привязка не должна давать зелёного по
+//        пустоте, иначе [F0]). Счёт F1 учитывает td-click: isRowOverlayEvent(
+//        не меньше, чем привязок contextmenu + dblclick + td-click.
+//
 //    [D] вторая реализация меню не возвращается (план 41.1-17, D-21): файла
 //        src/features/devices/DeviceContextMenu.svelte нет; идентификатор
 //        DeviceContextMenu не встречается в src вне комментариев; классы
@@ -114,6 +129,11 @@ const REQUIRED_BINDINGS = {
   'src/features/printers/PrinterListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
 };
 
+// Файлы, у которых обязана быть хотя бы одна привязка `onclick` на <td> (правило
+// [F4]). Остальные строки (DeviceListRow, DeviceGroupRow) таких привязок не
+// имеют и проходят правило без записи здесь.
+const REQUIRED_TD_CLICK_ROWS = ['src/features/printers/PrinterListRow.svelte'];
+
 // [D] Вторая реализация меню удалена в плане 41.1-17 и не должна вернуться.
 const LEGACY_MENU_FILE = 'src/features/devices/DeviceContextMenu.svelte';
 const LEGACY_MENU_IDENT = /\bDeviceContextMenu\b/;
@@ -132,6 +152,8 @@ const FORBIDDEN_BEFORE_GUARD = new RegExp(
     '\\bopenAt\\s*\\(',
     '\\bopenView\\s*\\(',
     '\\bopenFromElement\\s*\\(',
+    // Тело обработчика, а не атрибут `onclick=` разметки: вызов пропса строки.
+    '\\bonclick\\s*\\(',
     'toggle',
   ].join('|'),
 );
@@ -389,6 +411,65 @@ function extractBindings(markup) {
   return out;
 }
 
+/** Индекс `>`, закрывающего открывающий тег, начиная с `<`; `{...}` и кавычки пропускаются. */
+function findTagEnd(text, start) {
+  let i = start;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '{') {
+      const e = readBalanced(text, i, '{', '}');
+      if (e === -1) return -1;
+      i = e + 1;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const e = text.indexOf(c, i + 1);
+      if (e === -1) return -1;
+      i = e + 1;
+      continue;
+    }
+    if (c === '>') return i;
+    i++;
+  }
+  return -1;
+}
+
+/** [F4]: привязки `onclick={...}` только на открывающих тегах <td. */
+function extractTdClickBindings(markup) {
+  const out = [];
+  const tdRe = /<td\b/g;
+  let m;
+  while ((m = tdRe.exec(markup)) !== null) {
+    const end = findTagEnd(markup, m.index);
+    const tag = markup.slice(m.index, end === -1 ? markup.length : end);
+    const attr = /\bonclick\s*=\s*\{/.exec(tag);
+    if (!attr) continue;
+    const open = m.index + attr.index + attr[0].length - 1;
+    const close = readBalanced(markup, open, '{', '}');
+    out.push({
+      attr: 'onclick',
+      expr: close === -1 ? null : markup.slice(open + 1, close).trim(),
+      line: lineOf(markup, m.index + attr.index),
+    });
+  }
+  return out;
+}
+
+/**
+ * Сколько РАЗНЫХ обработчиков у td-click привязок: одна функция на несколько ячеек
+ * (handleClick у трёх <td> строки принтера) охраняется одной охраной, поэтому для
+ * счёта F1 она считается один раз; инлайн-выражения считаются каждое отдельно.
+ */
+function tdClickHandlerCount(tdClicks) {
+  const named = new Set();
+  let inline = 0;
+  for (const b of tdClicks) {
+    if (b.expr !== null && /^[A-Za-z_$][\w$]*$/.test(b.expr)) named.add(b.expr);
+    else inline++;
+  }
+  return named.size + inline;
+}
+
 /** Тело функции/стрелки, начиная с позиции сразу после списка параметров. */
 function bodyAfterParams(text, afterParams, kind) {
   let i = afterParams;
@@ -444,6 +525,7 @@ function resolveHandlerBody(expr, script) {
 }
 
 const GUARD_BY_ATTR = {
+  onclick: { name: 'isRowOverlayEvent', negated: false },
   oncontextmenu: { name: 'isRowOverlayEvent', negated: false },
   ondblclick: { name: 'isRowOverlayEvent', negated: false },
   onkeydown: { name: 'isOwnKeyEvent', negated: true },
@@ -491,7 +573,7 @@ function checkGuardedBody(body, attr) {
 }
 
 /** Правило [F] для одного файла. mandatory — отсутствие привязок нарушение. */
-export function checkRowFile(rel, src, mandatory, required = null) {
+export function checkRowFile(rel, src, mandatory, required = null, requiredTdClick = false) {
   const violations = [];
   const notes = [];
   if (src === null) {
@@ -503,6 +585,33 @@ export function checkRowFile(rel, src, mandatory, required = null) {
   const clean = stripComments(src);
   const { script, markup } = splitSvelte(clean);
   const bindings = extractBindings(markup);
+  // [F4]: охрана click на <td>, с учётом порядка (checkGuardedBody).
+  const tdClicks = extractTdClickBindings(markup);
+  if (requiredTdClick && tdClicks.length === 0) {
+    violations.push({
+      code: 'F0',
+      file: rel,
+      msg: 'обязательная привязка onclick= на <td> снята (клик по ячейке перестал выбирать строку, а охрана в теле осталась бы зелёной по пустоте)',
+    });
+  }
+  for (const b of tdClicks) {
+    const body = resolveHandlerBody(b.expr, script);
+    if (body === null) {
+      violations.push({
+        code: 'F4',
+        file: rel,
+        msg: `строка ${b.line}: значение onclick={${b.expr ?? '?'}} на <td не разрешается в тело функции файла`,
+      });
+      continue;
+    }
+    for (const v of checkGuardedBody(body, 'onclick')) {
+      violations.push({
+        code: v.code === 'F2' ? 'F4' : v.code,
+        file: rel,
+        msg: `строка ${b.line}: ${v.msg}`,
+      });
+    }
+  }
   if (bindings.length === 0) {
     if (mandatory)
       violations.push({
@@ -535,7 +644,8 @@ export function checkRowFile(rel, src, mandatory, required = null) {
       }
     }
   }
-  const mouse = bindings.filter((b) => b.attr !== 'onkeydown').length;
+  const mouse =
+    bindings.filter((b) => b.attr !== 'onkeydown').length + tdClickHandlerCount(tdClicks);
   const hasKey = bindings.some((b) => b.attr === 'onkeydown');
   const overlayCount = (clean.match(/\bisRowOverlayEvent\s*\(/g) ?? []).length;
   const ownCount = (clean.match(/\bisOwnKeyEvent\s*\(/g) ?? []).length;
@@ -543,7 +653,7 @@ export function checkRowFile(rel, src, mandatory, required = null) {
     violations.push({
       code: 'F1',
       file: rel,
-      msg: `isRowOverlayEvent( встречается ${overlayCount} раз, привязок oncontextmenu=/ondblclick= ${mouse}`,
+      msg: `isRowOverlayEvent( встречается ${overlayCount} раз, привязок oncontextmenu=/ondblclick=/onclick на <td ${mouse}`,
     });
   }
   if (hasKey && ownCount < 1) {
@@ -728,6 +838,7 @@ export function scanStructural(files, opts = {}) {
   const mandatory = opts.mandatory ?? MANDATORY_ROW_FILES;
   const requiredBindings = opts.requiredBindings ?? REQUIRED_BINDINGS;
   const rowFiles = opts.rowFiles ?? ROW_FILES;
+  const requiredTdRows = opts.requiredTdClickRows ?? REQUIRED_TD_CLICK_ROWS;
   const minScanned = opts.minScanned ?? MIN_SCANNED_FILES;
   const violations = [];
   const notes = [];
@@ -746,6 +857,15 @@ export function scanStructural(files, opts = {}) {
         code: 'F0',
         file: m,
         msg: 'MANDATORY_ROW_FILES содержит файл, которого нет в ROW_FILES',
+      });
+  }
+
+  for (const m of requiredTdRows) {
+    if (!mandatory.includes(m))
+      add({
+        code: 'F0',
+        file: m,
+        msg: 'REQUIRED_TD_CLICK_ROWS содержит файл, которого нет в MANDATORY_ROW_FILES',
       });
   }
 
@@ -782,7 +902,13 @@ export function scanStructural(files, opts = {}) {
       notes.push(`SKIP ${rel}: <DeviceRowMenu не подключён, охрана событий строки не требуется`);
       continue;
     }
-    const r = checkRowFile(rel, src, isMandatory, requiredBindings[rel] ?? null);
+    const r = checkRowFile(
+      rel,
+      src,
+      isMandatory,
+      requiredBindings[rel] ?? null,
+      requiredTdRows.includes(rel),
+    );
     for (const v of r.violations) add(v);
     for (const n of r.notes) notes.push(n);
   }
@@ -955,6 +1081,10 @@ const CLEAN_ROW = `<script lang="ts">
     window.getSelection()?.removeAllRanges();
     menuRef?.openView();
   };
+  function handleClick(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
+    onclick();
+  }
   function handleCellKeydown(e: KeyboardEvent) {
     if (!isOwnKeyEvent(e.target, e.currentTarget)) return;
     if (e.key === 'ContextMenu') {
@@ -965,6 +1095,8 @@ const CLEAN_ROW = `<script lang="ts">
 </script>
 <TableRow oncontextmenu={handleContextMenu} ondblclick={handleDblClick}>
   <td onkeydown={handleCellKeydown}><DeviceRowMenu bind:this={menuRef} {device} /></td>
+  <td class="cell" onclick={handleClick}>{label}</td>
+  <td class="cell" title={a > b ? 'x' : 'y'}>без onclick: > внутри выражения не обрезает тег</td>
 </TableRow>
 `;
 
@@ -983,7 +1115,12 @@ function fixtureMap(extra = {}) {
   return m;
 }
 
-const SELFTEST_OPTS = { minScanned: SELFTEST_MIN_SCANNED_FILES, mandatory: [], rowFiles: [] };
+const SELFTEST_OPTS = {
+  minScanned: SELFTEST_MIN_SCANNED_FILES,
+  mandatory: [],
+  rowFiles: [],
+  requiredTdClickRows: [],
+};
 
 /** Структурные мутанты: у каждого «до» зелёная, «после» красная с кодами expectCodes. */
 function structuralMutants() {
@@ -1218,6 +1355,97 @@ function structuralMutants() {
       absent: ['D'],
     },
     {
+      name: '[F4] охрана click удалена (счёт прежний за счёт соседней функции)',
+      files: fixtureMap({
+        [ROW_PATH]: row(
+          '    if (isRowOverlayEvent(e.target)) return;\n    onclick();',
+          '    onclick();',
+          'F4del',
+        ).replace(
+          '</script>',
+          'function other(e: MouseEvent) {\n    if (isRowOverlayEvent(e.target)) return;\n  }\n</script>',
+        ),
+      }),
+      expect: ['F4', 'F3'],
+      absent: ['F1'],
+    },
+    {
+      name: '[F4] охрана click с обратной полярностью',
+      files: fixtureMap({
+        [ROW_PATH]: row(
+          'if (isRowOverlayEvent(e.target)) return;\n    onclick();',
+          'if (!isRowOverlayEvent(e.target)) return;\n    onclick();',
+          'F4pol',
+        ),
+      }),
+      expect: ['F4'],
+      absent: ['F1', 'F3'],
+    },
+    {
+      name: '[F4] МУТАНТ-ПЕРЕСТАНОВКА: onclick() раньше охраны, счёт прежний',
+      files: fixtureMap({
+        [ROW_PATH]: row(
+          '    if (isRowOverlayEvent(e.target)) return;\n    onclick();',
+          '    onclick();\n    if (isRowOverlayEvent(e.target)) return;',
+          'F4swap',
+        ),
+      }),
+      expect: ['F4', 'F3'],
+      absent: ['F1'],
+    },
+    {
+      name: '[F4] охрана click не первым оператором (перед ней const)',
+      files: fixtureMap({
+        [ROW_PATH]: row(
+          '    if (isRowOverlayEvent(e.target)) return;\n    onclick();',
+          '    const x = e.detail;\n    if (isRowOverlayEvent(e.target)) return;\n    log(x);',
+          'F4first',
+        ),
+      }),
+      expect: ['F4'],
+      absent: ['F1', 'F3'],
+    },
+    {
+      name: '[F4] охрана click без выхода return',
+      files: fixtureMap({
+        [ROW_PATH]: row(
+          'if (isRowOverlayEvent(e.target)) return;\n    onclick();',
+          'if (isRowOverlayEvent(e.target)) log(e);\n    onclick();',
+          'F4ret',
+        ),
+      }),
+      expect: ['F4'],
+    },
+    {
+      name: '[F4] вторая ячейка с неохраняемым обработчиком, счёт сходится',
+      files: fixtureMap({
+        [ROW_PATH]: row(
+          '<td class="cell" title={a > b',
+          '<td class="cell" onclick={handleOther}>y</td>\n  <td class="cell" title={a > b',
+          'F4second',
+        ).replace(
+          '</script>',
+          'function handleOther(e: MouseEvent) {\n    onclick();\n  }\n  function spare(e: MouseEvent) {\n    if (isRowOverlayEvent(e.target)) return;\n  }\n</script>',
+        ),
+      }),
+      expect: ['F4'],
+      absent: ['F1'],
+    },
+    {
+      name: '[F4] инлайн-стрелка без охраны вместо handleClick',
+      files: fixtureMap({
+        [ROW_PATH]: row('onclick={handleClick}', 'onclick={() => onclick()}', 'F4inline'),
+      }),
+      expect: ['F4'],
+    },
+    {
+      name: '[F4] обработчик не разрешается в тело функции файла',
+      files: fixtureMap({
+        [ROW_PATH]: row('onclick={handleClick}', 'onclick={handlerFromElsewhere}', 'F4unres'),
+      }),
+      expect: ['F4'],
+    },
+    {
       name: '[F] новый файл, подключивший меню, ловится обходом (нет в ROW_FILES)',
       files: fixtureMap({
         'src/features/foo/NewRow.svelte':
@@ -1331,6 +1559,52 @@ async function selftest(cases) {
       console.error(
         `${TAG} SELFTEST FAIL — контроль: без REQUIRED_BINDINGS мутант «снята ${attr}=» не должен краснеть (иначе F1 уже ловил его и правило лишнее)`,
       );
+      process.exit(1);
+    }
+  }
+  // 5a2. [F4]/[F0]: снятая привязка onclick на <td> у файла из REQUIRED_TD_CLICK_ROWS
+  // краснит ТОЛЬКО [F0] (охрана-то на месте); без записи в REQUIRED_TD_CLICK_ROWS
+  // тот же мутант слеп по построению.
+  const tdOpts = { ...mandatoryOpts, requiredTdClickRows: [ROW_PATH] };
+  const cleanTd = scanStructural(fixtureMap(), tdOpts);
+  if (cleanTd.violations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — чистая строка с обязательным td-click красная:\n  - ${cleanTd.violations.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
+  }
+  const noTdBind = mutate(CLEAN_ROW, ' onclick={handleClick}', '', 'снята привязка onclick на td');
+  const noTdBindRes = scanStructural(fixtureMap({ [ROW_PATH]: noTdBind }), tdOpts);
+  const noTdCodes = new Set(noTdBindRes.violations.map((v) => v.code));
+  if (!noTdCodes.has('F0') || !noTdBindRes.violations.some((v) => v.msg.includes('onclick='))) {
+    console.error(`${TAG} SELFTEST FAIL — снятая привязка onclick= на <td не краснит [F0]`);
+    process.exit(1);
+  }
+  if (noTdCodes.has('F1') || noTdCodes.has('F2') || noTdCodes.has('F3') || noTdCodes.has('F4')) {
+    console.error(
+      `${TAG} SELFTEST FAIL — мутант «снята onclick= на td» должен краснеть ТОЛЬКО [F0]`,
+    );
+    process.exit(1);
+  }
+  if (scanStructural(fixtureMap({ [ROW_PATH]: noTdBind }), mandatoryOpts).violations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — контроль: без REQUIRED_TD_CLICK_ROWS снятая onclick= не должна краснеть`,
+    );
+    process.exit(1);
+  }
+  const badTdConfig = scanStructural(fixtureMap(), {
+    ...SELFTEST_OPTS,
+    requiredTdClickRows: ['src/x.svelte'],
+  });
+  if (!badTdConfig.violations.some((v) => v.code === 'F0')) {
+    console.error(
+      `${TAG} SELFTEST FAIL — REQUIRED_TD_CLICK_ROWS вне MANDATORY_ROW_FILES не краснит`,
+    );
+    process.exit(1);
+  }
+  for (const f of REQUIRED_TD_CLICK_ROWS) {
+    if (!MANDATORY_ROW_FILES.includes(f)) {
+      console.error(`${TAG} SELFTEST FAIL — ${f} из REQUIRED_TD_CLICK_ROWS не обязательный файл`);
       process.exit(1);
     }
   }
