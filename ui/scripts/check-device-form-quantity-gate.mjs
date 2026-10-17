@@ -34,10 +34,33 @@
 //       БЕЗУСЛОВНО — иначе сервер жёстко отклонит count>1 с непустым номером
 //       (регресс-тест `bulk_create_rejects_when_inventory_no_set`).
 //
-// Все три правила проверяются встроенным self-testом (`--selftest`) на 9
-// фикстурах в памяти (6 позитивных — включая буквальный до-fae6c9d4 вид
-// эффекта; 3 негативных — текущая корректная разводка и её варианты), поэтому
-// «гейт зелёный» отличимо от «гейт ничего не ищет».
+// Все три правила проверяются встроенным self-testом (`--selftest`) на
+// фикстурах в памяти (включая буквальный до-fae6c9d4 вид эффекта и негативы —
+// текущая корректная разводка и её варианты), поэтому «гейт зелёный»
+// отличимо от «гейт ничего не ищет».
+//
+// ВТОРОЙ инвариант (имя файла историческое; фаза 41.1, план 25, WR-01):
+// эффект автостатуса «место хранения → статус «На складе»» не имеет права
+// срабатывать при правке без явного действия пользователя и до загрузки
+// членства в группе. До фикса правка якоря разбора («На списание») на складе
+// молча получала «На складе», а чекбокс после этого скрывался — откатить
+// статус было нечем. Правило (D):
+//   (D0) нижняя граница: найден хотя бы один ЦЕЛЕВОЙ `$effect` — блок с
+//        присваиванием `statusId =` (любой формы: String(..), шаблонная строка,
+//        через переменную), который ещё и упоминает `storageId` либо
+//        `на_складе`. Эффект начального статуса (D-18, `statusIdByCode(
+//        presetStatusCode)`) и `onPickGroup`-присваивание вне эффекта —
+//        легальны и целевыми не считаются;
+//   (D1) каждый целевой эффект обязан ДО своего присваивания читать
+//        `membershipLoaded`, `storageIntent` и `isEdit`;
+//   (D2) `storageIntent = true` — не менее двух раз (место и чекбокс) и ни
+//        разу внутри `$effect` (иначе эффект включает собственное условие);
+//   (D3) `membershipLoaded = true` — не менее двух раз (then и catch запроса
+//        членства) и ни разу внутри `$effect`;
+//   (D4) вне `$effect` нет присваивания `statusId`, в правой части которого
+//        есть `storageId` (обход целевого эффекта обработчиком).
+// Счётная часть правила слепа к ПОРЯДКУ, поэтому в (D1) имена ищутся только
+// в тексте блока ДО присваивания: `void membershipLoaded` после него не спасает.
 //
 // Zero-dependency: только node:fs/node:path/node:url.
 //
@@ -183,9 +206,24 @@ function hasBareInventoryCond(squashedBody) {
  * Чистая функция сканирования: принимает уже прочитанный исходник, не трогает
  * fs. Переиспользуется и реальным сканированием файла, и self-testом.
  */
-function scanSource(relPath, rawSrc, violations) {
+function scanSource(relPath, rawSrc, violations, rules = ['Q', 'S']) {
   const src = stripJsComments(rawSrc);
+  if (rules.includes('Q')) scanQuantityRules(relPath, src, violations);
+  if (rules.includes('S')) scanStorageStatusRules(relPath, src, violations);
+}
 
+/** Собирает диапазоны всех `$effect(...)` в тексте без комментариев. */
+function collectEffects(src) {
+  const effects = [];
+  for (let i = src.indexOf('$effect'); i !== -1; i = src.indexOf('$effect', i + 1)) {
+    const block = extractBalanced(src, i, '(', ')');
+    if (block) effects.push(block);
+  }
+  return effects;
+}
+
+/** Правила (A)-(C): инвариант NEW-3 (количество и инвентарный номер). */
+function scanQuantityRules(relPath, src, violations) {
   // --- (A) quantityDisabled ------------------------------------------------
   const derivedIdx = src.indexOf('quantityDisabled = $derived');
   if (derivedIdx === -1) {
@@ -217,11 +255,7 @@ function scanSource(relPath, rawSrc, violations) {
 
   // --- (B) сброс quantity = 1 ---------------------------------------------
   // Собираем тела всех $effect(...) с их диапазонами.
-  const effects = [];
-  for (let i = src.indexOf('$effect'); i !== -1; i = src.indexOf('$effect', i + 1)) {
-    const block = extractBalanced(src, i, '(', ')');
-    if (block) effects.push(block);
-  }
+  const effects = collectEffects(src);
   const resetRe = /\bquantity\s*=\s*1\b/g;
   let m;
   while ((m = resetRe.exec(src)) !== null) {
@@ -286,6 +320,81 @@ function scanSource(relPath, rawSrc, violations) {
   }
 }
 
+// Сколько целевых эффектов нашёл последний прогон (для вывода PASS).
+const STATS = { targets: 0 };
+const STATUS_ASSIGN_RE = /\bstatusId\s*=(?!=)/;
+const STORAGE_REQUIRED_NAMES = ['membershipLoaded', 'storageIntent', 'isEdit'];
+
+/** Правило (D): эффект автостатуса склада (WR-01 фазы 41.1). */
+function scanStorageStatusRules(relPath, src, violations) {
+  const effects = collectEffects(src);
+  const inAnyEffect = (idx) => effects.some((e) => idx > e.start && idx < e.end);
+
+  // --- (D0)/(D1) целевые эффекты ------------------------------------------
+  const targets = effects.filter(
+    (e) => STATUS_ASSIGN_RE.test(e.body) && /\bstorageId\b|на_складе/.test(e.body),
+  );
+  STATS.targets = targets.length;
+  if (targets.length === 0) {
+    violations.push(
+      `${relPath}: (D0) не найден ни один $effect, присваивающий \`statusId =\` и связанный со ` +
+        `складом (storageId / на_складе) — гейт WR-01 нечего проверять. Если эффект переименован ` +
+        `или переписан, обнови гейт вместе с ним, а не удаляй проверку.`,
+    );
+  }
+  for (const e of targets) {
+    const assign = STATUS_ASSIGN_RE.exec(e.body);
+    const before = e.body.slice(0, assign.index);
+    const missing = STORAGE_REQUIRED_NAMES.filter((n) => !new RegExp(`\\b${n}\\b`).test(before));
+    if (missing.length > 0) {
+      violations.push(
+        `${relPath}:${lineAt(src, e.start + 1 + assign.index)}: (D1) $effect автостатуса склада не ` +
+          `читает ${missing.join(', ')} до присваивания statusId — при правке он снова молча ` +
+          `перезапишет статус (WR-01: якорь разбора «На списание» получал «На складе»).`,
+      );
+    }
+  }
+
+  // --- (D2)/(D3) записи флагов только в обработчиках ----------------------
+  for (const [name, rule, where] of [
+    ['storageIntent', 'D2', 'в обработчиках места и чекбокса'],
+    ['membershipLoaded', 'D3', 'в ветках then и catch запроса членства'],
+  ]) {
+    const re = new RegExp(`\\b${name}\\s*=\\s*true\\b`, 'g');
+    let outside = 0;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      if (inAnyEffect(m.index)) {
+        violations.push(
+          `${relPath}:${lineAt(src, m.index)}: (${rule}) \`${name} = true\` внутри $effect — ` +
+            `эффект включал бы собственное условие; запись допустима только ${where}.`,
+        );
+      } else {
+        outside++;
+      }
+    }
+    if (outside < 2) {
+      violations.push(
+        `${relPath}: (${rule}) \`${name} = true\` найдено вне $effect ${outside} раз, нужно не ` +
+          `менее 2 (${where}).`,
+      );
+    }
+  }
+
+  // --- (D4) обход целевого эффекта обработчиком ---------------------------
+  const assignRe = /\bstatusId\s*=(?!=)([^;\n]*)/g;
+  let a;
+  while ((a = assignRe.exec(src)) !== null) {
+    if (inAnyEffect(a.index)) continue;
+    if (/\bstorageId\b/.test(a[1])) {
+      violations.push(
+        `${relPath}:${lineAt(src, a.index)}: (D4) \`statusId = …storageId…\` вне $effect — ` +
+          `автостатус склада в обход охран эффекта (membershipLoaded / storageIntent).`,
+      );
+    }
+  }
+}
+
 /** Тонкая обёртка: читает файл через fs и вызывает scanSource. */
 function checkFile(root, relPath, violations) {
   const abs = path.join(root, relPath);
@@ -315,13 +424,46 @@ const CLEAN_BULK = `const newDevice: DeviceNew = {
           await devices.bulkCreate(newDevice, qty);`;
 const CLEAN = `${CLEAN_DERIVED}\n${CLEAN_EFFECT}\n${CLEAN_BULK}\n`;
 
+// --- Фикстуры правила (D) -------------------------------------------------
+const S_COND =
+  '!readonly && membershipLoaded && (!isEdit || storageIntent) && !lockedByGroup && ' +
+  'isStoragePlace && storageStatusSuggested && storageId !== null';
+const sEffect = (cond, assign = 'statusId = String(storageId);') => `$effect(() => {
+    const storageId = statusIdByCode('на_складе');
+    if (${cond}) {
+      ${assign}
+    }
+  });`;
+// Эффект начального статуса (D-18): легален, целевым не считается.
+const S_INIT_EFFECT = `$effect(() => {
+    if (presetStatusApplied || target !== null || !presetStatusCode) return;
+    const id = statusIdByCode(presetStatusCode);
+    if (id === null) return;
+    presetStatusApplied = true;
+    statusId = String(id);
+  });`;
+// Присваивание вне эффекта по явному выбору пользователя: легально.
+const S_ON_PICK = `<Dropdown onPickGroup={(o) => (statusId = String(o.id))} />`;
+const S_HANDLERS = `<PlacePicker onChange={(id) => { placeId = id; storageIntent = true; }} />
+  <Checkbox onchange={(c) => { storageStatusSuggested = c; storageIntent = true; }} />`;
+const S_MOUNT = `onMount(() => {
+    groups.forDevices([1]).then((rows) => { membership = rows[0]; membershipLoaded = true; })
+      .catch(() => { membership = null; membershipLoaded = true; });
+  });`;
+const S_TAIL = `${S_HANDLERS}\n${S_MOUNT}\n`;
+const S_CLEAN = `${sEffect(S_COND)}\n${S_TAIL}`;
+const S_CLEAN_FULL = `${S_INIT_EFFECT}\n${S_CLEAN}\n${S_ON_PICK}\n`;
+const dropName = (cond, re) => cond.replace(re, '');
+
 /**
- * Встроенный self-test: 9 фикстур в памяти (без временных файлов) — 6
- * позитивных (все известные формы возврата CR-01/NEW-3) + 3 негативных
- * (корректная разводка и её допустимые варианты).
+ * Встроенный self-test: фикстуры в памяти (без временных файлов). Правила
+ * (A)-(C) — 9 фикстур; правило (D) — зелёные базисы, до-фиксовый эффект,
+ * мутанты формы присваивания, пропажи имён, порядка и записей флагов.
  */
 function runSelfTest() {
+  const D = ['S'];
   const fixtures = [
+    ...storageFixtures(D),
     {
       name: "CR-01 буквально: $effect на голом inventoryNo.trim() !== ''",
       src:
@@ -409,7 +551,7 @@ function runSelfTest() {
   let failed = 0;
   for (const f of fixtures) {
     const v = [];
-    scanSource('fixture.svelte', f.src, v);
+    scanSource('fixture.svelte', f.src, v, f.rules ?? ['Q']);
     const ok = v.length === f.expectViolations;
     console.error(
       `${TAG} [selftest] ${ok ? 'PASS' : 'FAIL'} — ${f.name} (expected ${f.expectViolations}, got ${v.length})`,
@@ -426,6 +568,154 @@ function runSelfTest() {
   }
   console.error(`${TAG} [selftest] PASS — все ${fixtures.length} фикстур совпали с ожиданием.`);
   return true;
+}
+
+function storageFixtures(D) {
+  const preFix = sEffect(
+    '!readonly && !lockedByGroup && isStoragePlace && storageStatusSuggested && storageId !== null',
+  );
+  return [
+    {
+      name: '(D) корректный эффект + обработчики (негатив)',
+      src: S_CLEAN,
+      rules: D,
+      expectViolations: 0,
+    },
+    {
+      name: '(D) корректный эффект + эффект начального статуса + onPickGroup (негатив, легальные присваивания)',
+      src: S_CLEAN_FULL,
+      rules: D,
+      expectViolations: 0,
+    },
+    {
+      name: '(D) весь файл: правила (A)-(C) и (D) вместе (негатив)',
+      src: `${CLEAN}\n${S_CLEAN_FULL}`,
+      rules: ['Q', 'S'],
+      expectViolations: 0,
+    },
+    {
+      name: '(D) шаблонная строка вместо String(), имена на месте (негатив: форма присваивания не важна)',
+      src: `${sEffect(S_COND, 'statusId = `${storageId}`;')}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 0,
+    },
+    {
+      name: "(D) цель найдена по 'на_складе', а не по storageId (негатив)",
+      src: `$effect(() => {
+        if (${S_COND.replace('storageId !== null', 'true')}) {
+          statusId = String(statusIdByCode('на_складе'));
+        }
+      });\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 0,
+    },
+    {
+      name: '(D) ДО-ФИКС буквально: условие без membershipLoaded/storageIntent/isEdit',
+      src: `${preFix}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D) до-фиксовое условие, шаблонная строка вместо String() — форма не даёт молчаливого пропуска',
+      src: `${sEffect(
+        '!readonly && !lockedByGroup && isStoragePlace && storageStatusSuggested && storageId !== null',
+        'statusId = `${storageId}`;',
+      )}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D) до-фиксовый эффект, но комментарий цитирует все три имени',
+      src: `// membershipLoaded storageIntent isEdit — так было бы правильно\n${preFix}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D0) из эффекта убрано присваивание statusId',
+      src: `${sEffect(S_COND, 'void storageId;')}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D0)+(D4) присваивание вынесено из эффекта в обработчик',
+      src: `${sEffect(S_COND, 'void storageId;')}\n${S_TAIL}\n<X onclick={() => { statusId = String(storageId); }} />`,
+      rules: D,
+      expectViolations: 2,
+    },
+    {
+      name: '(D4) лишнее присваивание statusId = …storageId… в обработчике при целом эффекте',
+      src: `${S_CLEAN}\n<X onclick={() => { statusId = String(storageId); }} />`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) в условии нет membershipLoaded',
+      src: `${sEffect(dropName(S_COND, /membershipLoaded && /))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) в условии нет storageIntent',
+      src: `${sEffect(dropName(S_COND, /\(!isEdit \|\| storageIntent\) && /))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) в условии нет isEdit',
+      src: `${sEffect(S_COND.replace('(!isEdit || storageIntent)', 'storageIntent'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) имена прочитаны ПОСЛЕ присваивания (охрана после действия)',
+      src: `$effect(() => {
+        const storageId = statusIdByCode('на_складе');
+        if (!readonly && !lockedByGroup && isStoragePlace && storageStatusSuggested && storageId !== null) {
+          statusId = String(storageId);
+        }
+        void membershipLoaded; void storageIntent; void isEdit;
+      });\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D2) storageIntent = true в $effect сверх двух обработчиков',
+      src: `${S_CLEAN}\n$effect(() => { if (isStoragePlace) storageIntent = true; });`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D2) одна из записей storageIntent перенесена в $effect',
+      src: `${sEffect(S_COND, 'statusId = String(storageId); storageIntent = true;')}
+        <PlacePicker onChange={(id) => { placeId = id; storageIntent = true; }} />
+        <Checkbox onchange={(c) => { storageStatusSuggested = c; }} />
+        ${S_MOUNT}`,
+      rules: D,
+      expectViolations: 2,
+    },
+    {
+      name: '(D2) единственная запись storageIntent (чекбокс не пишет)',
+      src: `${sEffect(S_COND)}
+        <PlacePicker onChange={(id) => { placeId = id; storageIntent = true; }} />
+        <Checkbox onchange={(c) => { storageStatusSuggested = c; }} />
+        ${S_MOUNT}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D3) единственная запись membershipLoaded (catch не пишет)',
+      src: `${sEffect(S_COND)}\n${S_HANDLERS}
+        onMount(() => { groups.forDevices([1]).then(() => { membershipLoaded = true; }).catch(() => {}); });`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D3) membershipLoaded = true внутри $effect',
+      src: `${S_CLEAN}\n$effect(() => { membershipLoaded = true; });`,
+      rules: D,
+      expectViolations: 1,
+    },
+  ];
 }
 
 function main() {
@@ -454,7 +744,7 @@ function main() {
     process.exit(1);
   }
 
-  console.error(`${TAG} PASS — 0 нарушений`);
+  console.error(`${TAG} PASS — 0 нарушений (целевых эффектов автостатуса: ${STATS.targets})`);
   process.exit(0);
 }
 
