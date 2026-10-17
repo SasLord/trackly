@@ -42,6 +42,18 @@
 //       в полном режиме каждая запись обязана совпасть хотя бы с одним файлом
 //       (устаревшее освобождение молча глушило бы гейт).
 //
+//   [F] карта тонов и места вызова Badge (план 41.1-30, GRD-04; решение
+//       2026-10-17 отменило R-06: все шесть статусов — soft-чипы, ожидающий
+//       статус отличается от действующего яркостью, а не формой):
+//       [F1] литерал TONES в сторе разобран, ключи — ровно шесть кодов;
+//       [F2] ни одна запись не `appearance: 'dot'`;
+//       [F3] `muted: true` ровно у на_ремонте и на_списание;
+//       [F4] пары на_ремонте/в_ремонте и на_списание/списано делят variant;
+//       [F5] КАЖДЫЙ открывающий тег `<Badge`, где в файле-импортёре statusTone
+//            встречается `tone`/`statusTone(`/спред, несёт variant, appearance
+//            и muted из ОДНОГО источника; инвентарь выводится обходом, а не
+//            списком; [F5-vacuous] — мало проверенных тегов/файлов, гейт пуст.
+//
 // Список проверяемых файлов ВЫВОДИТСЯ обходом src/**/*.svelte и src/**/*.ts
 // (кроме сгенерированного src/bindings.ts) — ничего не перечислено вручную,
 // поэтому новый экран с хардкодом не может остаться незамеченным. Освободить
@@ -82,6 +94,20 @@ const GENERATED = new Set(['src/bindings.ts']);
 const MIN_CONSUMERS = 9;
 const SELFTEST_MIN_CONSUMERS = 3;
 const MIN_EXEMPT = 7;
+// Нижняя граница инвентаря [F5]: сегодня пять мест вызова в пяти файлах
+// (DeviceListRow, DeviceGroupRow, PlaceContents, GroupContentsTable,
+// GroupAddDevicesModal). Меньше — правило проверяет пустоту.
+const MIN_STATUS_BADGES = 5;
+const MIN_STATUS_BADGE_FILES = 5;
+const SELFTEST_MIN_STATUS_BADGES = 2;
+const SELFTEST_MIN_STATUS_BADGE_FILES = 2;
+const STORE_PATH = 'src/lib/stores/deviceStatuses.svelte.ts';
+const TONE_CODES = ['на_складе', 'в_работе', 'на_ремонте', 'в_ремонте', 'на_списание', 'списано'];
+const MUTED_CODES = ['на_ремонте', 'на_списание'];
+const TONE_PAIRS = [
+  ['на_ремонте', 'в_ремонте', 'warning'],
+  ['на_списание', 'списано', 'destructive'],
+];
 const SELFTEST_MIN_EXEMPT = 2;
 
 const STATUS_WORDS = [
@@ -408,6 +434,28 @@ function scanSources(files, opts, violations) {
     }
   }
 
+  // --- F ----------------------------------------------------------------------
+  if (!scope) checkToneMap(files, add);
+  let badgeTags = 0;
+  let badgeFiles = 0;
+  for (const [file, src] of files) {
+    if (GENERATED.has(file) || !inScope(file)) continue;
+    const n = checkStatusBadges(file, src, add);
+    badgeTags += n;
+    if (n > 0) badgeFiles++;
+  }
+  if (opts.stats) Object.assign(opts.stats, { badgeTags, badgeFiles });
+  const minTags = opts.minStatusBadges ?? MIN_STATUS_BADGES;
+  const minFiles = opts.minStatusBadgeFiles ?? MIN_STATUS_BADGE_FILES;
+  if (!scope && (badgeTags < minTags || badgeFiles < minFiles)) {
+    add(
+      'src',
+      0,
+      'F5-vacuous',
+      `проверено ${badgeTags} тегов Badge статуса в ${badgeFiles} файлах, ожидается не меньше ${minTags} в ${minFiles} — правило проверяет пустоту.`,
+    );
+  }
+
   // --- D ----------------------------------------------------------------------
   if (!scope && consumers < minConsumers) {
     add(
@@ -417,6 +465,201 @@ function scanSources(files, opts, violations) {
       `стор ${STORE_IMPORT} импортируют ${consumers} файлов, ожидается не меньше ${minConsumers} — справочник никто не читает.`,
     );
   }
+}
+
+/** Индекс закрывающей скобки для `{` в позиции open; строки внутри пропускаются. */
+function readBalanced(s, open) {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"' || c === "'" || c === '`') {
+      const j = s.indexOf(c, i + 1);
+      if (j < 0) return -1;
+      i = j;
+      continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** Конец открывающего тега `<Badge …>` (индекс `>` на нулевой глубине) или -1. */
+function findTagEnd(markup, start) {
+  for (let i = start + '<Badge'.length; i < markup.length; i++) {
+    const c = markup[i];
+    if (c === '{') {
+      const end = readBalanced(markup, i);
+      if (end < 0) return -1;
+      i = end;
+    } else if (c === '"' || c === "'") {
+      const j = markup.indexOf(c, i + 1);
+      if (j < 0) return -1;
+      i = j;
+    } else if (c === '>') return i;
+  }
+  return -1;
+}
+
+/** Атрибуты верхнего уровня тега: Map имя -> { kind: 'expr' | 'str', value }, и признак спреда. */
+function parseBadgeAttrs(tag) {
+  const attrs = new Map();
+  let spread = false;
+  let i = '<Badge'.length;
+  while (i < tag.length) {
+    if (tag[i] === '{') {
+      const end = readBalanced(tag, i);
+      if (end < 0) break;
+      if (/^\{\s*\.\.\./.test(tag.slice(i, end + 1))) spread = true;
+      i = end + 1;
+      continue;
+    }
+    const m = /^([\w:-]+)\s*=\s*/.exec(tag.slice(i));
+    if (m && /\s/.test(tag[i - 1] ?? ' ')) {
+      i += m[0].length;
+      const v = tag[i];
+      if (v === '{') {
+        const end = readBalanced(tag, i);
+        if (end < 0) break;
+        attrs.set(m[1], { kind: 'expr', value: tag.slice(i + 1, end) });
+        i = end + 1;
+      } else if (v === '"' || v === "'") {
+        const end = tag.indexOf(v, i + 1);
+        if (end < 0) break;
+        attrs.set(m[1], { kind: 'str', value: tag.slice(i + 1, end) });
+        i = end + 1;
+      } else {
+        const t = /^[^\s>]*/.exec(tag.slice(i))[0];
+        attrs.set(m[1], { kind: 'str', value: t });
+        i += t.length;
+      }
+      continue;
+    }
+    i++;
+  }
+  return { attrs, spread };
+}
+
+/** Правила F1-F4: литерал TONES в сторе. */
+function checkToneMap(files, add) {
+  const src = files.get(STORE_PATH);
+  if (src === undefined) {
+    add(STORE_PATH, 0, 'F1', 'файл стора не найден — карта тонов не проверена.');
+    return;
+  }
+  const code = stripComments(src);
+  const decl = /\bconst\s+TONES\b[^=]*=\s*\{/.exec(code);
+  if (!decl) {
+    add(STORE_PATH, 0, 'F1', 'литерал `const TONES = { … }` не найден.');
+    return;
+  }
+  const open = decl.index + decl[0].length - 1;
+  const end = readBalanced(code, open);
+  if (end < 0) {
+    add(STORE_PATH, 0, 'F1', 'литерал TONES не закрыт.');
+    return;
+  }
+  const body = code.slice(open + 1, end);
+  const entries = new Map();
+  const re = /(?:^|[,{\s])(['"]?)([\p{L}\p{N}_$]+)\1\s*:\s*\{([^{}]*)\}/gu;
+  for (const m of body.matchAll(re)) {
+    const text = m[3];
+    entries.set(m[2], {
+      variant: /\bvariant\s*:\s*['"](\w+)['"]/.exec(text)?.[1] ?? null,
+      appearance: /\bappearance\s*:\s*['"](\w+)['"]/.exec(text)?.[1] ?? null,
+      muted: /\bmuted\s*:\s*true\b/.test(text),
+      line: lineOf(code, open + 1 + m.index),
+    });
+  }
+  for (const c of TONE_CODES) {
+    if (!entries.has(c)) add(STORE_PATH, 0, 'F1', `в карте TONES нет кода «${c}».`);
+  }
+  for (const c of entries.keys()) {
+    if (!TONE_CODES.includes(c)) add(STORE_PATH, 0, 'F1', `в карте TONES лишний код «${c}».`);
+  }
+  for (const [c, e] of entries) {
+    if (e.appearance === 'dot') {
+      add(STORE_PATH, e.line, 'F2', `«${c}» — appearance: 'dot'; все шесть статусов — soft-чипы.`);
+    }
+    if (!TONE_CODES.includes(c)) continue;
+    const want = MUTED_CODES.includes(c);
+    if (e.muted !== want) {
+      add(
+        STORE_PATH,
+        e.line,
+        'F3',
+        want
+          ? `у «${c}» нет muted: true — ожидающий статус сольётся с действующим.`
+          : `у «${c}» стоит muted: true — приглушён должен быть только ожидающий статус.`,
+      );
+    }
+  }
+  for (const [a, b, variant] of TONE_PAIRS) {
+    const ea = entries.get(a);
+    const eb = entries.get(b);
+    if (!ea || !eb) continue;
+    if (ea.variant !== variant || eb.variant !== variant) {
+      add(
+        STORE_PATH,
+        ea.line,
+        'F4',
+        `пара «${a}»/«${b}» должна делить variant '${variant}' (сейчас ${ea.variant}/${eb.variant}); различие пары — только muted.`,
+      );
+    }
+  }
+}
+
+/** Правило F5 для одного файла: возвращает число проверенных тегов. */
+function checkStatusBadges(file, src, add) {
+  if (!file.endsWith('.svelte') || file === STORE_PATH) return 0;
+  const { script, markup } = splitSvelte(src);
+  const imp =
+    /import\s*\{[^}]*\bstatusTone\b[^}]*\}\s*from\s*['"]\$lib\/stores\/deviceStatuses\.svelte['"]/;
+  if (!imp.test(script)) return 0;
+  let checked = 0;
+  for (const m of markup.matchAll(/<Badge\b/g)) {
+    const end = findTagEnd(markup, m.index);
+    if (end < 0) continue;
+    const tag = markup.slice(m.index, end + 1);
+    if (!/\btone\b/.test(tag) && !/statusTone\(/.test(tag)) continue;
+    checked++;
+    const line = lineOf(markup, m.index);
+    const { attrs, spread } = parseBadgeAttrs(tag);
+    if (spread) {
+      add(file, line, 'F5', 'спред {...} на Badge статуса — форма не поддаётся проверке.');
+      continue;
+    }
+    const norm = (name, suffix) => {
+      const a = attrs.get(name);
+      if (!a || a.kind !== 'expr') return null;
+      const v = a.value.replace(/\s+/g, '');
+      return v.endsWith(suffix) ? v.slice(0, -suffix.length) : null;
+    };
+    const sources = {
+      variant: norm('variant', '.variant'),
+      appearance: norm('appearance', '.appearance'),
+      muted: norm('muted', '.muted'),
+    };
+    const missing = Object.keys(sources).filter((k) => sources[k] === null);
+    if (missing.length > 0) {
+      add(
+        file,
+        line,
+        'F5',
+        `Badge статуса: нет ${missing.join(', ')} из источника тона (ожидается ${missing.map((k) => `${k}={<источник>.${k}}`).join(', ')}).`,
+      );
+      continue;
+    }
+    if (sources.variant !== sources.appearance || sources.variant !== sources.muted) {
+      add(
+        file,
+        line,
+        'F5',
+        `Badge статуса: variant/appearance/muted берутся из разных источников (${sources.variant} / ${sources.appearance} / ${sources.muted}).`,
+      );
+    }
+  }
+  return checked;
 }
 
 function walk(dir, out = []) {
@@ -438,9 +681,11 @@ function checkRepo(root, scope, violations) {
   for (const abs of walk(srcDir)) {
     files.set(path.relative(root, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
   }
+  const stats = {};
   scanSources(
     files,
     {
+      stats,
       scope,
       exempt: EXEMPT,
       ruleExempt: RULE_EXEMPT,
@@ -449,6 +694,11 @@ function checkRepo(root, scope, violations) {
     },
     violations,
   );
+  if (stats.badgeTags !== undefined) {
+    console.error(
+      `${TAG} [F5] проверено тегов Badge статуса: ${stats.badgeTags} в файлах: ${stats.badgeFiles}`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -468,7 +718,7 @@ const CLEAN_ROW = `<script lang="ts">
 </script>
 
 <!-- раньше: STATUS_VARIANT_BY_NAME = { 'На складе': 'default' } -->
-<Badge variant={tone.variant} appearance={tone.appearance}>{label}</Badge>
+<Badge variant={tone.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>
 `;
 
 const CLEAN_FILTERS = `<script lang="ts">
@@ -509,14 +759,45 @@ const CLEAN_PLACES = `<script lang="ts">
   };
   const { row } = $props();
   const cv = CARTRIDGE_STATUS_VARIANT_BY_NAME[row.status_name] ?? 'default';
-  const tone = $derived(statusTone(row.status_code));
 </script>
 
 {#if row.kind === 'cartridge'}
   <Badge variant={cv}>{row.status_name}</Badge>
 {:else}
-  <Badge variant={tone.variant} appearance={tone.appearance}>{row.status_name}</Badge>
+  <Badge
+    variant={statusTone(row.status_code).variant}
+    appearance={statusTone(row.status_code).appearance}
+    muted={statusTone(row.status_code).muted}>{row.status_name}</Badge
+  >
 {/if}
+`;
+
+// Стор: единственная таблица тонов (правила F1-F4).
+const CLEAN_STORE = `// Тоны по code статуса: все шесть — soft-чипы, ожидающие приглушены.
+export interface StatusTone {
+  variant: string;
+  appearance: string;
+  muted?: boolean;
+}
+const TONES: Record<string, StatusTone> = {
+  на_складе: { variant: 'default', appearance: 'soft' },
+  в_работе: { variant: 'accent', appearance: 'soft' },
+  на_ремонте: { variant: 'warning', appearance: 'soft', muted: true },
+  в_ремонте: { variant: 'warning', appearance: 'soft' },
+  на_списание: { variant: 'destructive', appearance: 'soft', muted: true },
+  списано: { variant: 'destructive', appearance: 'soft' },
+};
+export const statusTone = (code: string) => TONES[code];
+`;
+
+const MILESTONE_ROW = `<script lang="ts">
+  import Badge from '$lib/components/Badge.svelte';
+  import { statusTone } from '${STORE_IMPORT}';
+  const milestone = { variant: 'default' };
+  const unused = statusTone;
+</script>
+
+<Badge variant={milestone.variant}>этап</Badge>
 `;
 
 const PATH_PLACES = 'src/features/places/Contents.svelte';
@@ -552,6 +833,7 @@ function fixtureFiles(over = {}) {
     [PATH_REQUEST, over.request ?? REQUEST_ROW],
     [PATH_SHOWCASE, over.showcase ?? SHOWCASE],
     [PATH_PLACES, over.places ?? CLEAN_PLACES],
+    [STORE_PATH, over.store ?? CLEAN_STORE],
     ...(over.extra ?? []),
   ]);
 }
@@ -562,6 +844,8 @@ const SELF_OPTS = {
   ruleExempt: SELF_RULE_EXEMPT,
   minConsumers: SELFTEST_MIN_CONSUMERS,
   minExempt: SELFTEST_MIN_EXEMPT,
+  minStatusBadges: SELFTEST_MIN_STATUS_BADGES,
+  minStatusBadgeFiles: SELFTEST_MIN_STATUS_BADGE_FILES,
 };
 
 function runSelfTest() {
@@ -666,7 +950,8 @@ function runSelfTest() {
         row: mutate(CLEAN_ROW, `import { statusLabel, statusTone } from '${STORE_IMPORT}';`, ''),
         filters: mutate(CLEAN_FILTERS, `import { orderedStatuses } from '${STORE_IMPORT}';`, ''),
       }),
-      codes: ['D'],
+      // Остался один экран с Badge статуса: инвентарь [F5] тоже ниже границы.
+      codes: ['D', 'F5-vacuous'],
     });
     fixtures.push({
       name: 'M9 [E] пустая таблица освобождений (форма заявок перестаёт быть освобождённой)',
@@ -843,6 +1128,154 @@ function runSelfTest() {
       }),
       codes: ['B', 'E'],
     });
+
+    // --- Правило F: карта тонов и места вызова Badge -------------------------
+    const ROW_TAG =
+      '<Badge variant={tone.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>';
+    const PLACES_MUTED = '    muted={statusTone(row.status_code).muted}>{row.status_name}</Badge\n';
+    fixtures.push({
+      name: 'F-pos [F5] слово milestone не принимается за tone (граница слова): Badge без tone не проверяется',
+      files: fixtureFiles({
+        extra: [['src/features/devices/Milestone.svelte', MILESTONE_ROW]],
+      }),
+      codes: [],
+    });
+    fixtures.push({
+      name: "M24 [F2] appearance: 'dot' возвращён в на_ремонте",
+      files: fixtureFiles({
+        store: mutate(
+          CLEAN_STORE,
+          "  на_ремонте: { variant: 'warning', appearance: 'soft', muted: true },",
+          "  на_ремонте: { variant: 'warning', appearance: 'dot', muted: true },",
+        ),
+      }),
+      codes: ['F2'],
+    });
+    fixtures.push({
+      name: 'M25 [F3] muted снят у на_списание',
+      files: fixtureFiles({
+        store: mutate(
+          CLEAN_STORE,
+          "  на_списание: { variant: 'destructive', appearance: 'soft', muted: true },",
+          "  на_списание: { variant: 'destructive', appearance: 'soft' },",
+        ),
+      }),
+      codes: ['F3'],
+    });
+    fixtures.push({
+      name: 'M26 [F3] muted поставлен действующему в_ремонте',
+      files: fixtureFiles({
+        store: mutate(
+          CLEAN_STORE,
+          "  в_ремонте: { variant: 'warning', appearance: 'soft' },",
+          "  в_ремонте: { variant: 'warning', appearance: 'soft', muted: true },",
+        ),
+      }),
+      codes: ['F3'],
+    });
+    fixtures.push({
+      name: "M27 [F4] variant у списано заменён на 'warning'",
+      files: fixtureFiles({
+        store: mutate(
+          CLEAN_STORE,
+          "  списано: { variant: 'destructive', appearance: 'soft' },",
+          "  списано: { variant: 'warning', appearance: 'soft' },",
+        ),
+      }),
+      codes: ['F4'],
+    });
+    fixtures.push({
+      name: 'M28 [F1] шестой код (списано) удалён из карты',
+      files: fixtureFiles({
+        store: mutate(
+          CLEAN_STORE,
+          "  списано: { variant: 'destructive', appearance: 'soft' },\n",
+          '',
+        ),
+      }),
+      codes: ['F1'],
+    });
+    fixtures.push({
+      name: 'M29 [F5] у Badge в строке списка удалён muted={tone.muted}',
+      files: fixtureFiles({
+        row: mutate(
+          CLEAN_ROW,
+          ROW_TAG,
+          '<Badge variant={tone.variant} appearance={tone.appearance}>{label}</Badge>',
+        ),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M30 [F5] в «Местах» muted из чужого источника (tone.muted вместо statusTone(row.status_code).muted)',
+      files: fixtureFiles({
+        places: mutate(
+          CLEAN_PLACES,
+          '    muted={statusTone(row.status_code).muted}>',
+          '    muted={tone.muted}>',
+        ),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_PLACES,
+    });
+    fixtures.push({
+      name: 'M31 [F5] тег с variant от statusTone без appearance и без muted',
+      files: fixtureFiles({
+        row: mutate(
+          CLEAN_ROW,
+          ROW_TAG,
+          ROW_TAG + '\n<Badge variant={statusTone(device.status_code).variant}>{label}</Badge>',
+        ),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M32 [F5] тег со спредом {...tone}',
+      files: fixtureFiles({
+        row: mutate(CLEAN_ROW, ROW_TAG, '<Badge {...tone}>{label}</Badge>'),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M33 [F5] muted литералом muted={true} вместо источника тона',
+      files: fixtureFiles({
+        row: mutate(
+          CLEAN_ROW,
+          ROW_TAG,
+          '<Badge variant={tone.variant} appearance={tone.appearance} muted={true}>{label}</Badge>',
+        ),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M34 [F5-vacuous] ни одного Badge от statusTone (импорты остались, теги заменены)',
+      files: fixtureFiles({
+        row: mutate(CLEAN_ROW, ROW_TAG, '<span>{label}</span>'),
+        places: mutate(
+          mutate(
+            CLEAN_PLACES,
+            '    variant={statusTone(row.status_code).variant}\n    appearance={statusTone(row.status_code).appearance}\n',
+            '',
+          ),
+          PLACES_MUTED,
+          '    >{row.status_name}</Badge\n',
+        ),
+      }),
+      codes: ['F5-vacuous'],
+    });
+    fixtures.push({
+      name: 'M35 [F1] файл стора отсутствует в дереве',
+      files: (() => {
+        const f = fixtureFiles();
+        f.delete(STORE_PATH);
+        return f;
+      })(),
+      codes: ['F1'],
+    });
   } catch (e) {
     console.error(`${TAG} [selftest] FAIL — ${e.message}`);
     return false;
@@ -852,7 +1285,7 @@ function runSelfTest() {
   for (const f of fixtures) {
     const v = [];
     scanSources(f.files, f.opts ?? SELF_OPTS, v);
-    const codeOf = (line) => /— \[([A-E])\]/.exec(line)?.[1];
+    const codeOf = (line) => /— \[([A-F][\w-]*)\]/.exec(line)?.[1];
     const got = new Set(v.map(codeOf));
     let ok;
     let expected;
