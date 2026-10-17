@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-17T21:05:22.182Z"
+last_updated: "2026-10-17T21:05:27.385Z"
 last_activity: 2026-10-17
 progress:
   total_phases: 24
@@ -603,6 +603,7 @@ Last activity: 2026-10-17
 | Phase 41.1 P25 | 30min | 2 tasks | 2 files |
 | Phase 41.1 P27 | 75min | 2 tasks | 5 files |
 | Phase 41.1 P28 | 25min | 2 tasks | 4 files |
+| Phase 41.1 P30 | 40min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1315,6 +1316,7 @@ Recent decisions affecting current work:
 - [Phase 41.1]: [41.1-23] Сброс white-space/text-align/cursor на корне Modal (.modal-backdrop), не заплатками в потомках; .confirm-body не тронут
 - [Phase 41.1-24]: Кеш детей псевдогруппы валиден по ключу состава group.ids (groupIdsKey), не по сравнению с результатом listByIds (лимит 1000); загрузка одним effect, state пишется после await
 - [Phase 41.1]: [41.1-28] Приглушённый статус: различие несёт альфа soft-фона (0.5 от активной); константы гейта R1/R2 не ослаблялись
+- [Phase 41.1-30]: R-06 отменён: шесть статусов soft-чипы, пара различается muted; гейт F5 охраняет каждое место вызова Badge
 
 ### Pending Todos
 
@@ -1517,8 +1519,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-17T21:05:22.172Z
-Stopped at: Completed 41.1-26-PLAN.md
+Last session: 2026-10-17T21:05:27.375Z
+Stopped at: Completed 41.1-30-PLAN.md
 Resume file: None
 
 None
