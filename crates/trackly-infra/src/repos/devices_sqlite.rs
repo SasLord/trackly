@@ -751,6 +751,88 @@ impl SqliteDeviceRepository {
     }
 }
 
+/// COUNT по тому же предикату, что и `select_list_rows` (общий
+/// `LIST_FLAG_PREDICATES`), чтобы `total` и число строк не расходились.
+fn count_list_rows(conn: &Connection, filter: &DeviceFilter) -> Result<i64, AppError> {
+    // Phase 41.1 Plan 12: флаги якорных групп (opt-in, по умолчанию выключены).
+    let hide = filter.hide_anchor_members as i64;
+    let only = filter.anchors_only as i64;
+    let excl = filter.exclude_anchors as i64;
+    // Static SQL: LIST_FLAG_PREDICATES собран `concat!` из литералов, флаги и
+    // id группы идут параметрами ?6..?9. ?4/?5 (LIMIT/OFFSET) в COUNT не
+    // используются; индексы выровнены со SELECT, чтобы предикат был общим.
+    conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM devices d WHERE
+                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
+                   (?2 IS NULL OR d.status_id = ?2) AND
+                   (?3 IS NULL OR d.type_id = ?3) AND
+                   {LIST_FLAG_PREDICATES}"
+        ),
+        rusqlite::params![
+            filter.include_deleted as i64,
+            filter.status_id,
+            filter.type_id,
+            0_i64,
+            0_i64,
+            hide,
+            only,
+            excl,
+            filter.member_of_group_id
+        ],
+        |r| r.get(0),
+    )
+    .map_err(map_rusqlite)
+}
+
+/// SELECT списка устройств: `ORDER BY имя, id` (id — tie-break, чтобы равные имена
+/// не дублировались и не пропадали между страницами и выгрузка была детерминирована).
+fn select_list_rows(
+    conn: &Connection,
+    filter: &DeviceFilter,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<DeviceRow>, AppError> {
+    let hide = filter.hide_anchor_members as i64;
+    let only = filter.anchors_only as i64;
+    let excl = filter.exclude_anchors as i64;
+    let mut stmt = conn
+        .prepare(&format!(
+            "{SELECT_DEVICES} WHERE
+                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
+                   (?2 IS NULL OR d.status_id = ?2) AND
+                   (?3 IS NULL OR d.type_id = ?3) AND
+                   {LIST_FLAG_PREDICATES}
+                 ORDER BY d.name, d.id
+                 LIMIT ?4 OFFSET ?5"
+        ))
+        .map_err(map_rusqlite)?;
+
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
+    let rows = stmt
+        .query_map(
+            rusqlite::params![
+                filter.include_deleted as i64,
+                filter.status_id,
+                filter.type_id,
+                limit,
+                offset,
+                hide,
+                only,
+                excl,
+                filter.member_of_group_id
+            ],
+            from_row_with_short_path(&sep_ends, &sep_last_two),
+        )
+        .map_err(map_rusqlite)?;
+
+    let mut devices = Vec::new();
+    for row in rows {
+        devices.push(row.map_err(map_rusqlite)?);
+    }
+    Ok(devices)
+}
+
 impl DeviceRepository for SqliteDeviceRepository {
     type Conn = Connection;
 
@@ -809,83 +891,33 @@ impl DeviceRepository for SqliteDeviceRepository {
         filter: &DeviceFilter,
         page: &Pagination,
     ) -> Result<(Vec<DeviceRow>, u64), AppError> {
-        let include_deleted = filter.include_deleted;
-        let status_id = filter.status_id;
-        let type_id = filter.type_id;
-        // Phase 41.1 Plan 12: флаги якорных групп (opt-in, по умолчанию выключены).
-        let hide = filter.hide_anchor_members as i64;
-        let only = filter.anchors_only as i64;
-        let excl = filter.exclude_anchors as i64;
-        let member_of = filter.member_of_group_id;
         // T-02-03-05: max limit 200.
         let limit = (page.limit.min(200)) as i64;
         let offset = page.offset as i64;
-
-        // Static SQL: LIST_FLAG_PREDICATES собран `concat!` из литералов, флаги и
-        // id группы идут параметрами ?6..?9. COUNT и SELECT делят один предикат,
-        // поэтому `total` и число строк не расходятся.
-        let total: i64 = conn
-            .query_row(
-                &format!(
-                    "SELECT COUNT(*) FROM devices d WHERE
-                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
-                   (?2 IS NULL OR d.status_id = ?2) AND
-                   (?3 IS NULL OR d.type_id = ?3) AND
-                   {LIST_FLAG_PREDICATES}"
-                ),
-                rusqlite::params![
-                    include_deleted as i64,
-                    status_id,
-                    type_id,
-                    // ?4/?5 (LIMIT/OFFSET) в COUNT не используются; индексы
-                    // выровнены со SELECT, чтобы предикат был общим.
-                    limit,
-                    offset,
-                    hide,
-                    only,
-                    excl,
-                    member_of
-                ],
-                |r| r.get(0),
-            )
-            .map_err(map_rusqlite)?;
-
-        let mut stmt = conn
-            .prepare(&format!(
-                "{SELECT_DEVICES} WHERE
-                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
-                   (?2 IS NULL OR d.status_id = ?2) AND
-                   (?3 IS NULL OR d.type_id = ?3) AND
-                   {LIST_FLAG_PREDICATES}
-                 ORDER BY d.name
-                 LIMIT ?4 OFFSET ?5"
-            ))
-            .map_err(map_rusqlite)?;
-
-        let (sep_ends, sep_last_two) = read_path_display_separators(conn);
-        let rows = stmt
-            .query_map(
-                rusqlite::params![
-                    include_deleted as i64,
-                    status_id,
-                    type_id,
-                    limit,
-                    offset,
-                    hide,
-                    only,
-                    excl,
-                    member_of
-                ],
-                from_row_with_short_path(&sep_ends, &sep_last_two),
-            )
-            .map_err(map_rusqlite)?;
-
-        let mut devices = Vec::new();
-        for row in rows {
-            devices.push(row.map_err(map_rusqlite)?);
-        }
-
+        let total = count_list_rows(conn, filter)?;
+        let devices = select_list_rows(conn, filter, limit, offset)?;
         Ok((devices, total as u64))
+    }
+
+    fn list_all(
+        &self,
+        conn: &Self::Conn,
+        filter: &DeviceFilter,
+        max_rows: u64,
+    ) -> Result<Vec<DeviceRow>, AppError> {
+        // Выгрузка: потолок страницы (200) здесь сознательно не применяется, но
+        // верхняя граница `max_rows` проверяется COUNT-ом ДО чтения строк.
+        let total = count_list_rows(conn, filter)? as u64;
+        if total > max_rows {
+            return Err(AppError::Validation {
+                field: "export".to_string(),
+                message: format!(
+                    "В выборке {total} устройств, экспорт ограничен {max_rows}. \
+                     Сузьте выборку (например, выберите статус)."
+                ),
+            });
+        }
+        select_list_rows(conn, filter, max_rows as i64, 0)
     }
 
     fn update(

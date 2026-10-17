@@ -35,6 +35,17 @@ pub trait DeviceRepository {
         page: &Pagination,
     ) -> Result<(Vec<DeviceRow>, u64), AppError>;
 
+    /// Все устройства выборки без потолка страницы (200) — только для выгрузки.
+    ///
+    /// Если в выборке больше `max_rows` строк — `AppError::Validation` (поле
+    /// `export`), строки не читаются. Порядок: имя, затем id.
+    fn list_all(
+        &self,
+        conn: &Self::Conn,
+        filter: &DeviceFilter,
+        max_rows: u64,
+    ) -> Result<Vec<DeviceRow>, AppError>;
+
     /// Apply a partial update with optimistic-lock check via `version`.
     fn update(
         &self,
