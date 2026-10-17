@@ -345,6 +345,14 @@
   } | null>(null);
   // D-21: у группы БЕЗ места запрет «спит» — поле не блокируем.
   const lockedByGroup = $derived(membership !== null && membership.group_has_place);
+  // Запрос членства завершён (успехом или ошибкой). Пока он в полёте,
+  // lockedByGroup ложно-отрицателен; при создании и просмотре запроса нет.
+  // Пишется только в async-продолжении onMount, не из $effect.
+  let membershipLoaded = $state(target === null || readonly);
+  // WR-01: при правке автостатус «На складе» включается только после явного
+  // действия пользователя (смена места или клик по чекбоксу); при создании
+  // не требуется. Пишется только в обработчиках событий, не из $effect.
+  let storageIntent = $state(false);
 
   // Phase 40.2 Plan 13 (NUM-06/08): which of the 2 device/printer create
   // contexts NumberTemplateField/the D-01 save chain uses — reactive to
@@ -429,6 +437,10 @@
   // GAP-8: skipped entirely in readonly mode — a «Просмотр» popup must
   // mirror the record's ACTUAL saved status, never a suggestion that would
   // never actually be applied (nothing here ever submits).
+  // WR-01: при правке без явного действия (storageIntent) записанный статус
+  // не трогаем — иначе якорь разбора «На списание» на складе молча получал
+  // «На складе»; до загрузки членства lockedByGroup ложно-отрицателен
+  // (membershipLoaded), поэтому и тогда эффект ждёт.
   $effect(() => {
     // Plan 41-24: у члена группы с местом место не меняется, чекбокс скрыт —
     // поэтому и неявную смену статуса не применяем.
@@ -437,6 +449,8 @@
     const storageId = statusIdByCode('на_складе');
     if (
       !readonly &&
+      membershipLoaded &&
+      (!isEdit || storageIntent) &&
       !lockedByGroup &&
       isStoragePlace &&
       storageStatusSuggested &&
@@ -557,10 +571,12 @@
                 group_has_place: row.group_has_place,
               }
             : null;
+          membershipLoaded = true;
         })
         .catch(() => {
           if (cancelled) return;
           membership = null;
+          membershipLoaded = true;
         });
     }
     return () => {
@@ -1092,7 +1108,10 @@
     </label>
     <PlacePicker
       value={placeId}
-      onChange={(id) => (placeId = id)}
+      onChange={(id) => {
+        placeId = id;
+        storageIntent = true;
+      }}
       id="f-place"
       invalid={!!fieldErrors['place_id']}
       disabled={readonly || lockedByGroup}
@@ -1122,7 +1141,13 @@
       </p>
     {/if}
     {#if isStoragePlace && !readonly && !lockedByGroup}
-      <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
+      <Checkbox
+        checked={storageStatusSuggested}
+        onchange={(c) => {
+          storageStatusSuggested = c;
+          storageIntent = true;
+        }}
+      >
         Перевести устройство в статус «На складе»
       </Checkbox>
     {/if}
