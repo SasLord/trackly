@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-13T17:57:17.071Z"
-last_activity: 2026-10-13
+last_updated: "2026-10-17T16:27:48.994Z"
+last_activity: 2026-10-17 -- Phase 41.1 planning complete
 progress:
-  total_phases: 21
-  completed_phases: 12
-  total_plans: 189
+  total_phases: 24
+  completed_phases: 11
+  total_plans: 200
   completed_plans: 189
-  percent: 57
+  percent: 46
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
 Plan: 22 of 22 исполнены; верификация gaps_found 4/6 — фаза НЕ завершена
-Status: Фаза 41.1 — закрытие пробелов. Следующая команда: /gsd-plan-phase 41.1 --gaps. Карта контекста: .planning/phases/41.1-groups-devices-integration/.continue-here.md
+Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
 R5 — счётчики вкладок «Отчётов» равны 0 в LAN-браузере — признан дефектом ВНЕ фазы 41
@@ -137,7 +137,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-13
+Last activity: 2026-10-17 -- Phase 41.1 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
