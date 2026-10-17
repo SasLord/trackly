@@ -51,6 +51,21 @@
 //        scripts/fixtures/device-list-mode/DeviceGroupRow.pre-fix.svelte.txt и
 //        требует от неё [G1], [G2], [G3]; на реальном файле ноль нарушений.
 //
+//    [H] DevicesPage.svelte — защита от устаревшего ответа (план 29, WR-04; ПОРЯДОК
+//        важен: счётный гейт слеп к порядку, охрана ПОСЛЕ присваивания прошла бы по счёту):
+//        [H1] в refresh() `const seq = ++refreshSeq` стоит раньше первого await;
+//        [H2] первая охрана `if (seq !== refreshSeq) return` после последнего await
+//             стоит ДО первого присваивания items/groups/total/anchorItems/
+//             hiddenMemberCount (удалённая охрана и охрана после присваивания краснят);
+//        [H3] fetchList() не присваивает эти поля и loading (только запросы);
+//        [H4] первый оператор catch в refresh() — охрана поколения, а сброс
+//             loading в finally стоит под условием seq === refreshSeq;
+//        [H5] reloadExpandedAnchors(): `const aSeq = ++anchorsSeq` раньше первого
+//             await, охрана aSeq !== anchorsSeq после await и раньше первого
+//             `anchorMembers =` и вызова failAnchor(.
+//        Живое поведение гонки (быстрое переключение «Свернуть одинаковые») этим
+//        гейтом не проверяется: нужна проверка в запущенном приложении (план 32).
+//
 //    Правила [A] и [B] при PAGE_MANDATORY = false дают явный SKIP для страницы,
 //    которая модуль ещё не подключила (так было в задаче 1 плана 19). Задача 3
 //    подключила страницу и перевела константу в true: отсутствие файла или
@@ -467,6 +482,144 @@ export function checkPage(src) {
   return out;
 }
 
+/** Тело функции `name` (от `{` до парной `}` включительно) или null. */
+function functionBody(text, name) {
+  const m = new RegExp(`\\bfunction\\s+${name}\\s*\\(`).exec(text);
+  if (!m) return null;
+  const parenOpen = m.index + m[0].length - 1;
+  const parenClose = readBalanced(text, parenOpen, '(', ')');
+  if (parenClose === -1) return null;
+  const open = text.indexOf('{', parenClose);
+  if (open === -1) return null;
+  const close = readBalanced(text, open, '{', '}');
+  if (close === -1) return null;
+  return text.slice(open, close + 1);
+}
+
+const STATE_ASSIGN_RE = /(?<![\w.])(?:items|groups|total|anchorItems|hiddenMemberCount)\s*=(?!=)/;
+const REFRESH_GUARD_RE = /if\s*\(\s*seq\s*!==\s*refreshSeq\s*\)\s*return\b/;
+const ANCHORS_GUARD_RE = /if\s*\(\s*aSeq\s*!==\s*anchorsSeq\s*\)\s*return\b/;
+
+function lastIndexOfRe(text, re) {
+  const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+  let idx = -1;
+  let m;
+  while ((m = g.exec(text)) !== null) idx = m.index;
+  return idx;
+}
+
+/** Правило [H]: DevicesPage.svelte, защита поколения refresh() и reloadExpandedAnchors(). */
+export function checkPageRace(src) {
+  const text = stripComments(src);
+  const out = [];
+  const refresh = functionBody(text, 'refresh');
+  if (refresh === null) {
+    out.push({ code: 'H1', msg: 'нет функции refresh() (защита поколения не проверяется)' });
+  } else {
+    const inc =
+      /\b(?:const\s+seq\s*=\s*\+\+\s*refreshSeq|refreshSeq\s*\+\+|refreshSeq\s*\+=\s*1)/.exec(
+        refresh,
+      );
+    const firstAwait = refresh.search(/\bawait\b/);
+    if (!inc || !/\bconst\s+seq\s*=/.test(refresh)) {
+      out.push({ code: 'H1', msg: 'refresh(): нет `const seq = ++refreshSeq`' });
+    } else if (firstAwait !== -1 && inc.index > firstAwait) {
+      out.push({ code: 'H1', msg: 'refresh(): номер поколения берётся ПОСЛЕ первого await' });
+    }
+    const lastAwait = lastIndexOfRe(refresh, /\bawait\b/);
+    const assign = STATE_ASSIGN_RE.exec(refresh);
+    const afterAwait = refresh.slice(lastAwait === -1 ? 0 : lastAwait);
+    const guardRel = afterAwait.search(REFRESH_GUARD_RE);
+    const guardAt = guardRel === -1 ? -1 : (lastAwait === -1 ? 0 : lastAwait) + guardRel;
+    if (lastAwait === -1) {
+      out.push({ code: 'H2', msg: 'refresh(): нет await (загрузка не ждёт ответа)' });
+    } else if (guardAt === -1) {
+      out.push({
+        code: 'H2',
+        msg: 'refresh(): после await нет `if (seq !== refreshSeq) return` (устаревший ответ применяется)',
+      });
+    } else if (!assign) {
+      out.push({ code: 'H2', msg: 'refresh(): нет присваиваний состояния списка' });
+    } else if (guardAt > assign.index) {
+      out.push({
+        code: 'H2',
+        msg: `refresh(): охрана поколения стоит ПОСЛЕ присваивания «${assign[0]}» (устаревший ответ успевает записать состояние)`,
+      });
+    }
+    // [H4]: catch и finally.
+    const catchM = /\bcatch\b\s*(?:\([^)]*\))?\s*\{/.exec(refresh);
+    if (!catchM) {
+      out.push({ code: 'H4', msg: 'refresh(): нет блока catch' });
+    } else {
+      const open = catchM.index + catchM[0].length - 1;
+      const close = readBalanced(refresh, open, '{', '}');
+      const inner = close === -1 ? refresh.slice(open + 1) : refresh.slice(open + 1, close);
+      if (!new RegExp(`^\\s*${REFRESH_GUARD_RE.source}`).test(inner)) {
+        out.push({
+          code: 'H4',
+          msg: 'refresh(): первым оператором catch нет охраны поколения (устаревшая ошибка покажет тост)',
+        });
+      }
+    }
+    const finM = /\bfinally\s*\{/.exec(refresh);
+    if (!finM) {
+      out.push({ code: 'H4', msg: 'refresh(): нет блока finally' });
+    } else {
+      const open = finM.index + finM[0].length - 1;
+      const close = readBalanced(refresh, open, '{', '}');
+      const inner = close === -1 ? refresh.slice(open + 1) : refresh.slice(open + 1, close);
+      const cond = /if\s*\(\s*seq\s*===\s*refreshSeq\s*\)\s*loading\s*=\s*false\b/;
+      if (!cond.test(inner) || /(?<![\w.])loading\s*=(?!=)/.test(inner.replace(cond, ''))) {
+        out.push({
+          code: 'H4',
+          msg: 'refresh(): в finally loading сбрасывается не под условием seq === refreshSeq',
+        });
+      }
+    }
+  }
+  const fetchList = functionBody(text, 'fetchList');
+  if (fetchList === null) {
+    out.push({ code: 'H3', msg: 'нет функции fetchList()' });
+  } else {
+    const a = STATE_ASSIGN_RE.exec(fetchList) ?? /(?<![\w.])loading\s*=(?!=)/.exec(fetchList);
+    if (a) {
+      out.push({
+        code: 'H3',
+        msg: `fetchList(): присваивание «${a[0]}» (загрузка только запрашивает, состояние пишет refresh() после охраны)`,
+      });
+    }
+  }
+  const reload = functionBody(text, 'reloadExpandedAnchors');
+  if (reload === null) {
+    out.push({ code: 'H5', msg: 'нет функции reloadExpandedAnchors()' });
+  } else {
+    const inc = /\bconst\s+aSeq\s*=\s*\+\+\s*anchorsSeq\b/.exec(reload);
+    const firstAwait = reload.search(/\bawait\b/);
+    const lastAwait = lastIndexOfRe(reload, /\bawait\b/);
+    if (!inc) {
+      out.push({ code: 'H5', msg: 'reloadExpandedAnchors(): нет `const aSeq = ++anchorsSeq`' });
+    } else if (firstAwait !== -1 && inc.index > firstAwait) {
+      out.push({ code: 'H5', msg: 'reloadExpandedAnchors(): aSeq берётся ПОСЛЕ первого await' });
+    }
+    const guardRel = reload.slice(lastAwait === -1 ? 0 : lastAwait).search(ANCHORS_GUARD_RE);
+    const guardAt = guardRel === -1 ? -1 : (lastAwait === -1 ? 0 : lastAwait) + guardRel;
+    const am = /(?<![\w.])anchorMembers\s*=(?!=)/.exec(reload);
+    const fa = /\bfailAnchor\s*\(/.exec(reload);
+    if (lastAwait === -1 || guardAt === -1) {
+      out.push({
+        code: 'H5',
+        msg: 'reloadExpandedAnchors(): после await нет `if (aSeq !== anchorsSeq) return`',
+      });
+    } else if ((am && guardAt > am.index) || (fa && guardAt > fa.index)) {
+      out.push({
+        code: 'H5',
+        msg: 'reloadExpandedAnchors(): охрана стоит ПОСЛЕ записи anchorMembers / вызова failAnchor(',
+      });
+    }
+  }
+  return out;
+}
+
 /** Правило [B]: DeviceList.svelte. */
 export function checkList(src) {
   const text = stripComments(src);
@@ -633,6 +786,9 @@ export function scanStructural(files, opts = {}) {
       continue;
     }
     for (const v of check(src)) violations.push({ ...v, file: rel });
+    if (rel === PAGE_FILE && (pageMandatory || used)) {
+      for (const v of checkPageRace(src)) violations.push({ ...v, file: rel });
+    }
   }
   // [G]: файл обязателен всегда (SKIP-able файл молчал бы вечно).
   const rowSrc = files.get(GROUP_ROW_FILE);
@@ -811,7 +967,42 @@ const CLEAN_PAGE = `<script lang="ts">
   }
 </script>
 <DeviceList {anchorItems} {hiddenMemberCount} {hideActive} />
-`;
+`.replace(
+  '</script>',
+  `  let refreshSeq = 0;
+  let anchorsSeq = 0;
+  async function fetchList() {
+    const resp = await devices.fetchAll(p);
+    return { items: resp.items, groups: [], total: resp.total, anchorItems: [], hiddenMemberCount: 0 };
+  }
+  async function refresh() {
+    const seq = ++refreshSeq;
+    loading = true;
+    try {
+      const snap = await fetchList();
+      if (seq !== refreshSeq) return;
+      items = snap.items;
+      groups = snap.groups;
+      total = snap.total;
+      anchorItems = snap.anchorItems;
+      hiddenMemberCount = snap.hiddenMemberCount;
+      void reloadExpandedAnchors();
+    } catch (e) {
+      if (seq !== refreshSeq) return;
+      pushToast('error', 'x');
+    } finally {
+      if (seq === refreshSeq) loading = false;
+    }
+  }
+  async function reloadExpandedAnchors() {
+    const aSeq = ++anchorsSeq;
+    const results = await Promise.all(ids.map((id) => fetchAnchorMembers(id)));
+    if (aSeq !== anchorsSeq) return;
+    anchorMembers = {};
+    failAnchor([]);
+  }
+</script>`,
+);
 
 // Фикстура страницы с видами в тернарнике не годится для проверки «все четыре вида»:
 // ниже литералы разнесены по отдельным вызовам.
@@ -1072,6 +1263,151 @@ function structuralMutants() {
       name: '[G] DeviceGroupRow.svelte отсутствует (обязательный файл)',
       files: fixtureMap({ [GROUP_ROW_FILE]: null }),
       expect: ['G'],
+    },
+    // [H]: защита поколения; охрана обязана стоять ДО присваиваний (перестановка краснит).
+    {
+      name: '[H2] охрана поколения после await удалена',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          'const snap = await fetchList();\n      if (seq !== refreshSeq) return;',
+          'const snap = await fetchList();',
+          'h2-remove',
+        ),
+      }),
+      expect: ['H2'],
+    },
+    {
+      name: '[H2] охрана перенесена ПОСЛЕ всех присваиваний (перестановка)',
+      files: fixtureMap({
+        [PAGE_FILE]: mutate(
+          page(
+            'if (seq !== refreshSeq) return;\n      items = snap.items;',
+            'items = snap.items;',
+            'h2-move-1',
+          ),
+          'hiddenMemberCount = snap.hiddenMemberCount;\n',
+          'hiddenMemberCount = snap.hiddenMemberCount;\n      if (seq !== refreshSeq) return;\n',
+          'h2-move-2',
+        ),
+      }),
+      expect: ['H2'],
+    },
+    {
+      name: '[H2] охрана перенесена между присваиваниями (после первого)',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          'if (seq !== refreshSeq) return;\n      items = snap.items;',
+          'items = snap.items;\n      if (seq !== refreshSeq) return;',
+          'h2-between',
+        ),
+      }),
+      expect: ['H2'],
+    },
+    {
+      name: '[H1] refresh() не берёт номер поколения',
+      files: fixtureMap({
+        [PAGE_FILE]: page('const seq = ++refreshSeq;', 'const seq = refreshSeq;', 'h1-noinc'),
+      }),
+      expect: ['H1'],
+    },
+    {
+      name: '[H1] номер поколения увеличивается после await',
+      files: fixtureMap({
+        [PAGE_FILE]: mutate(
+          page('const seq = ++refreshSeq;', 'const seq = refreshSeq;', 'h1-late-1'),
+          'const snap = await fetchList();',
+          'const snap = await fetchList();\n      refreshSeq++;',
+          'h1-late-2',
+        ),
+      }),
+      expect: ['H1'],
+    },
+    {
+      name: '[H1] функция refresh() переименована (правило не вакуумно)',
+      files: fixtureMap({
+        [PAGE_FILE]: page('async function refresh() {', 'async function reload() {', 'h1-rename'),
+      }),
+      expect: ['H1'],
+    },
+    {
+      name: '[H3] fetchList() присваивает items',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          'const resp = await devices.fetchAll(p);',
+          'const resp = await devices.fetchAll(p);\n    items = resp.items;',
+          'h3-items',
+        ),
+      }),
+      expect: ['H3'],
+    },
+    {
+      name: '[H3] fetchList() присваивает loading',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          'const resp = await devices.fetchAll(p);',
+          'const resp = await devices.fetchAll(p);\n    loading = false;',
+          'h3-loading',
+        ),
+      }),
+      expect: ['H3'],
+    },
+    {
+      name: '[H4] finally сбрасывает loading без условия',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          'if (seq === refreshSeq) loading = false;',
+          'loading = false;',
+          'h4-finally',
+        ),
+      }),
+      expect: ['H4'],
+    },
+    {
+      name: '[H4] catch без охраны поколения',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          '} catch (e) {\n      if (seq !== refreshSeq) return;',
+          '} catch (e) {',
+          'h4-catch',
+        ),
+      }),
+      expect: ['H4'],
+    },
+    {
+      name: '[H4] охрана catch перенесена после тоста (перестановка)',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          "if (seq !== refreshSeq) return;\n      pushToast('error', 'x');",
+          "pushToast('error', 'x');\n      if (seq !== refreshSeq) return;",
+          'h4-catch-order',
+        ),
+      }),
+      expect: ['H4'],
+    },
+    {
+      name: '[H5] reloadExpandedAnchors без номера поколения',
+      files: fixtureMap({
+        [PAGE_FILE]: page('const aSeq = ++anchorsSeq;', 'const aSeq = anchorsSeq;', 'h5-noinc'),
+      }),
+      expect: ['H5'],
+    },
+    {
+      name: '[H5] охрана aSeq удалена',
+      files: fixtureMap({
+        [PAGE_FILE]: page('    if (aSeq !== anchorsSeq) return;\n', '', 'h5-remove'),
+      }),
+      expect: ['H5'],
+    },
+    {
+      name: '[H5] охрана aSeq стоит после записи anchorMembers (перестановка)',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          '    if (aSeq !== anchorsSeq) return;\n    anchorMembers = {};',
+          '    anchorMembers = {};\n    if (aSeq !== anchorsSeq) return;',
+          'h5-order',
+        ),
+      }),
+      expect: ['H5'],
     },
     {
       name: '[C] в модуле появился import',
