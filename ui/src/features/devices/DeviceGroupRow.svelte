@@ -10,6 +10,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import { devices } from './api';
+  import { groupIdsKey, visibleChildren } from './deviceListMode';
   import type { DeviceDto, DeviceGroup } from '../../bindings';
 
   // Compute a stable string key for this group from its grouping dimensions.
@@ -56,8 +57,24 @@
   const stableKey = $derived(groupStableKey(group));
   const expanded = $derived(expandedGroups.has(stableKey));
 
+  // Кеш детей псевдогруппы. Он валиден, пока ключ состава group.ids не изменился
+  // (GAP-1): когда ребёнок стал якорем («Замещение группой»), ушёл «На разбор» или
+  // вошёл в якорную группу, сервер отдаёт у той же группы новый group.ids.
+  // Сам компонент остаётся прежним: ключ {#each} в DeviceList — group.repr.id, у
+  // не-репрезентанта он не меняется. Поэтому кеш привязан к ключу состава, под которым
+  // он загружен (loadedKey), а не к жизни компонента. Сравнивать результат загрузки с
+  // group.ids нельзя: listByIds ограничен 1000 id.
+  const idsKey = $derived(groupIdsKey(group.ids));
   let children = $state<DeviceDto[] | null>(null);
-  let loadingChildren = $state(false);
+  let loadedKey = $state<string | null>(null);
+  // Обычные переменные, не $state: отбрасывание устаревшего ответа и дедупликация
+  // запроса не должны делать эффект зависимым от собственных записей.
+  let loadSeq = 0;
+  let loadingKey: string | null = null;
+
+  // Рисуются только дети, которые ещё входят в group.ids: ушедший ребёнок пропадает
+  // сразу, пока кеш перечитывается, без мигания «Загрузка…».
+  const shownChildren = $derived(visibleChildren(children ?? [], group.ids));
 
   // Подпись и тон статуса представителя — из единого справочника (фаза 41.1).
   const label = $derived(statusLabel(group.repr.status_id));
@@ -68,15 +85,27 @@
     group.condition_distinct_count > 1 ? 'разное' : (group.repr.state ?? '—'),
   );
 
-  async function toggleExpand() {
-    const willExpand = !expanded;
-    // Notify parent to update the expandedGroups Set.
-    onExpandToggle?.(stableKey, willExpand);
-    if (willExpand && children === null) {
-      loadingChildren = true;
-      try {
-        children = await devices.listByIds(group.ids);
-      } catch (e: unknown) {
+  // Раскрытие только сообщает родителю новое состояние; детей загрузит $effect ниже.
+  // Так путь «раскрыли вручную» и путь «список обновился после мутации» совпадают.
+  function toggleExpand() {
+    onExpandToggle?.(stableKey, !expanded);
+  }
+
+  // Единственный путь загрузки детей. $state пишется только в продолжении после await
+  // (не из тела эффекта), иначе эффект, читающий собственные записи, зацикливается
+  // (effect_update_depth_exceeded).
+  function loadChildren(key: string) {
+    const seq = ++loadSeq;
+    loadingKey = key;
+    devices
+      .listByIds(group.ids)
+      .then((rows) => {
+        if (seq !== loadSeq) return;
+        children = rows;
+        loadedKey = key;
+      })
+      .catch((e: unknown) => {
+        if (seq !== loadSeq) return;
         const msg =
           e && typeof e === 'object' && 'message' in e
             ? String((e as { message: unknown }).message)
@@ -84,34 +113,16 @@
         pushToast('error', msg);
         // Collapse again on error.
         onExpandToggle?.(stableKey, false);
-      } finally {
-        loadingChildren = false;
-      }
-    }
+      })
+      .finally(() => {
+        if (seq === loadSeq) loadingKey = null;
+      });
   }
 
-  // When this component mounts and the group is already in the expandedGroups set
-  // (i.e. the list refreshed after a mutation), auto-load children if not yet cached.
+  // Загружает детей, когда группа раскрыта, а кеш загружен под другим составом (или
+  // не загружен). Читает expanded, idsKey и loadedKey; children не читает.
   $effect(() => {
-    if (expanded && children === null && !loadingChildren) {
-      loadingChildren = true;
-      devices
-        .listByIds(group.ids)
-        .then((rows) => {
-          children = rows;
-        })
-        .catch((e: unknown) => {
-          const msg =
-            e && typeof e === 'object' && 'message' in e
-              ? String((e as { message: unknown }).message)
-              : 'Не удалось загрузить устройства';
-          pushToast('error', msg);
-          onExpandToggle?.(stableKey, false);
-        })
-        .finally(() => {
-          loadingChildren = false;
-        });
-    }
+    if (expanded && loadedKey !== idsKey && loadingKey !== idsKey) loadChildren(idsKey);
   });
 
   // Двойной клик по свёртке: ЯВНО раскрыть состав. Два одиночных клика двойного
@@ -123,16 +134,17 @@
     if (!expanded) void toggleExpand();
   }
 
-  // After a mutation (edit/delete) let the parent refresh first (onEdit/onDelete
-  // triggers refresh() in DevicesPage), then the component remounts with children=null
-  // and the $effect above reloads them if still expanded.
+  // После мутации (правка/удаление/действие из меню) родитель перечитывает список
+  // (onEdit/onDelete зовут refresh() в DevicesPage). Здесь кеш помечается устаревшим,
+  // и эффект перечитывает детей; если состав group.ids при этом изменился, ключ состава
+  // сам отсечёт ушедших детей (visibleChildren).
   function handleEdit(d: DeviceDto) {
-    children = null;
+    loadedKey = null;
     onEdit(d);
   }
 
   function handleDelete() {
-    children = null;
+    loadedKey = null;
     onDelete();
   }
 </script>
@@ -166,17 +178,17 @@
 </TableRow>
 
 {#if expanded}
-  {#if loadingChildren}
+  {#if children === null}
     <tr class="children-loading-row">
       <td colspan={showStatus ? 8 : 7} class="children-loading">Загрузка…</td>
     </tr>
-  {:else if children && children.length > 0}
-    {#each children as child, i (child.id)}
+  {:else}
+    {#each shownChildren as child, i (child.id)}
       <DeviceListRow
         device={child}
         onEdit={handleEdit}
         onDelete={handleDelete}
-        isLastInGroup={i === children.length - 1}
+        isLastInGroup={i === shownChildren.length - 1}
         {onPrintAcceptance}
         {showStatus}
       />
