@@ -1189,6 +1189,37 @@ Plans:
 
 - [x] 41.1-20-PLAN.md — граница фазы: гейты в порядке CI, полный прогон, VALIDATION, живая проверка человеком (autonomous: false)
 
+**Gap-closure (по 41.1-VERIFICATION.md, 9 пробелов; нумерация волн своя)**
+
+**Gap-closure, волна 1**
+
+- [ ] 41.1-23-PLAN.md — Modal изолирует white-space/text-align/cursor от ячейки таблицы: корневая причина GAP-2 и GAP-3 (WR-03) + гейт check-modal-isolation
+- [ ] 41.1-24-PLAN.md — GAP-1: кеш детей псевдогруппы «Свернуть одинаковые» привязан к group.ids (groupIdsKey, visibleChildren), гейт [G] с замороженной до-фиксовой фикстурой
+- [ ] 41.1-25-PLAN.md — WR-01: эффект «место хранения → На складе» не затирает статус при правке (membershipLoaded, storageIntent) + правило (D) гейта формы
+- [ ] 41.1-26-PLAN.md — WR-02: охрана click в PrinterListRow, симметричная keydown, правило [F4] с проверкой порядка
+- [ ] 41.1-27-PLAN.md — WR-05: экспорт CSV без потолка 200 (list_all, EXPORT_MAX_ROWS), тест на 250 устройств
+
+**Gap-closure, волна 2**
+
+- [ ] 41.1-28-PLAN.md — приглушённые токены warning/danger в обеих темах, проп Badge muted, check-contrast с относительными правилами (пробел 9, часть 1)
+- [ ] 41.1-29-PLAN.md — WR-04: refresh() DevicesPage отбрасывает устаревший ответ (refreshSeq), правило [H] гейта
+
+**Gap-closure, волна 3**
+
+- [ ] 41.1-30-PLAN.md — шесть статусов чипами: карта тонов без dot, muted в пяти местах вызова, правило [F] гейта подписей (пробел 9, часть 2)
+
+**Gap-closure, волна 4**
+
+- [ ] 41.1-31-PLAN.md — граница gap-closure: гейты в порядке CI, «до/после» по реальным исходникам, один полный cargo test в фоне, VALIDATION
+
+**Gap-closure, волна 5**
+
+- [ ] 41.1-32-PLAN.md — живая проверка человеком пробелов 1, 4, 6, 9 и визуальных (autonomous: false)
+
+**Gap-closure, волна 6**
+
+- [ ] 41.1-33-PLAN.md — сведение документов: текст GRD-03, статусы GRD-01..05, VALIDATION, счётчик планов
+
 **UI hint**: yes
 
 ### Phase 41.2: Группы × Акты и Места (INSERTED)
