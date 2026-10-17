@@ -1187,7 +1187,7 @@ Plans:
 
 **Wave 9**
 
-- [ ] 41.1-20-PLAN.md — граница фазы: гейты в порядке CI, полный прогон, VALIDATION, живая проверка человеком (autonomous: false)
+- [x] 41.1-20-PLAN.md — граница фазы: гейты в порядке CI, полный прогон, VALIDATION, живая проверка человеком (autonomous: false)
 
 **UI hint**: yes
 
