@@ -256,6 +256,14 @@
     justify-content: center;
     // z-index set inline via style:z-index — depth-based (see instance script)
     // so a nested modal always renders above the one it covers.
+
+    // Modal монтируется на месте вызова, в том числе внутри td.cell
+    // (white-space: nowrap), td.cell-actions (text-align: center) и строки
+    // принтера (cursor: pointer). Эти свойства наследуются, поэтому сбрасываются
+    // на корне модалки, а не в каждом потомке (WR-03, GAP-2, GAP-3).
+    white-space: normal;
+    text-align: start;
+    cursor: auto;
   }
 
   .modal-container {
