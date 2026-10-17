@@ -111,50 +111,86 @@
   // ---------------------------------------------------------------------------
   // Data loading
   // ---------------------------------------------------------------------------
+  // Номер поколения refresh(): «последний пришедший» ответ не равен «последнему
+  // запрошенному». refresh() зовут $effect (смена фильтра/свёртки), onMount, поиск,
+  // onSaved и onDelete, а режим свёртки удвоил запросы (listGrouped + anchors), так что
+  // медленный ответ старого запроса мог перезаписать список нового. Устаревший ответ
+  // отбрасывается ДО записи состояния.
+  let refreshSeq = 0;
+  // То же для перечитывания состава раскрытых якорей (reloadExpandedAnchors).
+  let anchorsSeq = 0;
+
+  interface ListSnapshot {
+    items: DeviceDto[];
+    groups: typeof groups;
+    total: number;
+    anchorItems: DeviceDto[];
+    hiddenMemberCount: number;
+  }
+
+  /** Только запросы, без записи состояния: запись делает refresh() после проверки поколения. */
+  async function fetchList(): Promise<ListSnapshot> {
+    if (searchActive) {
+      // Search mode — FTS5 (overrides grouping).
+      const resp = await devices.search(searchQuery, pagination);
+      return {
+        items: resp.items,
+        groups: [],
+        total: resp.total,
+        anchorItems: [],
+        hiddenMemberCount: 0,
+      };
+    }
+    if (grouped) {
+      // Grouped mode — show non-unique devices as collapsible groups. Якоря не
+      // участвуют в свёртке (exclude_anchors) и выводятся отдельным вызовом (D-11).
+      const [grouping, anchors] = await Promise.all([
+        devices.listGrouped(baseFilter, pagination),
+        devices.list(
+          { ...rawFilter, ...deviceListFlags('anchors', listCtx) },
+          { offset: 0, limit: ANCHOR_MEMBERS_LIMIT },
+        ),
+      ]);
+      return {
+        items: [],
+        groups: grouping,
+        total: 0,
+        anchorItems: anchors.items,
+        hiddenMemberCount: 0,
+      };
+    }
+    // Flat list mode.
+    const resp = await devices.list(baseFilter, pagination);
+    return {
+      items: resp.items,
+      groups: [],
+      total: resp.total,
+      anchorItems: [],
+      hiddenMemberCount: resp.hidden_member_count ?? 0,
+    };
+  }
+
   async function refresh() {
+    const seq = ++refreshSeq;
     loading = true;
     try {
-      if (searchActive) {
-        // Search mode — FTS5 (overrides grouping).
-        const resp = await devices.search(searchQuery, pagination);
-        items = resp.items;
-        total = resp.total;
-        groups = [];
-        anchorItems = [];
-        hiddenMemberCount = 0;
-      } else if (grouped) {
-        // Grouped mode — show non-unique devices as collapsible groups. Якоря не
-        // участвуют в свёртке (exclude_anchors) и выводятся отдельным вызовом (D-11).
-        const [grouping, anchors] = await Promise.all([
-          devices.listGrouped(baseFilter, pagination),
-          devices.list(
-            { ...rawFilter, ...deviceListFlags('anchors', listCtx) },
-            { offset: 0, limit: ANCHOR_MEMBERS_LIMIT },
-          ),
-        ]);
-        groups = grouping;
-        anchorItems = anchors.items;
-        items = [];
-        total = 0;
-        hiddenMemberCount = 0;
-      } else {
-        // Flat list mode.
-        const resp = await devices.list(baseFilter, pagination);
-        items = resp.items;
-        total = resp.total;
-        groups = [];
-        anchorItems = [];
-        hiddenMemberCount = resp.hidden_member_count ?? 0;
-      }
+      const snap = await fetchList();
+      if (seq !== refreshSeq) return;
+      items = snap.items;
+      groups = snap.groups;
+      total = snap.total;
+      anchorItems = snap.anchorItems;
+      hiddenMemberCount = snap.hiddenMemberCount;
       void reloadExpandedAnchors();
     } catch (e: unknown) {
+      if (seq !== refreshSeq) return;
       const msg =
         e && typeof e === 'object' && 'message' in e
           ? String((e as { message: unknown }).message)
           : 'Не удалось загрузить устройства';
       pushToast('error', msg);
     } finally {
-      loading = false;
+      if (seq === refreshSeq) loading = false;
     }
   }
 
@@ -208,6 +244,7 @@
    * состав остаётся на экране до прихода нового: строка не мигает «Загрузкой».
    */
   async function reloadExpandedAnchors() {
+    const aSeq = ++anchorsSeq;
     const ids = [...expandedAnchors];
     const results = await Promise.all(
       ids.map((id) =>
@@ -217,6 +254,7 @@
         ),
       ),
     );
+    if (aSeq !== anchorsSeq) return;
     const fresh: Record<number, AnchorMembersState> = {};
     const failed: number[] = [];
     for (const [id, state] of results) {
