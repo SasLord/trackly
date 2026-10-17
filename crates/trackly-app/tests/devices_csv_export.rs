@@ -768,3 +768,88 @@ async fn export_import_round_trip_keeps_all_six_statuses() {
     .await
     .expect("timeout");
 }
+
+fn new_device(name: &str, inv: &str) -> DeviceNew {
+    DeviceNew {
+        type_id: 1,
+        name: name.to_string(),
+        inventory_no: Some(inv.to_string()),
+        serial_no: None,
+        model: None,
+        specs: None,
+        kit: None,
+        state: None,
+        place_id: None,
+        status_id: 1,
+    }
+}
+
+/// WR-05: экспорт не усекается на потолке страницы списка (200) — при 250
+/// устройствах в файле 250 строк данных и нет дублей инвентарных номеров.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_csv_includes_more_than_200_devices() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        for i in 1..=250 {
+            svc.create(new_device(
+                &format!("Системный блок {i}"),
+                &format!("INV-{i:04}"),
+            ))
+            .await
+            .expect("create device");
+        }
+
+        let csv = svc
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export should succeed");
+        let without_bom = csv.trim_start_matches('\u{FEFF}');
+        let lines: Vec<&str> = without_bom
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .collect();
+        assert_eq!(
+            lines.len(),
+            251,
+            "ожидаем заголовок + 250 строк данных, got {}",
+            lines.len()
+        );
+
+        // Столбец «Инвентарный №» — третий (индекс 2); дублей быть не должно.
+        let invs: std::collections::HashSet<&str> = lines
+            .iter()
+            .skip(1)
+            .map(|l| l.split(';').nth(2).expect("столбец инв. №"))
+            .collect();
+        assert_eq!(invs.len(), 250, "инвентарные номера не должны повторяться");
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Два устройства с одним именем выгружаются в порядке создания (tie-break по id).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_csv_orders_equal_names_by_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        svc.create(new_device("Системный блок", "INV-0001"))
+            .await
+            .expect("create first");
+        svc.create(new_device("Системный блок", "INV-0002"))
+            .await
+            .expect("create second");
+
+        let csv = svc
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export should succeed");
+        let pos_first = csv.find("INV-0001").expect("первый номер в выгрузке");
+        let pos_second = csv.find("INV-0002").expect("второй номер в выгрузке");
+        assert!(
+            pos_first < pos_second,
+            "равные имена должны идти в порядке id"
+        );
+    })
+    .await
+    .expect("timeout");
+}

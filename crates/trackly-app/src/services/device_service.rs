@@ -54,6 +54,12 @@ use crate::dto::number_template::{
 use crate::dto::printer::{PrinterCreateBlockDto, WsEvent};
 use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
 
+/// Верхняя граница строк выгрузки CSV (T-41.1-G27-01). Выше любой реалистичной
+/// инвентаризации одной организации; CSV собирается целиком в памяти, и на этом
+/// объёме это порядка десятков МБ. Превышение — видимая ошибка `Validation`,
+/// а не молчаливое усечение файла.
+const EXPORT_MAX_ROWS: u64 = 50_000;
+
 /// Машинный код статуса по умолчанию для CSV-импорта (пустая/неизвестная подпись).
 const STATUS_CODE_DEFAULT: &str = "на_складе";
 
@@ -1811,8 +1817,10 @@ impl DeviceService {
     /// T-02-05-03: Excel formula injection prevention — cells starting with
     /// `=`, `+`, `-`, `@` are prefixed with `'` (Excel-safe).
     pub async fn export_csv(&self, filter: DeviceFilter) -> Result<String, AppError> {
-        // Fetch all devices matching the filter.
-        // Note: bypasses the 200-item pagination cap in `list()` by calling the repo directly.
+        // Все устройства выборки. `list` для выгрузки не годится: потолок страницы
+        // 200 стоит в самом репозитории, поэтому экспорт идёт через `list_all` —
+        // без потолка страницы, но с явной границей `EXPORT_MAX_ROWS` и ошибкой
+        // `Validation`, если выборка больше (молчаливого усечения нет).
         let readers = self.readers.clone();
         let repo = self.repo.clone();
         let domain_filter = trackly_core::domain::devices::DeviceFilter {
@@ -1830,17 +1838,13 @@ impl DeviceService {
             exclude_anchors: false,
             member_of_group_id: None,
         };
-        // Use a very large limit to fetch all rows for export.
-        let domain_page = trackly_core::domain::devices::Pagination {
-            offset: 0,
-            limit: 1_000_000,
-        };
 
         use trackly_core::ports::devices::DeviceRepository;
         let statuses_readers = readers.clone();
-        let (rows, _total) = tokio::task::spawn_blocking(move || {
+        let rows = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.as_ref().list(&conn, &domain_filter, &domain_page)
+            repo.as_ref()
+                .list_all(&conn, &domain_filter, EXPORT_MAX_ROWS)
         })
         .await
         .map_err(|e| AppError::Internal {
