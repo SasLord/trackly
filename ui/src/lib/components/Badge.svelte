@@ -9,10 +9,20 @@
      * per-node content counter) can attach a native tooltip without the caller
      * having to wrap the component in an extra span. */
     title?: string;
+    /** Приглушённый вариант (UI-SPEC §10.2): действует только на warning/destructive
+     * в appearance="soft"; для остальных тонов и appearances игнорируется. */
+    muted?: boolean;
     children?: Snippet;
   }
 
-  const { variant = 'default', size = 'md', appearance, title, children }: Props = $props();
+  const {
+    variant = 'default',
+    size = 'md',
+    appearance,
+    title,
+    muted = false,
+    children,
+  }: Props = $props();
 
   const TONE_MAP = {
     default: 'neutral',
@@ -26,7 +36,11 @@
 </script>
 
 {#if appearance}
-  <span class="badge-m badge-m-{tone} badge-m-{appearance} badge-m-{size}" {title}>
+  <span
+    class="badge-m badge-m-{tone} badge-m-{appearance} badge-m-{size}"
+    class:badge-m-muted={muted}
+    {title}
+  >
     {#if appearance === 'dot'}
       <span class="badge-m-dot-marker" aria-hidden="true"></span>
     {/if}
@@ -160,6 +174,11 @@
       background: var(--tr-warning-soft);
       color: var(--tr-warning-text);
     }
+    /* muted действует только на warning/danger в soft; у остальных тонов не определён. */
+    &.badge-m-soft.badge-m-muted {
+      background: var(--tr-warning-muted-soft);
+      color: var(--tr-warning-muted-text);
+    }
     &.badge-m-solid {
       background: var(--tr-warning);
       color: var(--tr-on-accent);
@@ -178,6 +197,10 @@
     &.badge-m-soft {
       background: var(--tr-danger-soft);
       color: var(--tr-danger-text);
+    }
+    &.badge-m-soft.badge-m-muted {
+      background: var(--tr-danger-muted-soft);
+      color: var(--tr-danger-muted-text);
     }
     &.badge-m-solid {
       background: var(--tr-danger);

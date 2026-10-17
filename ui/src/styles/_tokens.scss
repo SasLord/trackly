@@ -46,12 +46,18 @@
   --tr-warning: #a8680b;
   --tr-warning-soft: rgba(185, 114, 12, 0.14);
   --tr-warning-text: #8f590a;
+  // Приглушённый вариант «ожидающего» статуса (UI-SPEC §10.2): тот же тон, но ярче/тусклее «лампочки».
+  --tr-warning-muted-soft: rgba(185, 114, 12, 0.07);
+  --tr-warning-muted-text: #915c0f;
 
   --tr-danger: #cf3b3b;
   --tr-danger-hover: #b83232;
   --tr-danger-active: #9d2929;
   --tr-danger-soft: rgba(207, 59, 59, 0.12);
   --tr-danger-text: #b02f2f;
+  // Приглушённый вариант «ожидающего» статуса (UI-SPEC §10.2): тот же тон, но ярче/тусклее «лампочки».
+  --tr-danger-muted-soft: rgba(207, 59, 59, 0.06);
+  --tr-danger-muted-text: #b43939;
   --tr-danger-ring: rgba(207, 59, 59, 0.2);
 
   --tr-info: #2b5fd9;
@@ -123,12 +129,18 @@
   --tr-warning: #e5a13a;
   --tr-warning-soft: rgba(229, 161, 58, 0.16);
   --tr-warning-text: #f0b45a;
+  // Приглушённый вариант «ожидающего» статуса (UI-SPEC §10.2): тот же тон, но ярче/тусклее «лампочки».
+  --tr-warning-muted-soft: rgba(229, 161, 58, 0.08);
+  --tr-warning-muted-text: #d39e4f;
 
   --tr-danger: #f26565;
   --tr-danger-hover: #ff7d7d;
   --tr-danger-active: #e05555;
   --tr-danger-soft: rgba(242, 101, 101, 0.16);
   --tr-danger-text: #ff8080;
+  // Приглушённый вариант «ожидающего» статуса (UI-SPEC §10.2): тот же тон, но ярче/тусклее «лампочки».
+  --tr-danger-muted-soft: rgba(242, 101, 101, 0.08);
+  --tr-danger-muted-text: #e07171;
   --tr-danger-ring: rgba(242, 101, 101, 0.2);
 
   --tr-info: #5b8bff;
