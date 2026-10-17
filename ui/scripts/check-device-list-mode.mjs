@@ -7,8 +7,13 @@
 // 1. ИСПОЛНЯЮЩИЙ golden-гейт чистого модуля `src/features/devices/deviceListMode.ts`.
 //    Модуль транспилируется пакетом `typescript` и гоняется по фикстуре
 //    `scripts/fixtures/device-list-mode/cases.json`: таблица истинности скрытия
-//    членов якорных групп, флаги по виду списка, формула подписи футера. Каждый
-//    кейс подобран так, чтобы потеря одного условия или перестановка флага
+//    членов якорных групп, флаги по виду списка, формула подписи футера, а также
+//    (план 24, GAP-1) groupIdsKey — ключ состава псевдогруппы, от которого зависит
+//    валидность кеша детей DeviceGroupRow, — и visibleChildren — фильтр детей по
+//    актуальному group.ids. Кейсы visibleChildren различаются тем, КАКОЙ id покинул
+//    состав (первый, средний, последний): три действия над ребёнком свёртки
+//    («Замещение группой», «На разбор», «Добавить в группу» с якорной группой).
+//    Каждый кейс подобран так, чтобы потеря одного условия или перестановка флага
 //    меняла результат.
 //
 //    ОБЩЕЙ ФИКСТУРЫ С RUST У МОДУЛЯ НЕТ, и это сознательно: модуль НЕ зеркалит
@@ -140,7 +145,13 @@ function canonical(v) {
   return JSON.stringify(v);
 }
 
-const FUNCTIONS = ['shouldHideAnchorMembers', 'deviceListFlags', 'footerText'];
+const FUNCTIONS = [
+  'shouldHideAnchorMembers',
+  'deviceListFlags',
+  'footerText',
+  'groupIdsKey',
+  'visibleChildren',
+];
 
 /** Возвращает список текстов провалов (пустой — всё в порядке). */
 function runCases(mod, cases) {
@@ -154,6 +165,10 @@ function runCases(mod, cases) {
   // Сколько раз кейсы дали true / false для скрытия: фикстура обязана видеть оба исхода.
   const hideOutcomes = new Set();
   let focusOnlyCase = false;
+  // groupIdsKey / visibleChildren (план 24, GAP-1): фикстура обязана видеть и перестановку
+  // тех же id, и случай, где ребёнок покинул состав (иначе тождественный возврат проходил бы).
+  const keyCases = [];
+  let shrinkingChildrenCase = false;
   for (const c of cases) {
     covered.add(c.fn);
     try {
@@ -173,6 +188,20 @@ function runCases(mod, cases) {
         got = mod.deviceListFlags(c.input.kind, JSON.parse(JSON.stringify(c.input.ctx)));
       } else if (c.fn === 'footerText') {
         got = mod.footerText(JSON.parse(JSON.stringify(c.input)));
+      } else if (c.fn === 'groupIdsKey') {
+        const ids = JSON.parse(JSON.stringify(c.input.ids));
+        got = mod.groupIdsKey(ids);
+        // Входной массив не мутируется (сортировка идёт по копии).
+        if (canonical(ids) !== canonical(c.input.ids)) {
+          failures.push(`${c.name}: groupIdsKey изменила входной массив`);
+        }
+        keyCases.push(c.input.ids);
+      } else if (c.fn === 'visibleChildren') {
+        got = mod.visibleChildren(
+          JSON.parse(JSON.stringify(c.input.children)),
+          JSON.parse(JSON.stringify(c.input.ids)),
+        );
+        if (c.expected.length < c.input.children.length) shrinkingChildrenCase = true;
       } else {
         failures.push(`${c.name}: неизвестная функция «${c.fn}» в фикстуре`);
         continue;
@@ -193,6 +222,22 @@ function runCases(mod, cases) {
   if (!focusOnlyCase) {
     failures.push(
       'в фикстуре нет кейса «ничего не включено, кроме focusId = число» -> false (регресс W3)',
+    );
+  }
+  const permutedKey = keyCases.some((a, i) =>
+    keyCases.some(
+      (b, j) =>
+        i !== j &&
+        canonical(a) !== canonical(b) &&
+        canonical([...a].sort((x, y) => x - y)) === canonical([...b].sort((x, y) => x - y)),
+    ),
+  );
+  if (!permutedKey) {
+    failures.push('в фикстуре нет двух кейсов groupIdsKey с перестановкой тех же id');
+  }
+  if (!shrinkingChildrenCase) {
+    failures.push(
+      'в фикстуре нет кейса visibleChildren, где ребёнок покинул состав (результат короче children)',
     );
   }
   // Каждый вид списка обязан быть в фикстуре при обоих исходах скрытия.
@@ -618,6 +663,31 @@ const SOURCE_MUTANTS = [
     name: 'футер: shown и total переставлены',
     from: '`Показано ${input.shown} из ${input.total}`',
     to: '`Показано ${input.total} из ${input.shown}`',
+  },
+  {
+    name: 'visibleChildren возвращает children без фильтра (до-фиксовое поведение)',
+    from: 'return children.filter((c) => inGroup.has(c.id));',
+    to: 'return children;',
+  },
+  {
+    name: 'visibleChildren: фильтр инвертирован',
+    from: 'inGroup.has(c.id)',
+    to: '!inGroup.has(c.id)',
+  },
+  {
+    name: 'groupIdsKey без сортировки',
+    from: '[...ids].sort((a, b) => a - b).join',
+    to: '[...ids].join',
+  },
+  {
+    name: 'groupIdsKey без числового компаратора (лексикографически)',
+    from: '.sort((a, b) => a - b)',
+    to: '.sort()',
+  },
+  {
+    name: 'groupIdsKey с join без разделителя',
+    from: ".join(',')",
+    to: ".join('')",
   },
   {
     name: 'хвост футера показывает не K, а shown',

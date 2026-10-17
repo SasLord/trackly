@@ -365,5 +365,216 @@
       "hideActive": true
     },
     "expected": "Показано 3 из 9 (+2 в составе групп)"
+  },
+  {
+    "name": "groupIdsKey: перестановка тех же id даёт тот же ключ (прямой порядок)",
+    "fn": "groupIdsKey",
+    "input": {
+      "ids": [1, 2, 3]
+    },
+    "expected": "1,2,3"
+  },
+  {
+    "name": "groupIdsKey: перестановка тех же id даёт тот же ключ (обратный порядок)",
+    "fn": "groupIdsKey",
+    "input": {
+      "ids": [3, 1, 2]
+    },
+    "expected": "1,2,3"
+  },
+  {
+    "name": "groupIdsKey: числовая, а не лексикографическая сортировка",
+    "fn": "groupIdsKey",
+    "input": {
+      "ids": [12, 3]
+    },
+    "expected": "3,12"
+  },
+  {
+    "name": "groupIdsKey: пустой состав",
+    "fn": "groupIdsKey",
+    "input": {
+      "ids": []
+    },
+    "expected": ""
+  },
+  {
+    "name": "groupIdsKey: один id",
+    "fn": "groupIdsKey",
+    "input": {
+      "ids": [7]
+    },
+    "expected": "7"
+  },
+  {
+    "name": "groupIdsKey: иной состав даёт иной ключ (ушёл средний)",
+    "fn": "groupIdsKey",
+    "input": {
+      "ids": [1, 3]
+    },
+    "expected": "1,3"
+  },
+  {
+    "name": "groupIdsKey: иной состав даёт иной ключ (ушёл первый)",
+    "fn": "groupIdsKey",
+    "input": {
+      "ids": [2, 3]
+    },
+    "expected": "2,3"
+  },
+  {
+    "name": "visibleChildren: «Замещение группой»: ушёл средний id",
+    "fn": "visibleChildren",
+    "input": {
+      "children": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        },
+        {
+          "id": 3
+        }
+      ],
+      "ids": [1, 3]
+    },
+    "expected": [
+      {
+        "id": 1
+      },
+      {
+        "id": 3
+      }
+    ]
+  },
+  {
+    "name": "visibleChildren: «На разбор»: ушёл последний id",
+    "fn": "visibleChildren",
+    "input": {
+      "children": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        },
+        {
+          "id": 3
+        }
+      ],
+      "ids": [1, 2]
+    },
+    "expected": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
+  },
+  {
+    "name": "visibleChildren: «Добавить в группу» с якорной группой: ушёл первый id",
+    "fn": "visibleChildren",
+    "input": {
+      "children": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        },
+        {
+          "id": 3
+        }
+      ],
+      "ids": [2, 3]
+    },
+    "expected": [
+      {
+        "id": 2
+      },
+      {
+        "id": 3
+      }
+    ]
+  },
+  {
+    "name": "visibleChildren: состав без изменений: все дети остаются, порядок кеша сохранён",
+    "fn": "visibleChildren",
+    "input": {
+      "children": [
+        {
+          "id": 5
+        },
+        {
+          "id": 1
+        },
+        {
+          "id": 9
+        }
+      ],
+      "ids": [1, 5, 9]
+    },
+    "expected": [
+      {
+        "id": 5
+      },
+      {
+        "id": 1
+      },
+      {
+        "id": 9
+      }
+    ]
+  },
+  {
+    "name": "visibleChildren: ids пуст: никто не рисуется",
+    "fn": "visibleChildren",
+    "input": {
+      "children": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        }
+      ],
+      "ids": []
+    },
+    "expected": []
+  },
+  {
+    "name": "visibleChildren: children пуст: элементов не порождается",
+    "fn": "visibleChildren",
+    "input": {
+      "children": [],
+      "ids": [1, 2]
+    },
+    "expected": []
+  },
+  {
+    "name": "visibleChildren: id из ids без ребёнка в кеше не порождает элемента",
+    "fn": "visibleChildren",
+    "input": {
+      "children": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        }
+      ],
+      "ids": [1, 2, 3]
+    },
+    "expected": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ]
   }
 ]
