@@ -304,15 +304,18 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
 pub struct DeviceFilter {
     #[specta(type = Option<i32>)]
     pub type_id: Option<i64>,
+    /// Место вместе с вложенными (поддерево, без удалённых). Применяется в
+    /// `list`/`list_all`/`export_csv`; `list_grouped` его игнорирует.
     #[specta(type = Option<i32>)]
     pub place_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
+    /// Состояние: нормализованное равенство (без учёта регистра и крайних
+    /// пробелов). Применяется в `list`/`list_all`/`export_csv`.
     pub state: Option<String>,
-    /// Многополевой FTS5-текстовый фильтр (Phase 18/AUTO-03).
-    /// Используется ТОЛЬКО в `list_grouped` при `group_by_condition=true` —
-    /// сопоставляет наименование/инвентарный №/серийный №/модель. В `list()`/
-    /// `export_csv` не используется (pre-existing gap, вне скоупа Phase 18).
+    /// Многополевой FTS5-текстовый фильтр: наименование/инвентарный №/серийный №/
+    /// модель. Применяется в `list`/`list_all`/`export_csv`; в `list_grouped` —
+    /// только при `group_by_condition=true`.
     pub name_prefix: Option<String>,
     /// Включать ли мягко-удалённые устройства. По умолчанию false.
     pub include_deleted: bool,
