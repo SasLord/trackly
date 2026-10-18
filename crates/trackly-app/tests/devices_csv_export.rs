@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trackly_app::dto::device::{DeviceFilter, DeviceNew, Pagination};
+use trackly_app::services::device_service::EXPORT_MAX_ROWS;
 use trackly_app::services::DeviceService;
 use trackly_core::domain::places::{PlaceKind, PlaceNew};
 use trackly_core::ports::places::PlaceRepository;
@@ -852,4 +853,83 @@ async fn export_csv_orders_equal_names_by_id() {
     })
     .await
     .expect("timeout");
+}
+
+/// WR-09 (D-20): превышение потолка экспорта — видимая `Validation`, а не усечённый
+/// файл. Потолок параметризован (`export_csv_with_limit`), 50 000 вставок не нужно.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_csv_over_ceiling_is_validation_error() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        for i in 1..=5 {
+            svc.create(new_device(
+                &format!("Системный блок {i}"),
+                &format!("INV-{i:04}"),
+            ))
+            .await
+            .expect("create device");
+        }
+
+        let err = svc
+            .export_csv_with_limit(DeviceFilter::default(), 3)
+            .await
+            .expect_err("выборка больше потолка должна отклоняться");
+        match err {
+            trackly_core::error::AppError::Validation { field, message } => {
+                assert_eq!(field, "export");
+                assert!(message.contains('5'), "нет числа в выборке: {message}");
+                assert!(message.contains('3'), "нет потолка: {message}");
+                assert!(
+                    message.contains("Сузьте выборку фильтрами."),
+                    "нет подсказки: {message}"
+                );
+                assert!(
+                    !message.contains("выберите статус"),
+                    "пример в подсказке устарел: {message}"
+                );
+            }
+            other => panic!("ожидали Validation, получили {other:?}"),
+        }
+    })
+    .await
+    .expect("timeout");
+}
+
+/// WR-09: потолок включительный — ровно `max_rows` устройств выгружаются целиком.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_csv_exactly_at_ceiling_succeeds() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        for i in 1..=3 {
+            svc.create(new_device(
+                &format!("Системный блок {i}"),
+                &format!("INV-{i:04}"),
+            ))
+            .await
+            .expect("create device");
+        }
+
+        let csv = svc
+            .export_csv_with_limit(DeviceFilter::default(), 3)
+            .await
+            .expect("ровно на потолке выгрузка проходит");
+        let lines = csv
+            .trim_start_matches('\u{FEFF}')
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count();
+        assert_eq!(lines, 4, "заголовок + 3 строки данных");
+    })
+    .await
+    .expect("timeout");
+}
+
+/// WR-09: боевой потолок нельзя обнулить или раздуть незаметно — иначе
+/// параметризованные тесты выше проверяли бы не то, что работает в продукте.
+#[test]
+fn export_max_rows_is_in_sane_range() {
+    assert!(
+        (250..=1_000_000).contains(&EXPORT_MAX_ROWS),
+        "EXPORT_MAX_ROWS = {EXPORT_MAX_ROWS} вне разумного диапазона"
+    );
 }

@@ -58,7 +58,7 @@ use crate::services::number_template_service::{ensure_number_free_in_tx, NumberT
 /// инвентаризации одной организации; CSV собирается целиком в памяти, и на этом
 /// объёме это порядка десятков МБ. Превышение — видимая ошибка `Validation`,
 /// а не молчаливое усечение файла.
-const EXPORT_MAX_ROWS: u64 = 50_000;
+pub const EXPORT_MAX_ROWS: u64 = 50_000;
 
 /// Машинный код статуса по умолчанию для CSV-импорта (пустая/неизвестная подпись).
 const STATUS_CODE_DEFAULT: &str = "на_складе";
@@ -1817,9 +1817,20 @@ impl DeviceService {
     /// T-02-05-03: Excel formula injection prevention — cells starting with
     /// `=`, `+`, `-`, `@` are prefixed with `'` (Excel-safe).
     pub async fn export_csv(&self, filter: DeviceFilter) -> Result<String, AppError> {
+        self.export_csv_with_limit(filter, EXPORT_MAX_ROWS).await
+    }
+
+    /// Тело `export_csv` с явным потолком строк. Параметр существует, чтобы
+    /// проверить потолок сервисным тестом без 50 000 вставок (WR-09, D-20);
+    /// производственный путь всегда передаёт `EXPORT_MAX_ROWS`.
+    pub async fn export_csv_with_limit(
+        &self,
+        filter: DeviceFilter,
+        max_rows: u64,
+    ) -> Result<String, AppError> {
         // Все устройства выборки. `list` для выгрузки не годится: потолок страницы
         // 200 стоит в самом репозитории, поэтому экспорт идёт через `list_all` —
-        // без потолка страницы, но с явной границей `EXPORT_MAX_ROWS` и ошибкой
+        // без потолка страницы, но с явной границей `max_rows` и ошибкой
         // `Validation`, если выборка больше (молчаливого усечения нет).
         let readers = self.readers.clone();
         let repo = self.repo.clone();
@@ -1844,7 +1855,7 @@ impl DeviceService {
         let rows = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             repo.as_ref()
-                .list_all(&conn, &domain_filter, EXPORT_MAX_ROWS)
+                .list_all(&conn, &domain_filter, max_rows)
         })
         .await
         .map_err(|e| AppError::Internal {
