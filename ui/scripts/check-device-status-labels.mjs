@@ -1468,6 +1468,61 @@ function runSelfTest() {
       }),
       codes: ['F5-vacuous'],
     });
+    // --- Мутанты по РЕАЛЬНОМУ исходнику (D-25а): настоящий DeviceListRow.svelte ---
+    // Якоря уникальны в реальном файле (mutate() бросает при ≠1 вхождении, D-26).
+    const REAL_ROW_PATH = 'src/features/devices/DeviceListRow.svelte';
+    const REAL_ROW = fs.readFileSync(path.join(UI_ROOT, REAL_ROW_PATH), 'utf8');
+    const REAL_TONE_DECL = '  const tone = $derived(statusTone(device.status_code));';
+    const REAL_BADGE =
+      '      <Badge variant={tone.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>';
+    const CHIP_DECL = REAL_TONE_DECL + '\n  const chip = $derived(statusTone(device.status_code));';
+    const realMutant = (decl, badge) =>
+      fixtureFiles({
+        extra: [[REAL_ROW_PATH, mutate(mutate(REAL_ROW, REAL_TONE_DECL, decl), REAL_BADGE, badge)]],
+      });
+    fixtures.push({
+      name: 'R0 [F5] немутированный реальный DeviceListRow.svelte — ноль нарушений',
+      files: fixtureFiles({ extra: [[REAL_ROW_PATH, REAL_ROW]] }),
+      codes: [],
+    });
+    fixtures.push({
+      name: 'R1 [F5] реальный DeviceListRow: шестой Badge от chip = $derived(statusTone(...)) без muted (в теге нет слова tone)',
+      files: realMutant(
+        CHIP_DECL,
+        REAL_BADGE +
+          '\n      <Badge variant={chip.variant} appearance={chip.appearance}>{label}</Badge>',
+      ),
+      codes: ['F5'],
+      onlyFile: REAL_ROW_PATH,
+    });
+    fixtures.push({
+      name: 'R2 [F5] реальный DeviceListRow: шестой Badge с разными источниками chip.variant / tone.appearance / tone.muted',
+      files: realMutant(
+        CHIP_DECL,
+        REAL_BADGE +
+          '\n      <Badge variant={chip.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>',
+      ),
+      codes: ['F5'],
+      onlyFile: REAL_ROW_PATH,
+    });
+    fixtures.push({
+      name: 'R3 [F5] реальный DeviceListRow: шестой Badge variant={someOther} не отнесён ни к одной категории',
+      files: realMutant(
+        REAL_TONE_DECL,
+        REAL_BADGE + '\n      <Badge variant={someOther}>{label}</Badge>',
+      ),
+      codes: ['F5'],
+      onlyFile: REAL_ROW_PATH,
+    });
+    fixtures.push({
+      name: 'R4 [F5] реальный DeviceListRow: шестой Badge от chip с тремя атрибутами из одного источника — ноль нарушений',
+      files: realMutant(
+        CHIP_DECL,
+        REAL_BADGE +
+          '\n      <Badge variant={chip.variant} appearance={chip.appearance} muted={chip.muted}>{label}</Badge>',
+      ),
+      codes: [],
+    });
     fixtures.push({
       name: 'M35 [F1] файл стора отсутствует в дереве',
       files: (() => {
