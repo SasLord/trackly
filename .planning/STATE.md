@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-18T12:16:22.600Z"
-last_activity: 2026-10-18 -- Phase 41.11 planning complete
+last_updated: "2026-10-18T13:01:13.756Z"
+last_activity: 2026-10-18
 progress:
   total_phases: 25
   completed_phases: 12
   total_plans: 212
-  completed_plans: 200
+  completed_plans: 201
   percent: 48
 ---
 
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.2 — groups acts places
+**Current focus:** Phase 41.11 — phase-41-1-debt
 
 ## Current Position
 
-Phase: 41.11
-Plan: Not started
+Phase: 41.11 (phase-41-1-debt) — EXECUTING
+Plan: 2 of 12
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -145,7 +145,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-18 -- Phase 41.11 planning complete
+Last activity: 2026-10-18
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -616,6 +616,7 @@ Last activity: 2026-10-18 -- Phase 41.11 planning complete
 | Phase 41.1 P31 | 4h | 3 tasks | 1 files |
 | Phase 41.1 P32 | n/a | 3 tasks | 1 files |
 | Phase 41.1 P33 | 25min | 3 tasks | 4 files |
+| Phase 41.11 P01 | 1.5h | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1333,6 +1334,7 @@ Recent decisions affecting current work:
 - [Phase 41.1]: [41.1-31] Полнота продолженного полного прогона проверяется по именам бинарей с кратностью, а не по хэшам (выборочная сборка -p меняет хэши)
 - [Phase 41.1]: 41.1-32: сводные ответы пользователя по G10-G13 записаны passed с оговорками о недетализированных подпунктах, значения не домысливались
 - [Phase 41.1]: [41.1-33] Статусы GRD-01..05 по номерам G-пунктов, все passed; чекбокс фазы 41.1 не закрыт — делает повторная верификация
+- [Phase 41.11-01]: tr_norm = trim + Rust to_lowercase (SQLite lower() только ASCII); вырожденный FTS-ввод даёт пустую выборку, не отсутствие фильтра
 
 ### Pending Todos
 
@@ -1535,9 +1537,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-18T08:20:46.696Z
+Last session: 2026-10-18T13:01:09.217Z
 Stopped at: Phase 41.11 context gathered
-Resume file: .planning/phases/41.11-phase-41-1-debt/41.11-CONTEXT.md
+Resume file: None
 
 None
 
