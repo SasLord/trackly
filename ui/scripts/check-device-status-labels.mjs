@@ -66,6 +66,23 @@
 //            бейджей категории A, а не носитель охвата. [F5-vacuous] — мало
 //            проверенных тегов/файлов, гейт пуст.
 //
+//   [F6] нецветовой признак различия внутри пары (план 41.11-09, D-16 / D-18 /
+//        D-34): после правки токенов пара «на ремонте / в ремонте» (как и «на
+//        списание / списано») по цвету не различается, поэтому различие обязана
+//        нести обводка приглушённого чипа (WCAG 1.4.1). Гейт читает
+//        src/lib/components/Badge.svelte (отсутствие файла — нарушение, не
+//        пропуск) и по скобочному балансу разбирает блоки тонов warning/danger:
+//          — `&.badge-m-soft.badge-m-muted { … }` обязан содержать box-shadow или
+//            border на `var(--tr-<тон>-muted-border)`;
+//          — тот же блок обязан содержать ветку `@media (forced-colors: active)`
+//            с outline/border, значение которого не none / 0 / transparent
+//            (в Windows high contrast inset box-shadow отбрасывается);
+//          — `&.badge-m-soft { … }` (действующий статус) не содержит ни
+//            box-shadow/border/outline, ни forced-colors.
+//        Носителей различия внутри пары три, F6 — лишь один из них: инверсию
+//        флагов muted ловит F3, обводку и её forced-colors-ветку — F6,
+//        прозрачность подложки — R2 в check-contrast.mjs.
+//
 // Список проверяемых файлов ВЫВОДИТСЯ обходом src/**/*.svelte и src/**/*.ts
 // (кроме сгенерированного src/bindings.ts) — ничего не перечислено вручную,
 // поэтому новый экран с хардкодом не может остаться незамеченным. Освободить
@@ -114,6 +131,7 @@ const MIN_STATUS_BADGE_FILES = 5;
 const SELFTEST_MIN_STATUS_BADGES = 2;
 const SELFTEST_MIN_STATUS_BADGE_FILES = 2;
 const STORE_PATH = 'src/lib/stores/deviceStatuses.svelte.ts';
+const BADGE_PATH = 'src/lib/components/Badge.svelte';
 const TONE_CODES = ['на_складе', 'в_работе', 'на_ремонте', 'в_ремонте', 'на_списание', 'списано'];
 const MUTED_CODES = ['на_ремонте', 'на_списание'];
 const TONE_PAIRS = [
@@ -479,6 +497,7 @@ function scanSources(files, opts, violations) {
 
   // --- F ----------------------------------------------------------------------
   if (!scope) checkToneMap(files, add);
+  if (!scope) checkMutedBorder(files, add);
   let badgeTags = 0;
   let badgeFiles = 0;
   for (const [file, src] of files) {
@@ -763,6 +782,133 @@ function checkStatusBadges(file, src, add, ctx = {}) {
   return checked;
 }
 
+// CSS-комментарии затираются с сохранением длины и переводов строк.
+function stripCssComments(css) {
+  return css.replace(/\/\*[\s\S]*?\*\//g, blank);
+}
+
+/** Значение outline/border «пустое»: none, 0, transparent — признак не виден. */
+function isInvisibleBorderValue(value) {
+  const tokens = value.trim().toLowerCase().split(/\s+/);
+  return (
+    tokens.some((t) => t === 'none' || t === 'transparent') || /^0(px|em|rem)?$/.test(tokens[0])
+  );
+}
+
+/**
+ * Правило F6: нецветовой признак различия внутри пары в Badge.svelte (D-16, D-34).
+ * Разбор по скобочному балансу в <style>; комментарии затираются.
+ */
+function checkMutedBorder(files, add) {
+  const src = files.get(BADGE_PATH);
+  if (src === undefined) {
+    add(
+      BADGE_PATH,
+      0,
+      'F6',
+      'файл Badge.svelte не найден — рамка приглушённого чипа не проверена.',
+    );
+    return;
+  }
+  const style = /<style\b[^>]*>([\s\S]*?)<\/style>/.exec(src);
+  if (!style) {
+    add(
+      BADGE_PATH,
+      0,
+      'F6',
+      'в Badge.svelte нет блока <style> — рамка приглушённого чипа не проверена.',
+    );
+    return;
+  }
+  const css = stripCssComments(style[1]);
+  const blockBody = (text, headerRe) => {
+    const all = [...text.matchAll(new RegExp(headerRe, 'g'))];
+    if (all.length !== 1) return { count: all.length };
+    const open = all[0].index + all[0][0].length - 1;
+    const end = readBalanced(text, open);
+    if (end < 0) return { count: 1, body: null };
+    return { count: 1, body: text.slice(open + 1, end) };
+  };
+  for (const tone of ['warning', 'danger']) {
+    const toneBlock = blockBody(css, `\\.badge-m-${tone}\\s*\\{`);
+    if (toneBlock.body == null) {
+      add(
+        BADGE_PATH,
+        0,
+        'F6',
+        `блок .badge-m-${tone} не найден единственным (найдено: ${toneBlock.count}) — рамка не проверена.`,
+      );
+      continue;
+    }
+    const muted = blockBody(toneBlock.body, '&\\.badge-m-soft\\.badge-m-muted\\s*\\{');
+    if (muted.body == null) {
+      add(
+        BADGE_PATH,
+        0,
+        'F6',
+        `в .badge-m-${tone} нет единственного блока &.badge-m-soft.badge-m-muted (найдено: ${muted.count}) — рамка не проверена.`,
+      );
+    } else {
+      // Объявления самого блока — без вложенных at-правил.
+      const mediaRe = /@media\s*\(\s*forced-colors\s*:\s*active\s*\)\s*\{/g;
+      const media = mediaRe.exec(muted.body);
+      let own = muted.body;
+      let mediaBody = null;
+      if (media) {
+        const open = media.index + media[0].length - 1;
+        const end = readBalanced(muted.body, open);
+        if (end > 0) {
+          mediaBody = muted.body.slice(open + 1, end);
+          own = muted.body.slice(0, media.index) + muted.body.slice(end + 1);
+        }
+      }
+      const token = `var(--tr-${tone}-muted-border)`;
+      const hasBorder = [...own.matchAll(/(?:^|[;\s])(box-shadow|border)\s*:\s*([^;]+);/g)].some(
+        (m) => m[2].includes(token),
+      );
+      if (!hasBorder) {
+        add(
+          BADGE_PATH,
+          0,
+          'F6',
+          `у приглушённого ${tone}-чипа нет рамки на ${token}: различие пары осталось бы только оттенком (WCAG 1.4.1).`,
+        );
+      }
+      const hasForced =
+        mediaBody !== null &&
+        [...mediaBody.matchAll(/(?:^|[;\s{])(outline|border)\s*:\s*([^;]+);/g)].some(
+          (m) => !isInvisibleBorderValue(m[2]),
+        );
+      if (!hasForced) {
+        add(
+          BADGE_PATH,
+          0,
+          'F6',
+          `у приглушённого ${tone}-чипа нет ветки @media (forced-colors: active) с видимым outline/border: в Windows high contrast inset box-shadow отбрасывается и признак пары пропадает.`,
+        );
+      }
+    }
+    const plain = blockBody(toneBlock.body, '&\\.badge-m-soft\\s*\\{');
+    if (plain.body == null) {
+      add(
+        BADGE_PATH,
+        0,
+        'F6',
+        `в .badge-m-${tone} нет единственного блока &.badge-m-soft (найдено: ${plain.count}).`,
+      );
+    } else if (
+      /(?:^|[;\s{])(?:box-shadow|border|outline)[\w-]*\s*:|forced-colors/.test(plain.body)
+    ) {
+      add(
+        BADGE_PATH,
+        0,
+        'F6',
+        `у действующего ${tone}-чипа (&.badge-m-soft без muted) появилась рамка: различие пары исчезло бы — рамка только у приглушённого.`,
+      );
+    }
+  }
+}
+
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
@@ -905,6 +1051,51 @@ const MILESTONE_ROW = `<script lang="ts">
 <Badge variant={milestone.variant}>этап</Badge>
 `;
 
+// Badge для правила F6: та же структура блоков, что у реального Badge.svelte.
+const CLEAN_BADGE = `<script lang="ts">
+  const { muted = false } = $props();
+</script>
+
+<span class="badge-m badge-m-warning badge-m-soft" class:badge-m-muted={muted}></span>
+
+<style lang="scss">
+  .badge-m-warning {
+    &.badge-m-soft {
+      background: var(--tr-warning-soft);
+      color: var(--tr-warning-text);
+    }
+    /* комментарий с forced-colors и box-shadow: гейт его не учитывает */
+    &.badge-m-soft.badge-m-muted {
+      background: var(--tr-warning-muted-soft);
+      color: var(--tr-warning-muted-text);
+      box-shadow: inset 0 0 0 1px var(--tr-warning-muted-border);
+      @media (forced-colors: active) {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
+      }
+    }
+    &.badge-m-count {
+      border-color: var(--tr-warning);
+    }
+  }
+  .badge-m-danger {
+    &.badge-m-soft {
+      background: var(--tr-danger-soft);
+      color: var(--tr-danger-text);
+    }
+    &.badge-m-soft.badge-m-muted {
+      background: var(--tr-danger-muted-soft);
+      color: var(--tr-danger-muted-text);
+      box-shadow: inset 0 0 0 1px var(--tr-danger-muted-border);
+      @media (forced-colors: active) {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
+      }
+    }
+  }
+</style>
+`;
+
 const PATH_PLACES = 'src/features/places/Contents.svelte';
 const SELF_RULE_EXEMPT = [
   {
@@ -946,6 +1137,7 @@ function fixtureFiles(over = {}) {
     [PATH_SHOWCASE, over.showcase ?? SHOWCASE],
     [PATH_PLACES, over.places ?? CLEAN_PLACES],
     [STORE_PATH, over.store ?? CLEAN_STORE],
+    [BADGE_PATH, over.badge ?? CLEAN_BADGE],
     ...(over.extra ?? []),
   ]);
 }
@@ -1532,6 +1724,127 @@ function runSelfTest() {
       })(),
       codes: ['F1'],
     });
+    // --- Мутанты правила F6 по РЕАЛЬНОМУ Badge.svelte (D-25а, D-26) -------------
+    // Якоря многострочные и привязаны к строке с токеном тона: голая ветка
+    // `@media (forced-colors: active) {` встречается дважды и в якорях не
+    // используется; mutate() бросает при числе вхождений ≠ 1.
+    const REAL_BADGE_SRC = fs.readFileSync(path.join(UI_ROOT, BADGE_PATH), 'utf8');
+    const shadow = (tone) => `      box-shadow: inset 0 0 0 1px var(--tr-${tone}-muted-border);\n`;
+    const FORCED = '      @media (forced-colors: active) {\n';
+    const BRANCH = `${FORCED}        outline: 1px solid CanvasText;\n        outline-offset: -1px;\n      }\n`;
+    const badgeMutant = (badge) => fixtureFiles({ badge });
+    fixtures.push({
+      name: 'F6-R0 немутированный реальный Badge.svelte — ноль нарушений',
+      files: badgeMutant(REAL_BADGE_SRC),
+      codes: [],
+    });
+    fixtures.push({
+      name: 'F6-1 реальный Badge: рамка убрана из warning-блока muted',
+      files: badgeMutant(mutate(REAL_BADGE_SRC, shadow('warning'), '')),
+      codes: ['F6'],
+      msgIncludes: 'рамк',
+      msgExcludes: 'forced-colors',
+    });
+    fixtures.push({
+      name: 'F6-2 реальный Badge: рамка убрана из danger-блока muted',
+      files: badgeMutant(mutate(REAL_BADGE_SRC, shadow('danger'), '')),
+      codes: ['F6'],
+      msgIncludes: 'рамк',
+      msgExcludes: 'forced-colors',
+    });
+    fixtures.push({
+      name: 'F6-3 реальный Badge: рамка добавлена действующему (немутированному) soft-чипу warning',
+      files: badgeMutant(
+        mutate(
+          REAL_BADGE_SRC,
+          '    &.badge-m-soft {\n      background: var(--tr-warning-soft);\n',
+          '    &.badge-m-soft {\n      box-shadow: inset 0 0 0 1px var(--tr-warning-muted-border);\n      background: var(--tr-warning-soft);\n',
+        ),
+      ),
+      codes: ['F6'],
+      msgIncludes: 'рамк',
+      msgExcludes: 'forced-colors',
+    });
+    fixtures.push({
+      name: 'F6-4 реальный Badge: ветка forced-colors снята из warning-блока muted (box-shadow на месте)',
+      files: badgeMutant(mutate(REAL_BADGE_SRC, shadow('warning') + BRANCH, shadow('warning'))),
+      codes: ['F6'],
+      msgIncludes: 'forced-colors',
+      msgExcludes: 'рамк',
+    });
+    fixtures.push({
+      name: 'F6-5 реальный Badge: ветка forced-colors снята из danger-блока muted (box-shadow на месте)',
+      files: badgeMutant(mutate(REAL_BADGE_SRC, shadow('danger') + BRANCH, shadow('danger'))),
+      codes: ['F6'],
+      msgIncludes: 'forced-colors',
+      msgExcludes: 'рамк',
+    });
+    const OUTLINE = '        outline: 1px solid CanvasText;\n';
+    fixtures.push({
+      name: 'F6-6 реальный Badge: в forced-colors warning-блока outline: none (свойство на месте, признак пропал)',
+      files: badgeMutant(
+        mutate(
+          REAL_BADGE_SRC,
+          shadow('warning') + FORCED + OUTLINE,
+          shadow('warning') + FORCED + '        outline: none;\n',
+        ),
+      ),
+      codes: ['F6'],
+      msgIncludes: 'forced-colors',
+      msgExcludes: 'рамк',
+    });
+    fixtures.push({
+      name: 'F6-7 реальный Badge: в forced-colors danger-блока outline: 0',
+      files: badgeMutant(
+        mutate(
+          REAL_BADGE_SRC,
+          shadow('danger') + FORCED + OUTLINE,
+          shadow('danger') + FORCED + '        outline: 0;\n',
+        ),
+      ),
+      codes: ['F6'],
+      msgIncludes: 'forced-colors',
+      msgExcludes: 'рамк',
+    });
+    fixtures.push({
+      name: 'F6-8 реальный Badge: в forced-colors danger-блока outline: 1px solid transparent',
+      files: badgeMutant(
+        mutate(
+          REAL_BADGE_SRC,
+          shadow('danger') + FORCED + OUTLINE,
+          shadow('danger') + FORCED + '        outline: 1px solid transparent;\n',
+        ),
+      ),
+      codes: ['F6'],
+      msgIncludes: 'forced-colors',
+      msgExcludes: 'рамк',
+    });
+    fixtures.push({
+      name: 'F6-9 Badge.svelte отсутствует в дереве',
+      files: (() => {
+        const f = fixtureFiles();
+        f.delete(BADGE_PATH);
+        return f;
+      })(),
+      codes: ['F6'],
+    });
+    // --- Связка D-29a: инверсию пары ловит F3, а не F6 -------------------------
+    const REAL_STORE_SRC = fs.readFileSync(path.join(UI_ROOT, STORE_PATH), 'utf8');
+    fixtures.push({
+      name: 'F3-инверсия реальный стор: muted переехал с на_ремонте на в_ремонте (пара инвертирована) — ловит F3, не F6',
+      files: fixtureFiles({
+        store: mutate(
+          mutate(
+            REAL_STORE_SRC,
+            "  на_ремонте: { variant: 'warning', appearance: 'soft', muted: true },",
+            "  на_ремонте: { variant: 'warning', appearance: 'soft' },",
+          ),
+          "  в_ремонте: { variant: 'warning', appearance: 'soft' },",
+          "  в_ремонте: { variant: 'warning', appearance: 'soft', muted: true },",
+        ),
+      }),
+      codes: ['F3'],
+    });
   } catch (e) {
     console.error(`${TAG} [selftest] FAIL — ${e.message}`);
     return false;
@@ -1551,6 +1864,15 @@ function runSelfTest() {
     } else {
       ok = f.codes.every((c) => got.has(c)) && [...got].every((c) => f.codes.includes(c));
       if (ok && f.onlyFile) ok = v.every((line) => line.startsWith(f.onlyFile));
+      if (ok && f.msgIncludes) {
+        const f6 = v.filter((line) => line.includes('— [F6]'));
+        ok =
+          f6.length > 0 &&
+          f6.every(
+            (line) =>
+              line.includes(f.msgIncludes) && !(f.msgExcludes && line.includes(f.msgExcludes)),
+          );
+      }
       expected = `правила ${f.codes.join('+')}`;
     }
     const gotCodes = [...got].sort().join('+') || '—';
