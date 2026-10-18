@@ -52,7 +52,13 @@
 //        presetStatusCode)`) и `onPickGroup`-присваивание вне эффекта —
 //        легальны и целевыми не считаются;
 //   (D1) каждый целевой эффект обязан ДО своего присваивания читать
-//        `membershipLoaded`, `storageIntent` и `isEdit`;
+//        `membershipLoaded`, `storageIntent` и `isEdit`, причём проверяется
+//        СМЫСЛ условия, а не набор слов (WR-06, фаза 41.11, D-21): `(!isEdit ||
+//        storageIntent)` целиком, конъюнктом (допустима перестановка операндов),
+//        и ни одно вхождение `membershipLoaded` не стоит под отрицанием.
+//        Инверсия `(isEdit || storageIntent)` / `!membershipLoaded` оставляет
+//        все три имени на месте, но снимает охрану при создании и оставляет её
+//        при правке — ровно наоборот;
 //   (D2) `storageIntent = true` — не менее двух раз (место и чекбокс) и ни
 //        разу внутри `$effect` (иначе эффект включает собственное условие);
 //   (D3) `membershipLoaded = true` — не менее двух раз (then и catch запроса
@@ -324,6 +330,14 @@ function scanQuantityRules(relPath, src, violations) {
 const STATS = { targets: 0 };
 const STATUS_ASSIGN_RE = /\bstatusId\s*=(?!=)/;
 const STORAGE_REQUIRED_NAMES = ['membershipLoaded', 'storageIntent', 'isEdit'];
+// WR-06 (D-21): проверяется текст условия БЕЗ пробелов (squash). Охрана при правке —
+// конъюнкт `(!isEdit||storageIntent)` (операнды в любом порядке), стоящий на верхнем
+// уровне `&&`-цепочки: ни `||(…)`, ни `!(…)` перед скобкой не допускаются.
+const EDIT_GUARD_RE =
+  /(?:&&|if\()\((?:!isEdit\|\|storageIntent|storageIntent\|\|!isEdit)\)(?:&&|\))/;
+// НИ ОДНО вхождение membershipLoaded не под отрицанием: «хотя бы одно без !» пропустило бы
+// два вхождения, из которых инвертировано одно.
+const NEGATED_MEMBERSHIP_RE = /!membershipLoaded\b|\bmembershipLoaded(?:===false|!==true)/;
 
 /** Правило (D): эффект автостатуса склада (WR-01 фазы 41.1). */
 function scanStorageStatusRules(relPath, src, violations) {
@@ -346,12 +360,35 @@ function scanStorageStatusRules(relPath, src, violations) {
     const assign = STATUS_ASSIGN_RE.exec(e.body);
     const before = e.body.slice(0, assign.index);
     const missing = STORAGE_REQUIRED_NAMES.filter((n) => !new RegExp(`\\b${n}\\b`).test(before));
+    const at = `${relPath}:${lineAt(src, e.start + 1 + assign.index)}`;
     if (missing.length > 0) {
       violations.push(
-        `${relPath}:${lineAt(src, e.start + 1 + assign.index)}: (D1) $effect автостатуса склада не ` +
+        `${at}: (D1) $effect автостатуса склада не ` +
           `читает ${missing.join(', ')} до присваивания statusId — при правке он снова молча ` +
           `перезапишет статус (WR-01: якорь разбора «На списание» получал «На складе»).`,
       );
+    } else {
+      // WR-06 (D-21): имена на месте — проверяем полярность условия целиком.
+      const flat = squash(before);
+      const problems = [];
+      if (!EDIT_GUARD_RE.test(flat)) {
+        problems.push(
+          'условие инвертировано или ослаблено: нет конъюнкта (!isEdit || storageIntent) — ' +
+            'охрана при создании снята, а при правке оставлена (или наоборот)',
+        );
+      }
+      if (NEGATED_MEMBERSHIP_RE.test(flat)) {
+        problems.push(
+          'membershipLoaded под отрицанием — эффект ждёт НЕзагруженного членства и срабатывает ' +
+            'раньше, чем lockedByGroup становится достоверным',
+        );
+      }
+      if (problems.length > 0) {
+        violations.push(
+          `${at}: (D1) $effect автостатуса склада читает нужные имена, но смысл условия нарушен: ` +
+            `${problems.join('; ')} (WR-06).`,
+        );
+      }
     }
   }
 
@@ -665,6 +702,48 @@ function storageFixtures(D) {
       src: `${sEffect(S_COND.replace('(!isEdit || storageIntent)', 'storageIntent'))}\n${S_TAIL}`,
       rules: D,
       expectViolations: 1,
+    },
+    {
+      name: '(D1) WR-06 мутант: (isEdit || storageIntent) вместо (!isEdit || storageIntent)',
+      src: `${sEffect(S_COND.replace('(!isEdit || storageIntent)', '(isEdit || storageIntent)'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) WR-06 мутант: (isEdit && storageIntent)',
+      src: `${sEffect(S_COND.replace('(!isEdit || storageIntent)', '(isEdit && storageIntent)'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) WR-06 мутант: !membershipLoaded',
+      src: `${sEffect(S_COND.replace('membershipLoaded &&', '!membershipLoaded &&'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) WR-06 мутант: два вхождения membershipLoaded, одно под отрицанием',
+      src: `${sEffect(S_COND.replace('membershipLoaded &&', 'membershipLoaded && !membershipLoaded &&'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) WR-06 мутант: !(!isEdit || storageIntent) — отрицание всей скобки',
+      src: `${sEffect(S_COND.replace('(!isEdit || storageIntent)', '!(!isEdit || storageIntent)'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) WR-06 мутант: охрана правки стала дизъюнктом (… || (!isEdit || storageIntent))',
+      src: `${sEffect(S_COND.replace('&& (!isEdit || storageIntent) &&', '|| (!isEdit || storageIntent) &&'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 1,
+    },
+    {
+      name: '(D1) WR-06 контроль: операнды переставлены, пробелы другие, перенос строки (негатив)',
+      src: `${sEffect(S_COND.replace('(!isEdit || storageIntent)', '(storageIntent\n   ||   !isEdit)'))}\n${S_TAIL}`,
+      rules: D,
+      expectViolations: 0,
     },
     {
       name: '(D1) имена прочитаны ПОСЛЕ присваивания (охрана после действия)',
