@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-10-18T05:41:36.616Z"
+status: ready_to_plan
+last_updated: 2026-10-18T06:13:18.157Z
 last_activity: 2026-10-18
 progress:
   total_phases: 24
   completed_phases: 11
   total_plans: 200
-  completed_plans: 200
-  percent: 50
+  completed_plans: 463
+  percent: 46
+stopped_at: Phase 41.1 complete (33/33) — ready to discuss Phase 41.2
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.1 — groups-devices-integration
+**Current focus:** Phase 41.2 — groups acts places
 
 ## Current Position
 
-Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 33 of 33 исполнен (gap-closure, волна 5; 41.1-32: живая проверка G1-G13 пройдена пользователем, 13/13 passed; 41.1-31: граница gap-closure — полный прогон 1895 passed / 0 failed); осталась граница фазы 41.1-33; верификация gaps_found 4/6 — фаза НЕ завершена
-Status: Ready to execute
+Phase: 41.2
+Plan: Not started
+Status: Ready to plan
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
 R5 — счётчики вкладок «Отчётов» равны 0 в LAN-браузере — признан дефектом ВНЕ фазы 41
@@ -151,7 +152,7 @@ Last activity: 2026-10-18
 
 **Velocity:**
 
-- Total plans completed: 278
+- Total plans completed: 311
 - Average duration: —
 - Total execution time: —
 
@@ -195,6 +196,7 @@ Last activity: 2026-10-18
 | 40.4 | 5 | - | - |
 | 40.5 | 14 | - | - |
 | 41.7 | 14 | - | - |
+| 41.1 | 33 | - | - |
 
 **Recent Trend:**
 
