@@ -24,6 +24,15 @@
 //
 // (3) R2: альфа *-muted-soft не больше MAX_ALPHA_RATIO (0.65) от альфы активного *-soft.
 //
+// (4) R3 (план 41.11-09, D-16, WCAG 1.4.11): рамка приглушённого чипа --tr-warning-muted-border /
+//     --tr-danger-muted-border видна на подложке — её контраст к КОМПОЗИТУ *-muted-soft поверх
+//     каждого из шести фонов не ниже BORDER_MIN = 3.0: 2 тона x 6 фонов x 2 темы = 24 ячейки.
+//     Рамка рисуется внутри чипа поверх его же подложки, поэтому фоном рамки служит композит, а
+//     не голый фон строки. Отсутствие токена рамки — нарушение, не пропуск.
+//     Различие внутри пары «ожидающий / действующий» несут три независимых механизма: F3 в
+//     check-device-status-labels (флаги muted), F6 там же (рамка и её forced-colors-ветка) и R2
+//     здесь (потолок альфы); R3 охраняет видимость самой рамки.
+//
 // ГРАНИЦА ОХВАТА (D-33): --tr-row-selected (rgba) в набор фонов НЕ входит и остаётся ВНЕ
 // ПЕРИМЕТРА этого гейта — чип поверх выбранной строки здесь не измеряется; остаточный риск
 // закрывается ручной проверкой (план 41.11-11), а не молчанием. Остальные rgba/hsl-токены
@@ -46,6 +55,8 @@ const UI_ROOT = path.resolve(__dirname, '..');
 const COMPOSITE_MIN = 4.5;
 // Потолок альфы приглушённой подложки относительно активной (R2, D-17).
 const MAX_ALPHA_RATIO = 0.65;
+// Порог R3: нетекстовый контраст рамки к композиту подложки (WCAG 1.4.11).
+const BORDER_MIN = 3.0;
 const EPS = 1e-9;
 
 function readFileSafe(filePath) {
@@ -177,8 +188,18 @@ const COMPOSITE_TONES = [
 
 // Пары альф для R2 (muted не плотнее 0.65 от active).
 const MUTED_TONES = [
-  { name: 'warning', mutedSoft: '--tr-warning-muted-soft', activeSoft: '--tr-warning-soft' },
-  { name: 'danger', mutedSoft: '--tr-danger-muted-soft', activeSoft: '--tr-danger-soft' },
+  {
+    name: 'warning',
+    mutedSoft: '--tr-warning-muted-soft',
+    activeSoft: '--tr-warning-soft',
+    border: '--tr-warning-muted-border',
+  },
+  {
+    name: 'danger',
+    mutedSoft: '--tr-danger-muted-soft',
+    activeSoft: '--tr-danger-soft',
+    border: '--tr-danger-muted-border',
+  },
 ];
 
 // Возвращает список строк-нарушений для содержимого _tokens.scss (без побочных эффектов).
@@ -188,6 +209,9 @@ function checkTokens(content, stats = {}) {
   stats.compositeCells = 0;
   stats.minComposite = Infinity;
   stats.minWhere = '';
+  stats.borderCells = 0;
+  stats.minBorder = Infinity;
+  stats.minBorderWhere = '';
   const themeBlocks = {
     light: extractThemeBlock(content, "[data-theme='light']"),
     dark: extractThemeBlock(content, "[data-theme='dark']"),
@@ -279,6 +303,38 @@ function checkTokens(content, stats = {}) {
           );
         }
       }
+
+      // R3: рамка приглушённого чипа к композиту его подложки поверх каждого из шести фонов.
+      const borderHex = map.get(t.border);
+      if (borderHex == null || !HEX6_RE.test(borderHex) || !mutedSoft) {
+        violations.push(
+          `${theme} R3 border ${t.name}: token ${t.border} not found or not hex, or ${t.mutedSoft} not rgba()`,
+        );
+        continue;
+      }
+      const fg = { r: Number(mutedSoft[1]), g: Number(mutedSoft[2]), b: Number(mutedSoft[3]) };
+      const alpha = Number.parseFloat(mutedSoft[4]);
+      for (const bgTok of BG_6) {
+        const bgHex = map.get(bgTok);
+        if (bgHex == null || !HEX6_RE.test(bgHex)) {
+          violations.push(
+            `${theme} R3 border ${t.name} over ${bgTok}: background token not found or not hex`,
+          );
+          continue;
+        }
+        const comp = rgbToHex(alphaComposite(fg, alpha, bgHex));
+        const ratio = contrastRatio(borderHex, comp);
+        stats.borderCells++;
+        if (ratio < stats.minBorder) {
+          stats.minBorder = ratio;
+          stats.minBorderWhere = `${theme} ${t.name} over ${bgTok}`;
+        }
+        if (ratio < BORDER_MIN) {
+          violations.push(
+            `${theme} R3 border ${t.name} over ${bgTok} (${t.border} on composite of ${t.mutedSoft}): ratio ${ratio.toFixed(2)} < ${BORDER_MIN}`,
+          );
+        }
+      }
     }
   }
   return violations;
@@ -294,7 +350,7 @@ function report(violations, stats) {
     return 1;
   }
   console.error(
-    `[check-contrast] PASS — 0 нарушений: 102 проверки таблицы + ${stats.compositeCells} композитных, минимум композита ${minC} (${stats.minWhere})`,
+    `[check-contrast] PASS — 0 нарушений: 102 проверки таблицы + ${stats.compositeCells} композитных, минимум композита ${minC} (${stats.minWhere}); R3 рамка: ${stats.borderCells} ячеек, минимум ${stats.minBorder.toFixed(2)} (${stats.minBorderWhere}) >= ${BORDER_MIN}`,
   );
   return 0;
 }
@@ -396,6 +452,17 @@ function selftest(content, dumpDir) {
           '--tr-accent-soft: rgba(43, 95, 217, 0.4);',
         ),
       expect: 'light R1 composite accent active over',
+    },
+    {
+      name: '(6) R3: светлая рамка warning-muted слита с композитом подложки (#e8d9bd)',
+      make: (c) =>
+        mutate(c, '--tr-warning-muted-border: #a8680b;', '--tr-warning-muted-border: #e8d9bd;'),
+      expect: 'light R3 border warning over',
+    },
+    {
+      name: '(7) R3: в тёмном блоке нет danger-muted-border — отсутствие токена не пропуск',
+      make: (c) => mutate(c, '  --tr-danger-muted-border: #f26565;\n', ''),
+      expect: 'dark R3 border danger: token --tr-danger-muted-border not found',
     },
     {
       name: '(5b) D-33: плотнее info-soft — info реально измеряется',
