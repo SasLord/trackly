@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-18T16:04:57.380Z"
+last_updated: "2026-10-18T16:10:19.716Z"
 last_activity: 2026-10-18
 progress:
   total_phases: 25
   completed_phases: 12
   total_plans: 212
-  completed_plans: 202
+  completed_plans: 203
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.11 (phase-41-1-debt) — EXECUTING
-Plan: 3 of 12
+Plan: 4 of 12
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -618,6 +618,7 @@ Last activity: 2026-10-18
 | Phase 41.1 P33 | 25min | 3 tasks | 4 files |
 | Phase 41.11 P01 | 1.5h | 3 tasks | 6 files |
 | Phase 41.11 P02 | 40min | 2 tasks | 4 files |
+| Phase 41.11 P03 | 40min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1337,6 +1338,7 @@ Recent decisions affecting current work:
 - [Phase 41.1]: [41.1-33] Статусы GRD-01..05 по номерам G-пунктов, все passed; чекбокс фазы 41.1 не закрыт — делает повторная верификация
 - [Phase 41.11-01]: tr_norm = trim + Rust to_lowercase (SQLite lower() только ASCII); вырожденный FTS-ввод даёт пустую выборку, не отсутствие фильтра
 - [Phase 41.11]: [41.11-02] listGen обязательным пропом: номер поколения списка единственный владелец инвалидации кеша детей свёртки
+- [Phase 41.11]: [41.11-03] R1 гейта контраста = композит >=4.5 по BG_6, 5 тонов, 84 ячейки; порядок muted/active снят; --tr-row-selected вне периметра
 
 ### Pending Todos
 
@@ -1539,7 +1541,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-18T16:04:51.950Z
+Last session: 2026-10-18T16:10:15.250Z
 Stopped at: Phase 41.11 context gathered
 Resume file: None
 
