@@ -32,7 +32,7 @@
 //
 // Zero-dependency: только node:fs/node:path/node:url.
 //
-// Usage: node scripts/check-contrast.mjs [--tokens=<путь к копии _tokens.scss>] | --selftest
+// Usage: node scripts/check-contrast.mjs [--tokens=<путь к копии _tokens.scss>] | --selftest [--dump-mutants=<каталог>]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -300,35 +300,33 @@ function report(violations, stats) {
 }
 
 // ── Самотест: мутанты КОПИИ реального _tokens.scss; якорь обязан встречаться ровно один раз ──
+// Якорь включает ЗНАЧЕНИЕ токена: правишь токен — обновляй якорь вместе с ним (D-26).
 function mutate(content, anchor, replacement) {
   const count = content.split(anchor).length - 1;
   if (count !== 1) {
     console.error(
-      `[check-contrast] selftest: якорь ${JSON.stringify(anchor)} встречается ${count} раз(а), ожидалось ровно 1`,
+      `[check-contrast] selftest: якорь ${JSON.stringify(anchor)} встречается ${count} раз(а), ожидалось ровно 1 — обнови якорь вместе с токеном (D-26), а не ослабляй проверку`,
     );
     process.exit(1);
   }
   return content.replace(anchor, () => replacement);
 }
 
-function selftest(content) {
+function selftest(content, dumpDir) {
   const real = checkTokens(content);
   if (real.length > 0) {
     console.error('[check-contrast] selftest: реальные токены не проходят гейт:');
     for (const v of real) console.error(`  ${v}`);
     process.exit(1);
   }
+  console.error('[check-contrast] selftest ok (контроль) немутированные токены — 0 нарушений');
+  // Мутанты ПОРЧАТ композит (или другое правило) при сохранённом контрасте на голом фоне.
+  // onlyBg: каждое композитное нарушение мутанта обязано называть именно этот фон.
   const mutants = [
-    {
-      name: '(a) тёмный warning-muted-text равен активному',
-      make: (c) =>
-        mutate(c, '--tr-warning-muted-text: #d39e4f;', '--tr-warning-muted-text: #f0b45a;'),
-      expect: 'R1',
-    },
     {
       name: '(b) светлый danger-muted-text низкоконтрастный',
       make: (c) =>
-        mutate(c, '--tr-danger-muted-text: #b43939;', '--tr-danger-muted-text: #c8cfdb;'),
+        mutate(c, '--tr-danger-muted-text: #af3737;', '--tr-danger-muted-text: #c8cfdb;'),
       expect: 'threshold 4.5',
     },
     {
@@ -347,22 +345,6 @@ function selftest(content) {
       expect: 'R2',
     },
     {
-      name: '(e) светлый warning-muted-text контрастнее активного (перестановка)',
-      make: (c) =>
-        mutate(
-          mutate(c, '--tr-warning-muted-text: #915c0f;', '--tr-warning-muted-text: #8f590a;'),
-          '--tr-warning-text: #8f590a;',
-          '--tr-warning-text: #915c0f;',
-        ),
-      expect: 'R1',
-    },
-    {
-      name: '(f) тёмный danger-muted-text ниже активного лишь на 0.05',
-      make: (c) =>
-        mutate(c, '--tr-danger-muted-text: #e07171;', '--tr-danger-muted-text: #ff7f7f;'),
-      expect: 'R1',
-    },
-    {
       name: '(g) альфа тёмного warning-muted-soft = 0.7 от активной',
       make: (c) =>
         mutate(
@@ -372,15 +354,78 @@ function selftest(content) {
         ),
       expect: 'R2',
     },
+    {
+      name: '(1) светлая тема: плотнее warning-soft — композит warning active падает',
+      make: (c) =>
+        mutate(
+          c,
+          '--tr-warning-soft: rgba(185, 114, 12, 0.14);',
+          '--tr-warning-soft: rgba(185, 114, 12, 0.3);',
+        ),
+      expect: 'light R1 composite warning active over --tr-surface-sunken',
+    },
+    {
+      name: '(2) тёмная тема: danger-muted-text возвращён к #e07171 (композит на row-hover ≈4.10)',
+      make: (c) =>
+        mutate(c, '--tr-danger-muted-text: #e37f7f;', '--tr-danger-muted-text: #e07171;'),
+      expect: 'dark R1 composite danger muted over --tr-row-hover',
+    },
+    {
+      name: '(3) светлая тема: тёмный --tr-group — краснеет только шестой фон',
+      make: (c) =>
+        // --tr-text-tertiary темнеет вместе с фоном, чтобы голая пара (порог 3.0) осталась зелёной
+        mutate(
+          mutate(c, '--tr-group: #e9edf5;', '--tr-group: #dde2ec;'),
+          '--tr-text-tertiary: #7a849a;',
+          '--tr-text-tertiary: #6a7488;',
+        ),
+      expect: 'over --tr-group',
+      onlyBg: '--tr-group',
+    },
+    {
+      name: '(4) D-33: светлый success-text возвращён к #0f7343 (композит ≈4.20 на sunken)',
+      make: (c) => mutate(c, '--tr-success-text: #0e6c3f;', '--tr-success-text: #0f7343;'),
+      expect: 'light R1 composite success active over --tr-surface-sunken',
+    },
+    {
+      name: '(5a) D-33: плотнее accent-soft — accent реально измеряется',
+      make: (c) =>
+        mutate(
+          c,
+          '--tr-accent-soft: rgba(43, 95, 217, 0.1);',
+          '--tr-accent-soft: rgba(43, 95, 217, 0.4);',
+        ),
+      expect: 'light R1 composite accent active over',
+    },
+    {
+      name: '(5b) D-33: плотнее info-soft — info реально измеряется',
+      make: (c) =>
+        mutate(
+          c,
+          '--tr-info-soft: rgba(43, 95, 217, 0.1);',
+          '--tr-info-soft: rgba(43, 95, 217, 0.4);',
+        ),
+      expect: 'light R1 composite info active over',
+    },
   ];
   let failed = 0;
-  for (const m of mutants) {
-    const v = checkTokens(m.make(content));
-    if (!v.some((line) => line.includes(m.expect))) {
-      console.error(`[check-contrast] selftest FAIL ${m.name}: гейт не покраснел на «${m.expect}»`);
+  for (const [i, m] of mutants.entries()) {
+    const mutated = m.make(content);
+    if (dumpDir) fs.writeFileSync(path.join(dumpDir, `mutant-${i}.scss`), mutated);
+    const v = checkTokens(mutated);
+    const hit = v.filter((line) => line.includes(m.expect));
+    let ok = hit.length > 0;
+    if (ok && m.onlyBg) {
+      const composite = v.filter((line) => line.includes('R1 composite'));
+      ok = composite.length > 0 && composite.every((line) => line.includes(`over ${m.onlyBg} `));
+    }
+    if (!ok) {
+      console.error(
+        `[check-contrast] selftest FAIL ${m.name}: гейт не покраснел на «${m.expect}»${m.onlyBg ? ` (только ${m.onlyBg})` : ''}`,
+      );
       failed++;
     } else {
-      console.error(`[check-contrast] selftest ok ${m.name}`);
+      console.error(`[check-contrast] selftest ok ${m.name} → «${m.expect}»`);
     }
   }
   if (failed > 0) process.exit(1);
@@ -399,7 +444,10 @@ function main() {
     console.error(`[check-contrast] cannot read ${relPath(tokensScssPath)}`);
     process.exit(1);
   }
-  if (args.includes('--selftest')) selftest(content);
+  if (args.includes('--selftest')) {
+    const dump = args.find((a) => a.startsWith('--dump-mutants='));
+    selftest(content, dump ? path.resolve(dump.slice('--dump-mutants='.length)) : null);
+  }
   const stats = {};
   const violations = checkTokens(content, stats);
   process.exit(report(violations, stats));
