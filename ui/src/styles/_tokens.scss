@@ -41,23 +41,23 @@
   // Semantic (solid / soft / text triplets)
   --tr-success: #12884d;
   --tr-success-soft: rgba(18, 137, 78, 0.12);
-  --tr-success-text: #0f7343;
+  --tr-success-text: #0e6c3f;
 
   --tr-warning: #a8680b;
   --tr-warning-soft: rgba(185, 114, 12, 0.14);
-  --tr-warning-text: #8f590a;
+  --tr-warning-text: #845209;
   // Приглушённый вариант «ожидающего» статуса (UI-SPEC §10.2): тот же тон, но ярче/тусклее «лампочки».
   --tr-warning-muted-soft: rgba(185, 114, 12, 0.07);
-  --tr-warning-muted-text: #915c0f;
+  --tr-warning-muted-text: #8a570e;
 
   --tr-danger: #cf3b3b;
   --tr-danger-hover: #b83232;
   --tr-danger-active: #9d2929;
   --tr-danger-soft: rgba(207, 59, 59, 0.12);
-  --tr-danger-text: #b02f2f;
+  --tr-danger-text: #a92d2d;
   // Приглушённый вариант «ожидающего» статуса (UI-SPEC §10.2): тот же тон, но ярче/тусклее «лампочки».
   --tr-danger-muted-soft: rgba(207, 59, 59, 0.06);
-  --tr-danger-muted-text: #b43939;
+  --tr-danger-muted-text: #af3737;
   --tr-danger-ring: rgba(207, 59, 59, 0.2);
 
   --tr-info: #2b5fd9;
@@ -140,7 +140,7 @@
   --tr-danger-text: #ff8080;
   // Приглушённый вариант «ожидающего» статуса (UI-SPEC §10.2): тот же тон, но ярче/тусклее «лампочки».
   --tr-danger-muted-soft: rgba(242, 101, 101, 0.08);
-  --tr-danger-muted-text: #e07171;
+  --tr-danger-muted-text: #e37f7f;
   --tr-danger-ring: rgba(242, 101, 101, 0.2);
 
   --tr-info: #5b8bff;

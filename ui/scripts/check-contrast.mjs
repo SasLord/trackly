@@ -1,31 +1,34 @@
 #!/usr/bin/env node
-// [check-contrast] Постоянный CI-гейт WCAG AA-контраста (Phase 30, план 01, D-01).
+// [check-contrast] Постоянный CI-гейт WCAG AA-контраста (Phase 30, план 01, D-01; Phase 41.11, план 03).
 //
-// Читает ЕДИНСТВЕННЫЙ файл — ui/src/styles/_tokens.scss — и проверяет закрытую
-// каноническую таблицу из 51 пары (foreground token / background token / порог) × 2 темы
-// (102 проверки за прогон) на соответствие WCAG 2.x. Формула контраста реализована с нуля:
-// в проекте нет npm-зависимости для WCAG-математики (30-PATTERNS.md → «No Analog Found»).
+// Читает ЕДИНСТВЕННЫЙ файл — ui/src/styles/_tokens.scss — и делает две независимые вещи.
 //
-// Порог 4.5:1 — обычный текст (45 пар, в том числе приглушённые --tr-warning-muted-text и
-// --tr-danger-muted-text на четырёх фонах). Порог 3.0:1 — документированное исключение
-// для --tr-text-tertiary (роль «плейсхолдеры/мета/счётчики» по 23-UI-SPEC.md:81, не
-// основной текст — 6 пар).
+// (1) Каноническая таблица: 51 пара (foreground token / background token / порог) × 2 темы =
+//     102 проверки за прогон на «голых» фонах. Формула контраста WCAG 2.x реализована с нуля:
+//     в проекте нет npm-зависимости для WCAG-математики. Порог 4.5:1 — обычный текст
+//     (45 пар, включая приглушённые --tr-warning-muted-text и --tr-danger-muted-text на четырёх
+//     фонах). Порог 3.0:1 — документированное исключение для --tr-text-tertiary (роль
+//     «плейсхолдеры/мета/счётчики», не основной текст — 6 пар).
 //
-// Приглушённые soft-фоны (--tr-warning-muted-soft, --tr-danger-muted-soft) — rgba и в таблицу
-// контраста НЕ входят, но участвуют в относительном правиле R2 по альфе (см. ниже).
+// (2) R1 — композит. Чип рисуется не на голом фоне, а на полупрозрачной подложке *-soft, поэтому
+//     контраст текста чипа меряется на КОМПОЗИТЕ: source-over round(fg*alpha + bg*(1-alpha)) по
+//     каналам в закодированном sRGB (так рисует браузер), затем те же relativeLuminance и
+//     contrastRatio. Набор фонов — шесть: --tr-bg, --tr-surface, --tr-surface-raised,
+//     --tr-surface-sunken, --tr-row-hover, --tr-group. Набор тонов — все пять мягких
+//     (accent, success, warning, danger, info) в варианте active (*-text на *-soft) плюс
+//     warning и danger в варианте muted (*-muted-text на *-muted-soft):
+//     (5 + 2) x 6 фонов x 2 темы = 60 + 24 = 84 композитные проверки за прогон
+//     (60 active + 24 muted). Порог — COMPOSITE_MIN = 4.5. Требование порядка «muted тише
+//     active» снято (D-15): различие внутри пары несёт нецветовая обводка (план 09, D-16),
+//     цвет его не гарантирует.
 //
-// Относительные правила (UI-SPEC §10.2, решение 2026-10-17: «приглушённее» — различие ВНУТРИ
-// пары, а не уход ниже порога контраста), для warning и danger в каждой теме:
-//   R1: контраст *-muted-text к --tr-surface не больше (контраст активного *-text к --tr-surface
-//       минус MIN_CONTRAST_GAP);
-//   R2: альфа *-muted-soft не больше MAX_ALPHA_RATIO от альфы активного *-soft.
-// Правила падают на нарушающих значениях, а не описывают подобранные.
+// (3) R2: альфа *-muted-soft не больше MAX_ALPHA_RATIO (0.65) от альфы активного *-soft.
 //
-// Rgba/rgb/hsl/hsla-токены (--tr-*-soft, --tr-focus-ring, --tr-danger-ring, --tr-overlay,
-// --tr-row-selected) сознательно НЕ входят в каноническую таблицу — альфа-композитинг
-// поверх фактического фона вне периметра этого скрипта; остаточный риск закрывается
-// финальным ручным UAT (план 30-03). --tr-text-disabled тоже не входит — WCAG 1.4.3
-// явно исключает неактивные UI-элементы.
+// ГРАНИЦА ОХВАТА (D-33): --tr-row-selected (rgba) в набор фонов НЕ входит и остаётся ВНЕ
+// ПЕРИМЕТРА этого гейта — чип поверх выбранной строки здесь не измеряется; остаточный риск
+// закрывается ручной проверкой (план 41.11-11), а не молчанием. Остальные rgba/hsl-токены
+// (--tr-focus-ring, --tr-danger-ring, --tr-overlay) в таблицу и в композит тоже не входят.
+// --tr-text-disabled не входит — WCAG 1.4.3 исключает неактивные UI-элементы.
 //
 // Zero-dependency: только node:fs/node:path/node:url.
 //
@@ -38,11 +41,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 
-// Окно светлой warning-пары к --tr-surface: от ≈5.53 (порог 4.5 к --tr-surface-sunken при
-// отношении 0.815) до ≈5.73 (активный 5.83 минус зазор) — шириной ≈0.21; зазор больше 0.1
-// сделал бы пару нерешаемой. Текст почти неразличим, поэтому потолок альфы 0.65 заставляет
-// различие быть видимым, а не выводиться расчётом.
-const MIN_CONTRAST_GAP = 0.1;
+// Порог R1 на композите подложки (D-15). Токены держатся с запасом ≥ 4.6 (D-29), чтобы
+// округление канала (≈0.02) не отправляло значение под границу.
+const COMPOSITE_MIN = 4.5;
+// Потолок альфы приглушённой подложки относительно активной (R2, D-17).
 const MAX_ALPHA_RATIO = 0.65;
 const EPS = 1e-9;
 
@@ -115,6 +117,19 @@ function contrastRatio(hexA, hexB) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// Source-over композит fg(alpha) поверх непрозрачного bgHex: round(fg*alpha + bg*(1-alpha))
+// на канал в закодированном sRGB. Округление до целого канала — осознанно (так рисует
+// браузер); оно сдвигает контраст до ≈0.02, что значимо у границы 4.5 (D-14).
+function alphaComposite({ r, g, b }, alpha, bgHex) {
+  const bg = hexToRgb(bgHex);
+  const mix = (f, k) => Math.round(f * alpha + k * (1 - alpha));
+  return { r: mix(r, bg.r), g: mix(g, bg.g), b: mix(b, bg.b) };
+}
+
 // ── Canonical pair table (51 pairs) — hardcoded, no CLI parameters ─────────────────────
 const BG_6 = [
   '--tr-bg',
@@ -141,29 +156,38 @@ const PAIRS = [
   ...BG_6.map((bg) => ({ fg: '--tr-text-tertiary', bg, threshold: 3.0 })),
 ];
 
-const RGBA_RE = /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([0-9.]+)\s*\)$/;
+const RGBA_RE = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)$/;
 
-// Относительные пары: приглушённый токен текста / активный токен текста / фон / активный soft.
-const MUTED_TONES = [
+// Композитные тона (D-33): все пять мягких. variants — active всегда, muted у warning/danger.
+const COMPOSITE_TONES = [
+  { name: 'accent', active: ['--tr-accent-text', '--tr-accent-soft'] },
+  { name: 'success', active: ['--tr-success-text', '--tr-success-soft'] },
   {
     name: 'warning',
-    mutedText: '--tr-warning-muted-text',
-    activeText: '--tr-warning-text',
-    mutedSoft: '--tr-warning-muted-soft',
-    activeSoft: '--tr-warning-soft',
+    active: ['--tr-warning-text', '--tr-warning-soft'],
+    muted: ['--tr-warning-muted-text', '--tr-warning-muted-soft'],
   },
   {
     name: 'danger',
-    mutedText: '--tr-danger-muted-text',
-    activeText: '--tr-danger-text',
-    mutedSoft: '--tr-danger-muted-soft',
-    activeSoft: '--tr-danger-soft',
+    active: ['--tr-danger-text', '--tr-danger-soft'],
+    muted: ['--tr-danger-muted-text', '--tr-danger-muted-soft'],
   },
+  { name: 'info', active: ['--tr-info-text', '--tr-info-soft'] },
+];
+
+// Пары альф для R2 (muted не плотнее 0.65 от active).
+const MUTED_TONES = [
+  { name: 'warning', mutedSoft: '--tr-warning-muted-soft', activeSoft: '--tr-warning-soft' },
+  { name: 'danger', mutedSoft: '--tr-danger-muted-soft', activeSoft: '--tr-danger-soft' },
 ];
 
 // Возвращает список строк-нарушений для содержимого _tokens.scss (без побочных эффектов).
-function checkTokens(content) {
+// stats (необязательный) получает: compositeCells, minComposite (+ где).
+function checkTokens(content, stats = {}) {
   const violations = [];
+  stats.compositeCells = 0;
+  stats.minComposite = Infinity;
+  stats.minWhere = '';
   const themeBlocks = {
     light: extractThemeBlock(content, "[data-theme='light']"),
     dark: extractThemeBlock(content, "[data-theme='dark']"),
@@ -198,32 +222,48 @@ function checkTokens(content) {
       }
     }
 
-    // R1 / R2: приглушённое строго «тише» активного.
-    const surface = map.get('--tr-surface');
-    for (const t of MUTED_TONES) {
-      const mutedText = map.get(t.mutedText);
-      const activeText = map.get(t.activeText);
-      if (
-        surface == null ||
-        mutedText == null ||
-        activeText == null ||
-        !HEX6_RE.test(surface) ||
-        !HEX6_RE.test(mutedText) ||
-        !HEX6_RE.test(activeText)
-      ) {
-        violations.push(
-          `${theme} R1 ${t.mutedText}: token ${t.mutedText}, ${t.activeText} or --tr-surface not found or not hex`,
-        );
-      } else {
-        const mutedC = contrastRatio(mutedText, surface);
-        const activeC = contrastRatio(activeText, surface);
-        if (mutedC > activeC - MIN_CONTRAST_GAP + EPS) {
+    // R1: контраст текста чипа на КОМПОЗИТЕ подложки поверх каждого из шести фонов.
+    for (const t of COMPOSITE_TONES) {
+      for (const variant of ['active', 'muted']) {
+        const pair = t[variant];
+        if (!pair) continue;
+        const [textTok, softTok] = pair;
+        const textHex = map.get(textTok);
+        const softM = RGBA_RE.exec(map.get(softTok) ?? '');
+        if (textHex == null || !HEX6_RE.test(textHex) || !softM) {
           violations.push(
-            `${theme} R1 ${t.mutedText} (${mutedC.toFixed(2)}) vs ${t.activeText} (${activeC.toFixed(2)}) on --tr-surface: muted must be lower by >= ${MIN_CONTRAST_GAP}`,
+            `${theme} R1 composite ${t.name} ${variant}: token ${textTok} not found or not hex, or ${softTok} not found or not rgba()`,
           );
+          continue;
+        }
+        const fg = { r: Number(softM[1]), g: Number(softM[2]), b: Number(softM[3]) };
+        const alpha = Number.parseFloat(softM[4]);
+        for (const bgTok of BG_6) {
+          const bgHex = map.get(bgTok);
+          if (bgHex == null || !HEX6_RE.test(bgHex)) {
+            violations.push(
+              `${theme} R1 composite ${t.name} ${variant} over ${bgTok}: background token not found or not hex`,
+            );
+            continue;
+          }
+          const comp = rgbToHex(alphaComposite(fg, alpha, bgHex));
+          const ratio = contrastRatio(textHex, comp);
+          stats.compositeCells++;
+          if (ratio < stats.minComposite) {
+            stats.minComposite = ratio;
+            stats.minWhere = `${theme} ${t.name} ${variant} over ${bgTok}`;
+          }
+          if (ratio < COMPOSITE_MIN) {
+            violations.push(
+              `${theme} R1 composite ${t.name} ${variant} over ${bgTok} (${textTok} on ${softTok}): ratio ${ratio.toFixed(2)} < ${COMPOSITE_MIN}`,
+            );
+          }
         }
       }
+    }
 
+    // R2: альфа приглушённой подложки не больше MAX_ALPHA_RATIO от активной.
+    for (const t of MUTED_TONES) {
       const mutedSoft = RGBA_RE.exec(map.get(t.mutedSoft) ?? '');
       const activeSoft = RGBA_RE.exec(map.get(t.activeSoft) ?? '');
       if (!mutedSoft || !activeSoft) {
@@ -231,8 +271,8 @@ function checkTokens(content) {
           `${theme} R2 ${t.mutedSoft}: token ${t.mutedSoft} or ${t.activeSoft} not found or not rgba()`,
         );
       } else {
-        const mutedA = Number.parseFloat(mutedSoft[1]);
-        const activeA = Number.parseFloat(activeSoft[1]);
+        const mutedA = Number.parseFloat(mutedSoft[4]);
+        const activeA = Number.parseFloat(activeSoft[4]);
         if (!(activeA > 0) || mutedA > MAX_ALPHA_RATIO * activeA + EPS) {
           violations.push(
             `${theme} R2 ${t.mutedSoft} alpha ${mutedA} vs ${t.activeSoft} alpha ${activeA}: ratio must be <= ${MAX_ALPHA_RATIO}`,
@@ -244,13 +284,18 @@ function checkTokens(content) {
   return violations;
 }
 
-function report(violations) {
+function report(violations, stats) {
   for (const v of violations) console.error(`[check-contrast] ${v}`);
+  const minC = Number.isFinite(stats.minComposite) ? stats.minComposite.toFixed(2) : 'n/a';
   if (violations.length > 0) {
-    console.error(`[check-contrast] FAIL — ${violations.length} нарушений`);
+    console.error(
+      `[check-contrast] FAIL — ${violations.length} нарушений (минимум композита ${minC}: ${stats.minWhere})`,
+    );
     return 1;
   }
-  console.error('[check-contrast] PASS — 0 нарушений');
+  console.error(
+    `[check-contrast] PASS — 0 нарушений: 102 проверки таблицы + ${stats.compositeCells} композитных, минимум композита ${minC} (${stats.minWhere})`,
+  );
   return 0;
 }
 
@@ -355,7 +400,9 @@ function main() {
     process.exit(1);
   }
   if (args.includes('--selftest')) selftest(content);
-  process.exit(report(checkTokens(content)));
+  const stats = {};
+  const violations = checkTokens(content, stats);
+  process.exit(report(violations, stats));
 }
 
 main();
