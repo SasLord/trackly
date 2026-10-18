@@ -88,8 +88,13 @@ pub const ACT_NUMBER_SQL_FN: &str = "trackly_act_number";
 /// Тело — `trackly_core::domain::acts::format_act_number`, то есть владелец
 /// формулы один.
 ///
-/// Функция живёт только на соединении и используется ТОЛЬКО в запросах
-/// (никаких индексов, вью, триггеров и generated-колонок на ней): иначе
+/// `tr_norm(text) -> TEXT` — нормализация для сравнения: `trim` плюс
+/// `to_lowercase` (Unicode, в том числе кириллица; SQLite `lower()` умеет
+/// только ASCII). `NULL` даёт `NULL`, поэтому `tr_norm(NULL) = tr_norm(?)`
+/// ложно, как обычное `=` (Phase 41.11, D-04/D-05).
+///
+/// Обе функции живут только на соединении и используются ТОЛЬКО в запросах
+/// (никаких индексов, вью, триггеров и generated-колонок на них): иначе
 /// сторонний `sqlite3` перестал бы открывать файл БД. Миграций поэтому нет.
 ///
 /// Вызывается из обоих `apply_*_pragmas` — единственных хуков открытия
@@ -116,6 +121,19 @@ pub fn register_sql_functions(conn: &Connection) -> Result<(), AppError> {
     )
     .map_err(|e| AppError::Internal {
         source_chain: format!("register sql function {ACT_NUMBER_SQL_FN} failed: {e}"),
+    })?;
+
+    conn.create_scalar_function(
+        "tr_norm",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let value: Option<String> = ctx.get(0)?;
+            Ok(value.map(|s| s.trim().to_lowercase()))
+        },
+    )
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("register sql function tr_norm failed: {e}"),
     })
 }
 
@@ -256,5 +274,57 @@ mod tests {
         apply_writer_pragmas(&conn).expect("writer pragmas");
         let res = display(&conn, "SELECT trackly_act_number('xyz','42',NULL,NULL)");
         assert!(res.is_err(), "неизвестный act_type -> ошибка запроса");
+    }
+
+    #[test]
+    fn tr_norm_fn_registered_on_writer() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_writer_pragmas(&conn).expect("writer pragmas");
+        assert_eq!(
+            display(&conn, "SELECT tr_norm('  Б/У ')").expect("query"),
+            "б/у"
+        );
+    }
+
+    #[test]
+    fn tr_norm_fn_registered_on_reader() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_reader_pragmas(&conn).expect("reader pragmas");
+        let query_only: i64 = conn
+            .pragma_query_value(None, "query_only", |r| r.get::<_, i64>(0))
+            .expect("read query_only");
+        assert_eq!(query_only, 1, "предусловие: соединение только для чтения");
+        assert_eq!(
+            display(&conn, "SELECT tr_norm('НОВОЕ')").expect("query"),
+            "новое"
+        );
+    }
+
+    #[test]
+    fn tr_norm_fn_values_cyrillic_and_null() {
+        let (conn, _guard) = fresh_tempfile_conn();
+        apply_writer_pragmas(&conn).expect("writer pragmas");
+        assert_eq!(
+            display(&conn, "SELECT tr_norm('  Б/У ')").expect("query"),
+            "б/у"
+        );
+        assert_eq!(
+            display(&conn, "SELECT tr_norm('НОВОЕ')").expect("query"),
+            "новое"
+        );
+        let null: Option<String> = conn
+            .query_row("SELECT tr_norm(NULL)", [], |r| r.get(0))
+            .expect("query");
+        assert_eq!(null, None, "tr_norm(NULL) is NULL");
+        let eq: Option<i64> = conn
+            .query_row("SELECT tr_norm(NULL) = tr_norm('x')", [], |r| r.get(0))
+            .expect("query");
+        assert_eq!(eq, None, "NULL = x не истинно");
+        let hit: i64 = conn
+            .query_row("SELECT tr_norm('Б/У') = tr_norm('б/у ')", [], |r| {
+                r.get(0)
+            })
+            .expect("query");
+        assert_eq!(hit, 1);
     }
 }
