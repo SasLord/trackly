@@ -616,6 +616,98 @@ export function checkPageRace(src) {
         msg: 'reloadExpandedAnchors(): охрана стоит ПОСЛЕ записи anchorMembers / вызова failAnchor(',
       });
     }
+    // [H6] Перечитывание обязано обесценить одиночные загрузки тех же якорей,
+    // иначе отставший ответ loadAnchorMembers ляжет поверх свежего состава.
+    const bump = /\bbumpAnchorLoad\s*\(/.exec(reload);
+    if (!bump) {
+      out.push({
+        code: 'H6',
+        msg: 'reloadExpandedAnchors(): нет bumpAnchorLoad( для перечитываемых якорей',
+      });
+    } else if (firstAwait !== -1 && bump.index > firstAwait) {
+      out.push({
+        code: 'H6',
+        msg: 'reloadExpandedAnchors(): bumpAnchorLoad( вызван ПОСЛЕ первого await',
+      });
+    }
+  }
+  out.push(...checkAnchorMembersLoad(text));
+  return out;
+}
+
+/**
+ * Правило [H6]: `loadAnchorMembers()` идёт по той же границе «сервер → UI», что и
+ * `reloadExpandedAnchors()`, и тоже может вернуться не в порядке запросов
+ * (T-41.1-G29-01). Поколение снимается ДО первого await; каждая запись состояния
+ * ПОСЛЕ await — и успешная, и `failAnchor(` в catch — должна стоять за охраной.
+ * Предшествующая await оптимистичная запись `{ loading: true }` охраны не требует.
+ */
+function checkAnchorMembersLoad(text) {
+  const out = [];
+  const body = functionBody(text, 'loadAnchorMembers');
+  if (body === null) {
+    out.push({ code: 'H6', msg: 'нет функции loadAnchorMembers()' });
+    return out;
+  }
+  const gen = /\bconst\s+myGen\s*=\s*bumpAnchorLoad\s*\(/.exec(body);
+  const seq = /\bconst\s+aSeq\s*=\s*anchorsSeq\b/.exec(body);
+  const firstAwait = body.search(/\bawait\b/);
+  if (!gen) {
+    out.push({ code: 'H6', msg: 'loadAnchorMembers(): нет `const myGen = bumpAnchorLoad(`' });
+  } else if (firstAwait !== -1 && gen.index > firstAwait) {
+    out.push({ code: 'H6', msg: 'loadAnchorMembers(): myGen берётся ПОСЛЕ первого await' });
+  }
+  if (!seq) {
+    out.push({ code: 'H6', msg: 'loadAnchorMembers(): нет `const aSeq = anchorsSeq`' });
+  } else if (firstAwait !== -1 && seq.index > firstAwait) {
+    out.push({ code: 'H6', msg: 'loadAnchorMembers(): aSeq берётся ПОСЛЕ первого await' });
+  }
+  // Охрана обязана сверять все три условия: своё поколение якоря, поколение
+  // перечитывания и то, что якорь всё ещё раскрыт. Ослабление любого — красное.
+  const currentFn = /\bconst\s+current\s*=\s*\(\s*\)\s*=>([\s\S]*?);/.exec(body);
+  if (!currentFn) {
+    out.push({ code: 'H6', msg: 'loadAnchorMembers(): нет охраны `const current = () =>`' });
+  } else {
+    const c = currentFn[1];
+    if (!/anchorLoadSeq\.get\(\s*groupId\s*\)\s*===\s*myGen/.test(c)) {
+      out.push({ code: 'H6', msg: 'current(): не сверяет anchorLoadSeq.get(groupId) === myGen' });
+    }
+    if (!/\baSeq\s*===\s*anchorsSeq\b/.test(c)) {
+      out.push({ code: 'H6', msg: 'current(): не сверяет aSeq === anchorsSeq' });
+    }
+    if (!/expandedAnchors\.has\(\s*groupId\s*\)/.test(c)) {
+      out.push({ code: 'H6', msg: 'current(): не сверяет expandedAnchors.has(groupId)' });
+    }
+  }
+  // Порядок: после первого await каждая запись состояния идёт за охраной.
+  if (firstAwait !== -1) {
+    const tail = body.slice(firstAwait);
+    const guardRe = /if\s*\(\s*!\s*current\s*\(\s*\)\s*\)\s*return\b/g;
+    const guards = [...tail.matchAll(guardRe)].map((m) => m.index);
+    const writes = [
+      ...[...tail.matchAll(/(?<![\w.])anchorMembers\s*=(?!=)/g)].map((m) => m.index),
+      ...[...tail.matchAll(/\bfailAnchor\s*\(/g)].map((m) => m.index),
+    ];
+    // Каждой записи нужна СВОЯ охрана: ближайшая слева, без другой записи между
+    // ними. Иначе страж успешной ветки «прикрыл» бы и голый failAnchor( в catch.
+    writes.sort((a, b) => a - b);
+    for (const w of writes) {
+      const nearestGuard = Math.max(-1, ...guards.filter((g) => g < w));
+      const writeBetween = writes.some((o) => o > nearestGuard && o < w);
+      if (nearestGuard === -1 || writeBetween) {
+        out.push({
+          code: 'H6',
+          msg: 'loadAnchorMembers(): запись состояния после await не прикрыта своей `if (!current()) return`',
+        });
+        break;
+      }
+    }
+    if (writes.length === 0) {
+      out.push({
+        code: 'H6',
+        msg: 'loadAnchorMembers(): после await нет записи состояния — правило стало вакуумным',
+      });
+    }
   }
   return out;
 }
@@ -994,8 +1086,29 @@ const CLEAN_PAGE = `<script lang="ts">
       if (seq === refreshSeq) loading = false;
     }
   }
+  function bumpAnchorLoad(groupId) {
+    const next = (anchorLoadSeq.get(groupId) ?? 0) + 1;
+    anchorLoadSeq.set(groupId, next);
+    return next;
+  }
+  async function loadAnchorMembers(groupId) {
+    const myGen = bumpAnchorLoad(groupId);
+    const aSeq = anchorsSeq;
+    const current = () =>
+      anchorLoadSeq.get(groupId) === myGen && aSeq === anchorsSeq && expandedAnchors.has(groupId);
+    anchorMembers = { ...anchorMembers, [groupId]: { loading: true, items: [], total: 0 } };
+    try {
+      const state = await fetchAnchorMembers(groupId);
+      if (!current()) return;
+      anchorMembers = { ...anchorMembers, [groupId]: state };
+    } catch {
+      if (!current()) return;
+      failAnchor([groupId]);
+    }
+  }
   async function reloadExpandedAnchors() {
     const aSeq = ++anchorsSeq;
+    for (const id of ids) bumpAnchorLoad(id);
     const results = await Promise.all(ids.map((id) => fetchAnchorMembers(id)));
     if (aSeq !== anchorsSeq) return;
     anchorMembers = {};
@@ -1408,6 +1521,85 @@ function structuralMutants() {
         ),
       }),
       expect: ['H5'],
+    },
+    {
+      name: '[H6] loadAnchorMembers без поколения якоря',
+      files: fixtureMap({
+        [PAGE_FILE]: page('    const myGen = bumpAnchorLoad(groupId);\n', '', 'h6-nogen'),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] loadAnchorMembers без снимка anchorsSeq',
+      files: fixtureMap({
+        [PAGE_FILE]: page('    const aSeq = anchorsSeq;\n', '', 'h6-noaseq'),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] current() перестал сверять поколение якоря',
+      files: fixtureMap({
+        [PAGE_FILE]: page('anchorLoadSeq.get(groupId) === myGen && ', '', 'h6-current-nogen'),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] current() перестал сверять поколение перечитывания',
+      files: fixtureMap({
+        [PAGE_FILE]: page('aSeq === anchorsSeq && ', '', 'h6-current-noaseq'),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] current() перестал сверять раскрытость якоря',
+      files: fixtureMap({
+        [PAGE_FILE]: page(' && expandedAnchors.has(groupId)', '', 'h6-current-noexp'),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] охрана успешной ветки удалена',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          '      if (!current()) return;\n      anchorMembers = { ...anchorMembers, [groupId]: state };',
+          '      anchorMembers = { ...anchorMembers, [groupId]: state };',
+          'h6-guard-remove',
+        ),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] охрана стоит ПОСЛЕ записи состава (перестановка)',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          '      if (!current()) return;\n      anchorMembers = { ...anchorMembers, [groupId]: state };',
+          '      anchorMembers = { ...anchorMembers, [groupId]: state };\n      if (!current()) return;',
+          'h6-guard-order',
+        ),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] ветка catch вызывает failAnchor без охраны',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          '      if (!current()) return;\n      failAnchor([groupId]);',
+          '      failAnchor([groupId]);',
+          'h6-catch-unguarded',
+        ),
+      }),
+      expect: ['H6'],
+    },
+    {
+      name: '[H6] перечитывание не обесценивает одиночные загрузки',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          '    for (const id of ids) bumpAnchorLoad(id);\n',
+          '',
+          'h6-reload-nobump',
+        ),
+      }),
+      expect: ['H6'],
     },
     {
       name: '[C] в модуле появился import',

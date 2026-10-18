@@ -119,6 +119,19 @@
   let refreshSeq = 0;
   // То же для перечитывания состава раскрытых якорей (reloadExpandedAnchors).
   let anchorsSeq = 0;
+  // T-41.1-G29-01: одиночная загрузка состава (loadAnchorMembers) идёт по той же
+  // границе и тоже может вернуться не в порядке запросов — быстрый повтор
+  // «раскрыть/свернуть/раскрыть» на одном якоре даёт два ответа на один ключ.
+  // Поколение на якорь: пишет только тот ответ, чьё поколение ещё текущее.
+  // reloadExpandedAnchors двигает его для всех перечитанных якорей, чтобы
+  // отставший одиночный ответ не лёг поверх свежего состава.
+  const anchorLoadSeq = new Map<number, number>();
+
+  function bumpAnchorLoad(groupId: number): number {
+    const next = (anchorLoadSeq.get(groupId) ?? 0) + 1;
+    anchorLoadSeq.set(groupId, next);
+    return next;
+  }
 
   interface ListSnapshot {
     items: DeviceDto[];
@@ -229,11 +242,20 @@
   }
 
   async function loadAnchorMembers(groupId: number) {
+    // T-41.1-G29-01: поколения снимаются ДО await; ответ пишется, только если
+    // с тех пор не стартовали ни новая загрузка этого якоря, ни перечитывание
+    // всех раскрытых, и якорь всё ещё раскрыт.
+    const myGen = bumpAnchorLoad(groupId);
+    const aSeq = anchorsSeq;
+    const current = () =>
+      anchorLoadSeq.get(groupId) === myGen && aSeq === anchorsSeq && expandedAnchors.has(groupId);
     anchorMembers = { ...anchorMembers, [groupId]: { loading: true, items: [], total: 0 } };
     try {
       const state = await fetchAnchorMembers(groupId);
+      if (!current()) return;
       anchorMembers = { ...anchorMembers, [groupId]: state };
     } catch {
+      if (!current()) return;
       failAnchor([groupId]);
     }
   }
@@ -246,6 +268,9 @@
   async function reloadExpandedAnchors() {
     const aSeq = ++anchorsSeq;
     const ids = [...expandedAnchors];
+    // T-41.1-G29-01: одиночные загрузки этих якорей, стартовавшие раньше,
+    // становятся устаревшими — их ответы уже не лягут поверх нашего.
+    for (const id of ids) bumpAnchorLoad(id);
     const results = await Promise.all(
       ids.map((id) =>
         fetchAnchorMembers(id).then(
