@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-18T17:02:31.461Z"
+last_updated: "2026-10-18T17:33:17.448Z"
 last_activity: 2026-10-18
 progress:
   total_phases: 25
   completed_phases: 12
   total_plans: 212
-  completed_plans: 207
+  completed_plans: 208
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.11 (phase-41-1-debt) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -623,6 +623,7 @@ Last activity: 2026-10-18
 | Phase 41.11 P05 | 25min | 2 tasks | 1 files |
 | Phase 41.11 P06 | 40min | 3 tasks | 2 files |
 | Phase 41.11 P07 | 1h | 2 tasks | 1 files |
+| Phase 41.11 P08 | 40m | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1347,6 +1348,7 @@ Recent decisions affecting current work:
 - [Phase 41.11]: 41.11-05: [D1] проверяет (!isEdit || storageIntent) конъюнктом верхнего уровня и отсутствие отрицания у любого вхождения membershipLoaded
 - [Phase 41.11]: [41.11-06] D-24a: INV-9 = аргумент notifyPlaceContentChanged не пустой литерал и содержит идентификатор; blind spot №4 закрыт только в части пустого/литерального аргумента
 - [Phase 41.11]: [41.11-07] Реестр фильтров: ListAll через export_csv; name_prefix в list_grouped = NarrowsOnlyWithGroupByCondition; шесть полей list_grouped Ignored с данными (D-08a)
+- [Phase 41.11]: 41.11-08: list_all читает COUNT+SELECT одним снимком (unchecked_transaction) + LIMIT max_rows+1; шов list_all_with_hook для детерминированного теста гонки (D-20, D-30)
 
 ### Pending Todos
 
@@ -1549,7 +1551,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-18T17:02:28.022Z
+Last session: 2026-10-18T17:33:14.280Z
 Stopped at: Phase 41.11 context gathered
 Resume file: None
 
