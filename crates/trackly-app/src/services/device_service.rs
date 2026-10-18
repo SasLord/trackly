@@ -1854,8 +1854,7 @@ impl DeviceService {
         let statuses_readers = readers.clone();
         let rows = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.as_ref()
-                .list_all(&conn, &domain_filter, max_rows)
+            repo.as_ref().list_all(&conn, &domain_filter, max_rows)
         })
         .await
         .map_err(|e| AppError::Internal {
