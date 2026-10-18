@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-18T17:48:20.473Z"
+last_updated: "2026-10-18T17:56:05.679Z"
 last_activity: 2026-10-18
 progress:
   total_phases: 25
   completed_phases: 12
   total_plans: 212
-  completed_plans: 210
+  completed_plans: 211
   percent: 48
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.11 (phase-41-1-debt) — EXECUTING
-Plan: 11 of 12
+Plan: 12 of 12
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -1554,7 +1554,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-18T17:48:15.650Z
+Last session: 2026-10-18T17:56:05.667Z
 Stopped at: Completed 41.11-09-PLAN.md
 Resume file: None
 
