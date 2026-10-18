@@ -160,3 +160,87 @@ fn list_all_respects_filter() {
         .unwrap();
     assert_eq!(rows.len(), 2);
 }
+
+/// WR-09 (D-20, D-30): COUNT и SELECT читают ОДИН снимок. Шов `after_count`
+/// детерминированно вставляет пятое устройство через ВТОРОЕ соединение к тому же
+/// WAL-файлу ровно между COUNT и SELECT. Без снимка SELECT увидел бы 5 строк при
+/// COUNT = 4 (молчаливое усечение/рассинхрон); со снимком чужой коммит не виден.
+///
+/// Честная оговорка: пояс `LIMIT max_rows + 1` + `rows.len() > max_rows` при живом
+/// снимке на этих данных от снимка не отделим (если убрать только `+1`, тест
+/// остаётся зелёным) — это защита глубже, а не второе покрытие.
+#[test]
+fn list_all_snapshot_ignores_insert_between_count_and_select() {
+    let (mut conn, _d) = test_db();
+    let st = status_id(&conn, "на_складе");
+    for i in 0..4 {
+        add_device(
+            &mut conn,
+            &format!("Системный блок {i}"),
+            &format!("INV-{i:04}"),
+            st,
+        );
+    }
+    let path = conn.path().expect("файловая БД").to_string();
+
+    let rows = SqliteDeviceRepository
+        .list_all_with_hook(&conn, &DeviceFilter::default(), 4, || {
+            let mut writer = Connection::open(&path).expect("второе соединение");
+            trackly_infra::db::pragmas::apply_writer_pragmas(&writer).expect("pragmas");
+            add_device(&mut writer, "Системный блок 99", "INV-0099", st);
+        })
+        .expect("снимок не должен видеть чужой коммит между COUNT и SELECT");
+    assert_eq!(rows.len(), 4, "выгрузка согласована с COUNT");
+
+    // Вставка действительно закоммичена: следующая выгрузка видит 5 строк.
+    let err = SqliteDeviceRepository
+        .list_all(&conn, &DeviceFilter::default(), 4)
+        .unwrap_err();
+    assert!(matches!(err, AppError::Validation { .. }), "{err:?}");
+    let after = SqliteDeviceRepository
+        .list_all(&conn, &DeviceFilter::default(), 5)
+        .unwrap();
+    assert_eq!(after.len(), 5);
+}
+
+/// Шов не меняет поведения: пустой коллбек даёт ровно то же, что трейтовый `list_all`.
+#[test]
+fn list_all_with_noop_hook_equals_trait_list_all() {
+    let (mut conn, _d) = test_db();
+    let st = status_id(&conn, "на_складе");
+    for i in 0..6 {
+        add_device(
+            &mut conn,
+            &format!("Системный блок {i}"),
+            &format!("INV-{i:04}"),
+            st,
+        );
+    }
+    let filter = DeviceFilter::default();
+    let via_trait = SqliteDeviceRepository.list_all(&conn, &filter, 10).unwrap();
+    let via_hook = SqliteDeviceRepository
+        .list_all_with_hook(&conn, &filter, 10, || {})
+        .unwrap();
+    let ids =
+        |v: &[trackly_core::domain::devices::DeviceRow]| v.iter().map(|r| r.id).collect::<Vec<_>>();
+    assert_eq!(ids(&via_trait), ids(&via_hook));
+}
+
+/// `max_rows = u64::MAX`: `max_rows + 1` не переполняется (saturating_add).
+#[test]
+fn list_all_with_u64_max_ceiling_does_not_overflow() {
+    let (mut conn, _d) = test_db();
+    let st = status_id(&conn, "на_складе");
+    for i in 0..3 {
+        add_device(
+            &mut conn,
+            &format!("Системный блок {i}"),
+            &format!("INV-{i:04}"),
+            st,
+        );
+    }
+    let rows = SqliteDeviceRepository
+        .list_all(&conn, &DeviceFilter::default(), u64::MAX)
+        .unwrap();
+    assert_eq!(rows.len(), 3);
+}
