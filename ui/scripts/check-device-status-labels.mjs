@@ -49,10 +49,22 @@
 //       [F2] ни одна запись не `appearance: 'dot'`;
 //       [F3] `muted: true` ровно у на_ремонте и на_списание;
 //       [F4] пары на_ремонте/в_ремонте и на_списание/списано делят variant;
-//       [F5] КАЖДЫЙ открывающий тег `<Badge`, где в файле-импортёре statusTone
-//            встречается `tone`/`statusTone(`/спред, несёт variant, appearance
-//            и muted из ОДНОГО источника; инвентарь выводится обходом, а не
-//            списком; [F5-vacuous] — мало проверенных тегов/файлов, гейт пуст.
+//       [F5] КАЖДЫЙ открывающий тег `<Badge` в файле-импортёре statusTone
+//            обязан попасть ровно в одну категорию (план 41.11-04, WR-07, D-22):
+//              A «Badge статуса» — в теге `statusTone(` либо ИМЯ., где ИМЯ —
+//                переменная, объявленная как `const|let ИМЯ = $derived(statusTone(…))`
+//                с ПРОИЗВОЛЬНЫМ именем (tone, chip, st…); variant, appearance и
+//                muted обязаны быть из ОДНОГО источника, спред запрещён;
+//              B «не статусный литерал» — variant/appearance/size/muted либо
+//                отсутствуют, либо заданы строковым литералом (`variant="accent"`);
+//              C «освобождён вердиктом» — запись в BADGE_EXEMPT (файл + маркер
+//                в теге + причина не короче 20 символов); сегодня одна —
+//                картриджный `cartridgeStatusVariant(`;
+//            всё остальное — нарушение F5 «не отнесён ни к одной категории».
+//            Охват строится от ФАЙЛА-ИМПОРТЁРА (обход репозитория), а не от слова
+//            `tone` в теге. MIN_STATUS_BADGES — лишь нижняя граница числа
+//            бейджей категории A, а не носитель охвата. [F5-vacuous] — мало
+//            проверенных тегов/файлов, гейт пуст.
 //
 // Список проверяемых файлов ВЫВОДИТСЯ обходом src/**/*.svelte и src/**/*.ts
 // (кроме сгенерированного src/bindings.ts) — ничего не перечислено вручную,
@@ -175,6 +187,20 @@ const RULE_EXEMPT = [
     rules: ['B'],
     reason:
       'картриджная карта CARTRIDGE_…_BY_NAME: статусы картриджей вне справочника устройств (D-07)',
+  },
+];
+
+// Вердикты по <Badge> в файлах-импортёрах statusTone (категория C правила [F5],
+// D-22). Освобождается не файл целиком, а ТЕГ: путь файла + маркер в теге.
+// Единственная запись — картриджный бейдж: статусы картриджей вне справочника
+// устройств (D-07). Пополнять таблицу ради «зелёного» гейта нельзя: бейдж,
+// не попавший в категорию, — это и есть дефект, который правило ищет.
+const BADGE_EXEMPT = [
+  {
+    path: 'src/features/places/PlaceContents.svelte',
+    marker: 'cartridgeStatusVariant(',
+    reason:
+      'бейдж статуса КАРТРИДЖА: свой справочник из 4 статусов, вне справочника устройств (D-07)',
   },
 ];
 
@@ -367,6 +393,7 @@ function exemptionFor(file, exempt) {
 function scanSources(files, opts, violations) {
   const { scope, exempt, minConsumers, minExempt } = opts;
   const ruleExempt = opts.ruleExempt ?? [];
+  const badgeExempt = opts.badgeExempt ?? [];
   const add = (file, line, rule, msg) =>
     violations.push(`${file}${line ? `:${line}` : ''} — [${rule}] ${msg}`);
   const inScope = (file) => !scope || file.startsWith(scope);
@@ -412,6 +439,22 @@ function scanSources(files, opts, violations) {
     }
   }
 
+  // --- E: вердикты по <Badge> (категория C правила F5) ---------------------------
+  for (const e of badgeExempt) {
+    if ((e.reason ?? '').trim().length < 20) {
+      add(e.path, 0, 'E', 'у вердикта по Badge нет внятной причины (не короче 20 символов).');
+    }
+    if (!(e.marker ?? '').trim()) {
+      add(
+        e.path,
+        0,
+        'E',
+        'у вердикта по Badge нет маркера в теге — освобождение стало бы файловым.',
+      );
+    }
+  }
+  const usedBadgeExempt = new Set();
+
   // --- A / B / C --------------------------------------------------------------
   let consumers = 0;
   for (const [file, src] of files) {
@@ -440,9 +483,21 @@ function scanSources(files, opts, violations) {
   let badgeFiles = 0;
   for (const [file, src] of files) {
     if (GENERATED.has(file) || !inScope(file)) continue;
-    const n = checkStatusBadges(file, src, add);
+    const n = checkStatusBadges(file, src, add, { badgeExempt, usedBadgeExempt });
     badgeTags += n;
     if (n > 0) badgeFiles++;
+  }
+  if (!scope) {
+    badgeExempt.forEach((e, i) => {
+      if (!usedBadgeExempt.has(i)) {
+        add(
+          e.path,
+          0,
+          'E',
+          `вердикт по Badge устарел: в файле нет тега с маркером «${e.marker}» — удалите запись.`,
+        );
+      }
+    });
   }
   if (opts.stats) Object.assign(opts.stats, { badgeTags, badgeFiles });
   const minTags = opts.minStatusBadges ?? MIN_STATUS_BADGES;
@@ -609,26 +664,72 @@ function checkToneMap(files, add) {
   }
 }
 
-/** Правило F5 для одного файла: возвращает число проверенных тегов. */
-function checkStatusBadges(file, src, add) {
+/**
+ * Имена переменных, объявленных как `const|let ИМЯ = $derived(statusTone(…))` (имя
+ * произвольное). Инициализатор может быть и составным (`$derived(cond ? statusTone(a)
+ * : statusTone(b))`): достаточно вызова statusTone( до конца оператора.
+ */
+function statusToneNames(script) {
+  const names = new Set();
+  for (const m of script.matchAll(
+    /\b(?:const|let)\s+(\w+)\s*(?::[^=;\n]+)?=[^;]*?\bstatusTone\(/g,
+  )) {
+    names.add(m[1]);
+  }
+  return [...names];
+}
+
+/**
+ * Правило F5 для одного файла: возвращает число проверенных тегов категории A.
+ * Каждый `<Badge` в файле-импортёре statusTone обязан попасть в категорию
+ * A (статус) / B (литерал) / C (вердикт BADGE_EXEMPT), иначе — нарушение F5.
+ */
+function checkStatusBadges(file, src, add, ctx = {}) {
   if (!file.endsWith('.svelte') || file === STORE_PATH) return 0;
   const { script, markup } = splitSvelte(src);
   const imp =
     /import\s*\{[^}]*\bstatusTone\b[^}]*\}\s*from\s*['"]\$lib\/stores\/deviceStatuses\.svelte['"]/;
   if (!imp.test(script)) return 0;
+  const badgeExempt = ctx.badgeExempt ?? [];
+  const names = statusToneNames(script);
+  const nameRe = names.length > 0 ? new RegExp(`(?<![\\w$.])(?:${names.join('|')})\\??\\.`) : null;
   let checked = 0;
   for (const m of markup.matchAll(/<Badge\b/g)) {
     const end = findTagEnd(markup, m.index);
     if (end < 0) continue;
     const tag = markup.slice(m.index, end + 1);
-    if (!/\btone\b/.test(tag) && !/statusTone\(/.test(tag)) continue;
-    checked++;
     const line = lineOf(markup, m.index);
     const { attrs, spread } = parseBadgeAttrs(tag);
     if (spread) {
-      add(file, line, 'F5', 'спред {...} на Badge статуса — форма не поддаётся проверке.');
+      // Спред от источника статуса считается проверенным тегом (как раньше, до WR-07).
+      if (/statusTone\(/.test(tag) || names.some((n) => new RegExp(`\\b${n}\\b`).test(tag)))
+        checked++;
+      add(file, line, 'F5', 'спред {...} на Badge в файле статуса — форма не поддаётся проверке.');
       continue;
     }
+    const isStatus = /statusTone\(/.test(tag) || (nameRe !== null && nameRe.test(tag));
+    if (!isStatus) {
+      // Категория C: вердикт (файл + маркер в теге).
+      const ei = badgeExempt.findIndex((e) => e.path === file && tag.includes(e.marker));
+      if (ei >= 0) {
+        ctx.usedBadgeExempt?.add(ei);
+        continue;
+      }
+      // Категория B: все управляющие атрибуты — строковые литералы (или их нет).
+      const literal = ['variant', 'appearance', 'size', 'muted'].every((k) => {
+        const a = attrs.get(k);
+        return !a || a.kind === 'str';
+      });
+      if (literal) continue;
+      add(
+        file,
+        line,
+        'F5',
+        'Badge в файле-импортёре статуса не отнесён ни к одной категории (статус / литерал / освобождён вердиктом): выражение в variant/appearance/size/muted не от statusTone.',
+      );
+      continue;
+    }
+    checked++;
     const norm = (name, suffix) => {
       const a = attrs.get(name);
       if (!a || a.kind !== 'expr') return null;
@@ -689,6 +790,7 @@ function checkRepo(root, scope, violations) {
       scope,
       exempt: EXEMPT,
       ruleExempt: RULE_EXEMPT,
+      badgeExempt: BADGE_EXEMPT,
       minConsumers: MIN_CONSUMERS,
       minExempt: MIN_EXEMPT,
     },
@@ -759,10 +861,13 @@ const CLEAN_PLACES = `<script lang="ts">
   };
   const { row } = $props();
   const cv = CARTRIDGE_STATUS_VARIANT_BY_NAME[row.status_name] ?? 'default';
+  function cartridgeStatusVariant(v: string) {
+    return v;
+  }
 </script>
 
 {#if row.kind === 'cartridge'}
-  <Badge variant={cv}>{row.status_name}</Badge>
+  <Badge variant={cartridgeStatusVariant(cv)}>{row.status_name}</Badge>
 {:else}
   <Badge
     variant={statusTone(row.status_code).variant}
@@ -808,6 +913,13 @@ const SELF_RULE_EXEMPT = [
     reason: 'картриджная карта CARTRIDGE_…: статусы картриджей вне справочника устройств',
   },
 ];
+const SELF_BADGE_EXEMPT = [
+  {
+    path: PATH_PLACES,
+    marker: 'cartridgeStatusVariant(',
+    reason: 'бейдж статуса картриджа: свой справочник, вне справочника устройств',
+  },
+];
 const PATH_ROW = 'src/features/devices/Row.svelte';
 const PATH_FILTERS = 'src/features/devices/Filters.svelte';
 const PATH_REQUEST = 'src/features/requests/RequestRow.svelte';
@@ -842,6 +954,7 @@ const SELF_OPTS = {
   scope: null,
   exempt: SELF_EXEMPT,
   ruleExempt: SELF_RULE_EXEMPT,
+  badgeExempt: SELF_BADGE_EXEMPT,
   minConsumers: SELFTEST_MIN_CONSUMERS,
   minExempt: SELFTEST_MIN_EXEMPT,
   minStatusBadges: SELFTEST_MIN_STATUS_BADGES,
@@ -1133,12 +1246,100 @@ function runSelfTest() {
     const ROW_TAG =
       '<Badge variant={tone.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>';
     const PLACES_MUTED = '    muted={statusTone(row.status_code).muted}>{row.status_name}</Badge\n';
+    // Было F-pos с ожиданием «0 нарушений»: фикстура закрепляла ту самую слепоту,
+    // которую лечит WR-07 (Badge в файле-импортёре statusTone, не отнесённый ни к
+    // одной категории, пропускался). Теперь это мутант. Освобождение для
+    // `milestone` в BADGE_EXEMPT добавлять ЗАПРЕЩЕНО (D-22).
     fixtures.push({
-      name: 'F-pos [F5] слово milestone не принимается за tone (граница слова): Badge без tone не проверяется',
+      name: 'M36 [F5] Badge в файле-импортёре statusTone с выражением variant не от статуса (milestone.variant) не отнесён ни к одной категории',
       files: fixtureFiles({
         extra: [['src/features/devices/Milestone.svelte', MILESTONE_ROW]],
       }),
+      codes: ['F5'],
+      onlyFile: 'src/features/devices/Milestone.svelte',
+    });
+    fixtures.push({
+      name: 'F-pos [F5] категория B: Badge с литеральными variant/appearance/size в файле статуса не краснит',
+      files: fixtureFiles({
+        row: mutate(
+          CLEAN_ROW,
+          ROW_TAG,
+          ROW_TAG +
+            '\n<Badge variant="accent" appearance="count" size="sm">3 шт.</Badge>\n<Badge>без атрибутов</Badge>',
+        ),
+      }),
       codes: [],
+    });
+    fixtures.push({
+      name: 'F-pos [F5] произвольное имя источника: chip = $derived(statusTone(...)) с согласованными атрибутами',
+      files: fixtureFiles({
+        row: mutate(
+          mutate(CLEAN_ROW, 'const tone = $derived', 'const chip = $derived'),
+          ROW_TAG,
+          '<Badge variant={chip.variant} appearance={chip.appearance} muted={chip.muted}>{label}</Badge>',
+        ),
+      }),
+      codes: [],
+    });
+    fixtures.push({
+      name: 'M37 [F5] источник под именем chip (в теге нет слова tone): нет muted',
+      files: fixtureFiles({
+        row: mutate(
+          mutate(CLEAN_ROW, 'const tone = $derived', 'const chip = $derived'),
+          ROW_TAG,
+          '<Badge variant={chip.variant} appearance={chip.appearance}>{label}</Badge>',
+        ),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M38 [F5] разные источники при произвольных именах: chip.variant + tone.appearance/muted',
+      files: fixtureFiles({
+        row: mutate(
+          mutate(
+            CLEAN_ROW,
+            '  const tone = $derived(statusTone(device.status_code));\n',
+            '  const tone = $derived(statusTone(device.status_code));\n  const chip = $derived(statusTone(device.status_code));\n',
+          ),
+          ROW_TAG,
+          '<Badge variant={chip.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>',
+        ),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M39 [F5] Badge с выражением variant без литералов и без statusTone не отнесён ни к одной категории',
+      files: fixtureFiles({
+        row: mutate(CLEAN_ROW, ROW_TAG, ROW_TAG + '\n<Badge variant={someOther}>{label}</Badge>'),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M40 [F5] cartridgeStatusVariant( в ЧУЖОМ файле не освобождён (вердикт привязан к файлу)',
+      files: fixtureFiles({
+        row: mutate(
+          CLEAN_ROW,
+          ROW_TAG,
+          ROW_TAG + '\n<Badge variant={cartridgeStatusVariant(label)}>{label}</Badge>',
+        ),
+      }),
+      codes: ['F5'],
+      onlyFile: PATH_ROW,
+    });
+    fixtures.push({
+      name: 'M41 [E] вердикт по Badge устарел: в файле нет тега с маркером',
+      files: fixtureFiles({
+        places: mutate(
+          CLEAN_PLACES,
+          '<Badge variant={cartridgeStatusVariant(cv)}>',
+          '<Badge variant="default">',
+        ),
+      }),
+      codes: ['E'],
+      onlyFile: PATH_PLACES,
     });
     fixtures.push({
       name: "M24 [F2] appearance: 'dot' возвращён в на_ремонте",
