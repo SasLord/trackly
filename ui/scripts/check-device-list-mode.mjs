@@ -46,7 +46,15 @@
 //        [G3] есть $effect, читающий expanded и cacheKey и НЕ читающий
 //             `children === null` (до-фиксовый эффект ключа состава не знал);
 //        [G4] вложенный <DeviceListRow> получает onEdit= и onDelete= (путь
-//             «действие из меню -> refresh()» не рвётся).
+//             «действие из меню -> refresh()» не рвётся);
+//        [G5] (CR-02, план 41.11-02) ключ кеша детей cacheKey объявлен как $derived
+//             от шаблонной строки с idsKey И listGen, а loadChildren( зовётся с
+//             cacheKey: правка поля вне ключа группировки поднимает номер поколения
+//             и перечитывает детей;
+//        [G6] handleEdit и handleDelete не содержат loadedKey (второго пути
+//             инвалидации кеша нет: он перечитывал детей ДО сохранения правки);
+//        [G7] (WR-08) подлежащее первого {#each — переменная, объявленная как
+//             $derived(visibleChildren(, а не сырой кеш children.
 //        Вакуумная проверка: самотест читает замороженную до-фиксовую копию
 //        scripts/fixtures/device-list-mode/DeviceGroupRow.pre-fix.svelte.txt и
 //        требует от неё [G1], [G2], [G3]; на реальном файле ноль нарушений.
@@ -791,6 +799,43 @@ export function checkGroupRow(src) {
       msg: 'нет $effect, читающего expanded и cacheKey без условия children === null (кеш детей должен быть привязан к ключу кеша: состав + номер поколения)',
     });
   }
+  // G5: ключ кеша = состав + поколение списка.
+  const keyDecl = /\b(?:const|let)\s+cacheKey\s*=\s*\$derived\(\s*`([^`]*)`\s*\)/.exec(text);
+  if (!keyDecl || !/\bidsKey\b/.test(keyDecl[1]) || !/\blistGen\b/.test(keyDecl[1])) {
+    out.push({
+      code: 'G5',
+      msg: 'нет объявления cacheKey = $derived(`...idsKey...listGen...`): ключ кеша детей обязан содержать номер поколения списка',
+    });
+  }
+  if (!/\bloadChildren\(\s*cacheKey\s*\)/.test(text)) {
+    out.push({ code: 'G5', msg: 'loadChildren( не вызывается с cacheKey' });
+  }
+  // G6: второго пути инвалидации в обработчиках нет (функция не найдена = нарушение).
+  for (const fn of ['handleEdit', 'handleDelete']) {
+    const body = functionBody(text, fn);
+    if (body === null) {
+      out.push({ code: 'G6', msg: `функция ${fn} не найдена` });
+    } else if (/\bloadedKey\b/.test(body)) {
+      out.push({
+        code: 'G6',
+        msg: `${fn} трогает loadedKey: номер поколения — единственный владелец инвалидации кеша детей`,
+      });
+    }
+  }
+  // G7: подлежащее первого {#each — результат visibleChildren(...).
+  const eachM = /\{#each\s+([A-Za-z_$][\w$]*)\b/.exec(text);
+  if (!eachM) {
+    out.push({ code: 'G7', msg: 'нет {#each} по детям свёртки' });
+  } else if (
+    !new RegExp(
+      `\\b(?:const|let)\\s+${eachM[1].replace(/\$/g, '\\$')}\\s*=\\s*\\$derived\\(\\s*visibleChildren\\(`,
+    ).test(text)
+  ) {
+    out.push({
+      code: 'G7',
+      msg: `{#each ${eachM[1]}}: подлежащее не объявлено как $derived(visibleChildren(...), дети рисуются не из отфильтрованного списка`,
+    });
+  }
   const rowAt = text.indexOf('<DeviceListRow');
   if (rowAt === -1) {
     out.push({ code: 'G4', msg: 'нет вложенной строки <DeviceListRow>' });
@@ -1138,6 +1183,12 @@ const CLEAN_GROUP_ROW = `<script lang="ts">
   $effect(() => {
     if (expanded && loadedKey !== cacheKey && loadingKey !== cacheKey) loadChildren(cacheKey);
   });
+  function handleEdit(d) {
+    onEdit(d);
+  }
+  function handleDelete() {
+    onDelete();
+  }
 </script>
 {#each shownChildren as child, i (child.id)}
   <DeviceListRow device={child} onEdit={handleEdit} onDelete={handleDelete} isLastInGroup={i === shownChildren.length - 1} />
@@ -1358,6 +1409,64 @@ function structuralMutants() {
         ),
       }),
       expect: ['G3'],
+    },
+    {
+      name: '[G5] ключ кеша без listGen',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row('@${listGen}', '', 'g5-nogen'),
+      }),
+      expect: ['G5'],
+    },
+    {
+      name: '[G5] loadChildren зовётся с idsKey, а не с cacheKey',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row('loadChildren(cacheKey);', 'loadChildren(idsKey);', 'g5-call'),
+      }),
+      expect: ['G5'],
+    },
+    {
+      name: '[G6] handleEdit помечает кеш устаревшим',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          'function handleEdit(d) {\n    onEdit(d);',
+          'function handleEdit(d) {\n    loadedKey = null;\n    onEdit(d);',
+          'g6-edit',
+        ),
+      }),
+      expect: ['G6'],
+    },
+    {
+      name: '[G6] handleDelete помечает кеш устаревшим',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          'function handleDelete() {\n    onDelete();',
+          'function handleDelete() {\n    loadedKey = null;\n    onDelete();',
+          'g6-delete',
+        ),
+      }),
+      expect: ['G6'],
+    },
+    {
+      name: '[G6] handleEdit отсутствует',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          'function handleEdit(d) {',
+          'function handleEditX(d) {',
+          'g6-missing',
+        ),
+      }),
+      expect: ['G6'],
+    },
+    {
+      name: '[G7] shownChildren не из visibleChildren',
+      files: fixtureMap({
+        [GROUP_ROW_FILE]: row(
+          'const shownChildren = $derived(visibleChildren(children ?? [], group.ids));',
+          'const shownChildren = $derived(children ?? []);',
+          'g7',
+        ),
+      }),
+      expect: ['G7'],
     },
     {
       name: '[G4] у <DeviceListRow> убран onDelete',
@@ -1695,6 +1804,44 @@ async function selftest(cases) {
       `${TAG} SELFTEST FAIL — реальная DeviceGroupRow краснеет:\n  - ${realRowViolations.map(formatViolation).join('\n  - ')}`,
     );
     process.exit(1);
+  }
+  // 3в. Мутанты по РЕАЛЬНОМУ DeviceGroupRow.svelte (D-25): якорь ровно один раз,
+  // каждая из трёх регрессий CR-02/WR-08 краснит своё правило.
+  const realMutants = [
+    {
+      name: '[G5] ключ кеша детей без listGen (реальный файл)',
+      from: 'const cacheKey = $derived(`${idsKey}@${listGen}`);',
+      to: 'const cacheKey = $derived(`${idsKey}`);',
+      expect: 'G5',
+    },
+    {
+      name: '[G6] handleEdit снова ставит loadedKey = null (реальный файл)',
+      from: 'function handleEdit(d: DeviceDto) {\n    onEdit(d);',
+      to: 'function handleEdit(d: DeviceDto) {\n    loadedKey = null;\n    onEdit(d);',
+      expect: 'G6',
+    },
+    {
+      name: '[G6] handleDelete снова ставит loadedKey = null (реальный файл)',
+      from: 'function handleDelete() {\n    onDelete();',
+      to: 'function handleDelete() {\n    loadedKey = null;\n    onDelete();',
+      expect: 'G6',
+    },
+    {
+      name: '[G7] shownChildren из сырого кеша (реальный файл)',
+      from: 'const shownChildren = $derived(visibleChildren(children ?? [], group.ids));',
+      to: 'const shownChildren = $derived(children ?? []);',
+      expect: 'G7',
+    },
+  ];
+  for (const m of realMutants) {
+    const mutated = mutate(realRow, m.from, m.to, m.name);
+    const codes = new Set(checkGroupRow(mutated).map((v) => v.code));
+    if (!codes.has(m.expect)) {
+      console.error(
+        `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [${m.expect}], получено [${[...codes].join(',') || 'ничего'}]`,
+      );
+      process.exit(1);
+    }
   }
   // 4. Режим «страница ещё не подключена»: явный SKIP, не молчание и не красное.
   const unconnected = scanStructural(
