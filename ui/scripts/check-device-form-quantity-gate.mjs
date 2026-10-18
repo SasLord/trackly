@@ -599,12 +599,73 @@ function runSelfTest() {
     }
   }
 
+  failed += runRealFileSelfTest();
+
   if (failed > 0) {
     console.error(`${TAG} [selftest] FAIL — ${failed} из ${fixtures.length} фикстур не совпали.`);
     return false;
   }
   console.error(`${TAG} [selftest] PASS — все ${fixtures.length} фикстур совпали с ожиданием.`);
   return true;
+}
+
+/**
+ * Мутация реального исходника с проверкой уникальности якоря (D-26): якорь
+ * обязан встречаться РОВНО один раз, иначе selftest завершается ошибкой —
+ * замена по неуникальному якорю снимала бы охрану не там, где задумано.
+ */
+function mutate(source, from, to, label) {
+  const n = source.split(from).length - 1;
+  if (n !== 1) {
+    console.error(
+      `${TAG} [selftest] FAIL — якорь мутанта «${label}» (${JSON.stringify(from)}) встречается ` +
+        `${n} раз вместо одного — расширь его до многострочного, а не заменяй на голый.`,
+    );
+    process.exit(1);
+  }
+  return source.replace(from, () => to);
+}
+
+/**
+ * Шаг self-test по РЕАЛЬНОМУ DeviceFormBody.svelte (WR-06, D-25): контроль без
+ * мутаций — 0 нарушений, каждый мутант полярности — ровно 1 нарушение (D1).
+ * Возвращает число несовпавших шагов.
+ */
+function runRealFileSelfTest() {
+  const abs = path.join(UI_ROOT, TARGET_FILE);
+  if (!fs.existsSync(abs)) {
+    console.error(`${TAG} [selftest] FAIL — реальный DeviceFormBody.svelte не найден: ${abs}`);
+    return 1;
+  }
+  const real = fs.readFileSync(abs, 'utf8');
+  const steps = [
+    ['контроль, без мутаций', real, 0],
+    [
+      'мутант: (isEdit || storageIntent)',
+      mutate(real, '(!isEdit || storageIntent)', '(isEdit || storageIntent)', 'isEdit'),
+      1,
+    ],
+    [
+      'мутант: !membershipLoaded',
+      mutate(real, 'membershipLoaded &&', '!membershipLoaded &&', 'membershipLoaded'),
+      1,
+    ],
+  ];
+  let failed = 0;
+  for (const [name, src, expected] of steps) {
+    const v = [];
+    scanSource(TARGET_FILE, src, v, ['S']);
+    const ok = v.length === expected && v.every((x) => x.includes('(D1)') || expected === 0);
+    console.error(
+      `${TAG} [selftest] ${ok ? 'PASS' : 'FAIL'} — реальный DeviceFormBody.svelte: ${name} ` +
+        `(expected ${expected}, got ${v.length})`,
+    );
+    if (!ok) {
+      failed++;
+      for (const line of v) console.error(`${TAG} [selftest]   ${line}`);
+    }
+  }
+  return failed;
 }
 
 function storageFixtures(D) {
