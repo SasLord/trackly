@@ -33,6 +33,8 @@ pub struct SqlitePrinterRepository;
 /// НЕ удаляется — community, профиль OID и USB-хост переживают удаление и
 /// возвращаются вместе с устройством. `get` / `get_by_device_id` не
 /// фильтруются: детальная карточка и восстановление не должны ломаться.
+/// `get_live` — отфильтрованный вариант `get` для путей, которые выходят
+/// в сеть (опрос SNMP по требованию, T-41.1-22-02).
 const SELECT_PRINTERS: &str = "
     SELECT p.id, p.device_id, p.ip_address, p.snmp_version, p.vendor,
            p.oid_profile_id, p.last_seen_utc, p.usb_host_device_id,
@@ -280,6 +282,21 @@ impl PrinterRepository for SqlitePrinterRepository {
     fn get(&self, conn: &Self::Conn, id: i64) -> Result<PrinterRow, AppError> {
         conn.query_row(
             &format!("{SELECT_PRINTERS} WHERE p.id = ?1"),
+            params![id],
+            map_row_printer,
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+                entity: "printer",
+                id,
+            },
+            other => map_rusqlite(other),
+        })
+    }
+
+    fn get_live(&self, conn: &Self::Conn, id: i64) -> Result<PrinterRow, AppError> {
+        conn.query_row(
+            &format!("{SELECT_PRINTERS} WHERE p.id = ?1 AND d.deleted_at_utc IS NULL"),
             params![id],
             map_row_printer,
         )

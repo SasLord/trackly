@@ -375,9 +375,16 @@ impl PrinterService {
         let repo = self.printer_repo.clone();
 
         // Get current printer info for SNMP.
+        //
+        // T-41.1-22-02: `get_live`, not `get`. The id comes from the caller
+        // (`printers_refresh`, both transports), so an unfiltered lookup would
+        // let an authenticated `ReadPrinters` holder make us send SNMP — with
+        // the stored community — to a soft-deleted printer. The scheduled
+        // `poll_all` is already filtered via `repo.list`; this closes the
+        // on-demand path to match it.
         let printer = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.get(&conn, printer_id)
+            repo.get_live(&conn, printer_id)
         })
         .await
         .expect("spawn_blocking");
@@ -385,7 +392,7 @@ impl PrinterService {
         let printer = match printer {
             Ok(p) => p,
             Err(e) => {
-                tracing::warn!("poll_single({printer_id}): printer not found: {e:?}");
+                tracing::warn!("poll_single({printer_id}): printer not found or deleted: {e:?}");
                 return;
             }
         };

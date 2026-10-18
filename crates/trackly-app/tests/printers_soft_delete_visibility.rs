@@ -439,6 +439,40 @@ async fn printers_soft_delete_poller_skips_deleted() {
 }
 
 // ---------------------------------------------------------------------------
+// Тест 3b (T-41.1-22-02): опрос ПО ТРЕБОВАНИЮ тоже не ходит к скрытому
+// ---------------------------------------------------------------------------
+//
+// Периодический поллер берёт выборку из отфильтрованного `list`, а
+// `poll_single` получает id от вызывающего (`printers_refresh`, оба
+// транспорта). Пока он резолвил id через неотфильтрованный `get`, держатель
+// `ReadPrinters` мог заставить нас отправить SNMP с сохранённой community на
+// адрес уже удалённого принтера. Мутация: вернуть `repo.get` вместо
+// `repo.get_live` в `PrinterService::poll_single` — тест краснеет.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn printers_soft_delete_on_demand_poll_skips_deleted() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let f = setup_deleted_hidden().await;
+
+        f.printers.poll_single(f.hidden_printer_id).await;
+        assert_eq!(
+            reading_count(&f, f.hidden_printer_id).await,
+            0,
+            "опрос по требованию скрытого принтера не должен слать SNMP (community уходила бы в сеть)"
+        );
+
+        // Вакуумность исключена: тот же вызов на живом принтере пишет показание.
+        f.printers.poll_single(f.live_printer_id).await;
+        assert!(
+            reading_count(&f, f.live_printer_id).await > 0,
+            "живой принтер по требованию опрашивается (SNMP-мок пишет показания)"
+        );
+    })
+    .await
+    .expect("printers_soft_delete_on_demand_poll_skips_deleted exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
 // Тест 4: возврат с теми же SNMP-настройками, строка printers не пересоздана
 // ---------------------------------------------------------------------------
 

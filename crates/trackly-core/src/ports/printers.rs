@@ -29,6 +29,18 @@ pub trait PrinterRepository {
     /// the id-keyed get(). Returns AppError::NotFound if absent.
     fn get_by_device_id(&self, conn: &Self::Conn, device_id: i64) -> Result<PrinterRow, AppError>;
 
+    /// Fetch a single printer by ID **only while its owning device is live**.
+    ///
+    /// T-41.1-22-02: `get` is deliberately unfiltered so the detail card and
+    /// restore keep working after a soft delete (D-37). Callers that reach out
+    /// to the network must not inherit that: the on-demand poll takes a
+    /// caller-supplied id, so resolving it through `get` would let an
+    /// authenticated `ReadPrinters` holder make the poller send SNMP — with the
+    /// stored community — to a printer the organisation has already removed.
+    /// Returns `AppError::NotFound` when the printer is absent *or* its device
+    /// has `deleted_at_utc` set.
+    fn get_live(&self, conn: &Self::Conn, id: i64) -> Result<PrinterRow, AppError>;
+
     /// Paginated list of printers matching `filter`. Returns `(rows, total)`.
     fn list(
         &self,
