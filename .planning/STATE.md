@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-10-18T06:13:18.157Z
+status: planning
+last_updated: "2026-10-18T07:32:16.390Z"
 last_activity: 2026-10-18
 progress:
-  total_phases: 24
+  total_phases: 25
   completed_phases: 12
   total_plans: 200
-  completed_plans: 463
-  percent: 46
-stopped_at: Phase 41.1 complete (33/33) — ready to discuss Phase 41.2
+  completed_plans: 200
+  percent: 48
 ---
 
 # Project State
@@ -25,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 41.2
+Phase: 41.11
 Plan: Not started
 Status: Ready to plan
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
@@ -41,12 +40,20 @@ R5 — счётчики вкладок «Отчётов» равны 0 в LAN-б
 INT-03 (первого администратора не завести через LAN-браузер). Полный разбор —
 .planning/v1.4-MILESTONE-AUDIT.md.
 
-Следующий шаг: /gsd-discuss-phase 41.7 — вставлена 2026-10-07, исполняется ДО Фазы 41.1
-(номер 41.7 выдан счётчиком phase.insert; порядок задан позицией записи в ROADMAP).
-Три блокера выпуска: INT-01 WS-события сущностей, INT-03 bootstrap по LAN,
-INT-02 поиск актов по номеру возврата.
-После неё: /gsd-discuss-phase 41.1 (UI hint: yes) — предварительно решить F13: колонки
-`groups.anchor_device_id` в V045 нет, нужна аддитивная миграция.
+Следующий шаг: /gsd-discuss-phase 41.11 — вставлена 2026-10-18, исполняется ПОСЛЕ Фазы 41.1 и
+ДО Фазы 41.2 (номер 41.11 выдан счётчиком phase.insert, существующие 41.1–41.10 заняты; порядок
+задан позицией строки в сводном списке ROADMAP, не номером). Содержание — долг, принятый при
+закрытии 41.1: CR-02 (строка ребёнка в свёртке не обновляет поля вне ключа группировки),
+CR-01/AR-26 (`check-contrast` меряет не на композите подложки чипа), AR-24
+(`check-place-tree-invalidation` слеп к мутанту `notifyPlaceContentChanged([])`), AR-23
+(пункт чек-листа на сбой между созданием детали и добавлением в состав не пройден живьём),
+AR-25 (сплошной прогон fmt → clippy → test --workspace), WR-01…WR-09 из 41.1-REVIEW.md.
+После неё: /gsd-discuss-phase 41.2 (Группы × Акты и Места).
+
+Примечание по ROADMAP: секции Фаз 41.8, 41.9, 41.10 существуют в ROADMAP.md, но строк в сводном
+списке фаз и каталогов на диске у них нет — `phase.insert` в текущей версии SDK не дописывает
+строку в сводный список (для 41.11 строка добавлена вручную). Фазы реальные, с целями и
+требованиями; привести список в порядок отдельной правкой.
 
 ---
 
@@ -661,6 +668,7 @@ Last activity: 2026-10-18
 - Phase 41.5 inserted after Phase 41: Переписка в заявке
 - Phase 41.6 inserted after Phase 41: Раздел «Устройства» для сотрудника
 - Phase 41.7 inserted after Phase 41: Долг выпуска v1.4: WS-события сущностей (INT-01), bootstrap по LAN (INT-03), поиск номера возврата (INT-02); исполняется ДО Фазы 41.1 (URGENT)
+- Phase 41.11 inserted after Phase 41.1: Долг фазы 41.1: гейты и свёртка (URGENT)
 
 ### Decisions
 
