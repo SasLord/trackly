@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-18T05:37:31.750Z"
+last_updated: "2026-10-18T05:41:36.616Z"
 last_activity: 2026-10-18
 progress:
   total_phases: 24
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 200
-  completed_plans: 199
-  percent: 46
+  completed_plans: 200
+  percent: 50
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 32 of 33 исполнен (gap-closure, волна 5; 41.1-32: живая проверка G1-G13 пройдена пользователем, 13/13 passed; 41.1-31: граница gap-closure — полный прогон 1895 passed / 0 failed); осталась граница фазы 41.1-33; верификация gaps_found 4/6 — фаза НЕ завершена
+Plan: 33 of 33 исполнен (gap-closure, волна 5; 41.1-32: живая проверка G1-G13 пройдена пользователем, 13/13 passed; 41.1-31: граница gap-closure — полный прогон 1895 passed / 0 failed); осталась граница фазы 41.1-33; верификация gaps_found 4/6 — фаза НЕ завершена
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -606,6 +606,7 @@ Last activity: 2026-10-18
 | Phase 41.1 P30 | 40min | 2 tasks | 8 files |
 | Phase 41.1 P31 | 4h | 3 tasks | 1 files |
 | Phase 41.1 P32 | n/a | 3 tasks | 1 files |
+| Phase 41.1 P33 | 25min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1321,6 +1322,7 @@ Recent decisions affecting current work:
 - [Phase 41.1-30]: R-06 отменён: шесть статусов soft-чипы, пара различается muted; гейт F5 охраняет каждое место вызова Badge
 - [Phase 41.1]: [41.1-31] Полнота продолженного полного прогона проверяется по именам бинарей с кратностью, а не по хэшам (выборочная сборка -p меняет хэши)
 - [Phase 41.1]: 41.1-32: сводные ответы пользователя по G10-G13 записаны passed с оговорками о недетализированных подпунктах, значения не домысливались
+- [Phase 41.1]: [41.1-33] Статусы GRD-01..05 по номерам G-пунктов, все passed; чекбокс фазы 41.1 не закрыт — делает повторная верификация
 
 ### Pending Todos
 
@@ -1523,7 +1525,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-18T05:37:27.519Z
+Last session: 2026-10-18T05:41:31.646Z
 Stopped at: Completed 41.1-32-PLAN.md
 Resume file: None
 
