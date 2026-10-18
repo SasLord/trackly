@@ -80,6 +80,14 @@
 //        `async function refresh`); реальная страница даёт ноль нарушений, а мутанты
 //        [H1]/[H2]/[H5] строятся на НАСТОЯЩЕМ DevicesPage.svelte, не на синтетике.
 //
+//    [H7] (CR-02, план 41.11-10; порядковое правило, мутант — ПЕРЕСТАНОВКА): номер
+//        поколения списка listGen:
+//        - в DevicesPage ровно одно приращение, в refresh(), ПОСЛЕ охраны
+//          `if (seq !== refreshSeq) return` и ДО `void reloadExpandedAnchors(`;
+//        - <DeviceList в DevicesPage и <DeviceGroupRow в DeviceList передают {listGen};
+//        - в Props DeviceList и DeviceGroupRow `listGen: number` ОБЯЗАТЕЛЕН (без `?`
+//          и без значения по умолчанию: необязательный проп молча возвращает CR-02).
+//
 //    Правила [A] и [B] при PAGE_MANDATORY = false дают явный SKIP для страницы,
 //    которая модуль ещё не подключила (так было в задаче 1 плана 19). Задача 3
 //    подключила страницу и перевела константу в true: отсутствие файла или
@@ -653,6 +661,127 @@ export function checkPageRace(src) {
   return out;
 }
 
+const LIST_GEN_INC_RE = /(?<![\w.])listGen\s*(?:\+=\s*1|\+\+|=\s*listGen\s*\+\s*1)/g;
+
+/**
+ * Правило [H7] (CR-02, D-09): порядок и проводка номера поколения списка listGen.
+ * Порядковое правило, не счётное: инкремент до охраны устаревшего ответа перезапускал
+ * бы загрузку детей под старым составом (счётный гейт слеп к порядку).
+ *   1. в DevicesPage ровно ОДНО приращение listGen, оно в refresh(), ПОСЛЕ охраны
+ *      `if (seq !== refreshSeq) return` (последней после последнего await) и ДО
+ *      `void reloadExpandedAnchors(`;
+ *   2. <DeviceList в DevicesPage и <DeviceGroupRow в DeviceList передают {listGen};
+ *   3. в Props DeviceList и DeviceGroupRow listGen объявлен ОБЯЗАТЕЛЬНЫМ
+ *      (`listGen: number`, без `?` и без значения по умолчанию): необязательный
+ *      проп молча возвращает CR-02, svelte-check зелёный.
+ */
+export function checkListGen(pageSrc, listSrc, rowSrc) {
+  const out = [];
+  const page = stripComments(pageSrc);
+  const incs = [...page.matchAll(LIST_GEN_INC_RE)];
+  const refresh = functionBody(page, 'refresh');
+  if (incs.length !== 1) {
+    out.push({
+      code: 'H7',
+      file: PAGE_FILE,
+      msg: `приращений listGen в DevicesPage ${incs.length}, нужно ровно одно (в refresh(), после охраны поколения)`,
+    });
+  } else if (refresh === null) {
+    out.push({
+      code: 'H7',
+      file: PAGE_FILE,
+      msg: 'нет функции refresh() (порядок listGen не проверяется)',
+    });
+  } else {
+    const inc = [...refresh.matchAll(LIST_GEN_INC_RE)];
+    if (inc.length !== 1) {
+      out.push({ code: 'H7', file: PAGE_FILE, msg: 'приращение listGen стоит не в refresh()' });
+    } else {
+      const incAt = inc[0].index;
+      const lastAwait = lastIndexOfRe(refresh, /\bawait\b/);
+      const from = lastAwait === -1 ? 0 : lastAwait;
+      const guardRel = refresh.slice(from).search(REFRESH_GUARD_RE);
+      const guardAt = guardRel === -1 ? -1 : from + guardRel;
+      const reloadAt = refresh.search(/\bvoid\s+reloadExpandedAnchors\s*\(/);
+      if (guardAt === -1) {
+        out.push({
+          code: 'H7',
+          file: PAGE_FILE,
+          msg: 'refresh(): нет охраны поколения после await (порядок listGen не проверяется)',
+        });
+      } else if (incAt < guardAt) {
+        out.push({
+          code: 'H7',
+          file: PAGE_FILE,
+          msg: 'refresh(): listGen поднимается ДО охраны поколения (устаревший ответ перезапустит загрузку детей)',
+        });
+      }
+      if (reloadAt === -1) {
+        out.push({
+          code: 'H7',
+          file: PAGE_FILE,
+          msg: 'refresh(): нет `void reloadExpandedAnchors(`',
+        });
+      } else if (incAt > reloadAt) {
+        out.push({
+          code: 'H7',
+          file: PAGE_FILE,
+          msg: 'refresh(): listGen поднимается ПОСЛЕ `void reloadExpandedAnchors(` (порядок: охрана, присваивания, listGen, перечитывание якорей)',
+        });
+      }
+    }
+  }
+  const wiring = (src, tagName, file) => {
+    const text = stripComments(src);
+    const tags = [];
+    let from = 0;
+    for (;;) {
+      const at = text.indexOf(`<${tagName}`, from);
+      if (at === -1) break;
+      const next = text[at + tagName.length + 1];
+      from = at + 1;
+      if (next !== undefined && /[\w.]/.test(next)) continue;
+      const end = tagEnd(text, at);
+      tags.push(end === -1 ? text.slice(at) : text.slice(at, end + 1));
+    }
+    if (!tags.length) {
+      out.push({
+        code: 'H7',
+        file,
+        msg: `нет тега <${tagName}> (проводка listGen не проверяется)`,
+      });
+    }
+    for (const tag of tags) {
+      if (!/\{\s*listGen\s*\}|\blistGen\s*=/.test(tag)) {
+        out.push({
+          code: 'H7',
+          file,
+          msg: `<${tagName} не получает listGen: цепочка номера поколения разорвана`,
+        });
+      }
+    }
+  };
+  wiring(pageSrc, 'DeviceList', PAGE_FILE);
+  wiring(listSrc, 'DeviceGroupRow', LIST_FILE);
+  for (const [src, file] of [
+    [listSrc, LIST_FILE],
+    [rowSrc, GROUP_ROW_FILE],
+  ]) {
+    const text = stripComments(src);
+    if (!/\blistGen\s*:\s*number\b/.test(text)) {
+      out.push({ code: 'H7', file, msg: 'в Props нет обязательного `listGen: number`' });
+    }
+    if (/\blistGen\s*\?/.test(text) || /\blistGen\s*=(?!=)/.test(text)) {
+      out.push({
+        code: 'H7',
+        file,
+        msg: 'listGen необязателен или имеет значение по умолчанию (молча возвращает CR-02)',
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Правило [H6]: `loadAnchorMembers()` идёт по той же границе «сервер → UI», что и
  * `reloadExpandedAnchors()`, и тоже может вернуться не в порядке запросов
@@ -944,6 +1073,20 @@ export function scanStructural(files, opts = {}) {
   } else {
     for (const v of checkGroupRow(rowSrc)) violations.push({ ...v, file: GROUP_ROW_FILE });
   }
+  // [H7]: порядок и проводка listGen по трём файлам (все обязательны, как и [G]).
+  const pageSrcH7 = files.get(PAGE_FILE);
+  const listSrcH7 = files.get(LIST_FILE);
+  const pageUsesModule =
+    pageSrcH7 !== undefined &&
+    /\b(?:deviceListFlags|shouldHideAnchorMembers|footerText)\s*\(/.test(stripComments(pageSrcH7));
+  if (
+    pageSrcH7 !== undefined &&
+    listSrcH7 !== undefined &&
+    rowSrc !== undefined &&
+    (pageMandatory || pageUsesModule)
+  ) {
+    for (const v of checkListGen(pageSrcH7, listSrcH7, rowSrc)) violations.push(v);
+  }
   for (const v of checkFlagHomes(files)) violations.push(v);
   return { violations, notes };
 }
@@ -1113,7 +1256,7 @@ const CLEAN_PAGE = `<script lang="ts">
     await devices.list({ type_id: null, ...deviceListFlags('members', listCtx), member_of_group_id: groupId }, p);
   }
 </script>
-<DeviceList {anchorItems} {hiddenMemberCount} {hideActive} />
+<DeviceList {listGen} {anchorItems} {hiddenMemberCount} {hideActive} />
 `.replace(
   '</script>',
   `  let refreshSeq = 0;
@@ -1133,6 +1276,7 @@ const CLEAN_PAGE = `<script lang="ts">
       total = snap.total;
       anchorItems = snap.anchorItems;
       hiddenMemberCount = snap.hiddenMemberCount;
+      listGen += 1;
       void reloadExpandedAnchors();
     } catch (e) {
       if (seq !== refreshSeq) return;
@@ -1181,12 +1325,22 @@ const CLEAN_PAGE_FULL = CLEAN_PAGE.replace(
 
 const CLEAN_LIST = `<script lang="ts">
   import { footerText } from './deviceListMode';
+  interface Props {
+    listGen: number;
+    items: unknown[];
+  }
+  const { listGen, items }: Props = $props();
 </script>
+<DeviceGroupRow {group} {listGen} />
 <span>{footerText({ shown: items.length, total, hidden: hiddenMemberCount, hideActive })}</span>
 `;
 
 const CLEAN_GROUP_ROW = `<script lang="ts">
   import { groupIdsKey, visibleChildren } from './deviceListMode';
+  interface Props {
+    listGen: number;
+  }
+  const { listGen }: Props = $props();
   const idsKey = $derived(groupIdsKey(group.ids));
   const cacheKey = $derived(\`\${idsKey}@\${listGen}\`);
   const shownChildren = $derived(visibleChildren(children ?? [], group.ids));
@@ -1922,6 +2076,98 @@ async function selftest(cases) {
     if (!codes.has(m.expect)) {
       console.error(
         `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [${m.expect}], получено [${[...codes].join(',') || 'ничего'}]`,
+      );
+      process.exit(1);
+    }
+  }
+  // 3е. Правило [H7] (CR-02, D-09) на РЕАЛЬНЫХ файлах: чистая тройка зелёная, пять
+  // мутантов красные. Главный мутант — ПЕРЕСТАНОВКА (приращение переносится ДО охраны,
+  // а не удаляется): счётный гейт слеп к порядку, `listGen += 1` по-прежнему встречается
+  // ровно один раз. Якоря уникальны (D-26): голая охрана встречается дважды и не используется.
+  let realList;
+  try {
+    realList = fs.readFileSync(path.join(UI_ROOT, LIST_FILE), 'utf8');
+  } catch {
+    console.error(`${TAG} SELFTEST FAIL — не удалось прочитать ${LIST_FILE}`);
+    process.exit(1);
+  }
+  const realH7 = checkListGen(realPage, realList, realRow);
+  if (realH7.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — реальная проводка listGen краснеет:\n  - ${realH7.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
+  }
+  const GUARD_ITEMS = '      if (seq !== refreshSeq) return;\n      items = snap.items;\n';
+  const INC_AFTER_ASSIGN =
+    '      hiddenMemberCount = snap.hiddenMemberCount;\n      listGen += 1;\n      void reloadExpandedAnchors();\n';
+  const h7Mutants = [
+    {
+      name: '[H7] listGen += 1 перенесён ДО охраны поколения (перестановка, реальные файлы)',
+      page: (t) =>
+        mutate(
+          mutate(
+            t,
+            INC_AFTER_ASSIGN,
+            '      hiddenMemberCount = snap.hiddenMemberCount;\n      void reloadExpandedAnchors();\n',
+            'h7-reorder-remove',
+          ),
+          GUARD_ITEMS,
+          '      listGen += 1;\n' + GUARD_ITEMS,
+          'h7-reorder-insert',
+        ),
+    },
+    {
+      name: '[H7] listGen += 1 перенесён ПОСЛЕ void reloadExpandedAnchors( (реальные файлы)',
+      page: (t) =>
+        mutate(
+          t,
+          INC_AFTER_ASSIGN,
+          '      hiddenMemberCount = snap.hiddenMemberCount;\n      void reloadExpandedAnchors();\n      listGen += 1;\n',
+          'h7-after-reload',
+        ),
+    },
+    {
+      name: '[H7] <DeviceList в DevicesPage не получает {listGen} (реальные файлы)',
+      page: (t) =>
+        mutate(t, '    <DeviceList\n      {listGen}\n', '    <DeviceList\n', 'h7-page-wiring'),
+    },
+    {
+      name: '[H7] <DeviceGroupRow в DeviceList не получает {listGen} (реальные файлы)',
+      list: (t) =>
+        mutate(
+          t,
+          '        <DeviceGroupRow\n          {group}\n          {listGen}\n',
+          '        <DeviceGroupRow\n          {group}\n',
+          'h7-list-wiring',
+        ),
+    },
+    {
+      name: '[H7] listGen?: number в Props DeviceGroupRow (реальные файлы)',
+      row: (t) => mutate(t, '    listGen: number;\n', '    listGen?: number;\n', 'h7-optional'),
+    },
+    {
+      name: '[H7] второе приращение listGen в catch (реальные файлы)',
+      page: (t) =>
+        mutate(
+          t,
+          '    } catch (e: unknown) {\n      if (seq !== refreshSeq) return;\n',
+          '    } catch (e: unknown) {\n      if (seq !== refreshSeq) return;\n      listGen += 1;\n',
+          'h7-catch-inc',
+        ),
+    },
+  ];
+  for (const m of h7Mutants) {
+    const codes = new Set(
+      checkListGen(
+        m.page ? m.page(realPage) : realPage,
+        m.list ? m.list(realList) : realList,
+        m.row ? m.row(realRow) : realRow,
+      ).map((v) => v.code),
+    );
+    if (!codes.has('H7')) {
+      console.error(
+        `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [H7], получено [${[...codes].join(',') || 'ничего'}]`,
       );
       process.exit(1);
     }
