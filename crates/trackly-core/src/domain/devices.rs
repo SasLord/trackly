@@ -86,14 +86,19 @@ pub struct DevicePatch {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DeviceFilter {
     pub type_id: Option<i64>,
+    /// Место с поддеревом (Phase 41.11, D-02): само место и все вложенные, без
+    /// удалённых. Применяется в `list`/`list_all`; `list_grouped` его игнорирует.
     pub place_id: Option<i64>,
     pub status_id: Option<i64>,
+    /// Состояние (`condition`, свободный текст): нормализованное равенство — `trim`
+    /// и без учёта регистра, включая кириллицу (Phase 41.11, D-04). Пустая после
+    /// `trim` строка — «не задан». Применяется в `list`/`list_all`.
     pub state: Option<String>,
-    /// Многополевой FTS5-текстовый фильтр (Phase 18/AUTO-03).
-    /// Используется ТОЛЬКО внутри `list_grouped` при `group_by_condition=true` —
+    /// Многополевой FTS5-текстовый фильтр (Phase 18/AUTO-03, Phase 41.11/D-03):
     /// сопоставляет name/inventory_number/serial_number/model через
-    /// `build_fts_query` sanitizer + `devices_fts MATCH`. В `list()`/`export_csv`
-    /// поле остаётся неиспользуемым (pre-existing gap, вне скоупа Phase 18).
+    /// `build_fts_query` sanitizer + `devices_fts MATCH`. Одно поведение во всех
+    /// путях: `list`/`list_all`/`export_csv` применяют его всегда, `list_grouped` —
+    /// только при `group_by_condition=true`. Пустая после `trim` строка — «не задан».
     pub name_prefix: Option<String>,
     /// Whether to include soft-deleted devices. Defaults to false.
     pub include_deleted: bool,

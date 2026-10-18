@@ -107,6 +107,71 @@ const LIST_FLAG_PREDICATES: &str = concat!(
     "))"
 );
 
+/// Поддерево мест `$place` для `d.place_id IN (...)`: само место и все вложенные,
+/// без помеченных удалёнными (Phase 41.11, D-02; та же формула, что `D-28` отчётов
+/// в `report_service.rs`). Удалённое или несуществующее место даёт пустое множество.
+/// Рекурсивный CTE внутри `IN (...)`, поэтому префикс `WITH` к запросу не нужен и
+/// COUNT/SELECT делят один текст. `UNION` (не `UNION ALL`) защищает от цикла.
+macro_rules! place_subtree_sql {
+    ($place:literal) => {
+        concat!(
+            "WITH RECURSIVE sub(id) AS ( \
+               SELECT id FROM places WHERE id = ",
+            $place,
+            " AND deleted_at_utc IS NULL \
+               UNION \
+               SELECT p.id FROM places p JOIN sub ON p.parent_id = sub.id \
+               WHERE p.deleted_at_utc IS NULL) \
+             SELECT id FROM sub"
+        )
+    };
+}
+
+/// Предикаты `list`/`list_all`: `?10` place_id (поддерево), `?11` state, `?12`
+/// FTS5-выражение (NULL = фильтр не задан). Один текст для `count_list_rows` и
+/// `select_list_rows` (Phase 41.11, D-06), иначе `total` разойдётся со строками.
+///
+/// `tr_norm(d.condition)` отключает индекс по `condition` (его и так нет); на
+/// объёмах одной организации приемлемо (D-05). FTS — подзапрос `IN (SELECT rowid ...)`,
+/// а не JOIN, поэтому `ORDER BY d.name, d.id` и COUNT не меняются.
+const LIST_FILTER_PREDICATES: &str = concat!(
+    "(?10 IS NULL OR d.place_id IN (",
+    place_subtree_sql!("?10"),
+    ")) AND (?11 IS NULL OR tr_norm(d.condition) = tr_norm(?11)) \
+     AND (?12 IS NULL OR d.id IN (SELECT rowid FROM devices_fts WHERE devices_fts MATCH ?12))"
+);
+
+/// Значения параметров `?11`/`?12` для `LIST_FILTER_PREDICATES`.
+///
+/// `state` и `name_prefix`: после `trim()` пусто означает «фильтр не задан»
+/// (симметрично `list_grouped`). `name_prefix` проходит `build_fts_query` без
+/// изменений. `None` на выходе = непустой ввод, из которого sanitizer не оставил
+/// ни одного токена (например, один `\0`): выборка ПУСТА, а не «без фильтра».
+fn list_text_params(filter: &DeviceFilter) -> Option<(Option<String>, Option<String>)> {
+    let state = filter
+        .state
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let fts = match filter
+        .name_prefix
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        None => None,
+        Some(text) => {
+            let expr = build_fts_query(text);
+            if expr.is_empty() {
+                return None;
+            }
+            Some(expr)
+        }
+    };
+    Some((state, fts))
+}
+
 /// SELECT с полным набором колонок в том порядке, который ожидает `from_row`.
 /// LEFT JOIN place_full_paths добавляет `pfp.full_path` как столбец с индексом 15;
 /// LEFT JOIN place_effective_variant добавляет `pev.effective_variant` как индекс 16
@@ -751,23 +816,30 @@ impl SqliteDeviceRepository {
     }
 }
 
-/// COUNT по тому же предикату, что и `select_list_rows` (общий
-/// `LIST_FLAG_PREDICATES`), чтобы `total` и число строк не расходились.
+/// COUNT по тому же предикату, что и `select_list_rows` (общие
+/// `LIST_FLAG_PREDICATES` и `LIST_FILTER_PREDICATES`), чтобы `total` и число
+/// строк не расходились.
 fn count_list_rows(conn: &Connection, filter: &DeviceFilter) -> Result<i64, AppError> {
+    // Непустой текст без токенов после sanitizer-а — пустая выборка (D-03).
+    let Some((state, fts)) = list_text_params(filter) else {
+        return Ok(0);
+    };
     // Phase 41.1 Plan 12: флаги якорных групп (opt-in, по умолчанию выключены).
     let hide = filter.hide_anchor_members as i64;
     let only = filter.anchors_only as i64;
     let excl = filter.exclude_anchors as i64;
     // Static SQL: LIST_FLAG_PREDICATES собран `concat!` из литералов, флаги и
-    // id группы идут параметрами ?6..?9. ?4/?5 (LIMIT/OFFSET) в COUNT не
-    // используются; индексы выровнены со SELECT, чтобы предикат был общим.
+    // id группы идут параметрами ?6..?9, фильтры списка (Phase 41.11) — ?10..?12.
+    // ?4/?5 (LIMIT/OFFSET) в COUNT не используются; индексы выровнены со SELECT,
+    // чтобы предикат был общим.
     conn.query_row(
         &format!(
             "SELECT COUNT(*) FROM devices d WHERE
                    (?1 = 1 OR d.deleted_at_utc IS NULL) AND
                    (?2 IS NULL OR d.status_id = ?2) AND
                    (?3 IS NULL OR d.type_id = ?3) AND
-                   {LIST_FLAG_PREDICATES}"
+                   {LIST_FLAG_PREDICATES} AND
+                   {LIST_FILTER_PREDICATES}"
         ),
         rusqlite::params![
             filter.include_deleted as i64,
@@ -778,7 +850,10 @@ fn count_list_rows(conn: &Connection, filter: &DeviceFilter) -> Result<i64, AppE
             hide,
             only,
             excl,
-            filter.member_of_group_id
+            filter.member_of_group_id,
+            filter.place_id,
+            state,
+            fts
         ],
         |r| r.get(0),
     )
@@ -793,6 +868,9 @@ fn select_list_rows(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<DeviceRow>, AppError> {
+    let Some((state, fts)) = list_text_params(filter) else {
+        return Ok(Vec::new());
+    };
     let hide = filter.hide_anchor_members as i64;
     let only = filter.anchors_only as i64;
     let excl = filter.exclude_anchors as i64;
@@ -802,7 +880,8 @@ fn select_list_rows(
                    (?1 = 1 OR d.deleted_at_utc IS NULL) AND
                    (?2 IS NULL OR d.status_id = ?2) AND
                    (?3 IS NULL OR d.type_id = ?3) AND
-                   {LIST_FLAG_PREDICATES}
+                   {LIST_FLAG_PREDICATES} AND
+                   {LIST_FILTER_PREDICATES}
                  ORDER BY d.name, d.id
                  LIMIT ?4 OFFSET ?5"
         ))
@@ -820,7 +899,10 @@ fn select_list_rows(
                 hide,
                 only,
                 excl,
-                filter.member_of_group_id
+                filter.member_of_group_id,
+                filter.place_id,
+                state,
+                fts
             ],
             from_row_with_short_path(&sep_ends, &sep_last_two),
         )
