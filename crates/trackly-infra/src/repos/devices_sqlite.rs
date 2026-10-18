@@ -343,6 +343,47 @@ fn build_fts_query(user_input: &str) -> String {
 /// Вспомогательные методы для использования внутри rusqlite-транзакций.
 /// `DeviceService` использует эти методы внутри `writer.execute` closures.
 impl SqliteDeviceRepository {
+    /// Выгрузка всех строк выборки с потолком `max_rows` (WR-09, D-20).
+    ///
+    /// COUNT и SELECT идут ОДНИМ снимком WAL (`unchecked_transaction`, DEFERRED,
+    /// только чтение — блокировку писателя не берёт): строка, закоммиченная
+    /// писателем между ними, снимку не видна, поэтому выгрузка не усекается молча.
+    /// Поверх снимка стоит пояс: `LIMIT max_rows + 1` и проверка
+    /// `rows.len() > max_rows`. Честная оговорка: при живом снимке пояс на данных
+    /// от снимка не отделим — это защита глубже, а не второе покрытие.
+    ///
+    /// `after_count` — внутренний шов для детерминированного теста гонки между
+    /// COUNT и SELECT (D-30). Публичен только потому, что интеграционные тесты —
+    /// отдельный крейт. Рантайм-поведение не меняет: трейтовый `list_all` передаёт
+    /// пустой коллбек, ни переменных окружения, ни флагов нет.
+    pub fn list_all_with_hook<F: FnOnce()>(
+        &self,
+        conn: &Connection,
+        filter: &DeviceFilter,
+        max_rows: u64,
+        after_count: F,
+    ) -> Result<Vec<DeviceRow>, AppError> {
+        let tx = conn.unchecked_transaction().map_err(map_rusqlite)?;
+        let total = count_list_rows(&tx, filter)? as u64;
+        after_count();
+        let too_many = |n: u64| AppError::Validation {
+            field: "export".to_string(),
+            message: format!(
+                "В выборке {n} устройств, экспорт ограничен {max_rows}. \
+                 Сузьте выборку фильтрами."
+            ),
+        };
+        if total > max_rows {
+            return Err(too_many(total));
+        }
+        let limit = i64::try_from(max_rows.saturating_add(1)).unwrap_or(i64::MAX);
+        let rows = select_list_rows(&tx, filter, limit, 0)?;
+        if rows.len() as u64 > max_rows {
+            return Err(too_many(rows.len() as u64));
+        }
+        Ok(rows)
+    }
+
     /// Phase 41.1 Plan 12 (D-34): сколько живых устройств скрывает флаг
     /// `hide_anchor_members` при тех же `include_deleted`/`status_id`/`type_id`,
     /// что у `list`. Идёт в футер «Показано N из M (+K в составе групп)».
@@ -987,19 +1028,9 @@ impl DeviceRepository for SqliteDeviceRepository {
         filter: &DeviceFilter,
         max_rows: u64,
     ) -> Result<Vec<DeviceRow>, AppError> {
-        // Выгрузка: потолок страницы (200) здесь сознательно не применяется, но
-        // верхняя граница `max_rows` проверяется COUNT-ом ДО чтения строк.
-        let total = count_list_rows(conn, filter)? as u64;
-        if total > max_rows {
-            return Err(AppError::Validation {
-                field: "export".to_string(),
-                message: format!(
-                    "В выборке {total} устройств, экспорт ограничен {max_rows}. \
-                     Сузьте выборку (например, выберите статус)."
-                ),
-            });
-        }
-        select_list_rows(conn, filter, max_rows as i64, 0)
+        // Выгрузка: потолок страницы (200) здесь сознательно не применяется;
+        // верхняя граница `max_rows` проверяется в `list_all_with_hook`.
+        self.list_all_with_hook(conn, filter, max_rows, || {})
     }
 
     fn update(
