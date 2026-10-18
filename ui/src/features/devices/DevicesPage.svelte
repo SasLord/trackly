@@ -117,6 +117,12 @@
   // медленный ответ старого запроса мог перезаписать список нового. Устаревший ответ
   // отбрасывается ДО записи состояния.
   let refreshSeq = 0;
+  // Номер поколения списка: растёт на каждом успешном refresh() (правка, удаление,
+  // действие из меню, смена фильтра, WS-инвалидация). Ключ кеша детей раскрытой
+  // свёртки (DeviceGroupRow) содержит этот номер, поэтому правка поля вне ключа
+  // группировки перечитывает детей. Пишется только в продолжении после await, после
+  // охраны refreshSeq: устаревший ответ не должен поднимать номер.
+  let listGen = $state(0);
   // То же для перечитывания состава раскрытых якорей (reloadExpandedAnchors).
   let anchorsSeq = 0;
   // T-41.1-G29-01: одиночная загрузка состава (loadAnchorMembers) идёт по той же
@@ -194,6 +200,7 @@
       total = snap.total;
       anchorItems = snap.anchorItems;
       hiddenMemberCount = snap.hiddenMemberCount;
+      listGen += 1;
       void reloadExpandedAnchors();
     } catch (e: unknown) {
       if (seq !== refreshSeq) return;
@@ -485,6 +492,7 @@
     />
 
     <DeviceList
+      {listGen}
       {items}
       {groups}
       {total}

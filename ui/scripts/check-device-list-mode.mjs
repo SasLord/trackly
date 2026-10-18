@@ -43,7 +43,7 @@
 //    [G] DeviceGroupRow.svelte (план 24, GAP-1; файл обязателен всегда, не SKIP):
 //        [G1] импортирует groupIdsKey и visibleChildren из './deviceListMode';
 //        [G2] не рисует `{#each children` по сырому кешу (только visibleChildren);
-//        [G3] есть $effect, читающий expanded и idsKey и НЕ читающий
+//        [G3] есть $effect, читающий expanded и cacheKey и НЕ читающий
 //             `children === null` (до-фиксовый эффект ключа состава не знал);
 //        [G4] вложенный <DeviceListRow> получает onEdit= и onDelete= (путь
 //             «действие из меню -> refresh()» не рвётся).
@@ -779,7 +779,7 @@ export function checkGroupRow(src) {
     const body = text.slice(open, close + 1);
     if (
       /\bexpanded\b/.test(body) &&
-      /\bidsKey\b/.test(body) &&
+      /\bcacheKey\b/.test(body) &&
       !/children\s*===\s*null/.test(body)
     ) {
       keyedEffect = true;
@@ -788,7 +788,7 @@ export function checkGroupRow(src) {
   if (!keyedEffect) {
     out.push({
       code: 'G3',
-      msg: 'нет $effect, читающего expanded и idsKey без условия children === null (кеш детей должен быть привязан к ключу состава)',
+      msg: 'нет $effect, читающего expanded и cacheKey без условия children === null (кеш детей должен быть привязан к ключу кеша: состав + номер поколения)',
     });
   }
   const rowAt = text.indexOf('<DeviceListRow');
@@ -1133,9 +1133,10 @@ const CLEAN_LIST = `<script lang="ts">
 const CLEAN_GROUP_ROW = `<script lang="ts">
   import { groupIdsKey, visibleChildren } from './deviceListMode';
   const idsKey = $derived(groupIdsKey(group.ids));
+  const cacheKey = $derived(\`\${idsKey}@\${listGen}\`);
   const shownChildren = $derived(visibleChildren(children ?? [], group.ids));
   $effect(() => {
-    if (expanded && loadedKey !== idsKey && loadingKey !== idsKey) loadChildren(idsKey);
+    if (expanded && loadedKey !== cacheKey && loadingKey !== cacheKey) loadChildren(cacheKey);
   });
 </script>
 {#each shownChildren as child, i (child.id)}
@@ -1170,7 +1171,7 @@ function structuralMutants() {
   const list = (from, to, label) => mutate(CLEAN_LIST, from, to, label);
   const row = (from, to, label) => mutate(CLEAN_GROUP_ROW, from, to, label);
   const EFFECT_LINE =
-    'if (expanded && loadedKey !== idsKey && loadingKey !== idsKey) loadChildren(idsKey);';
+    'if (expanded && loadedKey !== cacheKey && loadingKey !== cacheKey) loadChildren(cacheKey);';
   return [
     {
       name: "[A] нет вызова deviceListFlags('anchors'",
@@ -1337,7 +1338,7 @@ function structuralMutants() {
       expect: ['G3'],
     },
     {
-      name: '[G3] перестановка: idsKey заменён на group.ids и добавлено children === null',
+      name: '[G3] перестановка: cacheKey заменён на group.ids и добавлено children === null',
       files: fixtureMap({
         [GROUP_ROW_FILE]: row(
           EFFECT_LINE,
@@ -1352,7 +1353,7 @@ function structuralMutants() {
       files: fixtureMap({
         [GROUP_ROW_FILE]: row(
           EFFECT_LINE,
-          'if (expanded && children === null && loadedKey !== idsKey) loadChildren(idsKey);',
+          'if (expanded && children === null && loadedKey !== cacheKey) loadChildren(cacheKey);',
           'g3-both',
         ),
       }),

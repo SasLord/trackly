@@ -32,6 +32,8 @@
 
   interface Props {
     group: DeviceGroup;
+    /** Номер поколения списка: поднимается каждым успешным refresh() родителя. */
+    listGen: number;
     /** Set of stable keys that should be rendered expanded (from parent DevicesPage). */
     expandedGroups: Set<string>;
     /** Called when this group's expanded state changes. */
@@ -46,6 +48,7 @@
 
   const {
     group,
+    listGen,
     expandedGroups,
     onExpandToggle,
     onEdit,
@@ -57,14 +60,19 @@
   const stableKey = $derived(groupStableKey(group));
   const expanded = $derived(expandedGroups.has(stableKey));
 
-  // Кеш детей псевдогруппы. Он валиден, пока ключ состава group.ids не изменился
-  // (GAP-1): когда ребёнок стал якорем («Замещение группой»), ушёл «На разбор» или
+  // Кеш детей псевдогруппы. Он валиден, пока не изменились ни состав group.ids
+  // (idsKey), ни номер поколения списка (listGen): ключ кеша cacheKey = idsKey@listGen.
+  // Номер поколения единственный владелец инвалидации: любой успешный refresh()
+  // родителя (правка поля вне ключа группировки, удаление, действие из меню, смена
+  // фильтра, WS-инвалидация) поднимает его, и эффект перечитывает детей. Состав (GAP-1):
+  // когда ребёнок стал якорем («Замещение группой»), ушёл «На разбор» или
   // вошёл в якорную группу, сервер отдаёт у той же группы новый group.ids.
   // Сам компонент остаётся прежним: ключ {#each} в DeviceList — group.repr.id, у
   // не-репрезентанта он не меняется. Поэтому кеш привязан к ключу состава, под которым
   // он загружен (loadedKey), а не к жизни компонента. Сравнивать результат загрузки с
   // group.ids нельзя: listByIds ограничен 1000 id.
   const idsKey = $derived(groupIdsKey(group.ids));
+  const cacheKey = $derived(`${idsKey}@${listGen}`);
   let children = $state<DeviceDto[] | null>(null);
   let loadedKey = $state<string | null>(null);
   // Обычные переменные, не $state: отбрасывание устаревшего ответа и дедупликация
@@ -119,10 +127,12 @@
       });
   }
 
-  // Загружает детей, когда группа раскрыта, а кеш загружен под другим составом (или
-  // не загружен). Читает expanded, idsKey и loadedKey; children не читает.
+  // Загружает детей, когда группа раскрыта, а кеш загружен под другим составом или
+  // другим поколением списка (или не загружен). Читает expanded, cacheKey и loadedKey;
+  // children не читает. Пока идёт перечитывание, children остаётся прежним: старые
+  // строки на экране до прихода новых, «Загрузка…» не мигает.
   $effect(() => {
-    if (expanded && loadedKey !== idsKey && loadingKey !== idsKey) loadChildren(idsKey);
+    if (expanded && loadedKey !== cacheKey && loadingKey !== cacheKey) loadChildren(cacheKey);
   });
 
   // Двойной клик по свёртке: ЯВНО раскрыть состав. Два одиночных клика двойного
@@ -134,17 +144,16 @@
     if (!expanded) void toggleExpand();
   }
 
-  // После мутации (правка/удаление/действие из меню) родитель перечитывает список
-  // (onEdit/onDelete зовут refresh() в DevicesPage). Здесь кеш помечается устаревшим,
-  // и эффект перечитывает детей; если состав group.ids при этом изменился, ключ состава
-  // сам отсечёт ушедших детей (visibleChildren).
+  // После мутации (правка/удаление/действие из меню) родитель вызывает refresh() в
+  // DevicesPage, тот поднимает listGen, эффект перечитывает детей. Старые строки
+  // остаются на экране до прихода новых, а ушедший из group.ids ребёнок отсекается
+  // visibleChildren сразу. Кеш в обработчиках не трогается: пометка «устаревшим» до
+  // сохранения заставила бы эффект перечитать детей ещё до записи правки.
   function handleEdit(d: DeviceDto) {
-    loadedKey = null;
     onEdit(d);
   }
 
   function handleDelete() {
-    loadedKey = null;
     onDelete();
   }
 </script>

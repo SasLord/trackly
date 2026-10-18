@@ -8,6 +8,8 @@
   import type { DeviceDto, DeviceGroup } from '../../bindings';
 
   interface Props {
+    /** Номер поколения списка (DevicesPage): входит в ключ кеша детей свёртки. */
+    listGen: number;
     items: DeviceDto[];
     groups: DeviceGroup[];
     total: number;
@@ -40,6 +42,7 @@
   }
 
   const {
+    listGen,
     items,
     groups,
     total,
@@ -212,6 +215,7 @@
         <!-- Multi-device group: expandable row with chevron and count badge -->
         <DeviceGroupRow
           {group}
+          {listGen}
           {onEdit}
           {onDelete}
           expandedGroups={expandedGroups ?? new Set()}
