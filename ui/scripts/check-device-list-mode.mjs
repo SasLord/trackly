@@ -73,6 +73,12 @@
 //             `anchorMembers =` и вызова failAnchor(.
 //        Живое поведение гонки (быстрое переключение «Свернуть одинаковые») этим
 //        гейтом не проверяется: нужна проверка в запущенном приложении (план 32).
+//        Вакуумная проверка (WR-05, план 41.11-10): самотест читает замороженную
+//        до-фиксовую копию scripts/fixtures/device-list-mode/DevicesPage.pre-fix.svelte.txt
+//        (`git show a7c25aeb^:ui/src/features/devices/DevicesPage.svelte`), требует от неё
+//        [H1], [H2], [H5] и защиту от подмены (в копии нет `refreshSeq`, есть
+//        `async function refresh`); реальная страница даёт ноль нарушений, а мутанты
+//        [H1]/[H2]/[H5] строятся на НАСТОЯЩЕМ DevicesPage.svelte, не на синтетике.
 //
 //    Правила [A] и [B] при PAGE_MANDATORY = false дают явный SKIP для страницы,
 //    которая модуль ещё не подключила (так было в задаче 1 плана 19). Задача 3
@@ -108,6 +114,10 @@ const GROUP_ROW_FILE = 'src/features/devices/DeviceGroupRow.svelte';
 const PRE_FIX_GROUP_ROW = path.join(
   __dirname,
   'fixtures/device-list-mode/DeviceGroupRow.pre-fix.svelte.txt',
+);
+const PRE_FIX_PAGE = path.join(
+  __dirname,
+  'fixtures/device-list-mode/DevicesPage.pre-fix.svelte.txt',
 );
 const FIXTURE = path.join(__dirname, 'fixtures/device-list-mode/cases.json');
 const MIN_CASES = 18;
@@ -1836,6 +1846,79 @@ async function selftest(cases) {
   for (const m of realMutants) {
     const mutated = mutate(realRow, m.from, m.to, m.name);
     const codes = new Set(checkGroupRow(mutated).map((v) => v.code));
+    if (!codes.has(m.expect)) {
+      console.error(
+        `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [${m.expect}], получено [${[...codes].join(',') || 'ничего'}]`,
+      );
+      process.exit(1);
+    }
+  }
+  // 3г. Вакуумная проверка [H] (WR-05, D-23): замороженная до-фиксовая DevicesPage
+  // (версия до плана 29, `git show a7c25aeb^:...`) обязана дать H1, H2, H5, а реальная
+  // страница, чьи мутанты ниже строятся на НАСТОЯЩЕЙ форме refresh(), — ноль нарушений.
+  let preFixPage;
+  try {
+    preFixPage = fs.readFileSync(PRE_FIX_PAGE, 'utf8');
+  } catch {
+    console.error(
+      `${TAG} SELFTEST FAIL — нет замороженной до-фиксовой копии ${path.relative(UI_ROOT, PRE_FIX_PAGE)}`,
+    );
+    process.exit(1);
+  }
+  if (/refreshSeq/.test(preFixPage) || !/async\s+function\s+refresh\b/.test(preFixPage)) {
+    console.error(
+      `${TAG} SELFTEST FAIL — замороженная до-фиксовая DevicesPage подменена исправленной или пуста (в ней не должно быть refreshSeq и должна быть async function refresh)`,
+    );
+    process.exit(1);
+  }
+  const preFixPageCodes = new Set(checkPageRace(preFixPage).map((v) => v.code));
+  for (const code of ['H1', 'H2', 'H5']) {
+    if (!preFixPageCodes.has(code)) {
+      console.error(
+        `${TAG} SELFTEST FAIL — до-фиксовая DevicesPage не дала [${code}] (получено [${[...preFixPageCodes].join(',') || 'ничего'}]): правило [H] вакуумно на настоящей форме страницы`,
+      );
+      process.exit(1);
+    }
+  }
+  let realPage;
+  try {
+    realPage = fs.readFileSync(path.join(UI_ROOT, PAGE_FILE), 'utf8');
+  } catch {
+    console.error(`${TAG} SELFTEST FAIL — не удалось прочитать ${PAGE_FILE}`);
+    process.exit(1);
+  }
+  const realPageViolations = checkPageRace(realPage);
+  if (realPageViolations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — реальная DevicesPage краснеет:\n  - ${realPageViolations.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
+  }
+  // 3д. Мутанты [H] по РЕАЛЬНОМУ DevicesPage.svelte (D-23, D-26): якорь ровно один раз
+  // (голая `if (seq !== refreshSeq) return;` встречается дважды и не используется).
+  const realPageMutants = [
+    {
+      name: '[H2] присваивание items раньше охраны (реальный файл)',
+      from: '      if (seq !== refreshSeq) return;\n      items = snap.items;\n',
+      to: '      items = snap.items;\n      if (seq !== refreshSeq) return;\n',
+      expect: 'H2',
+    },
+    {
+      name: '[H1] refresh() не поднимает refreshSeq (реальный файл)',
+      from: 'const seq = ++refreshSeq;',
+      to: 'const seq = refreshSeq;',
+      expect: 'H1',
+    },
+    {
+      name: '[H5] reloadExpandedAnchors() не поднимает anchorsSeq (реальный файл)',
+      from: 'const aSeq = ++anchorsSeq;',
+      to: 'const aSeq = anchorsSeq;',
+      expect: 'H5',
+    },
+  ];
+  for (const m of realPageMutants) {
+    const mutated = mutate(realPage, m.from, m.to, m.name);
+    const codes = new Set(checkPageRace(mutated).map((v) => v.code));
     if (!codes.has(m.expect)) {
       console.error(
         `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [${m.expect}], получено [${[...codes].join(',') || 'ничего'}]`,
