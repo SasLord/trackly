@@ -178,6 +178,13 @@
     &.badge-m-soft.badge-m-muted {
       background: var(--tr-warning-muted-soft);
       color: var(--tr-warning-muted-text);
+      /* Нецветовой признак «ожидающего» статуса (WCAG 1.4.1): inset-рамка не меняет размеры чипа;
+         в forced-colors box-shadow отбрасывается, поэтому признак дублирует outline (D-34). */
+      box-shadow: inset 0 0 0 1px var(--tr-warning-muted-border);
+      @media (forced-colors: active) {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
+      }
     }
     &.badge-m-solid {
       background: var(--tr-warning);
@@ -201,6 +208,13 @@
     &.badge-m-soft.badge-m-muted {
       background: var(--tr-danger-muted-soft);
       color: var(--tr-danger-muted-text);
+      /* Нецветовой признак «ожидающего» статуса (WCAG 1.4.1): inset-рамка не меняет размеры чипа;
+         в forced-colors box-shadow отбрасывается, поэтому признак дублирует outline (D-34). */
+      box-shadow: inset 0 0 0 1px var(--tr-danger-muted-border);
+      @media (forced-colors: active) {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
+      }
     }
     &.badge-m-solid {
       background: var(--tr-danger);
