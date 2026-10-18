@@ -1317,8 +1317,8 @@ function selftest() {
   for (const c of cases) {
     const { violations, notifyCalls } = c.run();
     const invs = new Set(violations.map((v) => v.inv));
-    let ok = true;
-    let why = '';
+    let ok;
+    let why;
     if (c.clean) {
       ok = violations.length === 0 && notifyCalls >= MIN_NOTIFY_CALLS;
       why = `ожидалось 0 нарушений, получено ${violations.length} (${[...invs].join(',')}), вызовов ${notifyCalls}`;
