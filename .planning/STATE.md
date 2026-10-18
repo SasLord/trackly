@@ -7,7 +7,7 @@ last_updated: "2026-10-18T05:41:36.616Z"
 last_activity: 2026-10-18
 progress:
   total_phases: 24
-  completed_phases: 12
+  completed_phases: 11
   total_plans: 200
   completed_plans: 200
   percent: 50
