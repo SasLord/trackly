@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-17T21:05:27.385Z"
-last_activity: 2026-10-17
+last_updated: "2026-10-18T01:09:57.326Z"
+last_activity: 2026-10-18
 progress:
   total_phases: 24
   completed_phases: 11
   total_plans: 200
-  completed_plans: 197
+  completed_plans: 198
   percent: 46
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.1 (groups-devices-integration) — EXECUTING
-Plan: 30 of 33 исполнен (gap-closure, волна 1; 41.1-26: охрана click строки принтера + правило [F4]); верификация gaps_found 4/6 — фаза НЕ завершена
+Plan: 31 of 33 исполнен (gap-closure, волна 4; 41.1-31: граница gap-closure — гейты, до/после, полный прогон 1895 passed / 0 failed); верификация gaps_found 4/6 — фаза НЕ завершена
 Status: Ready to execute
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
@@ -137,7 +137,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-17
+Last activity: 2026-10-18
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -604,6 +604,7 @@ Last activity: 2026-10-17
 | Phase 41.1 P27 | 75min | 2 tasks | 5 files |
 | Phase 41.1 P28 | 25min | 2 tasks | 4 files |
 | Phase 41.1 P30 | 40min | 2 tasks | 8 files |
+| Phase 41.1 P31 | 4h | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1317,6 +1318,7 @@ Recent decisions affecting current work:
 - [Phase 41.1-24]: Кеш детей псевдогруппы валиден по ключу состава group.ids (groupIdsKey), не по сравнению с результатом listByIds (лимит 1000); загрузка одним effect, state пишется после await
 - [Phase 41.1]: [41.1-28] Приглушённый статус: различие несёт альфа soft-фона (0.5 от активной); константы гейта R1/R2 не ослаблялись
 - [Phase 41.1-30]: R-06 отменён: шесть статусов soft-чипы, пара различается muted; гейт F5 охраняет каждое место вызова Badge
+- [Phase 41.1]: [41.1-31] Полнота продолженного полного прогона проверяется по именам бинарей с кратностью, а не по хэшам (выборочная сборка -p меняет хэши)
 
 ### Pending Todos
 
@@ -1519,7 +1521,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-17T21:05:27.375Z
+Last session: 2026-10-18T01:09:52.161Z
 Stopped at: Completed 41.1-30-PLAN.md
 Resume file: None
 
