@@ -66,6 +66,18 @@
 //           ходили мимо потребителя вовсе, и гейт выдавал «PASS — 0
 //           нарушений» с открытой дырой. Реестр —
 //           `COMMIT_BEFORE_DISMISS_COMPONENTS`.
+//   INV-9 (41.11, AR-24) — АРГУМЕНТ каждого вызова `notifyPlaceContentChanged(...)`
+//           не пустой литерал и содержит идентификатор. Пустой список в
+//           `placeContentEvents.svelte.ts` — тихий no-op (`if (placeIds.length
+//           === 0) return`), поэтому мутант `notifyPlaceContentChanged([])`
+//           формально «инвалидирует», фактически ничего, и INV-7 (он смотрит
+//           только на НАЛИЧИЕ вызова в обработчике) его пропускал зелёным.
+//           Проверяемая формулировка (D-24a): «не пустой литерал И есть
+//           идентификатор» — буквальное «аргумент — параметр обработчика»
+//           статически непроверяемо (нужен разбор областей видимости) и
+//           отвергнуто. Литерал ЛЮБОГО вида (`[1, 2]`) тоже красный: id мест
+//           не бывают константой. Защита от вакуумности: найденных вызовов
+//           обязано быть не меньше `MIN_NOTIFY_CALLS`.
 //
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
@@ -76,7 +88,8 @@
 //
 // Usage:
 //   node scripts/check-place-tree-invalidation.mjs              # проверить репозиторий
-//   node scripts/check-place-tree-invalidation.mjs --src=<dir>  # проверить копию (самотест гейта)
+//   node scripts/check-place-tree-invalidation.mjs --src=<dir>  # проверить копию (<dir>/src/...)
+//   node scripts/check-place-tree-invalidation.mjs --selftest   # мутанты по РЕАЛЬНЫМ файлам (в памяти)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -92,6 +105,10 @@ const STORE = 'src/lib/stores/placeContentEvents.svelte.ts';
 // see `checkCompleteness` below — instead of a fixed file list.
 const FEATURES_DIR = 'src/features';
 const NOTIFY = 'notifyPlaceContentChanged(';
+// INV-9: сегодня в `src/features` 25 вызовов; порог с запасом. Падение ниже
+// порога — нарушение гейта, а не молчаливое «0 нарушений» (вакуумный PASS,
+// если вызовы разъехались мимо обхода).
+const MIN_NOTIFY_CALLS = 20;
 
 // ---------------------------------------------------------------------------
 // Хелперы разбора
@@ -706,9 +723,12 @@ function checkStore(storeSrc, violations) {
  *      `PlaceEntityViewModal` → его собственный потребитель). Второй
  *      уровень форвардинга потребует явного расширения этой секции, не
  *      пройдёт молча.
- *   4. Гейт СТРУКТУРНЫЙ/текстовый, как и весь остальной файл (см.
- *      заголовок) — доказывает, что ПРОВОДКА существует, не что аргументы
- *      `notifyPlaceContentChanged` — ПРАВИЛЬНЫЕ старое/новое место. Это
+ *   4. (закрыт INV-9 в части «пустой/литеральный аргумент») Гейт
+ *      СТРУКТУРНЫЙ/текстовый, как и весь остальной файл (см. заголовок).
+ *      Раньше он не отличал `notifyPlaceContentChanged([])` от настоящего
+ *      вызова; теперь INV-9 краснит пустой и литеральный аргумент. НЕ закрыто
+ *      и закрыто быть не может: что аргумент содержит ПРАВИЛЬНЫЕ
+ *      старое/новое место (`changedPlaceIds.slice(0, 0)` INV-9 пройдёт). Это
  *      по-прежнему требует живой проверки `cargo tauri dev` на каждый
  *      write-site, как и во всех раундах до этого.
  */
@@ -808,11 +828,10 @@ function resolveLocalName(code, modulePath, exportName) {
   return null;
 }
 
-function checkCompleteness(files, violations) {
-  for (const filePath of files) {
-    const relPath = path.relative(UI_ROOT, filePath).split(path.sep).join('/');
-    const baseName = path.basename(filePath, '.svelte');
-    const raw = fs.readFileSync(filePath, 'utf8');
+function checkCompleteness(files, violations, read) {
+  for (const relPath of files) {
+    const baseName = path.basename(relPath, '.svelte');
+    const raw = read(relPath);
     const code = stripComments(raw);
     // Grants "may forward instead of calling notifyPlaceContentChanged
     // directly" — ONLY inside the file that itself implements a
@@ -1025,46 +1044,339 @@ function checkCommitBeforeDismiss(read, violations) {
 }
 
 // ---------------------------------------------------------------------------
+// INV-9 (41.11, AR-24) — аргумент notifyPlaceContentChanged не пустой литерал
+// ---------------------------------------------------------------------------
+
+/** Пустой литерал списка: `[]`, `[ ]`, `new Array()`, `Array()`, `Array.of()`. */
+const EMPTY_LITERAL_RE = /^(?:\[\s*\]|(?:new\s+)?Array\s*\(\s*\)|Array\s*\.\s*of\s*\(\s*\))$/;
+
+/** Служебные слова, не считающиеся «идентификатором данных». */
+const NON_DATA_WORDS_RE = /\b(?:new|Array|Set|of|from|true|false|null|undefined|NaN|Infinity)\b/g;
+
+/**
+ * Что не так с текстом аргумента, либо `null`, если всё в порядке (D-24a):
+ *   - пустой после trim;
+ *   - пустой литерал;
+ *   - после вырезания строковых/числовых литералов и служебных слов не осталось
+ *     ни одного идентификатора (`[1, 2]`, `[null]`, `Array.from(new Set([]))`).
+ */
+function badNotifyArg(argText) {
+  const arg = argText.trim();
+  if (arg === '') return 'аргумент отсутствует';
+  if (EMPTY_LITERAL_RE.test(arg)) return 'аргумент — пустой литерал списка';
+  const stripped = arg
+    .replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`/g, ' ')
+    .replace(/\b\d[\w.]*/g, ' ')
+    .replace(NON_DATA_WORDS_RE, ' ');
+  if (!/[A-Za-z_$]/.test(stripped)) return 'аргумент — литерал без единого идентификатора';
+  return null;
+}
+
+/** Номер строки (с 1) для индекса в тексте — комментарии затёрты пробелами с
+ * сохранением переводов строк, поэтому номер совпадает с исходником. */
+const lineOf = (src, idx) => src.slice(0, idx).split('\n').length;
+
+/**
+ * Возвращает число найденных вызовов (для защиты от вакуумности).
+ */
+function checkNotifyArgs(files, violations, read) {
+  let calls = 0;
+  for (const relPath of files) {
+    const code = stripComments(read(relPath));
+    for (const idx of indicesOf(code, NOTIFY)) {
+      const parens = balancedParens(code, idx + NOTIFY.length - 1);
+      calls += 1;
+      if (parens === null) {
+        violations.push({
+          file: relPath,
+          inv: 'INV-9',
+          message: `строка ${lineOf(code, idx)}: не удалось разобрать скобки вызова notifyPlaceContentChanged(`,
+          hint: 'Скобки вызова не сбалансированы до конца файла — аргумент не проверить.',
+        });
+        continue;
+      }
+      const reason = badNotifyArg(parens.text);
+      if (reason !== null) {
+        violations.push({
+          file: relPath,
+          inv: 'INV-9',
+          message: `строка ${lineOf(code, idx)}: notifyPlaceContentChanged(${parens.text.trim()}) — ${reason}`,
+          hint: 'Пустой список — тихий no-op в placeContentEvents (инвалидации нет, а вызов «есть»): передавай идентификаторы изменённых мест (changed_place_ids ответа сервера или id старого/нового места).',
+        });
+      }
+    }
+  }
+  if (calls < MIN_NOTIFY_CALLS) {
+    violations.push({
+      file: FEATURES_DIR,
+      inv: 'INV-9',
+      message: `найдено ${calls} вызовов notifyPlaceContentChanged( — меньше порога ${MIN_NOTIFY_CALLS}`,
+      hint: 'Либо вызовы пропали (инвалидация снята), либо обход перестал их видеть — «0 нарушений» было бы вакуумным. Если число вызовов законно упало, обнови MIN_NOTIFY_CALLS осознанно.',
+    });
+  }
+  return calls;
+}
+
+// ---------------------------------------------------------------------------
+// Сборка нарушений (чистая: без process.exit — вызывается и из --selftest)
+// ---------------------------------------------------------------------------
+
+class GateReadError extends Error {}
+
+/** Относительные пути всех `.svelte` под `<root>/src/features`. */
+function listFeatureFiles(root) {
+  const featuresDir = path.join(root, FEATURES_DIR);
+  try {
+    return walkSvelteFiles(featuresDir).map((f) =>
+      path.relative(root, f).split(path.sep).join('/'),
+    );
+  } catch {
+    throw new GateReadError(
+      `не удалось обойти ${FEATURES_DIR}. Каталог переехал/удалён: обнови путь в гейте осознанно, а не удаляй проверку.`,
+    );
+  }
+}
+
+/** `read(rel)` обязан бросать GateReadError, если файла нет. */
+function collectViolations(read, files) {
+  const violations = [];
+  checkTree(read(TREE), violations);
+  checkStore(read(STORE), violations);
+  checkCompleteness(files, violations, read);
+  checkCommitBeforeDismiss(read, violations);
+  const notifyCalls = checkNotifyArgs(files, violations, read);
+  return { violations, notifyCalls };
+}
+
+function diskReader(root) {
+  return (rel) => {
+    try {
+      return fs.readFileSync(path.join(root, rel), 'utf8');
+    } catch {
+      throw new GateReadError(
+        `не удалось прочитать ${rel}. Файл переехал или удалён: обнови путь в гейте осознанно, а не удаляй проверку.`,
+      );
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// --selftest: мутанты по РЕАЛЬНЫМ файлам репозитория, в памяти (D-25, D-26, D-32)
+// ---------------------------------------------------------------------------
+
+/**
+ * Заменяет якорь `from` на `to` в `source`. D-26: якорь обязан встречаться
+ * РОВНО один раз — иначе мутант попадает в соседнюю функцию, а selftest
+ * «доказывает» не то, что заявлено (или не мутирует ничего).
+ */
+function mutate(source, from, to, label) {
+  const n = source.split(from).length - 1;
+  if (n !== 1) {
+    console.error(`${TAG} SELFTEST FAIL — якорь «${label}» встречается ${n} раз (нужно ровно 1)`);
+    process.exit(1);
+  }
+  return source.replace(from, () => to);
+}
+
+function selftest() {
+  const disk = diskReader(UI_ROOT);
+  const files = listFeatureFiles(UI_ROOT);
+  const run = (overrides, onlyFiles = files) => {
+    const read = (rel) => (overrides.has(rel) ? overrides.get(rel) : disk(rel));
+    return collectViolations(read, onlyFiles);
+  };
+
+  const ROW_MENU = 'src/features/devices/DeviceRowMenu.svelte';
+  const ROW_MENU_ANCHOR =
+    'if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);';
+  const withRowMenuCall = (arg, label) =>
+    new Map([
+      [
+        ROW_MENU,
+        mutate(
+          disk(ROW_MENU),
+          ROW_MENU_ANCHOR,
+          `if (changedPlaceIds.length > 0) notifyPlaceContentChanged(${arg});`,
+          `${ROW_MENU}: ${label}`,
+        ),
+      ],
+    ]);
+  const swap = (rel, from, to, label) =>
+    new Map([[rel, mutate(disk(rel), from, to, `${rel}: ${label}`)]]);
+
+  // expectInv — какие правила ОБЯЗАНЫ покраснеть; exact — точное число нарушений
+  // (если задано); clean — ожидается ноль нарушений.
+  const cases = [
+    {
+      name: 'контроль: реальное дерево чисто',
+      run: () => run(new Map()),
+      clean: true,
+    },
+    // --- D-24 / D-24a ---
+    {
+      name: 'A: DeviceRowMenu — notifyPlaceContentChanged([])',
+      run: () => run(withRowMenuCall('[]', 'аргумент -> []')),
+      expectInv: ['INV-9'],
+      exact: 1,
+    },
+    {
+      name: 'B: DeviceRowMenu — литерал любого вида [1, 2]',
+      run: () => run(withRowMenuCall('[1, 2]', 'аргумент -> [1, 2]')),
+      expectInv: ['INV-9'],
+      exact: 1,
+    },
+    {
+      name: 'C: DeviceRowMenu — вызов без аргумента',
+      run: () => run(withRowMenuCall('', 'аргумент -> пусто')),
+      expectInv: ['INV-9'],
+      exact: 1,
+    },
+    {
+      name: 'D: DeviceRowMenu — new Array()',
+      run: () => run(withRowMenuCall('new Array()', 'аргумент -> new Array()')),
+      expectInv: ['INV-9'],
+      exact: 1,
+    },
+    {
+      name: 'E: вакуум — обход видит один файл вместо дерева (порог MIN_NOTIFY_CALLS)',
+      run: () => run(new Map(), [ROW_MENU]),
+      expectInv: ['INV-9'],
+    },
+    // --- формы, которые обязаны ПРОХОДИТЬ (правило не краснит всё подряд) ---
+    {
+      name: 'ok: result.changed_place_ids',
+      run: () => run(withRowMenuCall('result.changed_place_ids', 'форма ok 1')),
+      clean: true,
+    },
+    {
+      name: 'ok: [place.id, moveTargetId]',
+      run: () => run(withRowMenuCall('[place.id, moveTargetId]', 'форма ok 2')),
+      clean: true,
+    },
+    {
+      name: 'ok: Array.from(new Set([place.id, ...ids]))',
+      run: () => run(withRowMenuCall('Array.from(new Set([place.id, ...ids]))', 'форма ok 3')),
+      clean: true,
+    },
+    // --- прежние инварианты: selftest не охраняет только INV-9 ---
+    {
+      name: 'INV-1: PlaceTree — чтение statsCache вне untrack',
+      run: () =>
+        run(
+          swap(
+            'src/features/places/PlaceTree.svelte',
+            'untrack(() => {',
+            'Reflect.apply(() => {',
+            'untrack снят',
+          ),
+        ),
+      expectInv: ['INV-1'],
+    },
+    {
+      name: 'INV-6: store — seq перестал увеличиваться',
+      run: () =>
+        run(
+          swap(
+            STORE,
+            'placeContentEventsStore.seq += 1;',
+            'placeContentEventsStore.seq = placeContentEventsStore.seq;',
+            'seq += 1 снят',
+          ),
+        ),
+      expectInv: ['INV-6'],
+    },
+    {
+      name: 'INV-7: RequestDetail — обработчик не зовёт notifyPlaceContentChanged',
+      run: () =>
+        run(
+          swap(
+            'src/features/requests/RequestDetail.svelte',
+            'if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);',
+            'void changedPlaceIds;',
+            'вызов инвалидации снят',
+          ),
+        ),
+      expectInv: ['INV-7'],
+    },
+    {
+      name: 'INV-8: DeviceImportCsvModal — закрытие после коммита минует onImported',
+      run: () =>
+        run(
+          swap(
+            'src/features/devices/DeviceImportCsvModal.svelte',
+            'onImported(report.affected_place_ids);',
+            'onClose();',
+            'onImported снят из handleClose',
+          ),
+        ),
+      expectInv: ['INV-8'],
+    },
+  ];
+
+  let failed = 0;
+  for (const c of cases) {
+    const { violations, notifyCalls } = c.run();
+    const invs = new Set(violations.map((v) => v.inv));
+    let ok = true;
+    let why = '';
+    if (c.clean) {
+      ok = violations.length === 0 && notifyCalls >= MIN_NOTIFY_CALLS;
+      why = `ожидалось 0 нарушений, получено ${violations.length} (${[...invs].join(',')}), вызовов ${notifyCalls}`;
+    } else {
+      const missing = c.expectInv.filter((i) => !invs.has(i));
+      ok = missing.length === 0 && (c.exact === undefined || violations.length === c.exact);
+      why = `ожидалось ${c.expectInv.join(',')}${c.exact !== undefined ? ` ×${c.exact}` : ''}, получено ${violations.length} (${[...invs].join(',') || '—'})`;
+    }
+    if (!ok) {
+      failed += 1;
+      console.error(`${TAG} SELFTEST FAIL — ${c.name}: ${why}`);
+    }
+  }
+
+  if (failed > 0) {
+    console.error(`${TAG} SELFTEST FAIL — ${failed} из ${cases.length} кейсов не прошли`);
+    process.exit(1);
+  }
+  console.error(`${TAG} SELFTEST PASS — ${cases.length} кейсов (мутанты по реальным файлам)`);
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
 
 function main() {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.error(
+      `${TAG} Usage: node scripts/check-place-tree-invalidation.mjs [--src=<ui-dir>] [--selftest]`,
+    );
+    process.exit(0);
+  }
+  if (process.argv.includes('--selftest')) {
+    try {
+      selftest();
+    } catch (e) {
+      if (e instanceof GateReadError) {
+        console.error(`${TAG} SELFTEST FAIL — ${e.message}`);
+        process.exit(1);
+      }
+      throw e;
+    }
+    return;
+  }
+
   const argSrc = process.argv.slice(2).find((a) => a.startsWith('--src='));
   const SRC_ROOT = argSrc ? path.resolve(process.cwd(), argSrc.slice('--src='.length)) : UI_ROOT;
 
-  if (process.argv.includes('--help') || process.argv.includes('-h')) {
-    console.error(`${TAG} Usage: node scripts/check-place-tree-invalidation.mjs [--src=<ui-dir>]`);
-    process.exit(0);
-  }
-
-  const read = (rel) => {
-    try {
-      return fs.readFileSync(path.join(SRC_ROOT, rel), 'utf8');
-    } catch {
-      console.error(
-        `${TAG} FAIL — не удалось прочитать ${rel}. Файл переехал или удалён: обнови путь в гейте осознанно, а не удаляй проверку.`,
-      );
+  let result;
+  try {
+    result = collectViolations(diskReader(SRC_ROOT), listFeatureFiles(SRC_ROOT));
+  } catch (e) {
+    if (e instanceof GateReadError) {
+      console.error(`${TAG} FAIL — ${e.message}`);
       process.exit(1);
     }
-  };
-
-  const treeSrc = read(TREE);
-  const storeSrc = read(STORE);
-
-  const violations = [];
-  checkTree(treeSrc, violations);
-  checkStore(storeSrc, violations);
-
-  const featuresDir = path.join(SRC_ROOT, FEATURES_DIR);
-  let files = [];
-  try {
-    files = walkSvelteFiles(featuresDir);
-  } catch {
-    console.error(
-      `${TAG} FAIL — не удалось обойти ${FEATURES_DIR}. Каталог переехал/удалён: обнови путь в гейте осознанно, а не удаляй проверку.`,
-    );
-    process.exit(1);
+    throw e;
   }
-  checkCompleteness(files, violations);
-  checkCommitBeforeDismiss(read, violations);
+  const { violations, notifyCalls } = result;
 
   for (const v of violations) {
     console.error(`${TAG} ${v.file} — ${v.inv}: ${v.message}`);
@@ -1080,7 +1392,9 @@ function main() {
     process.exit(1);
   }
 
-  console.error(`${TAG} PASS — 0 нарушений`);
+  console.error(
+    `${TAG} PASS — 0 нарушений (INV-9: проверено ${notifyCalls} вызовов notifyPlaceContentChanged)`,
+  );
   process.exit(0);
 }
 
