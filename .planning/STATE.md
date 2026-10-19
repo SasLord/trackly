@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-10-19T02:10:49.884Z"
-last_activity: 2026-10-18
+status: verifying
+last_updated: "2026-10-19T23:15:49.551Z"
+last_activity: 2026-10-19
 progress:
   total_phases: 25
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 212
-  completed_plans: 211
-  percent: 48
+  completed_plans: 212
+  percent: 52
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41.11 (phase-41-1-debt) — EXECUTING
 Plan: 12 of 12
-Status: Ready to execute
+Status: Phase complete — ready for verification
 4 пункта пройдены, R5 пройден в своей части (баннер усечения отчёта «Перемещения»). WR-01
 (легаси-строка «скрыто + обязательное») закрыт коммитами f027cc0b + e1fccb03. Побочный дефект
 R5 — счётчики вкладок «Отчётов» равны 0 в LAN-браузере — признан дефектом ВНЕ фазы 41
@@ -145,7 +145,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-19 - Completed quick task 261019-q3o: вердикт ReadOnly для export_csv_with_limit в реестре entities_changed_gate
+Last activity: 2026-10-19
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1382,7 +1382,7 @@ Spike-зоны, требующие внимания во время планир
 - 40.2-01 (D-15): cargo test -p trackly-infra имеет 16 красных тестов (acts_sqlite::increment_counter_returns_one_first + 15x cartridges_sqlite::*) — «no such table: counters», ожидаемо после DROP TABLE counters в V041; чинится планами 40.2-06 (акты) и 40.2-07 (картриджи/фотобарабаны)
 - 40.3-03: живая UAT-проверка тоста возврата (шаблон номеров, cargo tauri dev) не выполнена — статус UNVERIFIED, шаги воспроизведения в 40.3-03-SUMMARY.md
 - 40.3-05: живая проверка «Завести принтер» через DeviceFormModal НЕ выполнена (чекпоинт закрыт авто-approve AUTO_MODE) — требуется human UAT перед закрытием фазы 40.3-audit-debt, шаги см. 40.3-05-SUMMARY.md
-- 41.11-12: сплошной прогон AR-25 красный/неполный (CHAIN_EXIT=143 по watchdog 2 ч; 3 failed в entities_changed_gate: нет строки реестра INV-7 для export_csv_with_limit). Нужен новый план и новый сплошной прогон с границей не менее 4 ч
+- 41.11-12 (снято 2026-10-19): сплошной прогон AR-25 ЗЕЛЁНЫЙ с третьей попытки (CHAIN_EXIT=0, 184 бинарника, 1929 passed, 0 failed, 4 ч 30 мин, SHA 35b86fd5); регрессия entities_changed_gate закрыта 196c1071.
 
 ### Явные решения по приватности
 
@@ -1556,7 +1556,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-19T02:10:40.066Z
+Last session: 2026-10-19T23:15:49.542Z
 Stopped at: Completed 41.11-09-PLAN.md
 Resume file: None
 

@@ -183,7 +183,7 @@
 | 41. Группы: модель и редактор | v1.4 | 34/34 | Complete    | 2026-10-06 |
 | 41.7. Долг выпуска v1.4 *(до 41.1)* | v1.4 | 14/14 | Complete    | 2026-10-08 |
 | 41.1. Группы × Устройства | v1.4 | 33/33 | Complete    | 2026-10-18 |
-| 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 11/12 | In Progress|  |
+| 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
 | 41.2. Группы × Акты и Места | v1.4 | 0/TBD | Not started | - |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
@@ -1035,7 +1035,7 @@ Plans:
 
 5. Один непрерывный прогон `fmt → clippy → test --workspace` зелёный, сырой вывод сохранён.
 
-**Plans:** 11/12 plans executed
+**Plans:** 12/12 plans complete
 Plans:
 **Wave 1**
 
@@ -1059,7 +1059,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 41.11-12-PLAN.md — AR-25: один сплошной прогон `ui build → fmt → clippy → test --workspace` (волна 4)
+- [x] 41.11-12-PLAN.md — AR-25: один сплошной прогон `ui build → fmt → clippy → test --workspace` (волна 4)
 
 ### Phase 41.7: Долг выпуска v1.4 (INSERTED)
 
