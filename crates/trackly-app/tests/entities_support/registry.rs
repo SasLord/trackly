@@ -268,6 +268,7 @@ pub const REGISTRY: &[Entry] = &[
     ro(DEVICE, "import_csv_preview"),
     b(DEVICE, "import_csv_commit"),
     ro(DEVICE, "export_csv"),
+    ro(DEVICE, "export_csv_with_limit"),
     ro(DEVICE, "list_by_ids"),
     b(DEVICE, "bulk_create_with_printer"),
     ex(
