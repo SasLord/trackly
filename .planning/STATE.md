@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-18T17:56:05.679Z"
+last_updated: "2026-10-19T02:10:49.884Z"
 last_activity: 2026-10-18
 progress:
   total_phases: 25
@@ -1382,6 +1382,7 @@ Spike-зоны, требующие внимания во время планир
 - 40.2-01 (D-15): cargo test -p trackly-infra имеет 16 красных тестов (acts_sqlite::increment_counter_returns_one_first + 15x cartridges_sqlite::*) — «no such table: counters», ожидаемо после DROP TABLE counters в V041; чинится планами 40.2-06 (акты) и 40.2-07 (картриджи/фотобарабаны)
 - 40.3-03: живая UAT-проверка тоста возврата (шаблон номеров, cargo tauri dev) не выполнена — статус UNVERIFIED, шаги воспроизведения в 40.3-03-SUMMARY.md
 - 40.3-05: живая проверка «Завести принтер» через DeviceFormModal НЕ выполнена (чекпоинт закрыт авто-approve AUTO_MODE) — требуется human UAT перед закрытием фазы 40.3-audit-debt, шаги см. 40.3-05-SUMMARY.md
+- 41.11-12: сплошной прогон AR-25 красный/неполный (CHAIN_EXIT=143 по watchdog 2 ч; 3 failed в entities_changed_gate: нет строки реестра INV-7 для export_csv_with_limit). Нужен новый план и новый сплошной прогон с границей не менее 4 ч
 
 ### Явные решения по приватности
 
@@ -1554,7 +1555,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-18T17:56:05.667Z
+Last session: 2026-10-19T02:10:40.066Z
 Stopped at: Completed 41.11-09-PLAN.md
 Resume file: None
 
