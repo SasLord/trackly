@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-10-20T19:16:10.617Z"
+status: verifying
+last_updated: "2026-10-20T23:43:08.226Z"
 last_activity: 2026-10-20
 progress:
   total_phases: 26
-  completed_phases: 13
+  completed_phases: 14
   total_plans: 219
-  completed_plans: 218
-  percent: 50
+  completed_plans: 219
+  percent: 54
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41.12 (v1-4-int-14-int-15-int-07) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
 TD-2 (selftest check-device-list-mode занижает счётчики), TD-4 (предусловие не отличает passed
@@ -634,6 +634,7 @@ Last activity: 2026-10-20
 | Phase 41.12 P05 | 25min | 3 tasks | 3 files |
 | Phase 41.12 P06 | 40min | 2 tasks | 2 files |
 | Phase 41.12 P04 | 50min | 2 tasks | 6 files |
+| Phase 41.12 P07 | 270min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1569,8 +1570,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-20T19:16:03.283Z
-Stopped at: Completed 41.12-05-PLAN.md
+Last session: 2026-10-20T23:43:03.903Z
+Stopped at: Completed 41.12-07-PLAN.md (ручные пункты ожидают пользователя)
 Resume file: None
 
 None
