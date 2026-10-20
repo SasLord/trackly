@@ -190,7 +190,7 @@
 | 41.7. Долг выпуска v1.4 *(до 41.1)* | v1.4 | 14/14 | Complete    | 2026-10-08 |
 | 41.1. Группы × Устройства | v1.4 | 33/33 | Complete    | 2026-10-18 |
 | 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
-| 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 2/7 | In Progress|  |
+| 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 3/7 | In Progress|  |
 | 41.2. Группы × Акты и Места | v1.4 | 0/TBD | Not started | - |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
@@ -1068,13 +1068,13 @@ LAN — отложено решением пользователя 2026-10-06), 
 5. `pnpm lint` (включая `--selftest` правленых гейтов), `pnpm --dir ui svelte-check` и
    `cargo test -p trackly-app` зелёные.
 
-**Plans:** 2/7 plans executed
+**Plans:** 3/7 plans executed
 Plans:
 **Wave 1**
 
 - [x] 41.12-01-PLAN.md — TypeLookup вместо карт типа в CSV, list_types, данные-ведомые тесты (красные первыми), псевдоним D-01 / умолчание D-02
 - [x] 41.12-05-PLAN.md — INT-15: devices.delete / cartridges.delete в реестре INV-7, minSites, notifyAfter, обработчики
-- [ ] 41.12-06-PLAN.md — INT-07: check-place-path-short на скан ui/src + вердикты + --selftest
+- [x] 41.12-06-PLAN.md — INT-07: check-place-path-short на скан ui/src + вердикты + --selftest
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
