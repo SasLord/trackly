@@ -1051,28 +1051,42 @@ LAN — отложено решением пользователя 2026-10-06), 
 1. Подпись типа устройства в CSV-экспорте, резолв типа в CSV-импорте и список типов в фильтре
    отчётов берутся из `device_types`; литерала «Расходник» в `crates/` и `ui/src` не осталось,
    тестовые фикстуры приведены к справочнику.
+
 2. Строка CSV с типом «Принтер» создаёт запись с `type_id` принтера: она видна в разделе
    «Принтеры» и попадает в вид `'printer'` содержимого места. Мутант, возвращающий прежнее
    соответствие `2 => «Расходник»`, краснеет в гейте.
+
 3. `devices.delete` и `cartridges.delete` входят в реестр `DIRECT_CALL_MARKERS`, а обрамляющие
    обработчики зовут `notifyPlaceContentChanged` с местом удаляемого предмета. Удаление
    маркера ИЛИ вызова роняет гейт (мутация по реальному исходнику, якорь уникален).
+
 4. Гейт формата пути перечисляет потребителей `place_path_short` от скана `ui/src`, а не от
    фиксированного списка: новый компонент, печатающий сырой `full_path`, краснеет. Освобождения,
    если нужны, закодированы вердиктом с причиной, а устаревшее освобождение само роняет гейт
    (образец — переход INV-7 на реестр + скан).
+
 5. `pnpm lint` (включая `--selftest` правленых гейтов), `pnpm --dir ui svelte-check` и
    `cargo test -p trackly-app` зелёные.
 
 **Plans:** 7 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 41.12-01-PLAN.md — TypeLookup вместо карт типа в CSV, list_types, данные-ведомые тесты (красные первыми), псевдоним D-01 / умолчание D-02
-- [ ] 41.12-02-PLAN.md — фикстуры CSV приведены к справочнику + Rust-гейт device_type_label_gate (слово «Расходник» только как псевдоним)
-- [ ] 41.12-03-PLAN.md — команда device_types_list, HTTP-маршрут, роль-матрица, bindings
-- [ ] 41.12-04-PLAN.md — стор типов, ReportsPage и GroupAddDevicesModal на справочник, гейт check-device-type-labels
 - [ ] 41.12-05-PLAN.md — INT-15: devices.delete / cartridges.delete в реестре INV-7, minSites, notifyAfter, обработчики
 - [ ] 41.12-06-PLAN.md — INT-07: check-place-path-short на скан ui/src + вердикты + --selftest
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 41.12-02-PLAN.md — фикстуры CSV приведены к справочнику + Rust-гейт device_type_label_gate (слово «Расходник» только как псевдоним)
+- [ ] 41.12-03-PLAN.md — команда device_types_list, HTTP-маршрут, роль-матрица, bindings
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 41.12-04-PLAN.md — стор типов, ReportsPage и GroupAddDevicesModal на справочник, гейт check-device-type-labels
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 41.12-07-PLAN.md — граница фазы: полный набор гейтов, один workspace-прогон, human-check
 
 ### Phase 41.11: Долг фазы 41.1: гейты и свёртка (INSERTED)
