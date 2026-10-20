@@ -48,6 +48,7 @@ use crate::dto::device::{
     StatusCount, STATE_HINTS,
 };
 use crate::dto::device_status::DeviceStatusDto;
+use crate::dto::device_type::DeviceTypeDto;
 use crate::dto::number_template::{
     NumberFieldInput, NumberWarningDto, NumberWarningKind, TemplateContextDto,
 };
@@ -1422,6 +1423,34 @@ impl DeviceService {
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// Справочник типов устройств (Phase 41.12, INT-14): `device_types` целиком,
+    /// в порядке id. Единственный источник подписей типа для интерфейса.
+    pub async fn list_types(&self) -> Result<Vec<DeviceTypeDto>, AppError> {
+        let readers = self.readers.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare("SELECT id, name FROM device_types ORDER BY id")
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(DeviceTypeDto {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                    })
+                })
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok::<_, AppError>(rows)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_types: {e}"),
         })?
     }
 
