@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-20T19:04:18.316Z"
+last_updated: "2026-10-20T19:16:10.617Z"
 last_activity: 2026-10-20
 progress:
   total_phases: 26
   completed_phases: 13
   total_plans: 219
-  completed_plans: 217
+  completed_plans: 218
   percent: 50
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.12 (v1-4-int-14-int-15-int-07) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -633,6 +633,7 @@ Last activity: 2026-10-20
 | Phase 41.12 P01 | 40min | 2 tasks | 4 files |
 | Phase 41.12 P05 | 25min | 3 tasks | 3 files |
 | Phase 41.12 P06 | 40min | 2 tasks | 2 files |
+| Phase 41.12 P04 | 50min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1363,6 +1364,7 @@ Recent decisions affecting current work:
 - [Phase 41.12]: [41.12-01] D-01: псевдоним «расходник» -> принтер в импорте CSV; D-02: неизвестный тип -> «Устройство»; миграция не нужна
 - [Phase 41.12]: [41.12-05] INT-15: инвалидация в общем DeviceRowMenu.handleDelete (не в DevicesPage); notifyAfter только у двух новых записей реестра; граница идентификатора только для литеральных маркеров
 - [Phase 41.12]: 41.12-06: stripComments гейта пути — один проход; копия из check-place-tree-invalidation.mjs стирает код после templates/*.html в строчном комментарии (там не проверялось)
+- [Phase 41.12]: [41.12-04] UI-гейт check-device-type-labels без освобождения для слова «Расходник» (D-01); EXEMPT пуст, движок E проверен self-test'ом
 
 ### Pending Todos
 
@@ -1567,7 +1569,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-20T19:04:18.306Z
+Last session: 2026-10-20T19:16:03.283Z
 Stopped at: Completed 41.12-05-PLAN.md
 Resume file: None
 
