@@ -84,7 +84,10 @@
 //        поколения списка listGen:
 //        - в DevicesPage ровно одно приращение, в refresh(), ПОСЛЕ охраны
 //          `if (seq !== refreshSeq) return` и ДО `void reloadExpandedAnchors(`;
-//        - <DeviceList в DevicesPage и <DeviceGroupRow в DeviceList передают {listGen};
+//        - <DeviceList в DevicesPage и <DeviceGroupRow в DeviceList передают {listGen}
+//          или listGen={listGen}: значение пропа обязано быть ИДЕНТИФИКАТОРОМ listGen,
+//          литерал (listGen={0}) и чужое имя (other={listGen}) красные, потому что
+//          литерал замораживает ключ кеша idsKey@listGen;
 //        - в Props DeviceList и DeviceGroupRow `listGen: number` ОБЯЗАТЕЛЕН (без `?`
 //          и без значения по умолчанию: необязательный проп молча возвращает CR-02).
 //
@@ -670,7 +673,8 @@ const LIST_GEN_INC_RE = /(?<![\w.])listGen\s*(?:\+=\s*1|\+\+|=\s*listGen\s*\+\s*
  *   1. в DevicesPage ровно ОДНО приращение listGen, оно в refresh(), ПОСЛЕ охраны
  *      `if (seq !== refreshSeq) return` (последней после последнего await) и ДО
  *      `void reloadExpandedAnchors(`;
- *   2. <DeviceList в DevicesPage и <DeviceGroupRow в DeviceList передают {listGen};
+ *   2. <DeviceList в DevicesPage и <DeviceGroupRow в DeviceList передают {listGen}
+ *      или listGen={listGen} (идентификатор, не литерал и не чужое имя пропа);
  *   3. в Props DeviceList и DeviceGroupRow listGen объявлен ОБЯЗАТЕЛЬНЫМ
  *      (`listGen: number`, без `?` и без значения по умолчанию): необязательный
  *      проп молча возвращает CR-02, svelte-check зелёный.
@@ -752,11 +756,15 @@ export function checkListGen(pageSrc, listSrc, rowSrc) {
       });
     }
     for (const tag of tags) {
-      if (!/\{\s*listGen\s*\}|\blistGen\s*=/.test(tag)) {
+      // Допустимы ровно две формы, обе с ИДЕНТИФИКАТОРОМ listGen в значении:
+      // `{listGen}` (после пробельного символа, иначе `other={listGen}` ложно
+      // пройдёт) и `listGen={listGen}`. Литерал `listGen={0}` замораживает ключ
+      // кеша `idsKey@listGen` и молча возвращает CR-02.
+      if (!/(?<=\s)(?:\{\s*listGen\s*\}|listGen\s*=\s*\{\s*listGen\s*\})(?![\w$])/.test(tag)) {
         out.push({
           code: 'H7',
           file,
-          msg: `<${tagName} не получает listGen: цепочка номера поколения разорвана`,
+          msg: `<${tagName} не получает идентификатор listGen (литерал или другое имя пропа замораживает ключ кеша idsKey@listGen): цепочка номера поколения разорвана`,
         });
       }
     }
@@ -771,7 +779,11 @@ export function checkListGen(pageSrc, listSrc, rowSrc) {
     if (!/\blistGen\s*:\s*number\b/.test(text)) {
       out.push({ code: 'H7', file, msg: 'в Props нет обязательного `listGen: number`' });
     }
-    if (/\blistGen\s*\?/.test(text) || /\blistGen\s*=(?!=)/.test(text)) {
+    // Полная запись атрибута `listGen={listGen}` (проводка в шаблоне) не есть
+    // значение по умолчанию: её вырезаем до проверки, иначе законная форма краснела.
+    // Литерал `listGen={0}` и `listGen = 0` в деструктуризации остаются красными.
+    const propsText = text.replace(/\blistGen\s*=\s*\{\s*listGen\s*\}/g, '');
+    if (/\blistGen\s*\?/.test(propsText) || /\blistGen\s*=(?!=)/.test(propsText)) {
       out.push({
         code: 'H7',
         file,
@@ -2143,8 +2155,45 @@ async function selftest(cases) {
         ),
     },
     {
+      name: '[H7] <DeviceList в DevicesPage получает литерал listGen={0} (реальные файлы)',
+      wiringMsg: true,
+      page: (t) =>
+        mutate(
+          t,
+          '    <DeviceList\n      {listGen}\n',
+          '    <DeviceList\n      listGen={0}\n',
+          'h7-page-literal',
+        ),
+    },
+    {
+      name: '[H7] <DeviceGroupRow в DeviceList получает литерал listGen={0} (реальные файлы)',
+      wiringMsg: true,
+      list: (t) =>
+        mutate(
+          t,
+          '        <DeviceGroupRow\n          {group}\n          {listGen}\n',
+          '        <DeviceGroupRow\n          {group}\n          listGen={0}\n',
+          'h7-list-literal',
+        ),
+    },
+    {
+      name: '[H7] <DeviceList в DevicesPage получает other={listGen} вместо {listGen} (реальные файлы)',
+      wiringMsg: true,
+      page: (t) =>
+        mutate(
+          t,
+          '    <DeviceList\n      {listGen}\n',
+          '    <DeviceList\n      other={listGen}\n',
+          'h7-page-wrong-name',
+        ),
+    },
+    {
       name: '[H7] listGen?: number в Props DeviceGroupRow (реальные файлы)',
       row: (t) => mutate(t, '    listGen: number;\n', '    listGen?: number;\n', 'h7-optional'),
+    },
+    {
+      name: '[H7] значение по умолчанию listGen = 0 в деструктуризации DeviceList (реальные файлы)',
+      list: (t) => mutate(t, '    listGen,\n', '    listGen = 0,\n', 'h7-default-value'),
     },
     {
       name: '[H7] второе приращение listGen в catch (реальные файлы)',
@@ -2158,16 +2207,61 @@ async function selftest(cases) {
     },
   ];
   for (const m of h7Mutants) {
-    const codes = new Set(
-      checkListGen(
-        m.page ? m.page(realPage) : realPage,
-        m.list ? m.list(realList) : realList,
-        m.row ? m.row(realRow) : realRow,
-      ).map((v) => v.code),
+    const found = checkListGen(
+      m.page ? m.page(realPage) : realPage,
+      m.list ? m.list(realList) : realList,
+      m.row ? m.row(realRow) : realRow,
     );
+    const codes = new Set(found.map((v) => v.code));
+    // wiringMsg: нарушение обязано прийти именно от правила проводки. Литерал
+    // listGen={0} в DeviceList краснит ещё и проверка Props (побочно), и без этой
+    // привязки мутант остался бы зелёным при полностью ослабленной регулярке проводки.
+    if (m.wiringMsg && !found.some((v) => v.msg.includes('не получает идентификатор listGen'))) {
+      console.error(
+        `${TAG} SELFTEST FAIL — «${m.name}»: нарушение пришло не от правила проводки [H7]`,
+      );
+      process.exit(1);
+    }
     if (!codes.has('H7')) {
       console.error(
         `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [H7], получено [${[...codes].join(',') || 'ничего'}]`,
+      );
+      process.exit(1);
+    }
+  }
+  // Зелёные формы: полная запись listGen={listGen} законна. Без этой проверки
+  // строгая регулярка могла бы стать слишком узкой и покраснеть на законном.
+  const h7Green = [
+    {
+      name: 'listGen={listGen} у <DeviceList',
+      page: (t) =>
+        mutate(
+          t,
+          '    <DeviceList\n      {listGen}\n',
+          '    <DeviceList\n      listGen={listGen}\n',
+          'h7-page-green-full',
+        ),
+    },
+    {
+      name: 'listGen={listGen} у <DeviceGroupRow',
+      list: (t) =>
+        mutate(
+          t,
+          '        <DeviceGroupRow\n          {group}\n          {listGen}\n',
+          '        <DeviceGroupRow\n          {group}\n          listGen={listGen}\n',
+          'h7-list-green-full',
+        ),
+    },
+  ];
+  for (const g of h7Green) {
+    const bad = checkListGen(
+      g.page ? g.page(realPage) : realPage,
+      g.list ? g.list(realList) : realList,
+      realRow,
+    ).filter((v) => v.code === 'H7');
+    if (bad.length) {
+      console.error(
+        `${TAG} SELFTEST FAIL — законная форма «${g.name}» краснит [H7]:\n  - ${bad.map(formatViolation).join('\n  - ')}`,
       );
       process.exit(1);
     }
