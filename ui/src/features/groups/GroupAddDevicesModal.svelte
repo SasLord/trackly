@@ -36,6 +36,7 @@
     statusLabel,
     statusTone,
   } from '$lib/stores/deviceStatuses.svelte';
+  import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { DeviceDto, GroupAddDevicesResultDto, GroupDto, PlaceDto } from '../../bindings';
@@ -52,12 +53,11 @@
     id: number | null;
     label: string;
   }
-  // Справочники те же, что у страницы «Устройства» (DeviceFilters / DeviceFormModal).
-  const TYPE_OPTIONS: Option[] = [
+  // Типы — из серверного справочника device_types (INT-14), локальной копии нет.
+  const typeOptions = $derived<Option[]>([
     { id: null, label: 'Все типы' },
-    { id: 1, label: 'Устройство' },
-    { id: 2, label: 'Принтер' },
-  ];
+    ...orderedTypes().map((t) => ({ id: t.id, label: t.name })),
+  ]);
   // Статусы устройств — из серверного справочника (стор), в порядке sort_order
   // (Phase 41.1, D-06/D-08/D-09); локальных карт «id -> подпись» нет.
   const statusOptions = $derived<Option[]>([
@@ -82,7 +82,7 @@
   let placeId = $state<number | null>(null);
   let placePath = $state<string | null>(null);
 
-  const typeLabel = $derived(TYPE_OPTIONS.find((o) => o.id === typeId)?.label ?? '');
+  const typeLabel = $derived(typeOptions.find((o) => o.id === typeId)?.label ?? '');
   const statusFilterLabel = $derived(
     statusId === null ? '' : (statusOptions.find((o) => o.id === statusId)?.label ?? ''),
   );
@@ -195,6 +195,7 @@
 
   onMount(() => {
     void ensureLoaded();
+    void ensureTypesLoaded();
     void loadPage(true);
   });
   onDestroy(() => {
@@ -294,7 +295,7 @@
           placeholder="Все типы"
           searchable={false}
           loading={false}
-          groups={TYPE_OPTIONS}
+          groups={typeOptions}
           getGroupId={(o) => String(o.id)}
           getGroupName={(o) => o.label}
           getGroupCount={() => 0}

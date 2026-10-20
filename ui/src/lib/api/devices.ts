@@ -10,6 +10,7 @@ import type {
   DevicePatch,
   DeviceSaveOutcome,
   DeviceStatusDto,
+  DeviceTypeDto,
   NumberFieldInput,
   Pagination,
   PrinterCreateBlockDto,
@@ -84,6 +85,8 @@ export const devices = {
 
   // Фаза 41.1 (D-06/D-09): единый серверный справочник статусов устройств.
   statuses: () => apiCall<DeviceStatusDto[]>('device_statuses_list'),
+  // Фаза 41.12 (INT-14): справочник типов устройств; подписи не копируются в UI.
+  types: () => apiCall<DeviceTypeDto[]>('device_types_list'),
 
   listByIds: (ids: number[]) => apiCall<DeviceDto[]>('devices_list_by_ids', { ids }),
 

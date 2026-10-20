@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
   import { saveFile } from '$lib/utils/saveFile';
   import type { CartridgeModelDto } from '../../bindings';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -281,10 +282,8 @@
   // ---------------------------------------------------------------------------
   // Filter dropdown data
   // ---------------------------------------------------------------------------
-  let filterDeviceTypes = $state<Array<{ id: number; name: string }>>([
-    { id: 1, name: 'Устройство' },
-    { id: 2, name: 'Расходник' },
-  ]);
+  // Типы — из серверного справочника device_types (INT-14), локальной копии нет.
+  const filterDeviceTypes = $derived(orderedTypes().map((t) => ({ id: t.id, name: t.name })));
   let filterCartridgeModels = $state<Array<{ id: number; label: string }>>([]);
   let filterCartridgeStatuses = $state<Array<{ id: number; name: string }>>([
     { id: 1, name: 'На складе' },
@@ -529,6 +528,7 @@
   // onMount: load dynamic filter data
   // ---------------------------------------------------------------------------
   onMount(async () => {
+    void ensureTypesLoaded();
     // Load cartridge models — used for model filter and color derivation
     try {
       const models = await apiCall<CartridgeModelDto[]>('cartridge_models_list', {});
