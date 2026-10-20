@@ -18,6 +18,7 @@ use crate::dto::device::{
     DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
 };
 use crate::dto::device_status::DeviceStatusDto;
+use crate::dto::device_type::DeviceTypeDto;
 use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
 use crate::dto::printer::PrinterCreateBlockDto;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -155,6 +156,15 @@ pub async fn build_device_statuses_list(
 ) -> Result<Vec<DeviceStatusDto>, AppError> {
     authorize(caller, &Action::ReadData)?;
     ctx.devices.list_statuses().await
+}
+
+/// Справочник типов устройств (INT-14). Только чтение: `ReadData`.
+pub async fn build_device_types_list(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<Vec<DeviceTypeDto>, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.devices.list_types().await
 }
 
 pub async fn build_devices_list_by_ids(
@@ -319,6 +329,15 @@ pub async fn device_statuses_list(
 ) -> Result<Vec<DeviceStatusDto>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_device_statuses_list(state.inner(), &caller).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn device_types_list(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<Vec<DeviceTypeDto>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_device_types_list(state.inner(), &caller).await
 }
 
 #[tauri::command]

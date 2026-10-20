@@ -20,16 +20,17 @@ use crate::dto::device::{
     DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
 };
 use crate::dto::device_status::DeviceStatusDto;
+use crate::dto::device_type::DeviceTypeDto;
 use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
 use crate::dto::printer::PrinterCreateBlockDto;
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
-    build_device_statuses_list, build_devices_autocomplete, build_devices_bulk_create,
-    build_devices_create, build_devices_create_single_with_number_check, build_devices_delete,
-    build_devices_export_csv, build_devices_get, build_devices_import_csv_commit,
-    build_devices_import_csv_preview, build_devices_list, build_devices_list_by_ids,
-    build_devices_list_grouped, build_devices_search, build_devices_state_hints,
-    build_devices_status_counts, build_devices_update,
+    build_device_statuses_list, build_device_types_list, build_devices_autocomplete,
+    build_devices_bulk_create, build_devices_create, build_devices_create_single_with_number_check,
+    build_devices_delete, build_devices_export_csv, build_devices_get,
+    build_devices_import_csv_commit, build_devices_import_csv_preview, build_devices_list,
+    build_devices_list_by_ids, build_devices_list_grouped, build_devices_search,
+    build_devices_state_hints, build_devices_status_counts, build_devices_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -341,6 +342,20 @@ pub async fn handler_device_statuses_list(
     ))
 }
 
+pub async fn handler_device_types_list(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<Vec<DeviceTypeDto>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_device_types_list(&ctx, &identity)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_list_by_ids(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -446,6 +461,7 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/device_statuses_list",
             post(handler_device_statuses_list),
         )
+        .route("/api/v1/device_types_list", post(handler_device_types_list))
         .route("/api/v1/devices_list_by_ids", post(handler_list_by_ids))
         // Scope extension: bulk create
         .route("/api/v1/devices_bulk_create", post(handler_bulk_create))

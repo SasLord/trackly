@@ -33,6 +33,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::devices::devices_list_grouped,
         crate::tauri_cmds::devices::devices_status_counts,
         crate::tauri_cmds::devices::device_statuses_list,
+        crate::tauri_cmds::devices::device_types_list,
         crate::tauri_cmds::devices::devices_list_by_ids,
         // Phase 2 — Devices Bulk Create (scope extension 2026-05-26)
         crate::tauri_cmds::devices::devices_bulk_create,
