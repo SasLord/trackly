@@ -1296,6 +1296,134 @@ function selftest() {
   const swap = (rel, from, to, label) =>
     new Map([[rel, mutate(disk(rel), from, to, `${rel}: ${label}`)]]);
 
+  // --- 41.12 (INT-15): удаление устройства / картриджа ---
+  // Все якоря берутся из РЕАЛЬНЫХ исходников и проходят через `mutate` (ровно одно
+  // вхождение). Многострочные якоря повторяют отступы файла.
+  const CART_PAGE = 'src/features/cartridges/CartridgesPage.svelte';
+  const ACTS_PAGE = 'src/features/acts/ActsPage.svelte';
+  const NOTIFY_DELETED =
+    'if (deletedPlaceId !== null) notifyPlaceContentChanged([deletedPlaceId]);';
+  const DEV_DELETE = 'await devices.delete(dev.id, dev.version);';
+  const CART_DELETE =
+    'await cartridges.delete(confirmDeleteCartridge.id, confirmDeleteCartridge.version);';
+  const deleteSites = [
+    { rel: ROW_MENU, del: DEV_DELETE, short: 'DeviceRowMenu', removed: 'devices.remove' },
+    { rel: CART_PAGE, del: CART_DELETE, short: 'CartridgesPage', removed: 'cartridges.remove' },
+  ];
+
+  // 3e: синтетические файлы. Фикстуры содержат РЕАЛЬНУЮ подстроку маркера
+  // (`pickedDevices.delete(` с заглавной D подстроки `devices.delete(` не содержит и
+  // для проверки границы не годится).
+  const SYNTH_DIR = 'src/features/zz_synthetic';
+  const boundaryFixtures = [
+    { file: `${SYNTH_DIR}/Pick1.svelte`, call: 'foo.devices.delete(id)', fn: 'pick1' },
+    { file: `${SYNTH_DIR}/Pick2.svelte`, call: 'mydevices.delete(id)', fn: 'pick2' },
+    { file: `${SYNTH_DIR}/Pick3.svelte`, call: 'foo.cartridges.delete(id)', fn: 'pick3' },
+    { file: `${SYNTH_DIR}/Pick4.svelte`, call: 'mycartridges.delete(id)', fn: 'pick4' },
+  ];
+  const synthSource = (body) => `<script lang="ts">\n${body}\n</script>\n`;
+  const withSynth = (rel, body) => run(new Map([[rel, synthSource(body)]]), [...files, rel]);
+  /** Прогон с ВЫКЛЮЧЕННОЙ границей идентификатора (красный-первым для 3e). */
+  const withoutBoundary = (fn) => {
+    boundaryEnabled = false;
+    try {
+      return fn();
+    } finally {
+      boundaryEnabled = true;
+    }
+  };
+
+  const deleteCases = [];
+  for (const { rel, del, short, removed } of deleteSites) {
+    const lineAfterDel = (indent) => `${del}\n${indent}${NOTIFY_DELETED}`;
+    const lineBeforeDel = (indent) => `${NOTIFY_DELETED}\n${indent}${del}`;
+    deleteCases.push(
+      {
+        name: `3a: ${short} — вызов инвалидации удалён`,
+        run: () => run(swap(rel, NOTIFY_DELETED, 'void deletedPlaceId;', 'вызов снят')),
+        expectInv: ['INV-7'],
+        exact: 1,
+      },
+      {
+        name: `3b: ${short} — удалён МАРКЕР (вызов переименован; ловит только minSites)`,
+        run: () =>
+          run(
+            swap(
+              rel,
+              del,
+              del.replace(/\b(devices|cartridges)\.delete\(/, `${removed}(`),
+              'маркер переименован',
+            ),
+          ),
+        expectInv: ['INV-7'],
+        exact: 1,
+      },
+      {
+        name: `3c: ${short} — перестановка (инвалидация выше мутации, число вызовов прежнее)`,
+        run: () =>
+          run(swap(rel, lineAfterDel('      '), lineBeforeDel('      '), 'перестановка вызова')),
+        expectInv: ['INV-7'],
+        exact: 1,
+      },
+      {
+        name: `3d: ${short} — пустой аргумент notifyPlaceContentChanged([])`,
+        run: () =>
+          run(
+            swap(
+              rel,
+              NOTIFY_DELETED,
+              'if (deletedPlaceId !== null) notifyPlaceContentChanged([]);',
+              'аргумент -> []',
+            ),
+          ),
+        expectInv: ['INV-9'],
+        exact: 1,
+      },
+    );
+  }
+  for (const { file, call, fn } of boundaryFixtures) {
+    const body = `function ${fn}(id) { ${call}; }`;
+    deleteCases.push(
+      {
+        name: `3e: граница включена — ${call} не даёт ложного срабатывания`,
+        run: () => withSynth(file, body),
+        clean: true,
+      },
+      {
+        name: `3e: граница ВЫКЛЮЧЕНА — ${call} даёт INV-7 (фикстура не вакуумна)`,
+        run: () => withoutBoundary(() => withSynth(file, body)),
+        expectInv: ['INV-7'],
+        exact: 1,
+      },
+    );
+  }
+  deleteCases.push(
+    {
+      name: '3f: новый потребитель devices.delete( без инвалидации',
+      run: () =>
+        withSynth(
+          `${SYNTH_DIR}/NewConsumer.svelte`,
+          'async function removeDevice(d) { await devices.delete(d.id, d.version); }',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '3g: ActsPage — acts.delete( переименован (minSites существующего маркера)',
+      run: () =>
+        run(
+          swap(
+            ACTS_PAGE,
+            'const changedPlaceIds = await acts.delete(act.id, act.version);',
+            'const changedPlaceIds = await acts.remove(act.id, act.version);',
+            'маркер acts.delete переименован',
+          ),
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+  );
+
   // expectInv — какие правила ОБЯЗАНЫ покраснеть; exact — точное число нарушений
   // (если задано); clean — ожидается ноль нарушений.
   const cases = [
@@ -1403,6 +1531,7 @@ function selftest() {
         ),
       expectInv: ['INV-8'],
     },
+    ...deleteCases,
   ];
 
   let failed = 0;
