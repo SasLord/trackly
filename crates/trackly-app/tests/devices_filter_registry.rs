@@ -267,7 +267,7 @@ const A: &str = "РЕГ-01"; // Принтер Альфа, «Б/У», кабин
 const B: &str = "РЕГ-02"; // Принтер Бета, «б/у », этаж
 const C: &str = "РЕГ-03"; // Монитор Гамма, «Новое», корпус Б, статус «ремонт»
 const C2: &str = "РЕГ-04"; // Монитор Гамма (двойник C), корпус Б
-const D: &str = "РЕГ-05"; // Расходник Дельта, тип 2
+const D: &str = "РЕГ-05"; // Принтер Дельта, тип 2
 const E: &str = "РЕГ-06"; // Удалённый Эпсилон (мягко удалён), кабинет, «Б/У»
 const F: &str = "РЕГ-07"; // Системный блок Дзета — якорь группы
 const G: &str = "РЕГ-08"; // Планка Эта — член группы якоря
@@ -347,7 +347,7 @@ async fn fixture() -> Fx {
                 Seed { name: "Принтер Бета", inv: B, model: Some("Модель-2"), type_id: 1, state: Some("б/у "), place: Some(etazh), status: stock, deleted: false },
                 Seed { name: "Монитор Гамма", inv: C, model: Some("Модель-3"), type_id: 1, state: Some("Новое"), place: Some(korpus_b), status: repair, deleted: false },
                 Seed { name: "Монитор Гамма", inv: C2, model: Some("Модель-3"), type_id: 1, state: Some("Новое"), place: Some(korpus_b), status: stock, deleted: false },
-                Seed { name: "Расходник Дельта", inv: D, model: None, type_id: 2, state: None, place: None, status: stock, deleted: false },
+                Seed { name: "Принтер Дельта", inv: D, model: None, type_id: 2, state: None, place: None, status: stock, deleted: false },
                 Seed { name: "Удалённый Эпсилон", inv: E, model: None, type_id: 1, state: Some("Б/У"), place: Some(kabinet), status: stock, deleted: true },
                 Seed { name: "Системный блок Дзета", inv: F, model: None, type_id: 1, state: None, place: None, status: stock, deleted: false },
                 Seed { name: "Планка Эта", inv: G, model: None, type_id: 1, state: None, place: None, status: stock, deleted: false },
