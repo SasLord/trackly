@@ -912,6 +912,8 @@ function selftest(root) {
           ],
         }),
       expect: ['P3'],
+      // не «идентификатор исчез» (соседнее P3-правило тоже сработало бы на пустом списке файлов)
+      check: (r) => r.violations.some((v) => v.message.startsWith('вердикт не совпал')),
     },
     {
       name: '4d: в FULL_BY_DESIGN-файле появился short в разметке — P3',
@@ -931,6 +933,39 @@ function selftest(root) {
           verdicts: [rowVerdict('src/features/devices/DeviceListRow.svelte')],
         }),
       expect: ['P5'],
+    },
+    {
+      name: '4e: потребителей достаточно, а вердиктов мало — P5 именно по вердиктам',
+      run: () => {
+        const consumers = VERDICTS.filter(
+          (v) => CONSUMER_KINDS.has(v.kind) && v.path.endsWith('.svelte'),
+        );
+        return run({ files: consumers.map((v) => v.path), verdicts: consumers });
+      },
+      expect: ['P5'],
+      check: (r) =>
+        r.stats.shortConsumers >= MIN_SHORT_CONSUMERS &&
+        r.violations.every((v) => v.message.startsWith('вердиктов')),
+    },
+    {
+      name: '4e: вердиктов достаточно, а потребителей мало — P5 именно по потребителям',
+      run: () => {
+        const drop = 'src/features/devices/DeviceListRow.svelte';
+        const pad = 'src/features/zz_synthetic/Pad.svelte';
+        return run({
+          files: realFiles.filter((f) => f !== drop),
+          extra: [pad],
+          over: new Map([[pad, '<span>{x.place_path}</span>']]),
+          verdicts: [
+            ...VERDICTS.filter((v) => v.path !== drop),
+            { path: pad, kind: 'DATA_ONLY', reason: 'синтетическая добивка числа вердиктов' },
+          ],
+        });
+      },
+      expect: ['P5'],
+      check: (r) =>
+        r.stats.shortConsumers === MIN_SHORT_CONSUMERS - 1 &&
+        r.violations.every((v) => v.message.startsWith('потребителей')),
     },
     {
       name: '4f: DeviceRowMenu — из объекта убран ключ place_path_short — P2',
