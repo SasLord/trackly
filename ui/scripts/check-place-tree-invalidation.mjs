@@ -367,6 +367,32 @@ function indicesOf(src, needle) {
 }
 
 /**
+ * INV-7 (41.12, INT-15): включена ли граница идентификатора слева у литеральных
+ * маркеров. Переключатель существует ТОЛЬКО ради selftest: кейсы границы
+ * «красный-первым» выключают её и обязаны увидеть ложное срабатывание — иначе
+ * фикстуры `foo.devices.delete(` / `mydevices.delete(` вакуумны и не доказывают,
+ * что правило границы держит чистоту. В рабочем запуске всегда `true`.
+ */
+let boundaryEnabled = true;
+
+/**
+ * Индексы вхождений маркера с границей идентификатора слева (41.12).
+ *
+ * Литеральный маркер `devices.delete(` — подстрока `mydevices.delete(` и
+ * `foo.devices.delete(`; без границы они дали бы ложное INV-7. Граница
+ * применяется ТОЛЬКО к маркерам, начинающимся с символа идентификатора
+ * (`[\w$]`): вхождение пропускается, если предыдущий символ — `[\w$.]`.
+ * Маркеры, начинающиеся с кавычки (`'places_move_subtree_contents'`), и
+ * module-маркеры (`${local}.${method}(`, локальное имя резолвится из импорта)
+ * границей не затрагиваются.
+ */
+function markerIndices(code, marker) {
+  const all = indicesOf(code, marker);
+  if (!boundaryEnabled || !/^[\w$]/.test(marker)) return all;
+  return all.filter((i) => i === 0 || !/[\w$.]/.test(code[i - 1]));
+}
+
+/**
  * Тело функции по имени (учитывает вложенные `{}`).
  *
  * INV-7 fix (registry-driven sweep, 2026-09-18): the naive "first `{` after
@@ -660,7 +686,16 @@ function checkStore(storeSrc, violations) {
  *   `DIRECT_CALL_MARKERS` — прямые (не через компонент) вызовы, меняющие
  *     place_id без обёртки `MUTATING_COMPONENTS` (bulk-move,
  *     `acts.delete`/soft-delete+undo). Функция, ОБРАМЛЯЮЩАЯ маркер, обязана
- *     звать `notifyPlaceContentChanged(`.
+ *     звать `notifyPlaceContentChanged(`. Поля записи (41.12):
+ *       `minSites`    — сколько мест маркера обязан найти скан по всем файлам;
+ *                       меньше — «запись реестра устарела» (маркер переименован
+ *                       или переехал в SKIP-able файл, реестр молча не охраняет).
+ *       `notifyAfter` — вызов `notifyPlaceContentChanged(` обязан стоять ПОСЛЕ
+ *                       маркера в теле функции (счётный гейт слеп к порядку).
+ *                       Только у `devices.delete(` / `cartridges.delete(`.
+ *     Литеральный маркер, начинающийся с символа идентификатора, ищется с
+ *     границей слева (`markerIndices`): `mydevices.delete(` и
+ *     `foo.devices.delete(` его не срабатывают.
  *
  * ---- Полный перечень write-site на момент этого коммита (13) ----
  *   1. PlaceContents.svelte — `<PlaceEntityViewModal onChanged={...}>`
@@ -758,8 +793,29 @@ const DIRECT_CALL_MARKERS = [
   {
     marker: "'places_move_subtree_contents'",
     label: 'массовый перенос (places_move_subtree_contents)',
+    minSites: 1,
   },
-  { marker: 'acts.delete(', label: 'мягкое удаление/undo акта (acts.delete)' },
+  { marker: 'acts.delete(', label: 'мягкое удаление/undo акта (acts.delete)', minSites: 1 },
+  // 41.12 (INT-15 аудита v1.4), перечень от серверных мутаций: device delete_soft и
+  // cartridge delete рассылают place_ids, а клиентский вызов `notifyPlaceContentChanged`
+  // — единственный путь обновления счётчиков при оборванном сокете. Маркеры литеральные,
+  // а не module-маркеры: `devices` импортируется из нескольких путей. `notifyAfter` —
+  // позиционное правило: вызов инвалидации обязан стоять ПОСЛЕ мутации (счётный гейт
+  // слеп к порядку: вызов до `await` проходил бы зелёным и инвалидировал бы до успеха).
+  // Только эти две записи: у старых записей порядок осознанно не проверяется (см.
+  // задокументированное исключение у `groups.addDevices` в GroupContentsTable.svelte).
+  {
+    marker: 'devices.delete(',
+    label: 'удаление устройства (devices.delete)',
+    minSites: 1,
+    notifyAfter: true,
+  },
+  {
+    marker: 'cartridges.delete(',
+    label: 'удаление картриджа (cartridges.delete)',
+    minSites: 1,
+    notifyAfter: true,
+  },
   // Phase 41 (группы): у группы с местом устройства живут в месте группы, поэтому
   // перенос группы, добавление устройств в состав и вложение группы меняют
   // place_id у членов. Перечень взят от серверных мутаций (groups_move,
@@ -774,18 +830,21 @@ const DIRECT_CALL_MARKERS = [
     module: '$lib/api/groups',
     exportName: 'groups',
     method: 'move',
+    minSites: 1,
     label: 'перенос группы (groups.move)',
   },
   {
     module: '$lib/api/groups',
     exportName: 'groups',
     method: 'addDevices',
+    minSites: 4,
     label: 'добавление в состав (groups.addDevices)',
   },
   {
     module: '$lib/api/groups',
     exportName: 'groups',
     method: 'setParent',
+    minSites: 3,
     label: 'вложение группы (groups.setParent)',
   },
   // Фаза 41.1 (план 17), перечень от серверных мутаций, W7: создание группы ОТ УСТРОЙСТВА
@@ -797,6 +856,7 @@ const DIRECT_CALL_MARKERS = [
     module: '$lib/api/groups',
     exportName: 'groups',
     method: 'create',
+    minSites: 1,
     label:
       'создание группы (groups.create; от устройства рассылает place_ids и меняет статус для teardown)',
   },
@@ -829,6 +889,8 @@ function resolveLocalName(code, modulePath, exportName) {
 }
 
 function checkCompleteness(files, violations, read) {
+  // 41.12: число найденных мест каждого маркера по ВСЕМ файлам — для `minSites`.
+  const siteCounts = new Map();
   for (const relPath of files) {
     const baseName = path.basename(relPath, '.svelte');
     const raw = read(relPath);
@@ -894,7 +956,8 @@ function checkCompleteness(files, violations, read) {
         if (local === null) continue;
         marker = `${local}.${entry.method}(`;
       }
-      for (const idx of indicesOf(code, marker)) {
+      for (const idx of markerIndices(code, marker)) {
+        siteCounts.set(label, (siteCounts.get(label) ?? 0) + 1);
         const enclosing = enclosingFunction(code, idx);
         if (enclosing === null) {
           violations.push({
@@ -905,7 +968,21 @@ function checkCompleteness(files, violations, read) {
           });
           continue;
         }
-        if (!enclosing.body.includes(NOTIFY)) {
+        if (entry.notifyAfter) {
+          // Позиционное правило: вызов инвалидации — после ПОСЛЕДНЕГО вхождения
+          // маркера в теле (мутация уже состоялась). Перестановка выше `await`
+          // оставляет число вызовов прежним и счётный гейт её не видит.
+          const inBody = markerIndices(enclosing.body, marker);
+          const lastMarker = inBody.length > 0 ? inBody[inBody.length - 1] : -1;
+          if (lastMarker < 0 || enclosing.body.indexOf(NOTIFY, lastMarker + marker.length) < 0) {
+            violations.push({
+              file: relPath,
+              inv: 'INV-7',
+              message: `${enclosing.name}() зовёт ${label}, но notifyPlaceContentChanged( стоит не после мутации (до await или отсутствует)`,
+              hint: 'Инвалидация счётчиков обязана идти ПОСЛЕ успешного await серверной мутации: вызов до неё сбрасывает счётчики, пока запись ещё не состоялась, и следующая подгрузка вернёт старое число.',
+            });
+          }
+        } else if (!enclosing.body.includes(NOTIFY)) {
           violations.push({
             file: relPath,
             inv: 'INV-7',
@@ -914,6 +991,21 @@ function checkCompleteness(files, violations, read) {
           });
         }
       }
+    }
+  }
+
+  // 41.12 (T-41.12-17): запись реестра, у которой не осталось мест, молча перестаёт
+  // охранять — маркер переименован или вызов переехал в SKIP-able файл.
+  for (const entry of DIRECT_CALL_MARKERS) {
+    if (entry.minSites === undefined) continue;
+    const found = siteCounts.get(entry.label) ?? 0;
+    if (found < entry.minSites) {
+      violations.push({
+        file: '(реестр DIRECT_CALL_MARKERS)',
+        inv: 'INV-7',
+        message: `запись реестра устарела: ${entry.label} — найдено ${found} мест, ожидалось не меньше ${entry.minSites}`,
+        hint: 'Вызов переехал или переименован, а запись осталась: маркер в SKIP-able файле молчит навсегда. Обнови реестр осознанно.',
+      });
     }
   }
 }
