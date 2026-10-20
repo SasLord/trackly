@@ -1064,10 +1064,16 @@ LAN — отложено решением пользователя 2026-10-06), 
 5. `pnpm lint` (включая `--selftest` правленых гейтов), `pnpm --dir ui svelte-check` и
    `cargo test -p trackly-app` зелёные.
 
-**Plans:** 0 plans
+**Plans:** 7 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 41.12 to break down)
+- [ ] 41.12-01-PLAN.md — TypeLookup вместо карт типа в CSV, list_types, данные-ведомые тесты (красные первыми), псевдоним D-01 / умолчание D-02
+- [ ] 41.12-02-PLAN.md — фикстуры CSV приведены к справочнику + Rust-гейт device_type_label_gate (слово «Расходник» только как псевдоним)
+- [ ] 41.12-03-PLAN.md — команда device_types_list, HTTP-маршрут, роль-матрица, bindings
+- [ ] 41.12-04-PLAN.md — стор типов, ReportsPage и GroupAddDevicesModal на справочник, гейт check-device-type-labels
+- [ ] 41.12-05-PLAN.md — INT-15: devices.delete / cartridges.delete в реестре INV-7, minSites, notifyAfter, обработчики
+- [ ] 41.12-06-PLAN.md — INT-07: check-place-path-short на скан ui/src + вердикты + --selftest
+- [ ] 41.12-07-PLAN.md — граница фазы: полный набор гейтов, один workspace-прогон, human-check
 
 ### Phase 41.11: Долг фазы 41.1: гейты и свёртка (INSERTED)
 
