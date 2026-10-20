@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-20T17:00:11.261Z"
-last_activity: 2026-10-20 -- Phase 41.12 planning complete
+last_updated: "2026-10-20T17:46:32.638Z"
+last_activity: 2026-10-20
 progress:
   total_phases: 26
   completed_phases: 13
   total_plans: 219
-  completed_plans: 212
+  completed_plans: 213
   percent: 50
 ---
 
@@ -24,8 +24,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 41.12 (v1-4-int-14-int-15-int-07) — NOT PLANNED
-Plan: 0 of TBD
+Phase: 41.12 (v1-4-int-14-int-15-int-07) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -149,7 +149,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-20 -- Phase 41.12 planning complete
+Last activity: 2026-10-20
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -630,6 +630,7 @@ Last activity: 2026-10-20 -- Phase 41.12 planning complete
 | Phase 41.11 P08 | 40m | 3 tasks | 4 files |
 | Phase 41.11 P09 | 35min | 3 tasks | 4 files |
 | Phase 41.11 P10 | 40min | 2 tasks | 2 files |
+| Phase 41.12 P01 | 40min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1357,6 +1358,7 @@ Recent decisions affecting current work:
 - [Phase 41.11]: [41.11-07] Реестр фильтров: ListAll через export_csv; name_prefix в list_grouped = NarrowsOnlyWithGroupByCondition; шесть полей list_grouped Ignored с данными (D-08a)
 - [Phase 41.11]: 41.11-08: list_all читает COUNT+SELECT одним снимком (unchecked_transaction) + LIMIT max_rows+1; шов list_all_with_hook для детерминированного теста гонки (D-20, D-30)
 - [Phase 41.11]: [41.11-09] D-16/D-34: рамка muted-чипа = inset box-shadow + forced-colors outline CanvasText; охрана F6 + R3 (min 3.43); носители пары: F3, F6, R2
+- [Phase 41.12]: [41.12-01] D-01: псевдоним «расходник» -> принтер в импорте CSV; D-02: неизвестный тип -> «Устройство»; миграция не нужна
 
 ### Pending Todos
 
@@ -1561,7 +1563,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-19T23:15:49.542Z
+Last session: 2026-10-20T17:46:28.446Z
 Stopped at: Completed 41.11-09-PLAN.md
 Resume file: None
 
