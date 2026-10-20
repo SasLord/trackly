@@ -190,7 +190,7 @@
 | 41.7. Долг выпуска v1.4 *(до 41.1)* | v1.4 | 14/14 | Complete    | 2026-10-08 |
 | 41.1. Группы × Устройства | v1.4 | 33/33 | Complete    | 2026-10-18 |
 | 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
-| 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 4/7 | In Progress|  |
+| 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 5/7 | In Progress|  |
 | 41.2. Группы × Акты и Места | v1.4 | 0/TBD | Not started | - |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
@@ -1068,7 +1068,7 @@ LAN — отложено решением пользователя 2026-10-06), 
 5. `pnpm lint` (включая `--selftest` правленых гейтов), `pnpm --dir ui svelte-check` и
    `cargo test -p trackly-app` зелёные.
 
-**Plans:** 4/7 plans executed
+**Plans:** 5/7 plans executed
 Plans:
 **Wave 1**
 
@@ -1079,7 +1079,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 41.12-02-PLAN.md — фикстуры CSV приведены к справочнику + Rust-гейт device_type_label_gate (слово «Расходник» только как псевдоним)
-- [ ] 41.12-03-PLAN.md — команда device_types_list, HTTP-маршрут, роль-матрица, bindings
+- [x] 41.12-03-PLAN.md — команда device_types_list, HTTP-маршрут, роль-матрица, bindings
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
