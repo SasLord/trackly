@@ -4739,3 +4739,52 @@ async fn device_statuses_role_matrix() {
     .await
     .expect("device_statuses_role_matrix exceeded 60s");
 }
+
+/// Справочник типов устройств (Phase 41.12, INT-14): `Action::ReadData`.
+/// Отдельная функция по той же причине, что и у статусов. Ответ разбирается как
+/// JSON-массив с конкретными подписями: `spa_fallback` на отсутствующий маршрут
+/// отдаёт не массив, и тест краснеет (а не проходит по коду 200).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn device_types_role_matrix() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+
+        let (status, _) = gt_post(&env, &env.employee_cookie, "device_types_list", json!({})).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "employee → device_types_list → ожидался 403, получен {status}"
+        );
+
+        for (who, cookie) in [
+            ("manager", &env.manager_cookie),
+            ("admin", &env.admin_cookie),
+        ] {
+            let (status, body) = gt_post(&env, cookie, "device_types_list", json!({})).await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "{who} → device_types_list → ожидался 200, получен {status}"
+            );
+            let items = body.as_array().unwrap_or_else(|| {
+                panic!("{who}: ответ не массив (spa_fallback вместо роута?): {body}")
+            });
+            assert_eq!(items.len(), 2, "{who}: ожидалось два типа");
+            let names: Vec<&str> = items
+                .iter()
+                .map(|it| {
+                    it.get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_else(|| panic!("{who}: у строки нет строкового name: {it}"))
+                })
+                .collect();
+            assert_eq!(
+                names,
+                ["Устройство", "Принтер"],
+                "{who}: подписи справочника device_types"
+            );
+        }
+    })
+    .await
+    .expect("device_types_role_matrix exceeded 60s");
+}
