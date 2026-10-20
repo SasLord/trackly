@@ -798,6 +798,90 @@ async fn name_prefix_gives_the_same_devices_on_all_three_paths() {
     .await;
 }
 
+/// Форма фильтра, которую шлёт пикер принтеров группы (`GroupPrintersList.svelte`,
+/// `fetchCandidates`): `type_id` + необязательный `name_prefix` + малое окно.
+/// Поле-за-раз уже покрыто строками VERDICTS; здесь страхуется сочетание и порядок
+/// «сначала тип, потом окно»: малый `limit` не должен вытеснять принтер
+/// устройствами других типов. Для контраста зафиксировано, почему пикер не может
+/// ходить через `list_grouped`: тот игнорирует `type_id` (D-08a), и окно режется
+/// по всем типам.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn printer_picker_filter_shape_narrows_by_type_before_the_window() {
+    timed(async {
+        let fx = fixture().await;
+
+        // Окно после фильтра типа: живых устройств типа 1 больше одного, но при
+        // `type_id = 2` и `limit = 1` приходит единственное устройство типа 2.
+        let r = fx
+            .svc
+            .list(
+                DeviceFilter {
+                    type_id: Some(2),
+                    ..Default::default()
+                },
+                Pagination {
+                    offset: 0,
+                    limit: 1,
+                },
+            )
+            .await
+            .expect("list");
+        assert_eq!(r.items.len(), 1, "в окно попало одно устройство");
+        assert_eq!(
+            r.items[0].inventory_no.as_deref(),
+            Some(D),
+            "окно режется ПОСЛЕ фильтра типа: принтер не вытеснен чужими типами"
+        );
+        assert_eq!(r.total, 1, "total считается по тому же предикату типа");
+
+        // Предикаты комбинируются: текст не «перебивает» тип.
+        let text = Some("Монитор".to_string());
+        let same_type = run(
+            &fx,
+            List,
+            &DeviceFilter {
+                type_id: Some(1),
+                name_prefix: text.clone(),
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(same_type.flat, set(&[C, C2, H]), "тип 1 + текст «Монитор»");
+        let other_type = run(
+            &fx,
+            List,
+            &DeviceFilter {
+                type_id: Some(2),
+                name_prefix: text.clone(),
+                ..Default::default()
+            },
+        )
+        .await;
+        assert!(
+            other_type.flat.is_empty(),
+            "тип 2 + текст «Монитор»: мониторов типа 2 нет, текст не перебивает тип"
+        );
+
+        // Контраст: `list_grouped` с тем же типом отдаёт все живые устройства.
+        let grouped = run(
+            &fx,
+            ListGrouped,
+            &DeviceFilter {
+                type_id: Some(2),
+                group_by_condition: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(
+            grouped.flat,
+            all_live(),
+            "list_grouped игнорирует type_id (вердикт реестра): тип на нём не отфильтровать"
+        );
+    })
+    .await;
+}
+
 /// D-08a: шесть полей `list_grouped` не меняют результат — «игнорируется» доказано данными.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn list_grouped_ignores_its_six_fields() {
