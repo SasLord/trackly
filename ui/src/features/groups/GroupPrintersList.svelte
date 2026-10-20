@@ -15,7 +15,7 @@
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { devices } from '$lib/api/devices';
-  import type { DeviceDto, DeviceGroup, GroupPrinterDto } from '../../bindings';
+  import type { DeviceDto, DeviceListResponse, GroupPrinterDto } from '../../bindings';
 
   // Значение совпадает с PrintersPage.svelte и DeviceFormBody.svelte: общего
   // экспорта в проекте нет, и вводить его здесь значило бы трогать посторонние
@@ -114,8 +114,13 @@
     const seq = ++searchSeq;
     searching = true;
     try {
-      const groupsFound = await devices
-        .listGrouped(
+      // `list`, а не `listGrouped`: свёртка игнорирует `type_id`, и окно `limit`
+      // резалось ДО фильтра типа, вытесняя принтеры устройствами других типов.
+      // Здесь нужны отдельные устройства (ссылка ставится на конкретное), так что
+      // свёртка не нужна; тип и окно применяет сервер, текст ищется тем же FTS5.
+      // Флагов якорей нет намеренно: пикер видит все устройства.
+      const found = await devices
+        .list(
           {
             type_id: PRINTER_TYPE_ID,
             place_id: null,
@@ -123,18 +128,13 @@
             state: null,
             name_prefix: q.trim() === '' ? null : q.trim(),
             include_deleted: false,
-            group_by_condition: true,
+            group_by_condition: false,
           },
           { offset: 0, limit: SEARCH_LIMIT },
         )
-        .catch((): DeviceGroup[] => []);
-      // Набор одинаковых устройств без номеров раскрываем в отдельные
-      // устройства: ссылка ставится на конкретное.
-      const singles = groupsFound.filter((g) => g.ids.length === 1).map((g) => g.repr);
-      const multiIds = groupsFound.filter((g) => g.ids.length > 1).flatMap((g) => g.ids);
-      const expanded = multiIds.length > 0 ? await devices.listByIds(multiIds).catch(() => []) : [];
+        .catch((): DeviceListResponse => ({ items: [], total: 0, hidden_member_count: 0 }));
       if (seq !== searchSeq) return;
-      candidates = [...singles, ...expanded].slice(0, SEARCH_LIMIT);
+      candidates = found.items.slice(0, SEARCH_LIMIT);
     } finally {
       if (seq === searchSeq) searching = false;
     }
