@@ -72,6 +72,13 @@ const STATUS_CODE_LEGACY_REPAIR: &str = "на_ремонте";
 /// файлы, выгруженные до V047, продолжают импортироваться.
 const LEGACY_REPAIR_LABEL_LOWER: &str = "на ремонте";
 
+/// Прежняя подпись принтера в CSV (в нижнем регистре). До фазы 41.12 CSV-экспорт
+/// печатал это слово («Расходник») на принтерах (type_id 2), и round-trip старых
+/// выгрузок работал именно по нему. Псевдоним сохранён в импорте по решению D-01;
+/// это единственное разрешённое вхождение слова в crates/*/src, оно освобождено
+/// в гейте device_type_label_gate.
+const LEGACY_EXPORT_PRINTER_LABEL_LOWER: &str = "расходник";
+
 /// Снимок справочника `device_statuses` на время одной операции CSV.
 ///
 /// Сопоставление подписей идёт в Rust через `to_lowercase()`: `lower()` SQLite
@@ -151,6 +158,85 @@ impl StatusLookup {
             .find(|(row_id, _, _)| *row_id == id)
             .map(|(_, name, _)| name.clone())
             .unwrap_or_else(|| format!("Статус {id}"))
+    }
+}
+
+/// Снимок справочника `device_types` на время одной операции CSV (INT-14).
+///
+/// Сопоставление идёт в Rust через `to_lowercase()`: `lower()` SQLite не сворачивает
+/// регистр кириллицы. Подпись из ячейки в SQL не попадает.
+struct TypeLookup {
+    /// (id, name)
+    rows: Vec<(i64, String)>,
+}
+
+impl TypeLookup {
+    fn from_rows(rows: Vec<(i64, String)>) -> Result<Self, AppError> {
+        if !rows
+            .iter()
+            .any(|(id, _)| *id == DeviceService::DEVICE_TYPE_ID)
+        {
+            return Err(AppError::Internal {
+                source_chain: "device_types: нет типа с id=1 (Устройство)".to_string(),
+            });
+        }
+        Ok(Self { rows })
+    }
+
+    async fn load(readers: Arc<ReaderPool>) -> Result<Self, AppError> {
+        let rows = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare("SELECT id, name FROM device_types ORDER BY id")
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok::<_, AppError>(rows)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking type lookup: {e}"),
+        })??;
+        Self::from_rows(rows)
+    }
+
+    /// id типа по подписи из CSV. Пустая или неизвестная подпись даёт «Устройство»
+    /// без ошибки строки (D-02); прежняя подпись «Расходник» — псевдоним принтера (D-01).
+    fn id_for_label(&self, label: Option<&str>) -> i64 {
+        let Some(label) = label.map(str::trim).filter(|l| !l.is_empty()) else {
+            return DeviceService::DEVICE_TYPE_ID;
+        };
+        let wanted = label.to_lowercase();
+        if let Some((id, _)) = self
+            .rows
+            .iter()
+            .find(|(_, name)| name.to_lowercase() == wanted)
+        {
+            return *id;
+        }
+        if wanted == LEGACY_EXPORT_PRINTER_LABEL_LOWER {
+            if let Some((id, _)) = self
+                .rows
+                .iter()
+                .find(|(id, _)| *id == DeviceService::PRINTER_TYPE_ID)
+            {
+                return *id;
+            }
+        }
+        DeviceService::DEVICE_TYPE_ID
+    }
+
+    /// Имя типа из справочника; для неизвестного id (FK этого не допускает)
+    /// — нейтральная подпись.
+    fn name_for_id(&self, id: i64) -> String {
+        self.rows
+            .iter()
+            .find(|(row_id, _)| *row_id == id)
+            .map(|(_, name)| name.clone())
+            .unwrap_or_else(|| format!("Тип {id}"))
     }
 }
 
@@ -1564,6 +1650,7 @@ impl DeviceService {
         // Справочник статусов — один раз на импорт (не на строку): подпись из
         // ячейки сопоставляется со справочником в Rust, SQL из текста не строится.
         let statuses = StatusLookup::load(self.readers.clone()).await?;
+        let types = TypeLookup::load(self.readers.clone()).await?;
 
         let mut report = CsvImportReport {
             inserted: 0,
@@ -1607,7 +1694,7 @@ impl DeviceService {
 
             // Build DeviceNew from mapping.
             let build_result =
-                Self::build_device_new_from_row(row, &header_idx, &mapping, &statuses);
+                Self::build_device_new_from_row(row, &header_idx, &mapping, &statuses, &types);
             let (mut new_device, place_text) = match build_result {
                 Ok(d) => d,
                 Err(e) => {
@@ -1764,6 +1851,7 @@ impl DeviceService {
         header_idx: &HashMap<String, usize>,
         mapping: &HashMap<String, String>,
         statuses: &StatusLookup,
+        types: &TypeLookup,
     ) -> Result<(DeviceNew, Option<String>), String> {
         let get_field = |csv_col: &str| -> Option<String> {
             header_idx
@@ -1802,9 +1890,9 @@ impl DeviceService {
             }
         }
 
-        // Resolve type_id from label (or default to 1 = "Устройство").
-        // For CSV import, we use well-known seed IDs: type_id 1 = Устройство, 2 = Расходник.
-        let type_id = Self::resolve_type_id(type_label.as_deref());
+        // Тип — из справочника device_types; пустая/неизвестная подпись даёт
+        // «Устройство» (D-02).
+        let type_id = types.id_for_label(type_label.as_deref());
         // Статус по подписи из справочника device_statuses (пустая/неизвестная
         // подпись — статус по умолчанию «на складе», найденный по code).
         let status_id = statuses.id_for_label(status_label.as_deref());
@@ -1827,15 +1915,6 @@ impl DeviceService {
             },
             place_text,
         ))
-    }
-
-    /// Resolve type_id from a Russian type label.
-    /// Known seed values: 1 = Устройство, 2 = Расходник.
-    fn resolve_type_id(label: Option<&str>) -> i64 {
-        match label {
-            Some("Расходник") | Some("расходник") => 2,
-            _ => 1, // default: Устройство
-        }
     }
 
     /// Export devices as UTF-8 BOM + semicolon-delimited CSV (D-CSV-02).
@@ -1881,6 +1960,7 @@ impl DeviceService {
 
         use trackly_core::ports::devices::DeviceRepository;
         let statuses_readers = readers.clone();
+        let types_readers = readers.clone();
         let rows = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             repo.as_ref().list_all(&conn, &domain_filter, max_rows)
@@ -1893,6 +1973,8 @@ impl DeviceService {
         // Имена статусов — из справочника: новые статусы (в ремонте, на списание)
         // не схлопываются в «на складе», а переименование видно в выгрузке.
         let statuses = StatusLookup::load(statuses_readers).await?;
+        // Подпись типа — тоже из справочника (INT-14): никакой карты id -> имя в коде.
+        let types = TypeLookup::load(types_readers).await?;
 
         struct ExportItems {
             items: Vec<DeviceDto>,
@@ -1923,13 +2005,13 @@ impl DeviceService {
         })?;
 
         for device in &response.items {
-            // Lookup type name from type_id (known seed values).
-            let type_name = Self::type_id_to_name(device.type_id);
+            // Имя типа — из справочника по type_id.
+            let type_name = types.name_for_id(device.type_id);
             // Имя статуса — из справочника по status_id.
             let status_name = statuses.name_for_id(device.status_id);
 
             wtr.write_record(&[
-                csv_safe(type_name),
+                csv_safe(&type_name),
                 csv_safe(&device.name),
                 csv_safe(device.inventory_no.as_deref().unwrap_or("")),
                 csv_safe(device.serial_no.as_deref().unwrap_or("")),
@@ -1959,13 +2041,6 @@ impl DeviceService {
         output.push_str(&body);
 
         Ok(output)
-    }
-
-    fn type_id_to_name(type_id: i64) -> &'static str {
-        match type_id {
-            2 => "Расходник",
-            _ => "Устройство",
-        }
     }
 
     /// Получить несколько устройств по списку ID (DEV-11 expand).
