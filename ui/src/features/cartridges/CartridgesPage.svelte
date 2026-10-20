@@ -335,9 +335,12 @@
 
   async function handleConfirmDelete() {
     if (!confirmDeleteCartridge) return;
+    // Место берём ДО await и до обнуления confirmDeleteCartridge (INT-15).
+    const deletedPlaceId = confirmDeleteCartridge.place_id;
     deleting = true;
     try {
       await cartridges.delete(confirmDeleteCartridge.id, confirmDeleteCartridge.version);
+      if (deletedPlaceId !== null) notifyPlaceContentChanged([deletedPlaceId]);
       pushToast('success', `Картридж «${confirmDeleteCartridge.code}» удалён.`);
       confirmDeleteOpen = false;
       if (selectedCartridgeId === confirmDeleteCartridge.id) {

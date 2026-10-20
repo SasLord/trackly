@@ -259,9 +259,13 @@
 
   async function handleDelete() {
     if (!dev) return;
+    // Место берём ДО await: после удаления счётчики именно этого места устарели.
+    // Один обработчик обслуживает страницы «Устройства» и «Принтеры» (INT-15).
+    const deletedPlaceId = dev.place_id;
     deleting = true;
     try {
       await devices.delete(dev.id, dev.version);
+      if (deletedPlaceId !== null) notifyPlaceContentChanged([deletedPlaceId]);
       pushToast('success', 'Устройство удалено');
       confirmOpen = false;
       onChanged();
