@@ -113,6 +113,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { Buffer } from 'node:buffer';
+import { stripComments } from './_strip.mjs';
+export { stripComments };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -321,28 +323,6 @@ function runCases(mod, cases) {
 // ---------------------------------------------------------------------------
 // Слой 2: разбор исходников
 // ---------------------------------------------------------------------------
-
-/** Пробелы вместо всех символов, кроме переводов строк (длина сохраняется). */
-function blank(s) {
-  return s.replace(/[^\n]/g, ' ');
-}
-
-/** Вырезает HTML-, блочные и строчные комментарии, сохраняя нумерацию строк. */
-export function stripComments(src) {
-  return src
-    .replace(/<!--[\s\S]*?-->/g, blank)
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[\s;{(,])\/\/[^\n]*/g, (m, pre, offset, whole) => {
-      // `//` внутри строкового литерала на той же строке — не комментарий.
-      const lineStart = whole.lastIndexOf('\n', offset) + 1;
-      const before = whole.slice(lineStart, offset + pre.length);
-      for (const q of ['"', "'", '`']) {
-        const n = (before.match(new RegExp(`(?<!\\\\)\\${q}`, 'g')) ?? []).length;
-        if (n % 2 === 1) return m;
-      }
-      return pre + ' '.repeat(m.length - pre.length);
-    });
-}
 
 /** Индекс закрывающей скобки для открывающей в text[openIdx]; -1 — не нашлось. */
 function readBalanced(text, openIdx, open, close) {
@@ -1450,6 +1430,23 @@ function structuralMutants() {
           '    type_id: 1,\n',
           '    type_id: 1,\n    hide_anchor_members: true,\n',
           'own',
+        ),
+      }),
+      expect: ['A'],
+    },
+    {
+      // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+      // Блочно-первая вычистка стирала бы нарушение между `templates/*.html` и
+      // ближайшим `*/` ниже — правило [A] молчало бы.
+      name: '[A] `/*` в строчном комментарии не прячет собственный hide_anchor_members',
+      files: fixtureMap({
+        [PAGE_FILE]: page(
+          '    type_id: 1,\n',
+          '    type_id: 1,\n' +
+            '    // шаблоны лежат в templates/*.html\n' +
+            '    hide_anchor_members: true,\n' +
+            '    /* настоящий блочный комментарий */\n',
+          'own-comment-trap',
         ),
       }),
       expect: ['A'],

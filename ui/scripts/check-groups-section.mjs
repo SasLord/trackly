@@ -40,6 +40,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -50,69 +51,6 @@ const SIDEBAR_FILE = 'src/features/layout/sidebar-config.ts';
 const ROUTES_FILE = 'src/routes.ts';
 
 const GROUPS_ROUTE = '/groups';
-
-/**
- * Затирает JS-комментарии (строчные и блочные), не трогая строковые литералы;
- * длина и переводы строк сохраняются. Нужно: комментарии в обоих файлах
- * буквально цитируют проверяемые формы (`'/groups'`, «13 items»), и без
- * вычистки гейт «проходил» бы по комментарию при удалённом коде.
- */
-function stripComments(src) {
-  let out = '';
-  let i = 0;
-  let mode = 'code'; // 'code' | 'line' | 'block' | "'" | '"' | '`'
-  while (i < src.length) {
-    const c = src[i];
-    const next = src[i + 1];
-    if (mode === 'code') {
-      if (c === '/' && next === '/') {
-        mode = 'line';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === '/' && next === '*') {
-        mode = 'block';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === "'" || c === '"' || c === '`') mode = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    if (mode === 'line') {
-      if (c === '\n') {
-        mode = 'code';
-        out += c;
-      } else out += ' ';
-      i += 1;
-      continue;
-    }
-    if (mode === 'block') {
-      if (c === '*' && next === '/') {
-        mode = 'code';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      out += c === '\n' ? '\n' : ' ';
-      i += 1;
-      continue;
-    }
-    // строковый литерал
-    if (c === '\\') {
-      out += c + (next ?? '');
-      i += 2;
-      continue;
-    }
-    if (c === mode) mode = 'code';
-    out += c;
-    i += 1;
-  }
-  return out;
-}
 
 /** Содержимое парных скобок, начиная с индекса открывающей. */
 function extractBalanced(src, openIdx, open, close) {
@@ -409,6 +347,22 @@ function runSelfTest() {
         CLEAN_ROUTES,
         "  '/requests': RequestsPage,\n",
         "  '/requests': RequestsPage,\n  '/groups': GroupsPage,\n",
+      ),
+      mention: /employeeRoutes/,
+    });
+    fixtures.push({
+      // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+      // Блочно-первая вычистка стирала бы запись '/groups' между
+      // `templates/*.html` и ближайшим `*/` ниже — гейт печатал бы PASS.
+      name: "(е) `/*` в строчном комментарии не прячет '/groups' в employeeRoutes",
+      sidebar: CLEAN_SIDEBAR,
+      routes: mutate(
+        CLEAN_ROUTES,
+        "  '/requests': RequestsPage,\n",
+        "  '/requests': RequestsPage,\n" +
+          '  // шаблоны лежат в templates/*.html\n' +
+          "  '/groups': GroupsPage,\n" +
+          '  /* настоящий блочный комментарий */\n',
       ),
       mention: /employeeRoutes/,
     });

@@ -47,6 +47,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -57,41 +58,6 @@ const TARGET = 'src/features/cartridges/OperationModal.svelte';
 // ---------------------------------------------------------------------------
 // Хелперы разбора
 // ---------------------------------------------------------------------------
-
-/**
- * Затирает пробелами (сохраняя длину и переводы строк) все комментарии:
- * HTML (`<!-- -->`), блочные (`/* *\/`) и строчные (`//`). Без этого гейт
- * «проходил» бы по объяснению инварианта в doc-комментарии при мёртвом коде:
- * комментарии в этом файле дословно цитируют проверяемые условия.
- */
-function stripComments(src) {
-  const out = src.split('');
-  const blank = (from, to) => {
-    for (let i = from; i < to && i < src.length; i++) if (out[i] !== '\n') out[i] = ' ';
-  };
-
-  for (const re of [/<!--[\s\S]*?-->/g, /\/\*[\s\S]*?\*\//g]) {
-    let m;
-    while ((m = re.exec(src)) !== null) blank(m.index, m.index + m[0].length);
-  }
-
-  let joined = out.join('');
-  const lines = joined.split('\n');
-  let offset = 0;
-  for (const line of lines) {
-    const idx = line.indexOf('//');
-    if (idx >= 0) {
-      const before = line.slice(0, idx);
-      const quotes = (before.match(/['"`]/g) ?? []).length;
-      // Нечётное число кавычек слева — `//` внутри строкового литерала.
-      if (quotes % 2 === 0) blank(offset + idx, offset + line.length);
-    }
-    offset += line.length + 1;
-  }
-
-  joined = out.join('');
-  return joined;
-}
 
 /** Тело функции по имени (учитывает вложенные `{}`). */
 function functionBody(src, fnName) {

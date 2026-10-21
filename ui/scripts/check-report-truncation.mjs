@@ -39,6 +39,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { Buffer } from 'node:buffer';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -136,11 +137,7 @@ function runCases(mod, cases) {
 
 /** Текст .svelte без комментариев, пробелы/переводы строк схлопнуты в один пробел. */
 function normalizeSvelte(src) {
-  return src
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|\s)\/\/[^\n]*/g, ' ')
-    .replace(/\s+/g, ' ');
+  return stripComments(src).replace(/\s+/g, ' ');
 }
 
 /** Структурные правила S1-S3; возвращает список провалов. */
@@ -255,6 +252,15 @@ const SVELTE_MUTANTS = [
     name: 'убран импорт movementsTruncationNotice',
     from: "import { movementsTruncationNotice } from './truncationNotice';",
     to: '',
+  },
+  {
+    // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+    // Блочно-первая вычистка стирала бы литерал между `templates/*.html` и
+    // ближайшим `*/` ниже — S2 молчало бы.
+    id: 'M9',
+    name: '`/*` в строчном комментарии не прячет литерал «Показано записей»',
+    from: '{/if}',
+    to: '{/if}\n// шаблоны лежат в templates/*.html\n<p>Показано записей</p>\n/* настоящий блочный комментарий */',
   },
 ];
 

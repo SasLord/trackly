@@ -53,6 +53,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -63,39 +64,6 @@ const TARGET = 'src/features/cartridges/OperationModal.svelte';
 // ---------------------------------------------------------------------------
 // Хелперы разбора
 // ---------------------------------------------------------------------------
-
-/**
- * Затирает пробелами (сохраняя длину и переводы строк) все комментарии: HTML,
- * блочные и строчные. Критично именно здесь: doc-комментарии этого файла
- * ДОСЛОВНО цитируют проверяемые условия (`if (preFillPrinterId === undefined &&
- * placeAutofilled) { placeId = null; ... }`), поэтому без вычистки комментариев
- * гейт «проходил» бы по объяснению при удалённом коде.
- */
-function stripComments(src) {
-  const out = src.split('');
-  const blank = (from, to) => {
-    for (let i = from; i < to && i < src.length; i++) if (out[i] !== '\n') out[i] = ' ';
-  };
-
-  for (const re of [/<!--[\s\S]*?-->/g, /\/\*[\s\S]*?\*\//g]) {
-    let m;
-    while ((m = re.exec(src)) !== null) blank(m.index, m.index + m[0].length);
-  }
-
-  const lines = out.join('').split('\n');
-  let offset = 0;
-  for (const line of lines) {
-    const idx = line.indexOf('//');
-    if (idx >= 0) {
-      const before = line.slice(0, idx);
-      const quotes = (before.match(/['"`]/g) ?? []).length;
-      if (quotes % 2 === 0) blank(offset + idx, offset + line.length);
-    }
-    offset += line.length + 1;
-  }
-
-  return out.join('');
-}
 
 /** Балансное содержимое скобок, начиная с индекса открывающей `(`. */
 function balancedParens(src, openIdx) {

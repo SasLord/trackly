@@ -31,6 +31,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
+export { stripComments };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -44,15 +46,6 @@ const REQUIRED = [
   ['text-align', ['start', 'left']],
   ['cursor', ['auto']],
 ];
-
-const blank = (m) => m.replace(/[^\n]/g, ' ');
-
-export function stripComments(src) {
-  return src
-    .replace(/<!--[\s\S]*?-->/g, blank)
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[\s;{(,])\/\/[^\n]*/g, (m, pre) => pre + ' '.repeat(m.length - pre.length));
-}
 
 /** Индекс закрывающей `}` для `{` в text[openIdx]; -1 — не нашлось. */
 function matchBrace(text, openIdx) {
@@ -169,6 +162,23 @@ const MUTANTS = [
   {
     name: 'white-space: nowrap',
     apply: (s) => mutate(s, 'white-space: normal;', 'white-space: nowrap;', 'ws nowrap'),
+    expect: 'M2',
+  },
+  {
+    // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+    // Блочно-первая вычистка стирала бы позднюю `white-space: nowrap` между
+    // `templates/*.html` и ближайшим `*/` ниже; остался бы ранний `normal` — PASS.
+    name: '`/*` в строчном комментарии не прячет поздний white-space: nowrap',
+    apply: (s) =>
+      mutate(
+        s,
+        '    white-space: normal;\n',
+        '    white-space: normal;\n' +
+          '    // шаблоны лежат в templates/*.html\n' +
+          '    white-space: nowrap;\n' +
+          '    /* настоящий блочный комментарий */\n',
+        'comment-trap white-space',
+      ),
     expect: 'M2',
   },
   {

@@ -94,6 +94,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -113,38 +114,6 @@ const MIN_NOTIFY_CALLS = 20;
 // ---------------------------------------------------------------------------
 // Хелперы разбора
 // ---------------------------------------------------------------------------
-
-/**
- * Затирает пробелами (сохраняя длину и переводы строк) все комментарии: HTML,
- * блочные и строчные. Обязательно: комментарии в обоих файлах дословно
- * цитируют проверяемый код (`{ ...statsCache }`, `statsCache = next`), и без
- * вычистки гейт «проходил» бы по объяснению при удалённом коде.
- */
-function stripComments(src) {
-  const out = src.split('');
-  const blank = (from, to) => {
-    for (let i = from; i < to && i < src.length; i++) if (out[i] !== '\n') out[i] = ' ';
-  };
-
-  for (const re of [/<!--[\s\S]*?-->/g, /\/\*[\s\S]*?\*\//g]) {
-    let m;
-    while ((m = re.exec(src)) !== null) blank(m.index, m.index + m[0].length);
-  }
-
-  const lines = out.join('').split('\n');
-  let offset = 0;
-  for (const line of lines) {
-    const idx = line.indexOf('//');
-    if (idx >= 0) {
-      const before = line.slice(0, idx);
-      const quotes = (before.match(/['"`]/g) ?? []).length;
-      if (quotes % 2 === 0) blank(offset + idx, offset + line.length);
-    }
-    offset += line.length + 1;
-  }
-
-  return out.join('');
-}
 
 /** Балансное содержимое скобок, начиная с индекса открывающей `(`. */
 function balancedParens(src, openIdx) {
@@ -1418,6 +1387,23 @@ function selftest() {
             'const changedPlaceIds = await acts.remove(act.id, act.version);',
             'маркер acts.delete переименован',
           ),
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+      // Блочно-первая вычистка стирала бы всё от `templates/*.html` до ближайшего
+      // `*/` ниже — вместе с нарушением, и гейт печатал бы PASS.
+      name: '3h: `/*` в строчном комментарии не прячет devices.delete( от скана',
+      run: () =>
+        withSynth(
+          `${SYNTH_DIR}/CommentTrap.svelte`,
+          [
+            '// шаблоны лежат в templates/*.html',
+            'async function removeDevice(d) { await devices.delete(d.id, d.version); }',
+            '/* настоящий блочный комментарий */',
+          ].join('\n'),
         ),
       expectInv: ['INV-7'],
       exact: 1,

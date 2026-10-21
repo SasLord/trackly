@@ -39,6 +39,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
+export { stripComments };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -127,34 +129,6 @@ const ALLOWLIST = [
 
 function allowEntryFor(relPath) {
   return ALLOWLIST.find((e) => (e.file ? e.file === relPath : relPath.startsWith(e.prefix)));
-}
-
-/**
- * Вырезает комментарии, сохраняя нумерацию строк. Намеренно без автомата по
- * кавычкам: в русских doc-комментариях встречаются одиночные кавычки и
- * апострофы, и строко-ориентированный разборщик «залипал» бы в литерале.
- * `//` считается комментарием только в начале строки или после пробела /
- * `;{(,`, поэтому `https://...` не затрагивается.
- */
-export function stripComments(src) {
-  const blank = (m) => m.replace(/[^\n]/g, ' ');
-  return src
-    .replace(/<!--[\s\S]*?-->/g, blank)
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[\s;{(,])\/\/[^\n]*/g, (m, pre, offset, whole) => {
-      // Ревью фазы 41 (W-F02), вторая дыра: `//` ВНУТРИ строкового литерала
-      // съедал остаток строки вместе с надписью. Если до `//` на этой же строке
-      // нечётное число неэкранированных кавычек — мы внутри литерала, и это не
-      // комментарий. Автомата по кавычкам по-прежнему нет (в русских
-      // doc-комментариях есть апострофы), проверка строго построчная.
-      const lineStart = whole.lastIndexOf('\n', offset) + 1;
-      const before = whole.slice(lineStart, offset + pre.length);
-      for (const q of ['"', "'", '`']) {
-        const n = (before.match(new RegExp(`(?<!\\\\)\\${q}`, 'g')) ?? []).length;
-        if (n % 2 === 1) return m;
-      }
-      return pre + ' '.repeat(m.length - pre.length);
-    });
 }
 
 /**
@@ -494,6 +468,19 @@ function runSelfTest() {
         '<div>{g?.count}</div>',
       ].join('\n'),
       expectViolations: 0,
+    },
+    {
+      // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+      // Блочно-первая вычистка стирала бы нарушение между `templates/*.html` и
+      // ближайшим `*/` ниже — гейт печатал бы PASS.
+      name: 'негатив (WR-01): `/*` в строчном комментарии не прячет нарушение от скана',
+      file: 'src/features/devices/Bar.svelte',
+      src: [
+        '// шаблоны лежат в templates/*.html',
+        '<span>Создать группу</span>',
+        '/* настоящий блочный комментарий */',
+      ].join('\n'),
+      expectViolations: 1,
     },
   ];
 

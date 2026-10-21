@@ -43,6 +43,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -55,69 +56,6 @@ const ANCHOR_FLAGS = [
   'exclude_anchors',
   'member_of_group_id',
 ];
-
-/**
- * Затирает JS-комментарии (строчные и блочные), не трогая строковые литералы;
- * длина и переводы строк сохраняются. Комментарии буквально цитируют
- * проверяемые имена (listGrouped), и без вычистки гейт «краснел» бы по ним
- * или «проходил» по цитате при удалённом коде.
- */
-function stripComments(src) {
-  let out = '';
-  let i = 0;
-  let mode = 'code'; // 'code' | 'line' | 'block' | "'" | '"' | '`'
-  while (i < src.length) {
-    const c = src[i];
-    const next = src[i + 1];
-    if (mode === 'code') {
-      if (c === '/' && next === '/') {
-        mode = 'line';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === '/' && next === '*') {
-        mode = 'block';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === "'" || c === '"' || c === '`') mode = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    if (mode === 'line') {
-      if (c === '\n') {
-        mode = 'code';
-        out += c;
-      } else out += ' ';
-      i += 1;
-      continue;
-    }
-    if (mode === 'block') {
-      if (c === '*' && next === '/') {
-        mode = 'code';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      out += c === '\n' ? '\n' : ' ';
-      i += 1;
-      continue;
-    }
-    // строковый литерал
-    if (c === '\\') {
-      out += c + (next ?? '');
-      i += 2;
-      continue;
-    }
-    if (c === mode) mode = 'code';
-    out += c;
-    i += 1;
-  }
-  return out;
-}
 
 /** Содержимое парных скобок, начиная с индекса открывающей. */
 function extractBalanced(src, openIdx, open, close) {
@@ -320,6 +258,22 @@ function runSelfTest() {
           '</div>',
         ),
         rules: ['A'],
+      },
+      {
+        // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+        // Блочно-первая вычистка стирала бы listByIds между `templates/*.html` и
+        // ближайшим `*/` ниже — правило B молчало бы.
+        name: '(9) `/*` в строчном комментарии не прячет devices.listByIds',
+        src: mutate(
+          real,
+          '      candidates = found.items.slice(0, SEARCH_LIMIT);\n',
+          '      candidates = found.items.slice(0, SEARCH_LIMIT);\n' +
+            '      // шаблоны лежат в templates/*.html\n' +
+            '      void devices.listByIds([]);\n' +
+            '      /* настоящий блочный комментарий */\n',
+          'comment-trap-list-by-ids',
+        ),
+        rules: ['B'],
       },
     ];
   } catch (e) {

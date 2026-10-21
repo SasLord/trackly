@@ -23,6 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -178,15 +179,13 @@ const USE_RE = /var\((--tr-[a-z0-9-]+)/gi;
  * describes token-name patterns with a `{role}` placeholder (e.g. `var(--tr-text-{role})`),
  * which truncates the char-class match at `--tr-text-` (no `{` in [a-z0-9-]) and would
  * otherwise produce a false "undefined token" violation from a comment, not real code.
- * Block comments are removed first, then `//` line comments — guarded so a URL scheme
- * prefix (http://, https://, file://) inside markup/strings is not truncated: only strips
- * `//` when NOT immediately preceded by `:`. Pragmatic heuristic (grep, not a parser),
- * matching this script's overall design philosophy.
+ * Delegates to the shared single-pass `_strip.mjs` (WR-01, 41.12 review): a `/*` inside a
+ * `//` line comment must not open a fake block that swallows code down to the next `*\/`.
+ * A `//` after an odd number of quotes on the line (a URL scheme inside a string/attribute)
+ * is not a comment. Pragmatic heuristic (grep, not a parser), matching this script's design.
  */
 function stripCommentsForRule3(content) {
-  let stripped = content.replace(/\/\*[\s\S]*?\*\//g, '');
-  stripped = stripped.replace(/(^|[^:])\/\/.*$/gm, '$1');
-  return stripped;
+  return stripComments(content);
 }
 
 function checkClosedWorld(files, tokensScssPath) {

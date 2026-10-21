@@ -90,6 +90,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { Buffer } from 'node:buffer';
+import { stripComments } from './_strip.mjs';
+export { stripComments };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -328,23 +330,6 @@ function runCases(mod, cases) {
 /** Пробелы вместо всех символов, кроме переводов строк (длина сохраняется). */
 function blank(s) {
   return s.replace(/[^\n]/g, ' ');
-}
-
-/** Вырезает HTML-, блочные и строчные комментарии, сохраняя нумерацию строк. */
-export function stripComments(src) {
-  return src
-    .replace(/<!--[\s\S]*?-->/g, blank)
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[\s;{(,])\/\/[^\n]*/g, (m, pre, offset, whole) => {
-      // `//` внутри строкового литерала на той же строке — не комментарий.
-      const lineStart = whole.lastIndexOf('\n', offset) + 1;
-      const before = whole.slice(lineStart, offset + pre.length);
-      for (const q of ['"', "'", '`']) {
-        const n = (before.match(new RegExp(`(?<!\\\\)\\${q}`, 'g')) ?? []).length;
-        if (n % 2 === 1) return m;
-      }
-      return pre + ' '.repeat(m.length - pre.length);
-    });
 }
 
 /** Делит .svelte на script и markup (script/style в markup затираются). */
@@ -1175,6 +1160,24 @@ function structuralMutants() {
           'quickActions: quickActionsForDevice(types, device.type_id)',
           'quickActions: quickActionsFromTypes(types)',
           'G',
+        ),
+      }),
+      expect: ['G'],
+    },
+    {
+      // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+      // Блочно-первая вычистка стирала бы прямой вызов между `templates/*.html` и
+      // ближайшим `*/` ниже. quickActionsForDevice( остаётся на месте, чтобы красным
+      // был именно прямой вызов, а не отсутствие обязательного.
+      name: '[G] `/*` в строчном комментарии не прячет прямой вызов quickActionsFromTypes(',
+      files: fixtureMap({
+        [MENU_FILE]: menu(
+          'quickActions: quickActionsForDevice(types, device.type_id)',
+          'quickActions: quickActionsForDevice(types, device.type_id),\n' +
+            '      // шаблоны лежат в templates/*.html\n' +
+            '      extra: quickActionsFromTypes(types)\n' +
+            '      /* настоящий блочный комментарий */',
+          'G-comment-trap',
         ),
       }),
       expect: ['G'],

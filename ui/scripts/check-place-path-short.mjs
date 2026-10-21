@@ -72,6 +72,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -203,63 +204,6 @@ const VERDICTS = [
 // ---------------------------------------------------------------------------
 // Хелперы разбора
 // ---------------------------------------------------------------------------
-
-/**
- * Затирает комментарии (HTML, блочные и строчные `//`), сохраняя длину и
- * переводы строк. Нужна, чтобы объяснение в комментарии не считалось
- * потреблением пути.
- *
- * Один проход слева направо: комментарий съедается целиком в порядке
- * появления. Прежняя копия из check-place-tree-invalidation.mjs сначала
- * вырезала ВСЕ блочные комментарии, и `templates/*.html` внутри строчного
- * комментария открывал «блок» до ближайшего закрывающего маркера — молча стирая код ниже
- * (так из скана выпал TemplateEditor.svelte). Кавычечная эвристика на чётность
- * сохранена: `//` и `/*` после нечётного числа кавычек на строке — часть строки.
- */
-function stripComments(src) {
-  const out = src.split('');
-  const blank = (from, to) => {
-    for (let i = from; i < to && i < src.length; i++) if (out[i] !== '\n') out[i] = ' ';
-  };
-  let lineStart = 0;
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '\n') {
-      lineStart = i + 1;
-      i++;
-      continue;
-    }
-    if (src.startsWith('<!--', i)) {
-      const end = src.indexOf('-->', i + 4);
-      const to = end < 0 ? src.length : end + 3;
-      blank(i, to);
-      i = to;
-      continue;
-    }
-    if (c === '/' && (src[i + 1] === '/' || src[i + 1] === '*')) {
-      const quotes = (src.slice(lineStart, i).match(/['"`]/g) ?? []).length;
-      if (quotes % 2 === 0) {
-        let to;
-        if (src[i + 1] === '/') {
-          const nl = src.indexOf('\n', i);
-          to = nl < 0 ? src.length : nl;
-        } else {
-          const end = src.indexOf('*/', i + 2);
-          to = end < 0 ? src.length : end + 2;
-        }
-        blank(i, to);
-        // перевод строки внутри блока сохраняется; начало строки пересчитывается
-        const lastNl = src.lastIndexOf('\n', to - 1);
-        if (lastNl >= i) lineStart = lastNl + 1;
-        i = to;
-        continue;
-      }
-    }
-    i++;
-  }
-  return out.join('');
-}
 
 /**
  * Затирает пробелами (сохраняя длину и переводы строк) всё, что не является
@@ -850,6 +794,28 @@ function selftest(root) {
           extra: ['src/lib/utils/zz_synthetic.ts'],
           over: new Map([
             ['src/lib/utils/zz_synthetic.ts', 'export const f = (r) => r.place_path;'],
+          ]),
+        }),
+      expect: ['P1'],
+    },
+    {
+      // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+      // Блочно-первая вычистка стирала бы чтение пути между `templates/*.html` и
+      // ближайшим `*/` ниже — P1 молчало бы.
+      name: '4a: `/*` в строчном комментарии не прячет идентификатор пути — P1',
+      run: () =>
+        run({
+          extra: ['src/lib/utils/zz_comment_trap.ts'],
+          over: new Map([
+            [
+              'src/lib/utils/zz_comment_trap.ts',
+              [
+                '// шаблоны лежат в templates/*.html',
+                'export const f = (r) => r.place_path;',
+                '/* настоящий блочный комментарий */',
+                '',
+              ].join('\n'),
+            ],
           ]),
         }),
       expect: ['P1'],

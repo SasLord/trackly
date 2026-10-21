@@ -58,6 +58,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { Buffer } from 'node:buffer';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -205,10 +206,7 @@ async function runStoreCases(tsSource, label) {
 
 /** Текст .ts без комментариев, пробелы/переводы строк схлопнуты в один пробел. */
 function normalizeTs(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|\s)\/\/[^\n]*/g, ' ')
-    .replace(/\s+/g, ' ');
+  return stripComments(src).replace(/\s+/g, ' ');
 }
 
 function runStructural(wsSrc) {
@@ -466,6 +464,19 @@ const WS_MUTANTS = [
     name: 'пустой .catch — сбой тоста снова глохнет молча',
     from: "    .catch((e) => {\n      console.error('[ws] не удалось показать тост обрыва соединения', e);\n    });",
     to: '    .catch(() => {});',
+  },
+  {
+    // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+    // Блочно-первая вычистка стирала бы лишнюю цепочку с пустым .catch между
+    // `templates/*.html` и ближайшим `*/` ниже — W5 молчало бы.
+    id: 'M10',
+    name: '`/*` в строчном комментарии не прячет цепочку import() с пустым .catch',
+    from: 'function connectBrowser() {',
+    to:
+      'function connectBrowser() {\n' +
+      '  // шаблоны лежат в templates/*.html\n' +
+      "  import('$lib/stores/toast.svelte').then(() => {}).catch(() => {});\n" +
+      '  /* настоящий блочный комментарий */',
   },
 ];
 

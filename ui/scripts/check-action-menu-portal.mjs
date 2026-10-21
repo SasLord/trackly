@@ -47,6 +47,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -62,64 +63,6 @@ const SELFTEST_MIN_CALL_SITES = 2;
 /** Пробелы вместо всех символов, кроме переводов строк (длина сохраняется). */
 function blank(s) {
   return s.replace(/[^\n]/g, ' ');
-}
-
-/** Затирает JS/SCSS-комментарии, не трогая строковые литералы; длина сохраняется. */
-function stripComments(src) {
-  let out = '';
-  let i = 0;
-  let mode = 'code';
-  while (i < src.length) {
-    const c = src[i];
-    const next = src[i + 1];
-    if (mode === 'code') {
-      if (c === '/' && next === '/') {
-        mode = 'line';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === '/' && next === '*') {
-        mode = 'block';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === "'" || c === '"' || c === '`') mode = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    if (mode === 'line') {
-      if (c === '\n') {
-        mode = 'code';
-        out += c;
-      } else out += ' ';
-      i += 1;
-      continue;
-    }
-    if (mode === 'block') {
-      if (c === '*' && next === '/') {
-        mode = 'code';
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      out += c === '\n' ? '\n' : ' ';
-      i += 1;
-      continue;
-    }
-    if (c === '\\') {
-      out += c + (next ?? '');
-      i += 2;
-      continue;
-    }
-    if (c === '\n' && mode !== '`') mode = 'code';
-    else if (c === mode) mode = 'code';
-    out += c;
-    i += 1;
-  }
-  return out;
 }
 
 /** Делит .svelte на markup / script / style (каждый — той же длины, остальное затёрто). */
@@ -602,6 +545,20 @@ function runSelfTest() {
       }),
       codes: ['F'],
       mention: /мёртвая/,
+    });
+    fixtures.push({
+      // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+      // Блочно-первая вычистка стирала бы `position: absolute` между
+      // `templates/*.html` и ближайшим `*/` ниже — правило C молчало бы.
+      name: 'M10 `/*` в строчном комментарии не прячет position: absolute',
+      files: fixtureFiles({
+        menu: mutate(
+          CLEAN_MENU,
+          'position: fixed;',
+          'position: fixed;\n    // шаблоны лежат в templates/*.html\n    position: absolute;\n    /* настоящий блочный комментарий */',
+        ),
+      }),
+      codes: ['C'],
     });
   } catch (e) {
     console.error(`${TAG} [selftest] FAIL — ${e.message}`);

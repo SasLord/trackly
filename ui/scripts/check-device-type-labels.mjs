@@ -65,6 +65,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TAG = '[check-device-type-labels]';
@@ -128,55 +129,6 @@ const RULES = [
 // ---------------------------------------------------------------------------
 // Разбор
 // ---------------------------------------------------------------------------
-
-/**
- * Затирает комментарии (HTML, блочные, строчные `//`), сохраняя длину и переводы
- * строк. Один проход слева направо; `//` и `/*` после нечётного числа кавычек на
- * строке считаются частью строки.
- */
-function stripComments(src) {
-  const out = src.split('');
-  const blank = (from, to) => {
-    for (let i = from; i < to && i < src.length; i++) if (out[i] !== '\n') out[i] = ' ';
-  };
-  let lineStart = 0;
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '\n') {
-      lineStart = i + 1;
-      i++;
-      continue;
-    }
-    if (src.startsWith('<!--', i)) {
-      const end = src.indexOf('-->', i + 4);
-      const to = end < 0 ? src.length : end + 3;
-      blank(i, to);
-      i = to;
-      continue;
-    }
-    if (c === '/' && (src[i + 1] === '/' || src[i + 1] === '*')) {
-      const quotes = (src.slice(lineStart, i).match(/['"`]/g) ?? []).length;
-      if (quotes % 2 === 0) {
-        let to;
-        if (src[i + 1] === '/') {
-          const nl = src.indexOf('\n', i);
-          to = nl < 0 ? src.length : nl;
-        } else {
-          const end = src.indexOf('*/', i + 2);
-          to = end < 0 ? src.length : end + 2;
-        }
-        blank(i, to);
-        const lastNl = src.lastIndexOf('\n', to - 1);
-        if (lastNl >= i) lineStart = lastNl + 1;
-        i = to;
-        continue;
-      }
-    }
-    i++;
-  }
-  return out.join('');
-}
 
 function lineOf(text, index) {
   let n = 1;
@@ -392,6 +344,27 @@ function selftest(root) {
     '',
     run({
       extra: [['src/zz/Cmt.ts', "// было { id: 2, name: 'Расходник' }\nexport const a = 1;\n"]],
+    }),
+  );
+
+  // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок.
+  // Блочно-первая вычистка стирала бы литерал между `templates/*.html` и ближайшим
+  // `*/` ниже — T3 молчало бы.
+  add(
+    'синтетика: `/*` в строчном комментарии не прячет литерал Расходник',
+    'T3',
+    run({
+      extra: [
+        [
+          'src/zz/CommentTrap.ts',
+          [
+            '// шаблоны лежат в templates/*.html',
+            "export const kind = 'Расходник';",
+            '/* настоящий блочный комментарий */',
+            '',
+          ].join('\n'),
+        ],
+      ],
     }),
   );
 
