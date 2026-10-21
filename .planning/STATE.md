@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-10-20T23:43:08.226Z"
+status: ready_to_plan
+last_updated: 2026-10-21T12:13:43.046Z
 last_activity: 2026-10-20
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 219
-  completed_plans: 219
+  completed_plans: 482
   percent: 54
+stopped_at: Phase 41.12 complete (7/7) — ready to discuss Phase 42
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.12 — v1-4-int-14-int-15-int-07
+**Current focus:** Phase 42 — умный подбор принтера в заявке
 
 ## Current Position
 
-Phase: 41.12 (v1-4-int-14-int-15-int-07) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
+Phase: 42
+Plan: Not started
+Status: Ready to plan
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
 TD-2 (selftest check-device-list-mode занижает счётчики), TD-4 (предусловие не отличает passed
@@ -149,7 +150,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-20
+Last activity: 2026-10-21
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -163,7 +164,7 @@ Last activity: 2026-10-20
 
 **Velocity:**
 
-- Total plans completed: 311
+- Total plans completed: 318
 - Average duration: —
 - Total execution time: —
 
@@ -208,6 +209,7 @@ Last activity: 2026-10-20
 | 40.5 | 14 | - | - |
 | 41.7 | 14 | - | - |
 | 41.1 | 33 | - | - |
+| 41.12 | 7 | - | - |
 
 **Recent Trend:**
 
