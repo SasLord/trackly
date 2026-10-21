@@ -79,6 +79,26 @@
 //           не бывают константой. Защита от вакуумности: найденных вызовов
 //           обязано быть не меньше `MIN_NOTIFY_CALLS`.
 //
+//   INV-10 (41.12, ревью WR-03) — ИНВЕНТАРЬ ОТ СЕРВЕРНЫХ МУТАЦИЙ, а не от списка
+//           экранов. Скан INV-7 раньше видел только `src/features/**/*.svelte`: вызов
+//           `devices.delete(`/`cartridges.delete(` в `src/lib/**` или в `.ts`-хелпере и
+//           прямой `apiCall('devices_delete' | 'cartridges_delete', …)` в обход обёрток
+//           были невидимы, а `minSites` защищает только от ИСЧЕЗНОВЕНИЯ существующих мест,
+//           не от появления новых. Теперь (а) маркеры INV-7 ищутся по ВСЕМУ `src`
+//           (`.svelte`, `.ts`, `.js`) и устойчивы к prettier-переносу
+//           (`devices\n  .delete(`) и к импорту под псевдонимом (`{ devices as dv }`);
+//           (б) имена серверных команд (`devices_delete`, `cartridges_delete` и их
+//           camelCase-формы из bindings) допустимы ТОЛЬКО в файлах из явной таблицы
+//           `COMMAND_EXEMPTIONS` (обёртка/сгенерированные биндинги) — любое другое
+//           вхождение нарушение; (в) каждый файл `src` обязан иметь вердикт: код
+//           сканируется, `NON_CODE_VERDICTS` объясняют, почему остальное не сканируется
+//           (файл неизвестного типа без вердикта — нарушение, а не молчание).
+//           Blind spot'ы (не закрыты, ЯВНО): ре-экспорт под другим именем
+//           (`export { devices as d }`), namespace-импорт (`api.devices.delete(` — левая
+//           граница идентификатора отсекает `.devices`), присваивание `const d = devices`;
+//           имя команды, собранное из частей строки. Имя команды в ЛЮБОМ файле src ловит
+//           `checkServerCommands`, поэтому прямой вызов обходом не является.
+//
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
 // доказывает отсутствие цикла в рантайме — это по-прежнему проверяется живым
@@ -105,6 +125,8 @@ const STORE = 'src/lib/stores/placeContentEvents.svelte.ts';
 // INV-7 (registry-driven, 40.1 exhaustive sweep) scans this whole subtree —
 // see `checkCompleteness` below — instead of a fixed file list.
 const FEATURES_DIR = 'src/features';
+// INV-10: корень сканирования маркеров/команд — ВЕСЬ src, а не только features.
+const SRC_DIR = 'src';
 const NOTIFY = 'notifyPlaceContentChanged(';
 // INV-9: сегодня в `src/features` 25 вызовов; порог с запасом. Падение ниже
 // порога — нарушение гейта, а не молчаливое «0 нарушений» (вакуумный PASS,
@@ -284,16 +306,17 @@ function enclosingFunction(src, idx) {
 }
 
 /**
- * INV-7 (registry-driven): every `.svelte` file under `dir`, recursively —
- * the scan surface for `checkCompleteness` (all of `ui/src/features`, not a
- * fixed file list).
+ * INV-10: КАЖДЫЙ файл под `dir`, рекурсивно (а не только `.svelte` из features) —
+ * поверхность скана `checkCompleteness`/`checkServerCommands`/`checkSrcInventory`.
+ * Файлы, которые скан НЕ читает как код, получают вердикт в `NON_CODE_VERDICTS`
+ * (`checkSrcInventory`); молча пропущенных нет.
  */
-function walkSvelteFiles(dir) {
+function walkAllFiles(dir) {
   const out = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walkSvelteFiles(full));
-    else if (entry.isFile() && entry.name.endsWith('.svelte')) out.push(full);
+    if (entry.isDirectory()) out.push(...walkAllFiles(full));
+    else if (entry.isFile()) out.push(full);
   }
   return out;
 }
@@ -764,7 +787,12 @@ const DIRECT_CALL_MARKERS = [
     label: 'массовый перенос (places_move_subtree_contents)',
     minSites: 1,
   },
-  { marker: 'acts.delete(', label: 'мягкое удаление/undo акта (acts.delete)', minSites: 1 },
+  {
+    receiver: 'acts',
+    method: 'delete',
+    label: 'мягкое удаление/undo акта (acts.delete)',
+    minSites: 1,
+  },
   // 41.12 (INT-15 аудита v1.4), перечень от серверных мутаций: device delete_soft и
   // cartridge delete рассылают place_ids, а клиентский вызов `notifyPlaceContentChanged`
   // — единственный путь обновления счётчиков при оборванном сокете. Маркеры литеральные,
@@ -773,14 +801,22 @@ const DIRECT_CALL_MARKERS = [
   // слеп к порядку: вызов до `await` проходил бы зелёным и инвалидировал бы до успеха).
   // Только эти две записи: у старых записей порядок осознанно не проверяется (см.
   // задокументированное исключение у `groups.addDevices` в GroupContentsTable.svelte).
+  // Запись с `receiver` (а не литеральной подстрокой): сайт ищется регэкспом
+  // `<имя>\s*.\s*<method>` — переносится prettier'ом (`devices\n  .delete(`) и находится
+  // под импортным псевдонимом (`{ devices as dv }` из ЛЮБОГО модуля). `notifyAfter` —
+  // СТРУКТУРНОЕ правило (WR-02): вызов инвалидации обязан стоять на пути УСПЕХА, в том же
+  // блоке, что и мутация, после неё, и НЕ в catch/finally/замыкании (см.
+  // `notifyOnSuccessPath`); просто «правее маркера» теперь не считается.
   {
-    marker: 'devices.delete(',
+    receiver: 'devices',
+    method: 'delete',
     label: 'удаление устройства (devices.delete)',
     minSites: 1,
     notifyAfter: true,
   },
   {
-    marker: 'cartridges.delete(',
+    receiver: 'cartridges',
+    method: 'delete',
     label: 'удаление картриджа (cartridges.delete)',
     minSites: 1,
     notifyAfter: true,
@@ -857,6 +893,130 @@ function resolveLocalName(code, modulePath, exportName) {
   return null;
 }
 
+const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Локальные имена, под которыми `exportName` импортирован в файле ПСЕВДОНИМОМ
+ * (`{ devices as dv }`) — из любого модуля: `devices` доступен из `$lib/api/devices`,
+ * `./api`, `../devices/api`, `$lib/api`, и список путей не должен быть частью гейта.
+ */
+function importAliases(code, exportName) {
+  const out = new Set();
+  const importRe = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"][^'"]+['"]/g;
+  let m;
+  while ((m = importRe.exec(code)) !== null) {
+    for (const rawSpec of m[1].split(',')) {
+      const asMatch = rawSpec.trim().match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/);
+      if (asMatch && asMatch[1] === exportName) out.add(asMatch[2]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Искатель мест маркера `entry` в тексте (файла или тела функции): `text -> [{index,end}]`.
+ * `null` — модуль-маркер в этом файле не импортирован, вызова быть не может.
+ *   - `marker` — литеральная подстрока (`'places_move_subtree_contents'`);
+ *   - `module`+`exportName` — локальное имя резолвится из импорта (алиас или прямое имя);
+ *   - `receiver` — само имя + все его импортные псевдонимы.
+ * Для двух последних место — это `<имя>\s*.\s*<method>` + граница (не `delete2`): так
+ * ловится prettier-перенос `devices\n  .delete(`, который литеральная подстрока не видела.
+ */
+function makeFinder(code, entry) {
+  if (entry.marker) {
+    const marker = entry.marker;
+    return (text) =>
+      markerIndices(text, marker).map((index) => ({ index, end: index + marker.length }));
+  }
+  let names;
+  if (entry.module) {
+    const local = resolveLocalName(code, entry.module, entry.exportName);
+    if (local === null) return null;
+    names = [local];
+  } else {
+    names = [...new Set([entry.receiver, ...importAliases(code, entry.receiver)])];
+  }
+  const alt = names.map(escRe).join('|');
+  // Граница идентификатора слева (41.12) — тот же переключатель, что у `markerIndices`.
+  const lb = boundaryEnabled ? '(?<![\\w$.])' : '';
+  const source = `${lb}(?:${alt})\\s*\\.\\s*${escRe(entry.method)}(?![\\w$])`;
+  return (text) =>
+    [...text.matchAll(new RegExp(source, 'g'))].map((m) => ({
+      index: m.index,
+      end: m.index + m[0].length,
+    }));
+}
+
+/**
+ * Диапазоны [start, end) внутри [from, to) текста, где вызов инвалидации НЕ лежит на
+ * пути успеха: тела `catch` и `finally` и вложенные замыкания (стрелка, `function`).
+ */
+function offSuccessRanges(body, from, to) {
+  const out = [];
+  const pushBraceBody = (openIdx) => {
+    const b = balancedBraces(body, openIdx);
+    if (b !== null) out.push([openIdx, b.end + 1]);
+  };
+  for (const re of [/\bcatch\s*(?:\([^)]*\))?\s*\{/g, /\bfinally\s*\{/g, /=>\s*\{/g]) {
+    let m;
+    while ((m = re.exec(body)) !== null) {
+      if (m.index >= from && m.index < to) pushBraceBody(m.index + m[0].length - 1);
+    }
+  }
+  // Стрелка с выражением вместо блока: `() => notify(x)` — тело до `;`/`,`/закрывающей скобки.
+  const exprArrow = /=>(?!\s*\{)/g;
+  let m;
+  while ((m = exprArrow.exec(body)) !== null) {
+    if (m.index < from || m.index >= to) continue;
+    let depth = 0;
+    let i = m.index + 2;
+    for (; i < body.length; i++) {
+      const c = body[i];
+      if (c === '(' || c === '[' || c === '{') depth++;
+      else if (c === ')' || c === ']' || c === '}') {
+        if (depth === 0) break;
+        depth--;
+      } else if (depth === 0 && (c === ';' || c === ',')) break;
+    }
+    out.push([m.index, i]);
+  }
+  const fnRe = /\bfunction\b\s*[\w$]*\s*\(/g;
+  while ((m = fnRe.exec(body)) !== null) {
+    if (m.index < from || m.index >= to) continue;
+    const params = balancedParens(body, m.index + m[0].length - 1);
+    if (params === null) continue;
+    const open = body.indexOf('{', params.end + 1);
+    if (open >= 0) pushBraceBody(open);
+  }
+  return out;
+}
+
+/**
+ * WR-02: стоит ли `notifyPlaceContentChanged(` на ПУТИ УСПЕХА после места мутации `site`.
+ * Раньше хватало «правее последнего маркера в теле функции» — вызов, перенесённый в
+ * `catch`/`finally`, проходил зелёным (счётчики не обновляются при успешном удалении и
+ * сбрасываются при неудачном). Теперь вызов обязан: стоять после мутации, лежать
+ * в том же блоке, что и мутация (или глубже; `try { мутация } catch {} notify` — вне
+ * блока и не засчитывается), и не лежать внутри catch/finally/замыкания.
+ */
+function notifyOnSuccessPath(body, site) {
+  const open = nearestEnclosingBraceStart(body, site.index);
+  let blockStart = 0;
+  let blockEnd = body.length;
+  if (open >= 0) {
+    const b = balancedBraces(body, open);
+    if (b === null) return false;
+    blockStart = open + 1;
+    blockEnd = b.end;
+  }
+  const dead = offSuccessRanges(body, blockStart, blockEnd).filter(
+    ([a, b]) => !(a <= site.index && site.index < b),
+  );
+  return indicesOf(body, NOTIFY).some(
+    (i) => i >= site.end && i < blockEnd && !dead.some(([a, b]) => i >= a && i < b),
+  );
+}
+
 function checkCompleteness(files, violations, read) {
   // 41.12: число найденных мест каждого маркера по ВСЕМ файлам — для `minSites`.
   const siteCounts = new Map();
@@ -918,37 +1078,32 @@ function checkCompleteness(files, violations, read) {
 
     for (const entry of DIRECT_CALL_MARKERS) {
       const { label } = entry;
-      let marker = entry.marker;
-      if (!marker) {
-        const local = resolveLocalName(code, entry.module, entry.exportName);
-        // Модуль не импортирован в этом файле — вызова быть не может, идём дальше.
-        if (local === null) continue;
-        marker = `${local}.${entry.method}(`;
-      }
-      for (const idx of markerIndices(code, marker)) {
+      const find = makeFinder(code, entry);
+      // Модуль не импортирован в этом файле — вызова быть не может, идём дальше.
+      if (find === null) continue;
+      for (const site of find(code)) {
         siteCounts.set(label, (siteCounts.get(label) ?? 0) + 1);
-        const enclosing = enclosingFunction(code, idx);
+        const enclosing = enclosingFunction(code, site.index);
         if (enclosing === null) {
           violations.push({
             file: relPath,
             inv: 'INV-7',
             message: `прямой вызов ${label} — не удалось резолвить обрамляющую именованную функцию`,
-            hint: 'DIRECT_CALL_MARKERS требует, чтобы маркер лежал внутри `function NAME(...) { ... }` — inline top-level/module-scope вызовы этим гейтом не поддерживаются; оберни вызов в именованный обработчик.',
+            hint: 'DIRECT_CALL_MARKERS требует, чтобы маркер лежал внутри `function NAME(...) { ... }` — inline top-level/module-scope вызовы (и стрелочные const-обработчики в .ts-хелперах) этим гейтом не поддерживаются; оберни вызов в именованную функцию.',
           });
           continue;
         }
         if (entry.notifyAfter) {
-          // Позиционное правило: вызов инвалидации — после ПОСЛЕДНЕГО вхождения
-          // маркера в теле (мутация уже состоялась). Перестановка выше `await`
-          // оставляет число вызовов прежним и счётный гейт её не видит.
-          const inBody = markerIndices(enclosing.body, marker);
-          const lastMarker = inBody.length > 0 ? inBody[inBody.length - 1] : -1;
-          if (lastMarker < 0 || enclosing.body.indexOf(NOTIFY, lastMarker + marker.length) < 0) {
+          // Структурное правило (WR-02): вызов инвалидации — на пути успеха ПОСЛЕ
+          // последнего вхождения маркера в теле (мутация уже состоялась).
+          const inBody = find(enclosing.body);
+          const last = inBody.length > 0 ? inBody[inBody.length - 1] : null;
+          if (last === null || !notifyOnSuccessPath(enclosing.body, last)) {
             violations.push({
               file: relPath,
               inv: 'INV-7',
-              message: `${enclosing.name}() зовёт ${label}, но notifyPlaceContentChanged( стоит не после мутации (до await или отсутствует)`,
-              hint: 'Инвалидация счётчиков обязана идти ПОСЛЕ успешного await серверной мутации: вызов до неё сбрасывает счётчики, пока запись ещё не состоялась, и следующая подгрузка вернёт старое число.',
+              message: `${enclosing.name}() зовёт ${label}, но notifyPlaceContentChanged( стоит не на пути успеха после мутации (до await, отсутствует, в catch/finally/замыкании или вне блока мутации)`,
+              hint: 'Инвалидация счётчиков обязана идти ПОСЛЕ успешного await серверной мутации и на ветке успеха: вызов до неё сбрасывает счётчики, пока запись ещё не состоялась; вызов в catch/finally не выполняется при успехе (или выполняется при отказе) — следующая подгрузка вернёт старое число.',
             });
           }
         } else if (!enclosing.body.includes(NOTIFY)) {
@@ -1179,33 +1334,171 @@ function checkNotifyArgs(files, violations, read) {
 }
 
 // ---------------------------------------------------------------------------
+// INV-10 (41.12, WR-03) — инвентарь от серверных мутаций + вердикт на каждый файл
+// ---------------------------------------------------------------------------
+
+/** Расширения, которые скан читает как код (все правила INV-7/INV-10 действуют на них). */
+const CODE_EXTS = ['.svelte', '.ts', '.js'];
+const isCodeFile = (rel) => CODE_EXTS.some((e) => rel.endsWith(e));
+
+/**
+ * Файлы `src`, которые скан НЕ читает как код, — с причиной. Файл иного типа без
+ * записи здесь — нарушение (`checkSrcInventory`): пропуск, не закодированный вердиктом,
+ * молчит навсегда (урок check-place-path-short.mjs).
+ */
+const NON_CODE_VERDICTS = [
+  {
+    ext: '.scss',
+    reason: 'таблицы стилей: вызовов API и имён серверных команд в них быть не может',
+  },
+];
+
+/** Вакуумность: меньше кода под `src` — обход перестал видеть дерево. Сегодня ~220. */
+const MIN_SRC_CODE_FILES = 150;
+
+/**
+ * Серверные мутации, из которых строится инвентарь (а не от списка экранов): имя команды
+ * в snake_case (`apiCall('…')`/`invoke`) и в camelCase (`commands.…` из bindings).
+ * Каждая рассылает place_ids, поэтому её клиентский вызов обязан инвалидировать счётчики.
+ */
+const SERVER_COMMANDS = [
+  { snake: 'devices_delete', camel: 'devicesDelete', label: 'удаление устройства' },
+  { snake: 'cartridges_delete', camel: 'cartridgesDelete', label: 'удаление картриджа' },
+];
+
+/**
+ * ЕДИНСТВЕННЫЕ файлы, где имя серверной команды допустимо. Любое другое вхождение — прямой
+ * вызов в обход обёрток `devices.delete`/`cartridges.delete`, то есть мимо маркеров INV-7.
+ * Запись без вхождения в своём файле устарела (файл переехал/команда переименована) и
+ * тоже нарушение — освобождение не должно пережить свой повод.
+ */
+const COMMAND_EXEMPTIONS = [
+  {
+    file: 'src/lib/api/devices.ts',
+    command: 'devices_delete',
+    kind: 'WRAPPER',
+    reason:
+      'обёртка devices.delete: единственное место, где apiCall знает имя команды; все вызовы идут через неё и ловятся маркером INV-7',
+  },
+  {
+    file: 'src/features/cartridges/api.ts',
+    command: 'cartridges_delete',
+    kind: 'WRAPPER',
+    reason:
+      'обёртка cartridges.delete: единственное место, где apiCall знает имя команды; все вызовы идут через неё и ловятся маркером INV-7',
+  },
+  {
+    file: 'src/bindings.ts',
+    command: 'devices_delete',
+    kind: 'GENERATED',
+    reason:
+      'сгенерированные tauri-specta биндинги: типизированная заглушка команды, не точка вызова из экранов (type-only импорты)',
+  },
+  {
+    file: 'src/bindings.ts',
+    command: 'cartridges_delete',
+    kind: 'GENERATED',
+    reason:
+      'сгенерированные tauri-specta биндинги: типизированная заглушка команды, не точка вызова из экранов (type-only импорты)',
+  },
+];
+
+/** Каждый файл src: код сканируется, прочее обязано иметь вердикт. */
+function checkSrcInventory(srcFiles, violations) {
+  for (const rel of srcFiles) {
+    if (isCodeFile(rel)) continue;
+    if (NON_CODE_VERDICTS.some((v) => rel.endsWith(v.ext))) continue;
+    violations.push({
+      file: rel,
+      inv: 'INV-10',
+      message:
+        'файл в src не код и не имеет вердикта в NON_CODE_VERDICTS — скан его молча пропускает',
+      hint: 'Добавь вердикт с причиной (NON_CODE_VERDICTS) либо расширь CODE_EXTS: пропуск без записи молчит навсегда.',
+    });
+  }
+  const codeCount = srcFiles.filter(isCodeFile).length;
+  if (codeCount < MIN_SRC_CODE_FILES) {
+    violations.push({
+      file: SRC_DIR,
+      inv: 'INV-10',
+      message: `обход src увидел ${codeCount} файлов кода — меньше порога ${MIN_SRC_CODE_FILES}`,
+      hint: 'Обход перестал видеть дерево — «0 нарушений» было бы вакуумным. Если число законно упало, обнови MIN_SRC_CODE_FILES осознанно.',
+    });
+  }
+}
+
+/** Имена серверных команд вне таблицы COMMAND_EXEMPTIONS — нарушение. */
+function checkServerCommands(codeFiles, violations, read) {
+  const seen = new Set();
+  for (const relPath of codeFiles) {
+    const code = stripComments(read(relPath));
+    for (const cmd of SERVER_COMMANDS) {
+      for (const name of [cmd.snake, cmd.camel]) {
+        if (!new RegExp(`(?<![\\w$])${escRe(name)}(?![\\w$])`).test(code)) continue;
+        const exempt = COMMAND_EXEMPTIONS.find(
+          (e) => e.file === relPath && e.command === cmd.snake,
+        );
+        if (exempt) {
+          seen.add(`${relPath}|${cmd.snake}`);
+          continue;
+        }
+        violations.push({
+          file: relPath,
+          inv: 'INV-10',
+          message: `серверная команда ${name} (${cmd.label}) вне обёртки — прямой вызов в обход маркеров INV-7`,
+          hint: 'Вызывай через обёртку devices.delete / cartridges.delete: маркеры INV-7 проверяют, что рядом стоит notifyPlaceContentChanged на пути успеха. Новое законное место имени команды — только явной записью в COMMAND_EXEMPTIONS с причиной.',
+        });
+      }
+    }
+  }
+  for (const e of COMMAND_EXEMPTIONS) {
+    if (seen.has(`${e.file}|${e.command}`)) continue;
+    violations.push({
+      file: e.file,
+      inv: 'INV-10',
+      message: `запись COMMAND_EXEMPTIONS устарела: ${e.kind} ${e.command} — вхождения в файле нет`,
+      hint: 'Файл переехал или команда переименована, а освобождение осталось: обнови таблицу осознанно, не удаляй проверку.',
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Сборка нарушений (чистая: без process.exit — вызывается и из --selftest)
 // ---------------------------------------------------------------------------
 
 class GateReadError extends Error {}
 
-/** Относительные пути всех `.svelte` под `<root>/src/features`. */
-function listFeatureFiles(root) {
-  const featuresDir = path.join(root, FEATURES_DIR);
+/** Относительные пути ВСЕХ файлов под `<root>/src` (INV-10), отсортированные. */
+function listSrcFiles(root) {
   try {
-    return walkSvelteFiles(featuresDir).map((f) =>
-      path.relative(root, f).split(path.sep).join('/'),
-    );
+    return walkAllFiles(path.join(root, SRC_DIR))
+      .map((f) => path.relative(root, f).split(path.sep).join('/'))
+      .sort();
   } catch {
     throw new GateReadError(
-      `не удалось обойти ${FEATURES_DIR}. Каталог переехал/удалён: обнови путь в гейте осознанно, а не удаляй проверку.`,
+      `не удалось обойти ${SRC_DIR}. Каталог переехал/удалён: обнови путь в гейте осознанно, а не удаляй проверку.`,
     );
   }
 }
 
-/** `read(rel)` обязан бросать GateReadError, если файла нет. */
-function collectViolations(read, files) {
+/** `.svelte` под `src/features` — поверхность INV-9 (аргументы notify). */
+const featureSvelteFiles = (srcFiles) =>
+  srcFiles.filter((f) => f.startsWith(`${FEATURES_DIR}/`) && f.endsWith('.svelte'));
+
+/**
+ * `read(rel)` обязан бросать GateReadError, если файла нет. `srcFiles` — ВЕСЬ src
+ * (INV-7 маркеры/INV-10), `featureFiles` — `.svelte` features (INV-9).
+ */
+function collectViolations(read, srcFiles, featureFiles = featureSvelteFiles(srcFiles)) {
   const violations = [];
+  const codeFiles = srcFiles.filter(isCodeFile);
   checkTree(read(TREE), violations);
   checkStore(read(STORE), violations);
-  checkCompleteness(files, violations, read);
+  checkSrcInventory(srcFiles, violations);
+  checkCompleteness(codeFiles, violations, read);
+  checkServerCommands(codeFiles, violations, read);
   checkCommitBeforeDismiss(read, violations);
-  const notifyCalls = checkNotifyArgs(files, violations, read);
+  const notifyCalls = checkNotifyArgs(featureFiles, violations, read);
   return { violations, notifyCalls };
 }
 
@@ -1241,10 +1534,13 @@ function mutate(source, from, to, label) {
 
 function selftest() {
   const disk = diskReader(UI_ROOT);
-  const files = listFeatureFiles(UI_ROOT);
-  const run = (overrides, onlyFiles = files) => {
+  const srcFiles = listSrcFiles(UI_ROOT);
+  const files = featureSvelteFiles(srcFiles);
+  // `onlyFiles` сужает ТОЛЬКО поверхность INV-9 (features); `extraSrc` добавляет
+  // синтетические файлы в ВЕСЬ src. Реальное дерево src остаётся полным всегда.
+  const run = (overrides, onlyFiles = files, extraSrc = []) => {
     const read = (rel) => (overrides.has(rel) ? overrides.get(rel) : disk(rel));
-    return collectViolations(read, onlyFiles);
+    return collectViolations(read, [...srcFiles, ...extraSrc], onlyFiles);
   };
 
   const ROW_MENU = 'src/features/devices/DeviceRowMenu.svelte';
@@ -1264,6 +1560,21 @@ function selftest() {
     ]);
   const swap = (rel, from, to, label) =>
     new Map([[rel, mutate(disk(rel), from, to, `${rel}: ${label}`)]]);
+  /** Несколько последовательных замен одного файла; каждый якорь — ровно одно вхождение. */
+  const swapMany = (rel, edits) => {
+    let text = disk(rel);
+    for (const [from, to, label] of edits) text = mutate(text, from, to, `${rel}: ${label}`);
+    return new Map([[rel, text]]);
+  };
+  /** Реальный файл + дописанный в конец текст (мутант «новое место вызова»). */
+  const appended = (rel, text) => new Map([[rel, `${disk(rel)}\n${text}\n`]]);
+  /** Прогон с одним синтетическим файлом ЛЮБОГО типа (без обёртки `<script>`). */
+  const withRaw = (rel, text) =>
+    run(
+      new Map([[rel, text]]),
+      rel.endsWith('.svelte') && rel.startsWith(`${FEATURES_DIR}/`) ? [...files, rel] : files,
+      [rel],
+    );
 
   // --- 41.12 (INT-15): удаление устройства / картриджа ---
   // Все якоря берутся из РЕАЛЬНЫХ исходников и проходят через `mutate` (ровно одно
@@ -1276,14 +1587,31 @@ function selftest() {
   const CART_DELETE =
     'await cartridges.delete(confirmDeleteCartridge.id, confirmDeleteCartridge.version);';
   const deleteSites = [
-    { rel: ROW_MENU, del: DEV_DELETE, short: 'DeviceRowMenu', removed: 'devices.remove' },
-    { rel: CART_PAGE, del: CART_DELETE, short: 'CartridgesPage', removed: 'cartridges.remove' },
+    {
+      rel: ROW_MENU,
+      del: DEV_DELETE,
+      short: 'DeviceRowMenu',
+      removed: 'devices.remove',
+      // WR-02: якоря в catch/finally реального обработчика (каждый ровно 1 раз, ловит `mutate`).
+      catchAnchor: "pushToast('error', errorMessage(e, 'Не удалось удалить устройство'));",
+      split: 'await devices\n        .delete(dev.id, dev.version);',
+    },
+    {
+      rel: CART_PAGE,
+      del: CART_DELETE,
+      short: 'CartridgesPage',
+      removed: 'cartridges.remove',
+      catchAnchor: "'Не удалось удалить картридж';\n      pushToast('error', msg);",
+      split:
+        'await cartridges\n        .delete(confirmDeleteCartridge.id, confirmDeleteCartridge.version);',
+    },
   ];
 
   // 3e: синтетические файлы. Фикстуры содержат РЕАЛЬНУЮ подстроку маркера
   // (`pickedDevices.delete(` с заглавной D подстроки `devices.delete(` не содержит и
   // для проверки границы не годится).
   const SYNTH_DIR = 'src/features/zz_synthetic';
+  const SYNTH_LIB = 'src/lib/zz_synthetic';
   const boundaryFixtures = [
     { file: `${SYNTH_DIR}/Pick1.svelte`, call: 'foo.devices.delete(id)', fn: 'pick1' },
     { file: `${SYNTH_DIR}/Pick2.svelte`, call: 'mydevices.delete(id)', fn: 'pick2' },
@@ -1291,7 +1619,12 @@ function selftest() {
     { file: `${SYNTH_DIR}/Pick4.svelte`, call: 'mycartridges.delete(id)', fn: 'pick4' },
   ];
   const synthSource = (body) => `<script lang="ts">\n${body}\n</script>\n`;
-  const withSynth = (rel, body) => run(new Map([[rel, synthSource(body)]]), [...files, rel]);
+  const withSynth = (rel, body) =>
+    run(
+      new Map([[rel, synthSource(body)]]),
+      rel.endsWith('.svelte') && rel.startsWith(`${FEATURES_DIR}/`) ? [...files, rel] : files,
+      [rel],
+    );
   /** Прогон с ВЫКЛЮЧЕННОЙ границей идентификатора (красный-первым для 3e). */
   const withoutBoundary = (fn) => {
     boundaryEnabled = false;
@@ -1303,7 +1636,8 @@ function selftest() {
   };
 
   const deleteCases = [];
-  for (const { rel, del, short, removed } of deleteSites) {
+  const FINALLY_ANCHOR = '    } finally {\n      deleting = false;';
+  for (const { rel, del, short, removed, catchAnchor, split } of deleteSites) {
     const lineAfterDel = (indent) => `${del}\n${indent}${NOTIFY_DELETED}`;
     const lineBeforeDel = (indent) => `${NOTIFY_DELETED}\n${indent}${del}`;
     deleteCases.push(
@@ -1346,6 +1680,63 @@ function selftest() {
             ),
           ),
         expectInv: ['INV-9'],
+        exact: 1,
+      },
+      // --- WR-02: вызов на пути успеха, а не просто «правее маркера» ---
+      {
+        name: `3i: ${short} — инвалидация перенесена в catch (правее маркера, но не на успехе)`,
+        run: () =>
+          run(
+            swapMany(rel, [
+              [lineAfterDel('      '), del, 'вызов снят с успеха'],
+              [catchAnchor, `${catchAnchor}\n      ${NOTIFY_DELETED}`, 'вызов в catch'],
+            ]),
+          ),
+        expectInv: ['INV-7'],
+        exact: 1,
+      },
+      {
+        name: `3j: ${short} — инвалидация перенесена в finally`,
+        run: () =>
+          run(
+            swapMany(rel, [
+              [lineAfterDel('      '), del, 'вызов снят с успеха'],
+              [FINALLY_ANCHOR, `${FINALLY_ANCHOR}\n      ${NOTIFY_DELETED}`, 'вызов в finally'],
+            ]),
+          ),
+        expectInv: ['INV-7'],
+        exact: 1,
+      },
+      {
+        name: `3k: ${short} — инвалидация внутри вложенного замыкания`,
+        run: () =>
+          run(
+            swap(
+              rel,
+              NOTIFY_DELETED,
+              `queueMicrotask(() => {\n        ${NOTIFY_DELETED}\n      });`,
+              'вызов в замыкании',
+            ),
+          ),
+        expectInv: ['INV-7'],
+        exact: 1,
+      },
+      // --- WR-03: prettier-перенос `devices\n  .delete(` ---
+      {
+        name: `3l: ${short} — перенос \\n.delete( с вызовом на месте: чисто`,
+        run: () => run(swap(rel, del, split, 'перенос .delete(')),
+        clean: true,
+      },
+      {
+        name: `3m: ${short} — перенос \\n.delete( без вызова: маркер ВИДЕН (INV-7, не только minSites)`,
+        run: () =>
+          run(
+            swapMany(rel, [
+              [del, split, 'перенос .delete('],
+              [NOTIFY_DELETED, 'void deletedPlaceId;', 'вызов снят'],
+            ]),
+          ),
+        expectInv: ['INV-7'],
         exact: 1,
       },
     );
@@ -1407,6 +1798,226 @@ function selftest() {
         ),
       expectInv: ['INV-7'],
       exact: 1,
+    },
+    // --- WR-02: блок мутации (синтетика) ---
+    {
+      name: '3n: notify ПОСЛЕ try/catch — вне блока мутации (сработал бы и при отказе)',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/AfterTry.ts`,
+          'export async function rm(d) { try { await devices.delete(d.id, d.version); } catch (e) { void e; } notifyPlaceContentChanged([d.place_id]); }',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '3p: мутация вне try, notify в catch ниже — не путь успеха',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/CatchBelow.ts`,
+          'export async function rm(d) { await devices.delete(d.id, d.version); try { void d; } catch (e) { notifyPlaceContentChanged([d.place_id]); } }',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '3q: мутация вне try, notify в finally ниже — не путь успеха',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/FinallyBelow.ts`,
+          'export async function rm(d) { await devices.delete(d.id, d.version); try { void d; } finally { notifyPlaceContentChanged([d.place_id]); } }',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '3r: notify в стрелке-выражении (без блока) — вложенное замыкание',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/ExprArrow.ts`,
+          'export async function rm(d) { await devices.delete(d.id, d.version); queueMicrotask(() => notifyPlaceContentChanged([d.place_id])); }',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '3o: notify во вложенном if внутри блока мутации — путь успеха, чисто',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/OkNested.ts`,
+          'export async function rm(d) { try { await devices.delete(d.id, d.version); if (d.place_id !== null) { notifyPlaceContentChanged([d.place_id]); } } catch (e) { void e; } }',
+        ),
+      clean: true,
+    },
+    // --- WR-03: скан по ВСЕМУ src, а не только features/*.svelte ---
+    {
+      name: '4a: devices.delete( в src/lib/*.ts без инвалидации',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/LibDelete.ts`,
+          'export async function rm(d) { await devices.delete(d.id, d.version); }',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '4b: cartridges.delete( в src/lib/*.ts без инвалидации',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/LibCartDelete.ts`,
+          'export async function rm(c) { await cartridges.delete(c.id, c.version); }',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '4c: devices.delete( в src/lib с инвалидацией на успехе — чисто',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/LibOk.ts`,
+          'export async function rm(d) { await devices.delete(d.id, d.version); notifyPlaceContentChanged([d.place_id]); }',
+        ),
+      clean: true,
+    },
+    {
+      name: '4d: перенос devices\\n  .delete( в новом файле без инвалидации',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/Split.ts`,
+          'export async function rm(d) {\n  await devices\n    .delete(d.id, d.version);\n}',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '4e: импорт под псевдонимом { devices as dv } без инвалидации',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/Alias.ts`,
+          "import { devices as dv } from '$lib/api/devices';\nexport async function rm(d) { await dv.delete(d.id, d.version); }",
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '4f: псевдоним { cartridges as cr } + перенос без инвалидации',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/AliasCart.ts`,
+          "import { cartridges as cr } from '../../features/cartridges/api';\nexport async function rm(c) {\n  await cr\n    .delete(c.id, c.version);\n}",
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: '4q: devices.delete( в стрелочном const-обработчике .ts — обрамляющая функция не резолвится (громко)',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/ArrowOnly.ts`,
+          'export const rm = async (d) => { await devices.delete(d.id, d.version); notifyPlaceContentChanged([d.place_id]); };',
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: "4g: прямой apiCall('devices_delete') в src/lib",
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/DirectDev.ts`,
+          "export const rm = (id, version) => apiCall('devices_delete', { id, version });",
+        ),
+      expectInv: ['INV-10'],
+      exact: 1,
+    },
+    {
+      name: "4h: прямой apiCall('cartridges_delete') в features/*.svelte",
+      run: () =>
+        withSynth(
+          `${SYNTH_DIR}/DirectCart.svelte`,
+          "const rm = (id, version) => apiCall('cartridges_delete', { id, version });",
+        ),
+      expectInv: ['INV-10'],
+      exact: 1,
+    },
+    {
+      name: '4i: camelCase commands.devicesDelete( из bindings',
+      run: () =>
+        withRaw(
+          `${SYNTH_LIB}/CamelDev.ts`,
+          'export const rm = (id, version) => commands.devicesDelete(id, version);',
+        ),
+      expectInv: ['INV-10'],
+      exact: 1,
+    },
+    {
+      name: '4j: РЕАЛЬНЫЙ src/lib/utils/pluralize.ts + devices.delete( без инвалидации',
+      run: () =>
+        run(
+          appended(
+            'src/lib/utils/pluralize.ts',
+            'export async function zzRemove(d: { id: number; version: number }) {\n  await devices.delete(d.id, d.version);\n}',
+          ),
+        ),
+      expectInv: ['INV-7'],
+      exact: 1,
+    },
+    {
+      name: "4k: РЕАЛЬНЫЙ ReportTable.svelte + прямой apiCall('cartridges_delete')",
+      run: () =>
+        run(
+          swap(
+            'src/features/reports/ReportTable.svelte',
+            '<script lang="ts">',
+            '<script lang="ts">\n  const zzDirect = (id: number, version: number) => apiCall(\'cartridges_delete\', { id, version });',
+            'прямой вызов команды',
+          ),
+        ),
+      expectInv: ['INV-10'],
+      exact: 1,
+    },
+    {
+      name: '4l: освобождение привязано к паре файл+команда (devices_delete в обёртке картриджей)',
+      run: () =>
+        run(appended('src/features/cartridges/api.ts', "export const zzLeak = 'devices_delete';")),
+      expectInv: ['INV-10'],
+      exact: 1,
+    },
+    {
+      name: '4m: освобождение устарело — обёртка devices больше не знает devices_delete',
+      run: () =>
+        run(
+          swap(
+            'src/lib/api/devices.ts',
+            "apiCall<null>('devices_delete', { id, version })",
+            "apiCall<null>('devices_remove', { id, version })",
+            'команда переименована в обёртке',
+          ),
+        ),
+      expectInv: ['INV-10'],
+      exact: 1,
+    },
+    {
+      name: '4n: файл неизвестного типа в src без вердикта',
+      run: () => withRaw(`${SYNTH_LIB}/data.json`, '{}'),
+      expectInv: ['INV-10'],
+      exact: 1,
+    },
+    {
+      name: '4o: .scss имеет вердикт — чисто',
+      run: () => withRaw(`${SYNTH_LIB}/style.scss`, '.a { color: red; }'),
+      clean: true,
+    },
+    {
+      name: '4p: вакуум — обход src не увидел кода (порог MIN_SRC_CODE_FILES)',
+      run: () =>
+        collectViolations(
+          (rel) => disk(rel),
+          srcFiles.filter((f) => !isCodeFile(f) || f === TREE || f === STORE),
+          files,
+        ),
+      expectInv: ['INV-10'],
+      // именно порог: устаревшие освобождения тоже дают INV-10, но другим текстом.
+      expectMsg: /меньше порога/,
     },
   );
 
@@ -1531,7 +2142,10 @@ function selftest() {
       why = `ожидалось 0 нарушений, получено ${violations.length} (${[...invs].join(',')}), вызовов ${notifyCalls}`;
     } else {
       const missing = c.expectInv.filter((i) => !invs.has(i));
-      ok = missing.length === 0 && (c.exact === undefined || violations.length === c.exact);
+      ok =
+        missing.length === 0 &&
+        (c.exact === undefined || violations.length === c.exact) &&
+        (c.expectMsg === undefined || violations.some((v) => c.expectMsg.test(v.message)));
       why = `ожидалось ${c.expectInv.join(',')}${c.exact !== undefined ? ` ×${c.exact}` : ''}, получено ${violations.length} (${[...invs].join(',') || '—'})`;
     }
     if (!ok) {
@@ -1574,8 +2188,10 @@ function main() {
   const SRC_ROOT = argSrc ? path.resolve(process.cwd(), argSrc.slice('--src='.length)) : UI_ROOT;
 
   let result;
+  let srcFileCount;
   try {
-    result = collectViolations(diskReader(SRC_ROOT), listFeatureFiles(SRC_ROOT));
+    srcFileCount = listSrcFiles(SRC_ROOT);
+    result = collectViolations(diskReader(SRC_ROOT), srcFileCount);
   } catch (e) {
     if (e instanceof GateReadError) {
       console.error(`${TAG} FAIL — ${e.message}`);
@@ -1600,7 +2216,8 @@ function main() {
   }
 
   console.error(
-    `${TAG} PASS — 0 нарушений (INV-9: проверено ${notifyCalls} вызовов notifyPlaceContentChanged)`,
+    `${TAG} PASS — 0 нарушений (INV-9: проверено ${notifyCalls} вызовов notifyPlaceContentChanged; ` +
+      `INV-10: ${srcFileCount.filter(isCodeFile).length} файлов кода в src, ${COMMAND_EXEMPTIONS.length} освобождений команд)`,
   );
   process.exit(0);
 }
