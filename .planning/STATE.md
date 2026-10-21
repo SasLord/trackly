@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-10-21T12:13:43.046Z
-last_activity: 2026-10-20
+status: planning
+last_updated: "2026-10-21T17:15:22.433Z"
+last_activity: 2026-10-21
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 219
-  completed_plans: 482
+  completed_plans: 219
   percent: 54
-stopped_at: Phase 41.12 complete (7/7) — ready to discuss Phase 42
 ---
 
 # Project State
@@ -1572,9 +1571,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-20T23:43:03.903Z
-Stopped at: Completed 41.12-07-PLAN.md (ручные пункты ожидают пользователя)
-Resume file: None
+Last session: 2026-10-21T17:15:22.417Z
+Stopped at: Phase 41.2 context gathered
+Resume file: .planning/phases/41.2-groups-acts-places/41.2-CONTEXT.md
 
 None
 
