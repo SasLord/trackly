@@ -18,7 +18,7 @@ import type { DeviceTypeDto } from '../../bindings';
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 
-export const deviceTypesStore = $state<{ items: DeviceTypeDto[]; state: LoadState }>({
+const deviceTypesStore = $state<{ items: DeviceTypeDto[]; state: LoadState }>({
   items: [],
   state: 'idle',
 });
@@ -34,6 +34,14 @@ export function ensureLoaded(): Promise<void> {
   inflight = devices
     .types()
     .then((rows) => {
+      // apiCall отдаёт text/html как строку; без проверки формы такой «успех»
+      // (например, index.html вместо JSON) дал бы state='ready' и массив символов.
+      if (
+        !Array.isArray(rows) ||
+        !rows.every((r) => typeof r?.id === 'number' && typeof r?.name === 'string')
+      ) {
+        throw new Error('device_types_list: неожиданная форма ответа');
+      }
       deviceTypesStore.items = rows;
       deviceTypesStore.state = 'ready';
     })
@@ -43,7 +51,7 @@ export function ensureLoaded(): Promise<void> {
         errorToasted = true;
         pushToast(
           'error',
-          'Не удалось загрузить справочник типов. Подписи показаны кодами, обновите страницу.',
+          'Не удалось загрузить справочник типов. Список типов не загружен, обновите страницу.',
         );
       }
     })
@@ -51,15 +59,6 @@ export function ensureLoaded(): Promise<void> {
       inflight = null;
     });
   return inflight;
-}
-
-export function typeById(id: number): DeviceTypeDto | undefined {
-  return deviceTypesStore.items.find((t) => t.id === id);
-}
-
-/** Подпись из справочника; до загрузки — «Тип {id}». */
-export function typeLabel(id: number): string {
-  return typeById(id)?.name ?? `Тип ${id}`;
 }
 
 /** Типы в порядке id. */

@@ -57,6 +57,20 @@ export function ensureLoaded(): Promise<void> {
   inflight = devices
     .statuses()
     .then((rows) => {
+      // apiCall отдаёт text/html как строку; без проверки формы такой «успех»
+      // (например, index.html вместо JSON) дал бы state='ready' и мусор в items.
+      if (
+        !Array.isArray(rows) ||
+        !rows.every(
+          (r) =>
+            typeof r?.id === 'number' &&
+            typeof r?.code === 'string' &&
+            typeof r?.name === 'string' &&
+            typeof r?.sort_order === 'number',
+        )
+      ) {
+        throw new Error('device_statuses_list: неожиданная форма ответа');
+      }
       deviceStatusesStore.items = rows;
       deviceStatusesStore.state = 'ready';
     })
