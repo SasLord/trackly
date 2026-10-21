@@ -15,9 +15,11 @@
 //
 // Правила (сообщение начинается с кода в квадратных скобках):
 //   [T1] копия справочника: числовой id рядом с подписью типа («Устройство»,
-//        «Принтер», «Расходник») — литерал `{ id|value|type_id|key: N,
-//        name|label: '<подпись>' }` (и обратный порядок полей), запись
-//        `N: '<подпись>'` и пара `[N, '<подпись>']`. Карты с ключом-видом
+//        «Принтер», «Расходник») — литерал `{ <ключ>: N, [другие поля,]
+//        name|label: '<подпись>' }` (и обратный порядок полей; между ними
+//        допустимы лишние поля в пределах ОДНОГО литерала, до GAP_MAX знаков
+//        без скобок `{}`; ключ — любой идентификатор: `id`, `value`, `printer`),
+//        запись `N: '<подпись>'` и пара `[N, '<подпись>']`. Карты с ключом-видом
 //        (`device: 'Устройство'` в PlaceContents / NumberTakenPopup) не
 //        флагаются: левый операнд не число;
 //   [T2] массив подписей типов подряд: `'Устройство', 'Принтер'` (в любом
@@ -27,6 +29,10 @@
 //        старой подписи при импорте CSV живёт только в Rust (device_service.rs)
 //        и освобождён в Rust-гейте device_type_label_gate. Строчное «расходник»
 //        в тексте про картриджи не флагается;
+//   [T5] тернарная карта: сравнение `type_id|typeId` с ЧИСЛОМ (`=== 2`, `!== 2`,
+//        `== 2`, и наоборот `2 === typeId`) или с именованной константой вида
+//        `*_TYPE_ID`, за которым в пределах TERN_REACH знаков идёт `?` и
+//        литерал-подпись типа: `typeId === 2 ? 'Принтер' : 'Устройство'`;
 //   [T4] антивакуум (только полный режим): файлов, импортирующих
 //        `$lib/stores/deviceTypes.svelte`, не меньше MIN_CONSUMERS — иначе стор
 //        никто не читает, а гейт зелёный по пустоте;
@@ -44,6 +50,17 @@
 //
 // Чего гейт НЕ видит (честно):
 //   - подпись, склеенная из частей или построенная косвенно (`['Уст', 'ройство']`);
+//   - текст подписи в РАЗМЕТКЕ (`<span>Принтер</span>` без кавычек) — это
+//     контент шаблона, не литерал; так устроен DeviceFormModal (две подписи
+//     рядом с константами DEVICE_TYPE_ID / PRINTER_TYPE_ID — выбор из двух
+//     поведений, а не словарь). Явного освобождения для него не требуется:
+//     ни одно правило разметку не читает; если правило когда-нибудь начнёт её
+//     видеть, освобождение вносится в EXEMPT с причиной, а не ослаблением правила;
+//   - сравнение с переменной, значение которой вычислено косвенно
+//     (`const k = 2; t === k ? 'Принтер' : …`), и условие, не похожее на `?:`
+//     (`if (typeId === 2) return 'Принтер'`, `switch (typeId) { case 2: … }`);
+//   - ключ/сравнение без самого id рядом с литералом (подпись и число в разных
+//     литералах дальше GAP_MAX / TERN_REACH знаков друг от друга или через `{}`);
 //   - слово «Расходник» в КОММЕНТАРИИ: комментарии вырезаются, чтобы цитата
 //     истории не краснила гейт; запрет слова в комментариях ui/src держит
 //     приёмочный grep плана 41.12-04;
@@ -91,19 +108,31 @@ const EXEMPT = [];
 const LABELS = 'Устройство|Принтер|Расходник';
 const Q = '[\'"`]';
 const NOT_IDENT = '(?<![\\p{L}\\p{N}_$.])';
-const KEY = '(?:id|value|type_id|typeId|key)';
+// То же, но точка перед идентификатором допустима (`d.type_id`).
+const NOT_WORD = '(?<![\\p{L}\\p{N}_$])';
+// Ключ поля с числом: любой идентификатор (`id`, `value`, `printer`, ...) — карта
+// `{ printer: 2, label: 'Принтер' }` тоже копия справочника.
+const KEY = '[\\p{L}_$][\\p{L}\\p{N}_$]*';
 const NAME = '(?:name|label)';
+// Лишние поля между id и подписью в одном литерале (без скобок `{}`).
+const GAP_MAX = 80;
+const GAP = `[^{}]{0,${GAP_MAX}}?`;
+// Тернарная карта: type_id|typeId, сравнение с числом/константой *_TYPE_ID, `?`, подпись.
+const TERN_REACH = 80;
+const TYPE_VAR = '(?:type_id|typeId)';
+const TYPE_NUM = '(?:\\d+|[A-Z][A-Z0-9_]*_TYPE_ID)';
+const CMP = '[=!]==?';
 
 const RULES = [
   {
     code: 'T1',
     re: [
       new RegExp(
-        `${NOT_IDENT}${KEY}\\s*:\\s*\\d+\\s*,\\s*${NAME}\\s*:\\s*${Q}(?:${LABELS})${Q}`,
+        `${NOT_IDENT}${KEY}\\s*:\\s*\\d+\\s*,${GAP}${NOT_IDENT}${NAME}\\s*:\\s*${Q}(?:${LABELS})${Q}`,
         'gu',
       ),
       new RegExp(
-        `${NOT_IDENT}${NAME}\\s*:\\s*${Q}(?:${LABELS})${Q}\\s*,\\s*${KEY}\\s*:\\s*\\d+`,
+        `${NOT_IDENT}${NAME}\\s*:\\s*${Q}(?:${LABELS})${Q}\\s*,${GAP}${NOT_IDENT}${KEY}\\s*:\\s*\\d+(?![\\p{L}\\p{N}_$.])`,
         'gu',
       ),
       new RegExp(`${NOT_IDENT}\\d+\\s*:\\s*${Q}(?:${LABELS})${Q}`, 'gu'),
@@ -118,6 +147,20 @@ const RULES = [
       new RegExp(`${Q}Принтер${Q}\\s*,\\s*${Q}Устройство${Q}`, 'gu'),
     ],
     msg: 'массив подписей типов подряд: индекс станет id; берите типы из $lib/stores/deviceTypes.svelte',
+  },
+  {
+    code: 'T5',
+    re: [
+      new RegExp(
+        `${NOT_WORD}${TYPE_VAR}\\s*${CMP}\\s*${TYPE_NUM}\\s*\\?[^;]{0,${TERN_REACH}}?${Q}(?:${LABELS})${Q}`,
+        'gu',
+      ),
+      new RegExp(
+        `${NOT_WORD}${TYPE_NUM}\\s*${CMP}\\s*${TYPE_VAR}\\s*\\?[^;]{0,${TERN_REACH}}?${Q}(?:${LABELS})${Q}`,
+        'gu',
+      ),
+    ],
+    msg: 'тернарная карта id типа -> подпись (`typeId === 2 ? ... : ...`); берите типы из $lib/stores/deviceTypes.svelte',
   },
   {
     code: 'T3',
@@ -399,6 +442,167 @@ function selftest(root) {
     '',
     run({ extra: [['src/zz/Null.ts', "export const o = { id: null, label: 'Все типы' };"]] }),
   );
+
+  // WR-04 (ревью 41.12): широкие формы карты id -> подпись. Каждый кейс — точная
+  // форма из ревью; до расширения T1/T5 они проходили зелёными.
+  add(
+    'WR-04: тернарная карта typeId === 2 ? Принтер : Устройство',
+    'T5',
+    run({
+      extra: [
+        [
+          'src/zz/Tern.ts',
+          "export const a = (typeId: number) => (typeId === 2 ? 'Принтер' : 'Устройство');\n",
+        ],
+      ],
+    }),
+  );
+  add(
+    'WR-04: тернарная карта в разметке, type_id через точку, !==',
+    'T5',
+    run({
+      extra: [
+        ['src/zz/TernMarkup.svelte', "<p>{d.type_id !== 2 ? 'Устройство' : 'Принтер'}</p>\n"],
+      ],
+    }),
+  );
+  add(
+    'WR-04: тернарная карта, число слева',
+    'T5',
+    run({
+      extra: [['src/zz/TernRev.ts', "export const a = (t) => (2 === typeId ? 'Принтер' : '');\n"]],
+    }),
+  );
+  add(
+    'WR-04: тернарная карта с именованной константой *_TYPE_ID',
+    'T5',
+    run({
+      extra: [
+        [
+          'src/zz/TernConst.ts',
+          "const PRINTER_TYPE_ID = 2;\nexport const a = typeId === PRINTER_TYPE_ID ? 'Принтер' : 'Устройство';\n",
+        ],
+      ],
+    }),
+  );
+  add(
+    'WR-04: лишнее поле между id и name',
+    'T1',
+    run({
+      extra: [['src/zz/Extra.ts', "export const b = [{ id: 2, sort: 1, name: 'Принтер' }];\n"]],
+    }),
+  );
+  add(
+    'WR-04: ключ-имя printer: 2 + label',
+    'T1',
+    run({
+      extra: [['src/zz/PrinterKey.ts', "export const c = { printer: 2, label: 'Принтер' };\n"]],
+    }),
+  );
+  add(
+    'WR-04: обратный порядок с лишним полем после подписи',
+    'T1',
+    run({
+      extra: [['src/zz/RevExtra.ts', "export const d = { label: 'Принтер', icon: 'p', id: 2 };\n"]],
+    }),
+  );
+  // соседи: не карта справочника — чисто
+  add(
+    'WR-04: сравнение с константой и составная подпись (как DeviceFormBody) — чисто',
+    '',
+    run({
+      extra: [
+        [
+          'src/zz/Compound.ts',
+          "export const t = typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано';\n",
+        ],
+      ],
+    }),
+  );
+  add(
+    'WR-04: подпись в разметке рядом с константами (как DeviceFormModal) — чисто',
+    '',
+    run({
+      extra: [
+        [
+          'src/zz/Markup.svelte',
+          '<script>const DEVICE_TYPE_ID = 1; const PRINTER_TYPE_ID = 2;</script>\n<button onclick={() => (typeId = DEVICE_TYPE_ID)}><span>Устройство</span></button>\n<button onclick={() => (typeId = PRINTER_TYPE_ID)}><span>Принтер</span></button>\n',
+        ],
+      ],
+    }),
+  );
+  add(
+    'WR-04: id и подпись в разных литералах (граница `{}`) — чисто',
+    '',
+    run({
+      extra: [
+        ['src/zz/TwoLits.ts', "export const e = [{ id: 2, sort: 1 }, { name: 'Принтер' }];\n"],
+      ],
+    }),
+  );
+  add(
+    'WR-04: сравнение с числом без подписи в тернарной ветке — чисто',
+    '',
+    run({
+      extra: [['src/zz/TernPlain.ts', "export const f = typeId === 2 ? 'printer' : 'device';\n"]],
+    }),
+  );
+
+  // WR-04: мутации РЕАЛЬНЫХ файлов в новую форму
+  {
+    const real = disk(REPORTS);
+    const anchor = real.match(/ {2}const filterDeviceTypes = \$derived\([^;]*\);\n/);
+    if (!anchor) {
+      console.error(`${TAG} SELFTEST FAIL — в ReportsPage нет объявления filterDeviceTypes`);
+      process.exit(1);
+    }
+    const mut = (txt) => new Map([[REPORTS, mutate(real, anchor[0], txt, 'filterDeviceTypes')]]);
+    add(
+      'WR-04 real: ReportsPage -> лишнее поле между id и name',
+      'T1',
+      run({ over: mut("  const filterDeviceTypes = [{ id: 2, sort: 1, name: 'Принтер' }];\n") }),
+    );
+    add(
+      'WR-04 real: ReportsPage -> тернарная карта',
+      'T5',
+      run({
+        over: mut("  const filterDeviceTypes = [typeId === 2 ? 'Принтер' : 'Устройство'];\n"),
+      }),
+    );
+  }
+  {
+    const real = disk(GROUP);
+    const anchor = '...orderedTypes().map((t) => ({ id: t.id, label: t.name })),';
+    add(
+      'WR-04 real: GroupAddDevicesModal -> лишнее поле между id и label',
+      'T1',
+      run({
+        over: new Map([
+          [
+            GROUP,
+            mutate(real, anchor, "{ id: 2, sort: 1, label: 'Принтер' },", 'typeOptions spread'),
+          ],
+        ]),
+      }),
+    );
+    add(
+      'WR-04 real: GroupAddDevicesModal -> тернарная карта',
+      'T5',
+      run({
+        over: new Map([
+          [
+            GROUP,
+            mutate(
+              real,
+              anchor,
+              "{ id: 2, label: String(typeId === 2 ? 'Принтер' : 'Устройство') }.label,",
+              'typeOptions spread',
+            ),
+          ],
+        ]),
+      }),
+    );
+  }
 
   // (е) антивакуум T4: один файл вместо двух потребителей
   add('T4: потребителей меньше порога', 'T4', run({ list: [GROUP] }));
