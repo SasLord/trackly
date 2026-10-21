@@ -22,6 +22,14 @@
 //!   карта id -> подпись; даже с ВЕРНОЙ подписью она копия справочника.
 //!   Ветка со строковым/маской-левой частью (`"device" => "Устройство"`,
 //!   `_ => "Устройство"`) не флагается.
+//! * `[R4]` (WR-05 ревью 41.12) литерал-подпись типа в тех формах карты, где
+//!   R2 его не видел: сразу после `(<число>,` или `[<число>,` (кортеж
+//!   `(2, "Принтер")`, `HashMap::from([(2, "Принтер")])`, массив пар) и в
+//!   блоке после числового условия: `if id == 2 { "Принтер" }`,
+//!   `if id != 2 { ... }`, `2 => { "Принтер" }`. Это та же карта id -> подпись,
+//!   только записанная кортежем или `if`; даже с ВЕРНОЙ подписью она копия
+//!   справочника. Литерал `"Принтер Дельта"` и вызовы `foo(n, "Принтер")`
+//!   с нечисловым первым аргументом не флагаются.
 //! * `[R3]` вакуум: просканировано не меньше `MIN_FILES` файлов и сработало
 //!   освобождение из `EXEMPT` (последнее проверяет и точное число).
 //!
@@ -38,10 +46,22 @@
 //!
 //! * подпись, склеенная из частей (`concat!`, `format!("{}{}", ...)`);
 //! * числовые сравнения `type_id == 2` — это идентичность, не подпись; вне
-//!   правил (так принтеры отличаются от устройств по `printers`/`kind`);
+//!   правил (так принтеры отличаются от устройств по `printers`/`kind`), пока
+//!   рядом нет литерала-подписи (иначе R4);
 //! * карта id -> подпись, у которой левая часть вычислена косвенно
 //!   (`let k = 2; match t { x if x == k => "Принтер" ...}`);
-//! * подпись «Устройство» как значение по умолчанию вне `match` с числом.
+//! * подпись «Устройство» как значение по умолчанию вне `match` с числом;
+//! * ветка `else { "Устройство" }` после `if id == 2 { "Принтер" }` отдельно:
+//!   её ловит срабатывание на первой ветке, не сама `else`;
+//! * кортеж/пара, где число не литерал (`(KIND_PRINTER, "Принтер")`,
+//!   `(id, "Принтер")`) и `(2u8, "Принтер")` с суффиксом типа;
+//! * подпись во втором или дальнем поле кортежа (`(2, 0, "Принтер")`),
+//!   в структуре (`Row { id: 2, name: "Принтер" }`), в `matches!`/`assert_eq!`;
+//! * многострочное условие, где число и `{` разделены чем-то кроме пробелов
+//!   (`if id == 2 && ready { "Принтер" }`);
+//! * подпись, пришедшая из `const NAME: &str = "Принтер"` с последующим
+//!   использованием имени — гейт видит само объявление только если оно в
+//!   одной из перечисленных форм.
 
 use std::collections::BTreeMap;
 
@@ -353,6 +373,62 @@ fn numeric_arm_before(prefix: &str) -> bool {
     !(s > 0 && is_ident(ch[s - 1]))
 }
 
+/// Начало десятичного числа, оканчивающегося на позиции `p` (после пробелов):
+/// слева не идентификатор и не точка (`x2`, `1.5`, `a.2`).
+fn number_start(ch: &[char], p: usize) -> Option<usize> {
+    if p == 0 || !ch[p - 1].is_ascii_digit() {
+        return None;
+    }
+    let mut s = p;
+    while s > 0 && ch[s - 1].is_ascii_digit() {
+        s -= 1;
+    }
+    if s > 0 && (is_ident(ch[s - 1]) || ch[s - 1] == '.') {
+        return None;
+    }
+    Some(s)
+}
+
+fn skip_ws_back(ch: &[char], mut p: usize) -> usize {
+    while p > 0 && ch[p - 1].is_whitespace() {
+        p -= 1;
+    }
+    p
+}
+
+/// R4: перед литералом стоит `(<число>,` / `[<число>,` либо открывающая блок `{`
+/// после `== <число>` / `!= <число>` / `<число> =>`.
+fn numeric_container_before(prefix: &str) -> bool {
+    let ch: Vec<char> = prefix.chars().collect();
+    let p = skip_ws_back(&ch, ch.len());
+    if p == 0 {
+        return false;
+    }
+    match ch[p - 1] {
+        ',' => {
+            let Some(s) = number_start(&ch, skip_ws_back(&ch, p - 1)) else {
+                return false;
+            };
+            let q = skip_ws_back(&ch, s);
+            q > 0 && (ch[q - 1] == '(' || ch[q - 1] == '[')
+        }
+        '{' => {
+            let p = skip_ws_back(&ch, p - 1);
+            if p >= 2 && ch[p - 2] == '=' && ch[p - 1] == '>' {
+                // `2 => { "Принтер" }`: числовая левая часть ветки
+                let head: String = ch[..p].iter().collect();
+                return numeric_arm_before(&head);
+            }
+            let Some(s) = number_start(&ch, p) else {
+                return false;
+            };
+            let q = skip_ws_back(&ch, s);
+            q >= 2 && (ch[q - 2] == '=' || ch[q - 2] == '!') && ch[q - 1] == '='
+        }
+        _ => false,
+    }
+}
+
 fn collect_hits(rel: &str, raw_stripped: &str) -> Vec<Hit> {
     let scanned = lex(raw_stripped);
     let raw_lines: Vec<&str> = raw_stripped.lines().collect();
@@ -377,6 +453,17 @@ fn collect_hits(rel: &str, raw_stripped: &str) -> Vec<Hit> {
         {
             hits.push(Hit {
                 rule: "R2",
+                file: rel.to_string(),
+                line: lit.line,
+                matched: trimmed.to_string(),
+                context: line_text(lit.line),
+            });
+        }
+        if TYPE_LABELS.contains(&low.as_str())
+            && numeric_container_before(&scanned.joined[..lit.code_pos])
+        {
+            hits.push(Hit {
+                rule: "R4",
                 file: rel.to_string(),
                 line: lit.line,
                 matched: trimmed.to_string(),
@@ -741,6 +828,112 @@ fn device_type_label_mutation_id_map() {
     let r = scan(&with_replaced(DEVICE_SVC, m), EXEMPT);
     assert_eq!(rules_of(&r), vec!["R2".to_string()], "{:#?}", r.violations);
     assert!(r.violations[0].contains("device_service.rs"));
+}
+
+/// WR-05 (ревью 41.12): формы карты id -> подпись, которые правило R2
+/// (`<число> => "Подпись"`) не видело. Каждая форма — точная из ревью.
+#[test]
+fn device_type_label_r4_wide_forms_are_caught() {
+    let cases: [(&str, &str); 8] = [
+        (
+            "const TYPES: [(i64, &str); 2] = [(1, \"Устройство\"), (2, \"Принтер\")];\n",
+            "массив кортежей (id, подпись)",
+        ),
+        (
+            "let m = HashMap::from([(2, \"Принтер\")]);\n",
+            "HashMap::from([(id, подпись)])",
+        ),
+        (
+            "fn l(id: i64) -> &'static str { if id == 2 { \"Принтер\" } else { \"Устройство\" } }\n",
+            "if id == N { подпись }",
+        ),
+        (
+            "fn l(id: i64) -> &'static str { if id != 1 { \"Принтер\" } else { \"\" } }\n",
+            "if id != N { подпись }",
+        ),
+        (
+            "fn l(t: i64) -> &'static str { match t { 2 => { \"Принтер\" } _ => \"\" } }\n",
+            "ветка-блок N => { подпись }",
+        ),
+        (
+            "let m = vec![[2, \"Принтер\"]];\n",
+            "[число, подпись]",
+        ),
+        (
+            "let m = [(\n    2,\n    \"Принтер\",\n)];\n",
+            "кортеж с переносами строк",
+        ),
+        (
+            "let m = vec![(3 , \"Расходник\")];\n",
+            "кортеж с пробелом до запятой (+ R1 на слово)",
+        ),
+    ];
+    let missed: Vec<&str> = cases
+        .iter()
+        .filter(|(text, _)| {
+            !rules_of(&scan(&one("crates/x/src/n.rs", text), &[])).contains(&"R4".to_string())
+        })
+        .map(|(_, what)| *what)
+        .collect();
+    assert!(missed.is_empty(), "R4 не поймало формы: {missed:#?}");
+    // кортеж с единственным сработавшим R4 (без R1/R2)
+    let r = scan(
+        &one(
+            "crates/x/src/n.rs",
+            "const TYPES: [(i64, &str); 2] = [(1, \"Устройство\"), (2, \"Принтер\")];\n",
+        ),
+        &[],
+    );
+    assert_eq!(
+        rules_of(&r),
+        vec!["R4".to_string(); 2],
+        "{:#?}",
+        r.violations
+    );
+}
+
+/// Соседние формы, которые R4 трогать не должен.
+#[test]
+fn device_type_label_r4_neighbours_are_not_flagged() {
+    let ok = "\
+fn a(x: &str) -> (&str, i64) { (\"Принтер Дельта\", 2) }
+fn b(n: usize) -> usize { foo(n, \"Принтер\"); 0 }
+fn c(k: &str) -> &'static str { if k == \"device\" { \"Устройство\" } else { \"\" } }
+fn d(k: &str) -> &'static str { match k { \"device\" => { \"Устройство\" } _ => \"\" } }
+fn e(x2: i64) -> &'static str { if x2 == 2 { \"Принтер Дельта\" } else { \"\" } }
+fn f(v: i64) -> bool { v >= 2 && v <= 3 }
+fn g(s: &str) -> Vec<(String, i64)> { vec![(s.to_string(), 2)] }
+fn h(id: i64) -> bool { id == 2 }
+";
+    let r = scan(&one("crates/x/src/ok.rs", ok), &[]);
+    assert!(r.violations.is_empty(), "{:#?}", r.violations);
+}
+
+/// Мутации РЕАЛЬНОГО device_service.rs в формы WR-05: каждая краснит ровно по R4,
+/// а освобождение псевдонима остаётся в силе (иначе добавился бы второй R1).
+#[test]
+fn device_type_label_mutation_wide_id_maps() {
+    let forms = [
+        "const TYPES: [(i64, &str); 2] = [(1, \"Устройство\"), (2, \"Принтер\")];",
+        "fn from_map() { let _ = HashMap::from([(2, \"Принтер\")]); }",
+        "fn by_if(id: i64) -> &'static str { if id == 2 { \"Принтер\" } else { \"Устройство\" } }",
+    ];
+    let mut problems = Vec::new();
+    for form in forms {
+        let m = mutate(DEVICE_SRC, ALIAS_ANCHOR, &format!("{ALIAS_ANCHOR}\n{form}"));
+        let r = scan(&with_replaced(DEVICE_SVC, m), EXEMPT);
+        let rules = rules_of(&r);
+        if rules.is_empty() {
+            problems.push(format!("форма не поймана: {form}"));
+        } else if rules.iter().any(|x| x != "R4")
+            || r.violations
+                .iter()
+                .any(|v| !v.contains("device_service.rs"))
+        {
+            problems.push(format!("{form}: {:#?}", r.violations));
+        }
+    }
+    assert!(problems.is_empty(), "{problems:#?}");
 }
 
 /// Лексер: `//` внутри строки не обрезает хвост, позиции литералов указывают
