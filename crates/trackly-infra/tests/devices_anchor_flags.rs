@@ -300,3 +300,68 @@ fn exclude_anchors_and_hide_apply_in_all_three_grouped_branches() {
         );
     }
 }
+
+/// Phase 41.2 (D-02): `group_members_only` сужает `list` и `COUNT` до устройств в
+/// ЖИВОЙ группе. Статусы перемешаны, чтобы фильтр статуса не маскировал результат;
+/// член мягко удалённой группы и устройство вне групп в выборку не попадают.
+#[test]
+fn group_members_only_narrows_list_and_count() {
+    let (mut conn, _d) = test_db();
+    conn.execute(
+        "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+         VALUES ('t_members_only', 'Тип', 'repair', ?1, ?1)",
+        params![NOW],
+    )
+    .unwrap();
+    let type_id = conn.last_insert_rowid();
+    let in_work: i64 = conn
+        .query_row(
+            "SELECT id FROM device_statuses WHERE code = 'в_работе'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    let live_a = add_device(&mut conn, "Системный блок #7", "ИНВ-000011");
+    let live_b = add_device(&mut conn, "Монитор #7", "ИНВ-000012");
+    let dead = add_device(&mut conn, "Принтер #7", "ИНВ-000013");
+    let outside = add_device(&mut conn, "Мышь #7", "ИНВ-000014");
+    // live_b и outside — «В работе», остальные «На складе».
+    for d in [live_b, outside] {
+        conn.execute(
+            "UPDATE devices SET status_id = ?1 WHERE id = ?2",
+            params![in_work, d],
+        )
+        .unwrap();
+    }
+
+    let live_group = add_group(&conn, type_id, 1, None);
+    let dead_group = add_group(&conn, type_id, 2, None);
+    join(&conn, live_a, live_group);
+    join(&conn, live_b, live_group);
+    join(&conn, dead, dead_group);
+    conn.execute(
+        "UPDATE groups SET deleted_at_utc = ?1 WHERE id = ?2",
+        params![NOW, dead_group],
+    )
+    .unwrap();
+
+    // Без флага — все четверо.
+    let (got, total) = ids(&conn, &DeviceFilter::default());
+    assert_eq!(got, sorted(vec![live_a, live_b, dead, outside]));
+    assert_eq!(total, 4);
+
+    // С флагом — ровно двое из живой группы; list и count согласованы.
+    let flt = DeviceFilter {
+        group_members_only: true,
+        ..Default::default()
+    };
+    let (got, total) = ids(&conn, &flt);
+    assert_eq!(got, sorted(vec![live_a, live_b]));
+    assert_eq!(total, 2);
+    assert!(
+        !got.contains(&dead),
+        "член мягко удалённой группы не входит"
+    );
+    assert!(!got.contains(&outside), "устройство вне групп не входит");
+}

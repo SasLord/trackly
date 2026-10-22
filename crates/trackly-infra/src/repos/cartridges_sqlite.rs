@@ -1212,6 +1212,7 @@ impl SqliteCartridgeRepository {
             None,
             None,
             None,
+            None,
         )
     }
 
@@ -1219,6 +1220,9 @@ impl SqliteCartridgeRepository {
     /// картриджей несут тот же `batch_id` / `entity_label` / `group_id`, что и строки
     /// пакета группы. Те же правила, что и у [`Self::cascade_place_for_printer_in_tx`]:
     /// вызывать только при `new_place_id: Some(..)`.
+    ///
+    /// `act_id` (Phase 41.2, D-14) — акт, по которому идёт перенос: строки журнала
+    /// картриджей несут его, иначе откат акта оставил бы их в журнале.
     #[allow(clippy::too_many_arguments)]
     pub fn cascade_place_for_printer_batch_in_tx(
         &self,
@@ -1232,6 +1236,7 @@ impl SqliteCartridgeRepository {
         batch_id: Option<&str>,
         entity_label: Option<&str>,
         group_id: Option<i64>,
+        act_id: Option<i64>,
     ) -> Result<(), AppError> {
         let attached: Vec<(i64, Option<i64>)> = {
             let mut stmt = tx
@@ -1270,7 +1275,7 @@ impl SqliteCartridgeRepository {
                 new_place_id,
                 source,
                 Some(note),
-                None,
+                act_id,
                 user_id,
                 now_utc,
                 batch_id,

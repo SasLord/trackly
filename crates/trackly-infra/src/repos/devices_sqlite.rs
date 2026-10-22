@@ -94,7 +94,9 @@ macro_rules! grouped_flag_predicates {
 }
 
 /// Флаги `list`: `?6` hide_anchor_members, `?7` anchors_only, `?8` exclude_anchors,
-/// `?9` member_of_group_id (NULL = не задан). Без флагов все четыре условия истинны.
+/// `?9` member_of_group_id (NULL = не задан), `?13` group_members_only (Phase 41.2,
+/// D-02: устройство состоит в живой, не удалённой группе). Без флагов все пять
+/// условий истинны.
 const LIST_FLAG_PREDICATES: &str = concat!(
     "(?6 = 0 OR d.id NOT IN (",
     anchor_members_sql!(),
@@ -104,7 +106,10 @@ const LIST_FLAG_PREDICATES: &str = concat!(
     anchor_ids_sql!(),
     ")) AND (?9 IS NULL OR d.id IN (",
     group_subtree_members_sql!("?9"),
-    "))"
+    ")) AND (?13 = 0 OR d.id IN (\
+       SELECT gd.device_id FROM group_devices gd \
+       JOIN groups g ON g.id = gd.group_id \
+       WHERE g.deleted_at_utc IS NULL))"
 );
 
 /// Поддерево мест `$place` для `d.place_id IN (...)`: само место и все вложенные,
@@ -869,8 +874,10 @@ fn count_list_rows(conn: &Connection, filter: &DeviceFilter) -> Result<i64, AppE
     let hide = filter.hide_anchor_members as i64;
     let only = filter.anchors_only as i64;
     let excl = filter.exclude_anchors as i64;
+    let members_only = filter.group_members_only as i64;
     // Static SQL: LIST_FLAG_PREDICATES собран `concat!` из литералов, флаги и
-    // id группы идут параметрами ?6..?9, фильтры списка (Phase 41.11) — ?10..?12.
+    // id группы идут параметрами ?6..?9, фильтры списка (Phase 41.11) — ?10..?12,
+    // group_members_only (Phase 41.2) — ?13.
     // ?4/?5 (LIMIT/OFFSET) в COUNT не используются; индексы выровнены со SELECT,
     // чтобы предикат был общим.
     conn.query_row(
@@ -894,7 +901,8 @@ fn count_list_rows(conn: &Connection, filter: &DeviceFilter) -> Result<i64, AppE
             filter.member_of_group_id,
             filter.place_id,
             state,
-            fts
+            fts,
+            members_only
         ],
         |r| r.get(0),
     )
@@ -915,6 +923,7 @@ fn select_list_rows(
     let hide = filter.hide_anchor_members as i64;
     let only = filter.anchors_only as i64;
     let excl = filter.exclude_anchors as i64;
+    let members_only = filter.group_members_only as i64;
     let mut stmt = conn
         .prepare(&format!(
             "{SELECT_DEVICES} WHERE
@@ -943,7 +952,8 @@ fn select_list_rows(
                 filter.member_of_group_id,
                 filter.place_id,
                 state,
-                fts
+                fts,
+                members_only
             ],
             from_row_with_short_path(&sep_ends, &sep_last_two),
         )

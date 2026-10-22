@@ -120,6 +120,9 @@ pub struct DeviceFilter {
     /// Phase 41.1, opt-in: вернуть устройства группы и её вложенных групп
     /// без якоря этой группы.
     pub member_of_group_id: Option<i64>,
+    /// Phase 41.2 (D-02), opt-in: только устройства, состоящие в живой группе;
+    /// фильтр статуса к ним не применяется вызывающим. Сужает только `list`.
+    pub group_members_only: bool,
 }
 
 /// Pagination parameters for list queries.

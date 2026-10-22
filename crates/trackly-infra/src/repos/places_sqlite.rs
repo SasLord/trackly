@@ -272,6 +272,7 @@ fn list_subtree_contents_impl(
     conn: &Connection,
     root_id: i64,
     nested: bool,
+    _expand_groups: bool,
 ) -> Result<Vec<PlaceContentRow>, AppError> {
     let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let cte = if nested {
@@ -295,7 +296,9 @@ fn list_subtree_contents_impl(
     let sql = format!(
         "{cte}SELECT 'device' AS kind, d.id, d.name, d.inventory_number,
                 pfp.full_path, ds.name AS status_name, pev.effective_variant,
-                ds.code AS status_code
+                ds.code AS status_code,
+                NULL AS group_type_name, NULL AS member_count,
+                NULL AS printer_member_count
          FROM devices d
          JOIN place_full_paths pfp ON pfp.place_id = d.place_id
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
@@ -306,7 +309,9 @@ fn list_subtree_contents_impl(
          UNION ALL
          SELECT 'printer' AS kind, d.id, d.name, d.inventory_number,
                 pfp.full_path, ds.name AS status_name, pev.effective_variant,
-                ds.code AS status_code
+                ds.code AS status_code,
+                NULL AS group_type_name, NULL AS member_count,
+                NULL AS printer_member_count
          FROM devices d
          JOIN place_full_paths pfp ON pfp.place_id = d.place_id
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
@@ -317,7 +322,9 @@ fn list_subtree_contents_impl(
          UNION ALL
          SELECT 'cartridge' AS kind, c.id, (m.brand || ' ' || m.model) AS name, c.code,
                 pfp.full_path, cs.name AS status_name, pev.effective_variant,
-                NULL AS status_code
+                NULL AS status_code,
+                NULL AS group_type_name, NULL AS member_count,
+                NULL AS printer_member_count
          FROM cartridges c
          JOIN place_full_paths pfp ON pfp.place_id = c.place_id
          JOIN cartridge_models m ON m.id = c.model_id
@@ -345,6 +352,9 @@ fn list_subtree_contents_impl(
                 place_path_short,
                 status_name: row.get(5)?,
                 status_code: row.get(7)?,
+                group_type_name: row.get(8)?,
+                member_count: row.get(9)?,
+                printer_member_count: row.get(10)?,
             })
         })
         .map_err(map_rusqlite)?;
@@ -667,8 +677,9 @@ impl PlaceRepository for SqlitePlaceRepository {
         conn: &Self::Conn,
         root_id: i64,
         nested: bool,
+        expand_groups: bool,
     ) -> Result<Vec<PlaceContentRow>, AppError> {
-        list_subtree_contents_impl(conn, root_id, nested)
+        list_subtree_contents_impl(conn, root_id, nested, expand_groups)
     }
 
     fn list_storage_place_ids(&self, conn: &Self::Conn) -> Result<Vec<i64>, AppError> {

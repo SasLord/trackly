@@ -127,11 +127,17 @@ pub trait PlaceRepository {
     /// PLC-06 "content of place" listing: devices/printers/cartridges under `root_id`.
     /// `nested: true` includes the whole subtree (default per D-24); `nested: false`
     /// restricts to items whose `place_id` is exactly `root_id` ("Только здесь").
+    ///
+    /// `expand_groups` (Phase 41.2, OQ-9) is REQUIRED with no default: `true` returns
+    /// the physical contents (every device, members of groups included); `false`
+    /// collapses group members into one `group` row per group. A stale caller must
+    /// fail to compile/deserialize rather than silently switch mode.
     fn list_subtree_contents(
         &self,
         conn: &Self::Conn,
         root_id: i64,
         nested: bool,
+        expand_groups: bool,
     ) -> Result<Vec<PlaceContentRow>, AppError>;
 
     /// All place IDs where `is_storage = true` on the node itself OR any ancestor

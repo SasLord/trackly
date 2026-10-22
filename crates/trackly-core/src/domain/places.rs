@@ -190,6 +190,13 @@ pub struct PlaceContentRow {
     /// `None` у картриджей (их статусы вне справочника кодов, D-07). UI выбирает
     /// тон бейджа по нему, а не по русской подписи `status_name` (D-06, D-09).
     pub status_code: Option<String>,
+    /// Phase 41.2 (D-18): название типа группы для строки вида `group`; у строк
+    /// device/printer/cartridge — `None`. Заполняет план 41.2-05.
+    pub group_type_name: Option<String>,
+    /// Phase 41.2 (D-18, D-23): число членов группы (только для `group`).
+    pub member_count: Option<i64>,
+    /// Phase 41.2 (D-23): число принтеров среди членов группы (только для `group`).
+    pub printer_member_count: Option<i64>,
 }
 
 /// Default sibling ordering (D-05): `sort_order` wins if set, else `level` (floors,
