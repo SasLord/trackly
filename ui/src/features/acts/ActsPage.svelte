@@ -299,13 +299,13 @@
     const confirmed = window.confirm(`${heading}\n\n${body}`);
     if (!confirmed) return;
     try {
-      const changedPlaceIds = await acts.delete(act.id, act.version);
+      const result = await acts.delete(act.id, act.version);
       // 40.1 exhaustive sweep (WR-06): soft-deleting an act undoes its
       // device mutations (devices move back to their pre-act place) just as
       // surely as create/edit/return move them forward — server returns the
       // touched place ids directly (`build_acts_delete`/`ActService::delete_soft`)
       // since there is no local ActDto snapshot to diff against here.
-      if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
+      if (result.changed_place_ids.length > 0) notifyPlaceContentChanged(result.changed_place_ids);
       pushToast(
         'success',
         isReturn

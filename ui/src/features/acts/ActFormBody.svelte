@@ -472,6 +472,7 @@
       deadline_utc: isoToUnix(deadlineISO),
       handover_date_utc: isoToUnix(handoverDateISO),
       items: payloadItems,
+      confirm_group_release: false,
     };
 
     let outcome: ActSaveOutcome;
@@ -488,6 +489,14 @@
       pendingConfirm = null;
       pushToast('success', `Создан акт №${outcome.number}`);
       onSaved(outcome);
+      return;
+    }
+    if (outcome.outcome === 'needs_group_release') {
+      // Placeholder until plan 41.2-12 replaces it with the confirmation popup.
+      pushToast(
+        'error',
+        'Не удалось сохранить акт: требуется подтверждение вывода устройств из состава.',
+      );
       return;
     }
     if (outcome.kind === 'mismatch') {
@@ -547,6 +556,7 @@
       deadline_utc: isoToUnix(deadlineISO),
       handover_date_utc: isoToUnix(handoverDateISO),
       items: updateItems,
+      confirm_group_release: false,
     };
 
     let outcome: ActSaveOutcome;
@@ -562,6 +572,14 @@
       pendingConfirm = null;
       pushToast('success', `Акт №${outcome.number} обновлён`);
       onSaved(outcome);
+      return;
+    }
+    if (outcome.outcome === 'needs_group_release') {
+      // Placeholder until plan 41.2-12 replaces it with the confirmation popup.
+      pushToast(
+        'error',
+        'Не удалось сохранить акт: требуется подтверждение вывода устройств из состава.',
+      );
       return;
     }
     if (outcome.kind === 'script_mix') {

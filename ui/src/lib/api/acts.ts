@@ -10,6 +10,7 @@
 import { apiCall } from './client';
 import type {
   ActCreateDto,
+  ActDeleteResultDto,
   ActDto,
   ActFilter,
   ActListResponse,
@@ -46,12 +47,15 @@ export const acts = {
     apiCall<ActDto>('acts_return', { actId, payload }),
 
   /**
-   * 40.1 exhaustive sweep: returns the `place_id`s the undo cascade actually
-   * touched (old ∪ new, deduped) — used by `ActsPage.svelte`'s `handleDelete`
-   * to invalidate place-tree counters, mirroring `changed_place_ids` on
-   * `ActDto` for create/update/return.
+   * 40.1 exhaustive sweep: `changed_place_ids` are the `place_id`s the undo
+   * cascade actually touched (old ∪ new, deduped) — used by `ActsPage.svelte`'s
+   * `handleDelete` to invalidate place-tree counters, mirroring
+   * `changed_place_ids` on `ActDto` for create/update/return.
+   * Phase 41.2 (D-09): the result also carries `notices` — non-fatal messages
+   * delivered together with a SUCCESSFUL deletion.
    */
-  delete: (id: number, version: number) => apiCall<number[]>('acts_delete', { id, version }),
+  delete: (id: number, version: number) =>
+    apiCall<ActDeleteResultDto>('acts_delete', { id, version }),
 
   counts: () => apiCall<ActsCountsDto>('acts_counts'),
 
