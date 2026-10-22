@@ -336,6 +336,7 @@ fn handover_dto(number: &str, devices: &[i64], place: i64) -> ActCreateDto {
                 quantity: 1,
             })
             .collect(),
+        confirm_group_release: false,
     }
 }
 

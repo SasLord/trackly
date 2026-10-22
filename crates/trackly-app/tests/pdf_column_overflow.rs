@@ -169,6 +169,7 @@ async fn device_card_long_field_wraps_instead_of_truncating() {
                     device_ids: Vec::new(),
                     quantity: 1,
                 }],
+                confirm_group_release: false,
             },
         )
         .await

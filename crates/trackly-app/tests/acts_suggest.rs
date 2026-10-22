@@ -84,6 +84,7 @@ async fn make_handover_with_giver_receiver(
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         },
     )
     .await
@@ -268,6 +269,7 @@ async fn suggest_person_excludes_soft_deleted_acts() {
                     device_ids: Vec::new(),
                     quantity: 1,
                 }],
+                confirm_group_release: false,
             },
         )
         .await
@@ -294,6 +296,7 @@ async fn suggest_person_excludes_soft_deleted_acts() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await

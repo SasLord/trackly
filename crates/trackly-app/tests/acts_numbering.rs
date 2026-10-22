@@ -95,6 +95,7 @@ fn create_payload(number: &str, device_id: i64) -> ActCreateDto {
             device_ids: Vec::new(),
             quantity: 1,
         }],
+        confirm_group_release: false,
     }
 }
 
@@ -248,6 +249,7 @@ async fn update_rejects_rename_to_number_matching_live_return_display() {
                 device_id: ids[1],
                 complectation_at_time: None,
             }],
+            confirm_group_release: false,
         };
         let err = svc
             .update(&Identity::trusted_admin(), update)
@@ -457,6 +459,7 @@ async fn rename(
                     complectation_at_time: None,
                 })
                 .collect(),
+            confirm_group_release: false,
         },
     )
     .await

@@ -110,6 +110,7 @@ async fn create_handover_with_location(
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         },
     )
     .await

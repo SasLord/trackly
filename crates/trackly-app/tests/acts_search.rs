@@ -89,6 +89,7 @@ async fn create_handover(
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         },
     )
     .await

@@ -128,6 +128,7 @@ async fn create_populates_changed_place_ids() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -185,6 +186,7 @@ async fn update_add_device_surfaces_old_and_new_place() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -217,6 +219,7 @@ async fn update_add_device_surfaces_old_and_new_place() {
                             complectation_at_time: None,
                         },
                     ],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -277,6 +280,7 @@ async fn update_remove_device_surfaces_reverted_place() {
                             quantity: 1,
                         },
                     ],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -305,6 +309,7 @@ async fn update_remove_device_surfaces_reverted_place() {
                         device_id: device1,
                         complectation_at_time: None,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -356,6 +361,7 @@ async fn do_return_surfaces_handover_and_return_place() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -434,6 +440,7 @@ async fn delete_soft_surfaces_undone_place() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await

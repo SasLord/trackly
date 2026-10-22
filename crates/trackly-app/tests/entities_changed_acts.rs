@@ -71,6 +71,7 @@ fn create_payload(number: &str, devices: &[i64], place: i64) -> ActCreateDto {
                 quantity: 1,
             })
             .collect(),
+        confirm_group_release: false,
     }
 }
 
@@ -103,6 +104,7 @@ fn update_payload(act: &ActDto, number: &str, devices: &[i64]) -> ActUpdateDto {
                 complectation_at_time: None,
             })
             .collect(),
+        confirm_group_release: false,
     }
 }
 

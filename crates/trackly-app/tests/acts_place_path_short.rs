@@ -198,6 +198,7 @@ async fn create_handover_at_place(
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         },
     )
     .await

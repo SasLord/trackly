@@ -158,6 +158,7 @@ async fn create_handover_with_location(
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         },
     )
     .await
@@ -216,6 +217,7 @@ fn update_dto_from(act: &ActDto, device_ids: &[i64]) -> ActUpdateDto {
                 complectation_at_time: None,
             })
             .collect(),
+        confirm_group_release: false,
     }
 }
 
@@ -823,6 +825,7 @@ async fn number_change_rejects_duplicate() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -844,6 +847,7 @@ async fn number_change_rejects_duplicate() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -896,6 +900,7 @@ async fn update_number_reuses_deleted_act_number() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -922,6 +927,7 @@ async fn update_number_reuses_deleted_act_number() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -1171,6 +1177,7 @@ async fn rename_with_return_frees_old_number() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await

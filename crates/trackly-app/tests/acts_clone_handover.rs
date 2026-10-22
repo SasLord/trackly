@@ -155,6 +155,7 @@ async fn recompute_parent_archived_count_based() {
                     quantity: 1,
                 },
             ],
+            confirm_group_release: false,
         };
         let handover = svc
             .create(&Identity::trusted_admin(), payload)
@@ -293,6 +294,7 @@ async fn clone_3_devices_on_handover_qty_3() {
                         device_ids: Vec::new(),
                         quantity: 3,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -351,6 +353,7 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
                         device_ids: Vec::new(),
                         quantity: 3,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -435,6 +438,7 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
                         device_ids: Vec::new(),
                         quantity: 3,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -552,6 +556,7 @@ async fn return_all_3_in_single_return_uses_v1_suffix() {
                         device_ids: Vec::new(),
                         quantity: 3,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -628,6 +633,7 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
                         device_ids: Vec::new(),
                         quantity: 3,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -721,6 +727,7 @@ async fn cardinality_bound_rejects_extra_device_id() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -791,6 +798,7 @@ async fn max_clone_qty_validation_rejects_1001() {
                         device_ids: Vec::new(),
                         quantity: 1001,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -837,6 +845,7 @@ async fn clones_have_null_serial_number_per_w5() {
                         device_ids: Vec::new(),
                         quantity: 3,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -920,6 +929,7 @@ async fn undo_return_restores_archived_to_false() {
                         device_ids: Vec::new(),
                         quantity: 3,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -1051,6 +1061,7 @@ async fn handover_via_resolved_place_sets_device_place_id() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await

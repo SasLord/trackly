@@ -144,6 +144,7 @@ async fn create_handover(
                 quantity: 1,
             })
             .collect(),
+        confirm_group_release: false,
     };
     svc.create(&Identity::trusted_admin(), payload)
         .await
@@ -179,6 +180,7 @@ async fn create_handover_with_handover_date(
                 quantity: 1,
             })
             .collect(),
+        confirm_group_release: false,
     };
     svc.create(&Identity::trusted_admin(), payload)
         .await
@@ -214,6 +216,7 @@ async fn create_handover_with_deadline(
                 quantity: 1,
             })
             .collect(),
+        confirm_group_release: false,
     };
     svc.create(&Identity::trusted_admin(), payload)
         .await
@@ -480,6 +483,7 @@ async fn create_handover_with_items(
         deadline_utc: None,
         handover_date_utc: None,
         items,
+        confirm_group_release: false,
     };
     svc.create(&Identity::trusted_admin(), payload)
         .await

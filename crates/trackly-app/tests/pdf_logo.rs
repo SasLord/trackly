@@ -264,6 +264,7 @@ async fn blob_logo_via_full_pipeline_renders_in_act_pdf() {
                     device_ids: Vec::new(),
                     quantity: 1,
                 }],
+                confirm_group_release: false,
             },
         )
         .await

@@ -77,6 +77,7 @@ async fn create_handover_with_date(
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         },
     )
     .await
@@ -221,6 +222,7 @@ async fn do_return_persists_own_date() {
                             quantity: 1,
                         },
                     ],
+                    confirm_group_release: false,
                 },
             )
             .await

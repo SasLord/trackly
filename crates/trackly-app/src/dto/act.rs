@@ -229,6 +229,12 @@ pub struct ActCreateDto {
     #[specta(type = Option<i32>)]
     pub handover_date_utc: Option<i64>,
     pub items: Vec<ActItemNewDto>,
+    /// Phase 41.2 (D-06): the user already confirmed taking the listed items
+    /// out of their groups. `false` (default, also for old clients) makes the
+    /// service answer `NeedsGroupRelease` instead of saving. snake_case, no
+    /// `rename_all` (P-13).
+    #[serde(default)]
+    pub confirm_group_release: bool,
 }
 
 /// Single item line in `ActCreateDto.items`.
@@ -289,6 +295,12 @@ pub struct ActUpdateDto {
     pub handover_date_utc: Option<i64>,
     /// Full replacement set of items — see struct-level doc comment.
     pub items: Vec<ActUpdateItemDto>,
+    /// Phase 41.2 (D-06): the user already confirmed taking the listed items
+    /// out of their groups. `false` (default, also for old clients) makes the
+    /// service answer `NeedsGroupRelease` instead of saving. snake_case, no
+    /// `rename_all` (P-13).
+    #[serde(default)]
+    pub confirm_group_release: bool,
 }
 
 /// Number-edit input for `ActUpdateDto` (D-05, Phase 40.2 Plan 06) —
@@ -323,6 +335,41 @@ pub enum ActSaveOutcome {
     /// serialize/type it identically to `T`) — no wire-format change.
     Created(Box<ActDto>),
     NeedsConfirmation(NumberWarningDto),
+    /// Phase 41.2 (D-06): saving would take items out of their groups; the UI
+    /// must ask once and resend with `confirm_group_release = true`.
+    NeedsGroupRelease(GroupReleaseWarningDto),
+}
+
+/// One item that would leave its group on save (Phase 41.2).
+/// `name` is the item taken out (device, or the group name for a nested group
+/// being detached); `group_name` is the source group (the parent for a detach).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupReleaseItemDto {
+    pub name: String,
+    pub group_name: String,
+}
+
+/// Payload of `ActSaveOutcome::NeedsGroupRelease`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupReleaseWarningDto {
+    pub items: Vec<GroupReleaseItemDto>,
+}
+
+/// A non-fatal notice delivered together with a SUCCESSFUL act deletion
+/// (Phase 41.2, D-09). `group_id` lets the UI offer an "open group" link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ActNoticeDto {
+    pub message: String,
+    #[specta(type = Option<i32>)]
+    pub group_id: Option<i64>,
+}
+
+/// Result of `ActService::delete_soft` / `acts_delete` (Phase 41.2, D-09).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ActDeleteResultDto {
+    #[specta(type = Vec<i32>)]
+    pub changed_place_ids: Vec<i64>,
+    pub notices: Vec<ActNoticeDto>,
 }
 
 impl ActSaveOutcome {
@@ -339,6 +386,9 @@ impl ActSaveOutcome {
             ActSaveOutcome::Created(dto) => *dto,
             ActSaveOutcome::NeedsConfirmation(warning) => {
                 panic!("{msg}: expected Created, got NeedsConfirmation({warning:?})")
+            }
+            ActSaveOutcome::NeedsGroupRelease(warning) => {
+                panic!("{msg}: expected Created, got NeedsGroupRelease({warning:?})")
             }
         }
     }
@@ -544,6 +594,7 @@ mod tests {
             deadline_utc: None,
             handover_date_utc: None,
             items: vec![],
+            confirm_group_release: false,
         };
         let s = serde_json::to_string(&dto).expect("ser");
         assert!(s.contains("number_input"), "snake_case 'number_input'");
@@ -569,6 +620,7 @@ mod tests {
                 device_id: 5,
                 complectation_at_time: Some("кабель, коробка".into()),
             }],
+            confirm_group_release: false,
         };
         let s = serde_json::to_string(&dto).expect("ser");
         assert!(

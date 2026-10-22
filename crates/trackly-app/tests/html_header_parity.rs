@@ -231,6 +231,7 @@ async fn render_header_fragments_for_org(
             device_ids: Vec::new(),
             quantity: 1,
         }],
+        confirm_group_release: false,
     };
     let act = acts
         .create(&Identity::trusted_admin(), act_payload)

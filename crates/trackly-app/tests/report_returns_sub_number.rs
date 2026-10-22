@@ -107,6 +107,7 @@ async fn returns_report_loads_when_sub_number_is_set() {
                         quantity: 1,
                     })
                     .collect(),
+                confirm_group_release: false,
             },
         )
         .await
@@ -225,6 +226,7 @@ async fn acts_report_number_is_unchanged_for_handover() {
                         quantity: 1,
                     })
                     .collect(),
+                confirm_group_release: false,
             },
         )
         .await

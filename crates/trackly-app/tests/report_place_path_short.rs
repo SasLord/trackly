@@ -147,6 +147,7 @@ async fn create_handover(acts: &ActService, device_id: i64, place_id: i64, giver
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         },
     )
     .await

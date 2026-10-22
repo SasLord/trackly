@@ -78,6 +78,7 @@ async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::d
                 quantity: 1,
             })
             .collect(),
+        confirm_group_release: false,
     };
     svc.create(&Identity::trusted_admin(), payload)
         .await

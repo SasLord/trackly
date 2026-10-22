@@ -247,6 +247,7 @@ async fn every_number_space_mutation_broadcasts() {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await

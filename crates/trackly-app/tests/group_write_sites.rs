@@ -1080,6 +1080,7 @@ async fn handover_act(ctx: &AppCtx, number: &str, devices: &[i64], place: i64) -
                         quantity: 1,
                     })
                     .collect(),
+                confirm_group_release: false,
             },
         )
         .await
@@ -1111,6 +1112,7 @@ async fn update_handover(ctx: &AppCtx, act: &ActDto, devices: &[i64]) -> ActDto 
                         complectation_at_time: None,
                     })
                     .collect(),
+                confirm_group_release: false,
             },
         )
         .await

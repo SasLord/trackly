@@ -105,6 +105,7 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
 
         // Создаём сессию admin
@@ -203,6 +204,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                         device_ids: Vec::new(),
                         quantity: 1,
                     }],
+                    confirm_group_release: false,
                 },
             )
             .await?

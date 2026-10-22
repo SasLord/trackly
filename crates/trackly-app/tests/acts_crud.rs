@@ -122,6 +122,7 @@ async fn create_handover_happy() {
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         };
         let dto = svc
             .create(&Identity::trusted_admin(), payload)
@@ -224,6 +225,7 @@ async fn create_with_number_already_taken_returns_conflict() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         svc.create(&Identity::trusted_admin(), p1)
             .await
@@ -243,6 +245,7 @@ async fn create_with_number_already_taken_returns_conflict() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let err = svc
             .create(&Identity::trusted_admin(), p2)
@@ -285,6 +288,7 @@ async fn number_of_deleted_act_is_free_to_reuse() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let act1 = svc
             .create(&Identity::trusted_admin(), p1)
@@ -309,6 +313,7 @@ async fn number_of_deleted_act_is_free_to_reuse() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let act2 = svc
             .create(&Identity::trusted_admin(), p2)
@@ -359,6 +364,7 @@ async fn rollback_on_invalid_device_id() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let err = svc
             .create(&Identity::trusted_admin(), payload)
@@ -420,6 +426,7 @@ async fn counts_match_switch_bar() {
                     device_ids: Vec::new(),
                     quantity: 1,
                 }],
+                confirm_group_release: false,
             };
             svc.create(&Identity::trusted_admin(), p)
                 .await
@@ -461,6 +468,7 @@ async fn handover_with_quantity_persists() {
                 device_ids: Vec::new(),
                 quantity: 3,
             }],
+            confirm_group_release: false,
         };
         let dto = svc
             .create(&Identity::trusted_admin(), payload)
@@ -531,6 +539,7 @@ async fn create_validates_required_fields() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let err = svc
             .create(&Identity::trusted_admin(), p1)
@@ -551,6 +560,7 @@ async fn create_validates_required_fields() {
             deadline_utc: None,
             handover_date_utc: None,
             items: vec![],
+            confirm_group_release: false,
         };
         let err = svc
             .create(&Identity::trusted_admin(), p2)
@@ -590,6 +600,7 @@ async fn list_returns_handover_with_items() {
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         };
         svc.create(&Identity::trusted_admin(), payload)
             .await
@@ -647,6 +658,7 @@ async fn create_stores_real_caller_user_id_in_audit_log() {
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         };
         let dto = svc
             .create(&manager, payload)
@@ -720,6 +732,7 @@ async fn create_with_trusted_admin_caller_stores_null_user_id() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let dto = svc
             .create(&Identity::trusted_admin(), payload)

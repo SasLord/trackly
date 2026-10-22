@@ -193,6 +193,7 @@ async fn place_movements_act_link() {
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         };
 
         let handover = svc
@@ -280,6 +281,7 @@ async fn place_movements_null_place_skip() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)
@@ -375,6 +377,7 @@ async fn place_movements_act_undo_deletes() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)
@@ -428,6 +431,7 @@ async fn place_movements_act_undo_deletes() {
                 device_ids: Vec::new(),
                 quantity: 1,
             }],
+            confirm_group_release: false,
         };
         let control = svc
             .create(&Identity::trusted_admin(), control_payload)
@@ -519,6 +523,7 @@ async fn place_movements_act_edit_remove_records_reversion() {
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         };
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)
@@ -553,6 +558,7 @@ async fn place_movements_act_edit_remove_records_reversion() {
                 device_id: kept_id,
                 complectation_at_time: None,
             }],
+            confirm_group_release: false,
         };
         svc.update(&Identity::trusted_admin(), update)
             .await
@@ -632,6 +638,7 @@ async fn place_movements_return_edit_unreturn_records_reversion() {
                     quantity: 1,
                 })
                 .collect(),
+            confirm_group_release: false,
         };
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)

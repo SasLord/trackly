@@ -156,6 +156,7 @@ async fn full_lifecycle_then_undo() {
                             quantity: 1,
                         })
                         .collect(),
+                    confirm_group_release: false,
                 },
             )
             .await
@@ -330,6 +331,7 @@ async fn handover_pdf_render_within_e2e() {
                             quantity: 1,
                         })
                         .collect(),
+                    confirm_group_release: false,
                 },
             )
             .await
