@@ -1090,6 +1090,7 @@ async fn handover_act(ctx: &AppCtx, number: &str, devices: &[i64], place: i64) -
         .expect_created("create handover")
 }
 
+// Подтверждение выноса выдано заранее по той же причине, что у `handover_act`.
 async fn update_handover(ctx: &AppCtx, act: &ActDto, devices: &[i64]) -> ActDto {
     ctx.acts
         .update(
@@ -1114,7 +1115,7 @@ async fn update_handover(ctx: &AppCtx, act: &ActDto, devices: &[i64]) -> ActDto 
                         complectation_at_time: None,
                     })
                     .collect(),
-                confirm_group_release: false,
+                confirm_group_release: true,
             },
         )
         .await
