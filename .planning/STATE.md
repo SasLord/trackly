@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-22T15:03:58.322Z"
+last_updated: "2026-10-22T15:15:36.378Z"
 last_activity: 2026-10-22
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 235
-  completed_plans: 228
+  completed_plans: 229
   percent: 54
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.2 (groups-acts-places) — EXECUTING
-Plan: 10 of 16
+Plan: 11 of 16
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -645,6 +645,7 @@ Last activity: 2026-10-22
 | Phase 41.2 P07 | 2h | 3 tasks | 9 files |
 | Phase 41.2 P08 | 45min | 3 tasks | 4 files |
 | Phase 41.2 P09 | 3h | 3 tasks | 7 files |
+| Phase 41.2 P10 | 55min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1387,6 +1388,8 @@ Recent decisions affecting current work:
 - [Phase 41.2]: [41.2-07] Place validation precedes group-release confirmation; confirmation-vs-first-write order is not behaviour-observable (tx rollback), held by plan 41.2-16 source-order guard
 - [Phase 41.2]: [41.2-08] expandGroups mode owned by PlacesPage (localStorage), group row focus-jump via single openGroup(); gate pins exactly one onclick in the group branch
 - [Phase 41.2]: [41.2-09] Group return in act update fires only when the whole coverage of a moved group is removed; first UPDATE over audit_log (detach_act_link_in_tx) marks custom:group_moved_by_act as _reverted
+- [Phase 41.2]: 41.2-10: group/member picker items expand into one synthetic member row so Dropdown AUTO-05 single-result flatten stays correct (no shared Dropdown change) — Dropdown calls onExpandGroup for a single result regardless of isGroupExpandable
+- [Phase 41.2]: 41.2-10: check-place-path-short gets exempt verdict kind SLOT_TEXT for a short path read in script into a Dropdown slot — no existing verdict kind expressed it
 
 ### Pending Todos
 
@@ -1591,8 +1594,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-22T15:03:58.312Z
-Stopped at: Completed 41.2-09-PLAN.md
+Last session: 2026-10-22T15:15:26.500Z
+Stopped at: Completed 41.2-10-PLAN.md
 Resume file: None
 
 None
