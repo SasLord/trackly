@@ -57,6 +57,11 @@
   // shared/bookmarked link) than "whatever was last open".
   const SELECTED_STORAGE_KEY = 'trackly:places:selectedId';
   const ONLY_HERE_STORAGE_KEY = 'trackly:places:onlyHere';
+  // Phase 41.2 (D-22): the "expand" display mode. Owned HERE for the same reason
+  // as `onlyHere` — PlaceContents is remounted by the {#key} below on every
+  // node selection, so a local $state there would reset on each switch.
+  // Default OFF; never reset by anything (not even handleShowBlockedContents).
+  const EXPAND_GROUPS_STORAGE_KEY = 'trackly:places:expandGroups';
   // GAP-10 (39-UAT.md, Прогон 5): the content-panel tab (Все/Устройства/
   // Принтеры/Картриджи) used to live as local state INSIDE PlaceContents,
   // which is remounted on every node selection AND fully destroyed whenever
@@ -106,6 +111,25 @@
       localStorage.setItem(ONLY_HERE_STORAGE_KEY, v ? '1' : '0');
     } catch {
       // Storage unavailable/quota exceeded — the toggle simply won't persist
+      // across navigation.
+    }
+  }
+
+  function readPersistedExpandGroups(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(EXPAND_GROUPS_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function persistExpandGroups(v: boolean): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(EXPAND_GROUPS_STORAGE_KEY, v ? '1' : '0');
+    } catch {
+      // Storage unavailable/quota exceeded — the mode simply won't persist
       // across navigation.
     }
   }
@@ -173,6 +197,10 @@
   // is ALSO persisted (see below), so navigating away and back never
   // resurrects the pre-reset value (UAT gap 5).
   let onlyHere = $state(readPersistedOnlyHere());
+  // Phase 41.2 (D-22): lifted like `onlyHere`, but unlike it NEVER reset —
+  // "Показать содержимое" says nothing about the expand mode. Persisted from
+  // the change handler below, not from an $effect (effect_update_depth_exceeded).
+  let expandGroups = $state(readPersistedExpandGroups());
   // GAP-10: same lifting as `onlyHere` above — survives PlaceContents'
   // {#key} remount on node selection AND a full route change away and back.
   let activeTab = $state<ContentTab>(readPersistedActiveTab());
@@ -235,6 +263,11 @@
               onOnlyHereChange={(v) => {
                 onlyHere = v;
                 persistOnlyHere(v);
+              }}
+              {expandGroups}
+              onExpandGroupsChange={(v) => {
+                expandGroups = v;
+                persistExpandGroups(v);
               }}
               {activeTab}
               onActiveTabChange={(v) => {

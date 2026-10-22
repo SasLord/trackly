@@ -43,6 +43,12 @@
     onSelectAncestor: (_id: number) => void;
     onlyHere: boolean;
     onOnlyHereChange: (_v: boolean) => void;
+    // Phase 41.2 (D-22): display mode "show group members as separate rows",
+    // a CONTROLLED pair owned by PlacesPage for the same reason as `onlyHere`
+    // (this component is remounted on every node selection). There is no local
+    // state for it here.
+    expandGroups: boolean;
+    onExpandGroupsChange: (_v: boolean) => void;
     // GAP-10 (39-UAT.md, Прогон 5): lifted OUT of this component, same reason
     // and same convention as `onlyHere` above (GAP-1/GAP-5) — this component
     // is remounted via PlacesPage's `{#key place.id:token}` on every
@@ -60,6 +66,8 @@
     onSelectAncestor,
     onlyHere,
     onOnlyHereChange,
+    expandGroups,
+    onExpandGroupsChange,
     activeTab,
     onActiveTabChange,
   }: Props = $props();
@@ -170,12 +178,14 @@
   $effect(() => {
     const rootId = place.id;
     const nested = !onlyHere;
+    // `expandGroups` (read in the request below) is a reactive dependency of
+    // this effect: toggling the checkbox reloads the rows from the server.
     void reloadToken; // GAP-8: forces a re-fetch after an edit-modal save.
     void placeContentEventsStore.reloadSeq; // Фаза 41.7 (D-17): перезагрузка по событию другого клиента
     let cancelled = false;
     loading = true;
     loadError = false;
-    apiCall<PlaceContentDto[]>('places_contents', { rootId, nested, expandGroups: true })
+    apiCall<PlaceContentDto[]>('places_contents', { rootId, nested, expandGroups })
       .then((r) => {
         if (!cancelled) rows = r;
       })
@@ -195,12 +205,29 @@
 
   const counts = $derived.by(() => {
     const all = rows ?? [];
-    return {
-      all: all.length,
-      device: all.filter((r) => r.kind === 'device').length,
-      printer: all.filter((r) => r.kind === 'printer').length,
-      cartridge: all.filter((r) => r.kind === 'cartridge').length,
-    };
+    // D-23 / UI-SPEC §11.5: tab counters are PHYSICAL devices in both modes.
+    // A collapsed group row is not one unit — it contributes its member counts,
+    // so the numbers do not change when the checkbox is toggled (only the
+    // number of rows does). Both counts are null on non-group rows only.
+    let total = 0;
+    let device = 0;
+    let printer = 0;
+    let cartridge = 0;
+    for (const r of all) {
+      if (r.kind === 'group') {
+        const members = r.member_count ?? 0;
+        const printers = r.printer_member_count ?? 0;
+        total += members;
+        device += members - printers;
+        printer += printers;
+      } else {
+        total += 1;
+        if (r.kind === 'device') device += 1;
+        else if (r.kind === 'printer') printer += 1;
+        else if (r.kind === 'cartridge') cartridge += 1;
+      }
+    }
+    return { all: total, device, printer, cartridge };
   });
 
   const tabs = $derived([
@@ -214,8 +241,17 @@
     },
   ]);
 
+  // D-21 / R-08: a group row stands on «Все» and on «Устройства» (only when it
+  // has non-printer members — a printers-only group never had its devices on
+  // that tab). No fifth tab; ContentTab is unchanged.
   const filteredRows = $derived(
-    (rows ?? []).filter((r) => activeTab === 'all' || r.kind === activeTab),
+    (rows ?? []).filter((r) => {
+      if (activeTab === 'all') return true;
+      if (r.kind === 'group') {
+        return activeTab === 'device' && (r.member_count ?? 0) - (r.printer_member_count ?? 0) > 0;
+      }
+      return r.kind === activeTab;
+    }),
   );
 
   // §14.2's exact copy pair is defined for a genuinely empty NODE, not an empty
@@ -227,6 +263,20 @@
   const isTabFilteredEmpty = $derived(
     !loading && !loadError && (rows?.length ?? 0) > 0 && filteredRows.length === 0,
   );
+
+  // R-09: the one place where a physical tab counter and the row count may
+  // legitimately disagree — name the checkbox instead of looking like data loss.
+  const emptyTabHint = $derived.by(() => {
+    if (expandGroups || !isTabFilteredEmpty) return null;
+    const groupRows = (rows ?? []).filter((r) => r.kind === 'group');
+    if (activeTab === 'printer' && groupRows.some((r) => (r.printer_member_count ?? 0) > 0)) {
+      return 'Принтеры этого места входят в группы — включите «Разворачивать группы», чтобы увидеть их.';
+    }
+    if (activeTab === 'device' && groupRows.length > 0) {
+      return 'Устройства этого места входят в группы — включите «Разворачивать группы», чтобы увидеть их.';
+    }
+    return null;
+  });
 
   // UAT gap 7 (2026-08-25): «Тип» is redundant once the tab already filters to
   // a single kind — only shown on the «Все» tab. Base columns (Название, Инв.
@@ -363,9 +413,20 @@
       ariaLabel="Фильтр содержимого"
     />
     <div class="controls-right">
-      <Checkbox checked={onlyHere} onchange={onOnlyHereChange} id="place-contents-only-here">
-        <span title="Не показывать содержимое вложенных мест">Только здесь</span>
-      </Checkbox>
+      <div class="display-modes">
+        <Checkbox checked={onlyHere} onchange={onOnlyHereChange} id="place-contents-only-here">
+          <span title="Не показывать содержимое вложенных мест">Только здесь</span>
+        </Checkbox>
+        <Checkbox
+          checked={expandGroups}
+          onchange={onExpandGroupsChange}
+          id="place-contents-expand-groups"
+        >
+          <span title="Показывать устройства из групп отдельными строками вместо строки группы"
+            >Разворачивать группы</span
+          >
+        </Checkbox>
+      </div>
       <Button variant="secondary" onclick={openMoveModal}>Перенести всё содержимое в…</Button>
     </div>
   </div>
@@ -386,7 +447,7 @@
         ? onlyHere
           ? 'Содержимое вложенных мест скрыто — выключите «Только здесь», чтобы увидеть его.'
           : 'Здесь и во вложенных местах ничего не размещено.'
-        : 'Переключите вкладку, чтобы увидеть остальное содержимое.'}
+        : (emptyTabHint ?? 'Переключите вкладку, чтобы увидеть остальное содержимое.')}
     >
       {#snippet head()}
         {#if showKindColumn}<th>Тип</th>{/if}
@@ -613,6 +674,14 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-md);
+  }
+
+  // The two display-mode checkboxes read as neighbours; the gap to the
+  // «Перенести…» button stays the wider .controls-right gap.
+  .display-modes {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
   }
 
   // Bulk-move confirm dialog (D-28, Plan 40-19) — mirrors PlaceMoveModal.svelte's
