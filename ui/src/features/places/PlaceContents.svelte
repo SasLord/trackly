@@ -16,6 +16,7 @@
   // `parent_id` up via repeated `places_get` calls (cheap: place-tree depth is a
   // handful of levels, not fetched per row) rather than parsing `full_path`, so
   // each segment carries a real place id for `onSelectAncestor`.
+  import { push } from 'svelte-spa-router';
   import { apiCall } from '$lib/api/client';
   import Tabs from '$lib/components/Tabs.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
@@ -131,6 +132,20 @@
 
   function openView(row: PlaceContentDto): void {
     viewRow = row;
+  }
+
+  // Phase 41.2 (D-19): a group row has no «Просмотр» popup. The only way out of
+  // it is a focus-jump into the groups section — via the name button (the sole
+  // keyboard path) or a double click on the row. A single click on the row body
+  // is deliberately inert (R-03).
+  function openGroup(row: PlaceContentDto): void {
+    void push(`#/groups?id=${row.id}`);
+  }
+
+  // «(6 устройств)» is assembled on the client (UI-SPEC §11.2): the server sends
+  // no glued label, only member_count.
+  function deviceCountLabel(n: number): string {
+    return `(${n} ${pluralizeRu(n, ['устройство', 'устройства', 'устройств'])})`;
   }
 
   // UAT gap 7: the keyboard-activatable entry point (role="button"/tabindex=0,
@@ -457,54 +472,76 @@
         <th>Статус</th>
       {/snippet}
       {#each filteredRows as row (`${row.kind}-${row.id}`)}
-        <TableRow class="place-content-row">
-          {#if showKindColumn}
-            <td
-              class="cell cell-kind"
-              role="button"
-              tabindex="0"
-              onclick={() => openView(row)}
-              onkeydown={(e) => handleRowActivateKeydown(e, row)}
-            >
-              {CONTENT_KIND_LABELS[row.kind] ?? row.kind}
-            </td>
-            <td class="cell" title={row.name} onclick={() => openView(row)}>{row.name}</td>
-          {:else}
-            <td
-              class="cell"
-              title={row.name}
-              role="button"
-              tabindex="0"
-              onclick={() => openView(row)}
-              onkeydown={(e) => handleRowActivateKeydown(e, row)}
-            >
-              {row.name}
-            </td>
-          {/if}
-          <td class="cell" onclick={() => openView(row)}>
-            <span class="tr-mono">{row.inventory_or_code ?? '—'}</span>
-          </td>
-          {#if !onlyHere}
-            <td class="cell" title={row.full_path} onclick={() => openView(row)}>
-              {row.place_path_short}
-            </td>
-          {/if}
-          <td class="cell" onclick={() => openView(row)}>
-            {#if row.status_name}
-              {#if row.kind === 'cartridge'}
-                <Badge variant={cartridgeStatusVariant(row.status_name)}>{row.status_name}</Badge>
-              {:else}
-                <Badge
-                  variant={statusTone(row.status_code).variant}
-                  appearance={statusTone(row.status_code).appearance}
-                  muted={statusTone(row.status_code).muted}>{row.status_name}</Badge
-                >
-              {/if}
-            {:else}
-              —
+        {#if row.kind === 'group'}
+          <TableRow
+            class="place-content-row place-content-group-row"
+            ondblclick={() => openGroup(row)}
+          >
+            {#if showKindColumn}
+              <td class="cell cell-kind cell-static">{row.group_type_name ?? ''}</td>
             {/if}
-          </td>
-        </TableRow>
+            <td class="cell cell-static" title={row.name}>
+              <button type="button" class="group-name-link" onclick={() => openGroup(row)}
+                >{row.name}</button
+              >
+              <span class="group-count">{deviceCountLabel(row.member_count ?? 0)}</span>
+            </td>
+            <td class="cell cell-static"><span class="tr-mono">—</span></td>
+            {#if !onlyHere}
+              <td class="cell cell-static" title={row.full_path}>{row.place_path_short}</td>
+            {/if}
+            <td class="cell cell-static">—</td>
+          </TableRow>
+        {:else}
+          <TableRow class="place-content-row">
+            {#if showKindColumn}
+              <td
+                class="cell cell-kind"
+                role="button"
+                tabindex="0"
+                onclick={() => openView(row)}
+                onkeydown={(e) => handleRowActivateKeydown(e, row)}
+              >
+                {CONTENT_KIND_LABELS[row.kind] ?? row.kind}
+              </td>
+              <td class="cell" title={row.name} onclick={() => openView(row)}>{row.name}</td>
+            {:else}
+              <td
+                class="cell"
+                title={row.name}
+                role="button"
+                tabindex="0"
+                onclick={() => openView(row)}
+                onkeydown={(e) => handleRowActivateKeydown(e, row)}
+              >
+                {row.name}
+              </td>
+            {/if}
+            <td class="cell" onclick={() => openView(row)}>
+              <span class="tr-mono">{row.inventory_or_code ?? '—'}</span>
+            </td>
+            {#if !onlyHere}
+              <td class="cell" title={row.full_path} onclick={() => openView(row)}>
+                {row.place_path_short}
+              </td>
+            {/if}
+            <td class="cell" onclick={() => openView(row)}>
+              {#if row.status_name}
+                {#if row.kind === 'cartridge'}
+                  <Badge variant={cartridgeStatusVariant(row.status_name)}>{row.status_name}</Badge>
+                {:else}
+                  <Badge
+                    variant={statusTone(row.status_code).variant}
+                    appearance={statusTone(row.status_code).appearance}
+                    muted={statusTone(row.status_code).muted}>{row.status_name}</Badge
+                  >
+                {/if}
+              {:else}
+                —
+              {/if}
+            </td>
+          </TableRow>
+        {/if}
       {/each}
     </Table>
   </div>
@@ -663,6 +700,30 @@
 
   .cell {
     cursor: pointer;
+  }
+
+  // Group-row cells are inert on click (R-03), so they do not advertise it.
+  .cell-static {
+    cursor: default;
+  }
+
+  .group-name-link {
+    padding: 0;
+    background: none;
+    border: none;
+    font: var(--tr-text-body-strong);
+    color: var(--tr-accent-text);
+    cursor: pointer;
+    text-align: left;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .group-count {
+    margin-left: var(--tr-space-xs);
+    color: var(--tr-text-secondary);
   }
 
   .cell-kind {
