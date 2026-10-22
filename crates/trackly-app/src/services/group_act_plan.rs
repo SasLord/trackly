@@ -28,11 +28,19 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rusqlite::{Connection, Transaction};
-use trackly_core::domain::groups::PlanGroupRow;
+use rusqlite::{Connection, OptionalExtension, Transaction};
+use trackly_core::domain::devices::DeviceRow;
+use trackly_core::domain::groups::{ActGroupEffectKind, ActGroupEffectNew, PlanGroupRow};
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::SqliteGroupRepository;
+
+use crate::services::act_service::device_snapshot_json;
+use crate::services::group_membership::{
+    release_device_in_tx, restore_membership_in_tx, GroupNotice, ReleaseEffect, RestoreOutcome,
+};
+use crate::services::group_place::{propagate_group_place_in_tx, GroupMoveCause, GroupMoveDeps};
 
 /// Снимок живых групп и членства для планировщика (читается одним набором запросов).
 #[derive(Debug, Clone)]
@@ -392,6 +400,462 @@ pub(crate) fn plan_in_tx(
         }
     }
     Ok(result)
+}
+
+/// Итог применения плана внутри транзакции акта.
+#[derive(Debug, Default)]
+pub(crate) struct AppliedGroupPlan {
+    /// Состояние устройств переехавших поддеревьев ДО переноса: `before_json` аудита
+    /// позиций акта обязан хранить его (ловушка P-04), иначе откат вернёт уже новое место.
+    pub pre_snapshots: HashMap<i64, DeviceRow>,
+    /// Все устройства переехавших поддеревьев: вызывающий НЕ пишет им отдельную строку
+    /// журнала места и НЕ вызывает release (их место уже поставила группа).
+    pub moved_device_ids: HashSet<i64>,
+    /// Прежние и новое места групп и устройств (включая место ПУСТОЙ группы), без дублей.
+    pub touched_place_ids: Vec<i64>,
+    /// Корни переехавших групп, отцепленные группы и группы-источники выноса.
+    pub touched_group_ids: Vec<i64>,
+}
+
+/// Итог обратных операций: уведомления и затронутые места и группы.
+#[derive(Debug, Default)]
+pub(crate) struct GroupRevertOutcome {
+    pub notices: Vec<GroupNotice>,
+    pub touched_place_ids: Vec<i64>,
+    pub touched_group_ids: Vec<i64>,
+}
+
+fn push_unique(out: &mut Vec<i64>, id: i64) {
+    if !out.contains(&id) {
+        out.push(id);
+    }
+}
+
+/// Выполнить `f` в точке сохранения: ошибка откатывает только её запись, а не всю
+/// транзакцию акта. Нужен обратным операциям: ошибка одного эффекта не должна
+/// прерывать откат (она превращается в уведомление).
+fn guarded<T>(
+    tx: &Transaction<'_>,
+    f: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    tx.execute_batch("SAVEPOINT group_act_effect")
+        .map_err(map_rusqlite)?;
+    match f() {
+        Ok(v) => {
+            tx.execute_batch("RELEASE group_act_effect")
+                .map_err(map_rusqlite)?;
+            Ok(v)
+        }
+        Err(e) => {
+            let _ = tx.execute_batch("ROLLBACK TO group_act_effect; RELEASE group_act_effect");
+            Err(e)
+        }
+    }
+}
+
+fn effect_new(
+    act_id: i64,
+    kind: ActGroupEffectKind,
+    group_id: i64,
+    label: &str,
+    now: i64,
+) -> ActGroupEffectNew {
+    ActGroupEffectNew {
+        act_id,
+        kind,
+        group_id,
+        group_label: label.to_string(),
+        device_id: None,
+        from_place_id: None,
+        to_place_id: None,
+        from_parent_group_id: None,
+        created_at_utc: now,
+    }
+}
+
+/// Применить план групп внутри транзакции акта (коммит делает вызывающий сервис).
+///
+/// Порядок строго такой (ловушка P-04): (1) снимок «до» устройств поддеревьев;
+/// (2) аудит `custom:group_moved_by_act` для деталей, которых нет среди позиций акта
+/// (откат подхватит их по `select_device_mutations_for_act` без нового кода);
+/// (3) отцепление и перенос каждой группы с причиной `GroupMoveCause::act`, так что строки
+/// группы, устройств и картриджей принтера-члена несут `source = 'act'`, `act_id` и
+/// общий `batch_id` (D-14, D-15); (4) вынос устройств из состава со следом `release`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_plan_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    plan: &ActGroupPlan,
+    target_place: Option<i64>,
+    item_device_ids: &[i64],
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<AppliedGroupPlan, AppError> {
+    let mut applied = AppliedGroupPlan::default();
+    if !plan.moves.is_empty() && target_place.is_none() {
+        return Err(AppError::Validation {
+            field: "place_id".to_string(),
+            message: "Для передачи группы укажите место".to_string(),
+        });
+    }
+    let items: HashSet<i64> = item_device_ids.iter().copied().collect();
+
+    // (1) снимки «до» — раньше любого переноса.
+    for mv in &plan.moves {
+        for device_id in &mv.subtree_device_ids {
+            if !applied.pre_snapshots.contains_key(device_id) {
+                let row = deps.devices.get_in_tx(tx, *device_id)?;
+                applied.pre_snapshots.insert(*device_id, row);
+            }
+            applied.moved_device_ids.insert(*device_id);
+        }
+    }
+
+    // (2) детали, не являющиеся позициями акта: аудит со снимком «до».
+    let mut parts: Vec<i64> = applied
+        .moved_device_ids
+        .iter()
+        .copied()
+        .filter(|d| !items.contains(d))
+        .collect();
+    parts.sort_unstable();
+    for device_id in parts {
+        let row = &applied.pre_snapshots[&device_id];
+        let before = device_snapshot_json(row).map_err(|e| AppError::Internal {
+            source_chain: format!("group_act_plan: snapshot json: {e}"),
+        })?;
+        deps.audit.insert(
+            tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: device_id,
+                action: "custom:group_moved_by_act",
+                user_id,
+                before_json: Some(before),
+                after_json: None,
+                payload_json: Some(serde_json::json!({ "act_id": act_id }).to_string()),
+                created_at_utc: now,
+            },
+        )?;
+    }
+
+    // (3) отцепление и перенос.
+    for mv in &plan.moves {
+        let target = target_place.expect("проверено выше: у плана с переносами место задано");
+        if let Some(detach) = &mv.detach {
+            let mut effect = effect_new(
+                act_id,
+                ActGroupEffectKind::Detach,
+                mv.root_group_id,
+                &mv.root_name,
+                now,
+            );
+            effect.from_parent_group_id = Some(detach.parent_group_id);
+            deps.groups.insert_act_group_effect_in_tx(tx, &effect)?;
+            deps.groups
+                .set_parent_in_tx(tx, mv.root_group_id, mv.root_version, None, now)?;
+            push_unique(&mut applied.touched_group_ids, detach.parent_group_id);
+        }
+        let mut effect = effect_new(
+            act_id,
+            ActGroupEffectKind::Move,
+            mv.root_group_id,
+            &mv.root_name,
+            now,
+        );
+        effect.from_place_id = mv.from_place_id;
+        effect.to_place_id = Some(target);
+        deps.groups.insert_act_group_effect_in_tx(tx, &effect)?;
+
+        let batch_id = uuid::Uuid::new_v4().to_string();
+        let outcome = propagate_group_place_in_tx(
+            tx,
+            deps,
+            mv.root_group_id,
+            target,
+            mv.from_place_id,
+            &batch_id,
+            user_id,
+            now,
+            GroupMoveCause::act(act_id),
+        )?;
+        for place in outcome.changed_place_ids {
+            push_unique(&mut applied.touched_place_ids, place);
+        }
+        if let Some(p) = mv.from_place_id {
+            push_unique(&mut applied.touched_place_ids, p);
+        }
+        push_unique(&mut applied.touched_place_ids, target);
+        push_unique(&mut applied.touched_group_ids, mv.root_group_id);
+    }
+
+    // (4) вынос из состава; след release пишет сам примитив (act_id задан).
+    for release in &plan.releases {
+        if release_device_in_tx(
+            tx,
+            &deps.groups,
+            &deps.audit,
+            release.device_id,
+            Some(act_id),
+            user_id,
+            now,
+        )?
+        .is_some()
+        {
+            push_unique(&mut applied.touched_group_ids, release.group_id);
+        }
+    }
+
+    applied.touched_place_ids.sort_unstable();
+    applied.touched_group_ids.sort_unstable();
+    Ok(applied)
+}
+
+/// Обратить переносы и отцепления групп актом (порядок отката: группы -> снимки -> членство,
+/// P-05; вызывается ДО восстановления снимков устройств). Обходит эффекты акта по убыванию id.
+///
+/// `move`: группа жива, её место равно `to_place_id` (не двигалась с тех пор) и она корневая —
+/// возвращается на `from_place_id` тем же протаскиванием с `GroupMoveCause::act` (строки
+/// обратного переноса удалит `delete_by_act_id` вызывающего); иначе уведомление.
+/// `detach` (ПОСЛЕ обращения `move` той же группы): родитель жив, группа корневая и её место
+/// совпадает с местом родителя — вложенность восстанавливается; иначе уведомление. Ошибка
+/// отдельного эффекта не прерывает откат: она превращается в уведомление.
+pub(crate) fn revert_group_moves_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<GroupRevertOutcome, AppError> {
+    let mut out = GroupRevertOutcome::default();
+    let effects = deps.groups.list_act_group_effects_in_tx(tx, act_id)?;
+    for effect in effects.iter().rev() {
+        match effect.kind {
+            ActGroupEffectKind::Move => {
+                let label = effect.group_label.clone();
+                let moved_notice = |label: &str| {
+                    GroupNotice {
+                    message: format!(
+                        "Группа «{label}» не возвращена на прежнее место: после акта её переместили."
+                    ),
+                    group_id: Some(effect.group_id),
+                }
+                };
+                let result = guarded(tx, || {
+                    let group = match deps.groups.get_group_in_tx(tx, effect.group_id) {
+                        Ok(g) => g,
+                        Err(AppError::NotFound { .. }) => return Ok(None),
+                        Err(e) => return Err(e),
+                    };
+                    if group.parent_group_id.is_some() || group.place_id != effect.to_place_id {
+                        return Ok(None);
+                    }
+                    let mut changed: Vec<i64> = Vec::new();
+                    match effect.from_place_id {
+                        Some(from) => {
+                            let batch_id = uuid::Uuid::new_v4().to_string();
+                            let outcome = propagate_group_place_in_tx(
+                                tx,
+                                deps,
+                                effect.group_id,
+                                from,
+                                group.place_id,
+                                &batch_id,
+                                user_id,
+                                now,
+                                GroupMoveCause::act(act_id),
+                            )?;
+                            changed.extend(outcome.changed_place_ids);
+                            changed.push(from);
+                        }
+                        None => {
+                            deps.groups
+                                .set_subtree_place_in_tx(tx, effect.group_id, None, now)?;
+                            if let Some(p) = group.place_id {
+                                changed.push(p);
+                            }
+                        }
+                    }
+                    Ok(Some(changed))
+                });
+                match result {
+                    Ok(Some(changed)) => {
+                        for place in changed {
+                            push_unique(&mut out.touched_place_ids, place);
+                        }
+                        push_unique(&mut out.touched_group_ids, effect.group_id);
+                    }
+                    Ok(None) | Err(_) => out.notices.push(moved_notice(&label)),
+                }
+            }
+            ActGroupEffectKind::Detach => {
+                let notice = GroupNotice {
+                    message: format!(
+                        "Группа «{}» не возвращена в прежнюю группу: после акта изменились её место или состав.",
+                        effect.group_label
+                    ),
+                    group_id: Some(effect.group_id),
+                };
+                let Some(parent_id) = effect.from_parent_group_id else {
+                    out.notices.push(notice);
+                    continue;
+                };
+                let result = guarded(tx, || {
+                    let group = match deps.groups.get_group_in_tx(tx, effect.group_id) {
+                        Ok(g) => g,
+                        Err(AppError::NotFound { .. }) => return Ok(false),
+                        Err(e) => return Err(e),
+                    };
+                    let parent = match deps.groups.get_group_in_tx(tx, parent_id) {
+                        Ok(g) => g,
+                        Err(AppError::NotFound { .. }) => return Ok(false),
+                        Err(e) => return Err(e),
+                    };
+                    if group.parent_group_id.is_some() || group.place_id != parent.place_id {
+                        return Ok(false);
+                    }
+                    deps.groups.set_parent_in_tx(
+                        tx,
+                        group.id,
+                        group.version,
+                        Some(parent_id),
+                        now,
+                    )?;
+                    Ok(true)
+                });
+                match result {
+                    Ok(true) => {
+                        push_unique(&mut out.touched_group_ids, effect.group_id);
+                        push_unique(&mut out.touched_group_ids, parent_id);
+                    }
+                    Ok(false) | Err(_) => out.notices.push(notice),
+                }
+            }
+            ActGroupEffectKind::Release => {}
+        }
+    }
+    out.touched_place_ids.sort_unstable();
+    out.touched_group_ids.sort_unstable();
+    Ok(out)
+}
+
+/// Вернуть в группы устройства, вынесенные актом (след `release`). Вызывается ПОСЛЕ
+/// восстановления снимков устройств: место читается текущее. Нарушение любого из четырёх
+/// правил `restore_membership_in_tx` и ошибка записи превращаются в уведомление, ничего не падает.
+/// Удаление самих следов — `delete_act_group_effects_in_tx` у вызывающего, после обеих функций.
+pub(crate) fn restore_released_members_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<GroupRevertOutcome, AppError> {
+    let mut out = GroupRevertOutcome::default();
+    let effects = deps.groups.list_act_group_effects_in_tx(tx, act_id)?;
+    for effect in effects
+        .iter()
+        .filter(|e| e.kind == ActGroupEffectKind::Release)
+    {
+        let Some(device_id) = effect.device_id else {
+            continue;
+        };
+        let device: Option<(String, Option<i64>)> = tx
+            .query_row(
+                "SELECT name, place_id FROM devices WHERE id = ?1 AND deleted_at_utc IS NULL",
+                rusqlite::params![device_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?)),
+            )
+            .optional()
+            .map_err(map_rusqlite)?;
+        let Some((device_name, place)) = device else {
+            continue;
+        };
+        let result = guarded(tx, || {
+            restore_membership_in_tx(
+                tx,
+                &deps.groups,
+                &deps.audit,
+                device_id,
+                effect.group_id,
+                &effect.group_label,
+                &device_name,
+                place,
+                act_id,
+                user_id,
+                now,
+            )
+        });
+        match result {
+            Ok(RestoreOutcome::Restored) => {
+                push_unique(&mut out.touched_group_ids, effect.group_id)
+            }
+            Ok(RestoreOutcome::Skipped(notice)) => {
+                if let Some(g) = notice.group_id {
+                    push_unique(&mut out.touched_group_ids, g);
+                }
+                out.notices.push(notice);
+            }
+            Err(_) => out.notices.push(GroupNotice {
+                message: format!(
+                    "«{device_name}» не вернулся в «{}»: не удалось восстановить состав.",
+                    effect.group_label
+                ),
+                group_id: Some(effect.group_id),
+            }),
+        }
+    }
+    out.touched_place_ids.sort_unstable();
+    out.touched_group_ids.sort_unstable();
+    Ok(out)
+}
+
+/// Режим освобождения для устройства, убираемого из акта (читатель, без записей).
+///
+/// `Record`, если устройство состоит в живой группе G и G либо её предок совпадает с группой
+/// эффекта `move` ЭТОГО акта: группа переехала актом, и откат акта обязан вернуть
+/// устройство в группу. Иначе `Skip`. Вызывающий сайт считает режим ВЫШЕ восстановления
+/// снимка и передаёт последним аргументом `release_if_locked_device_in_tx`, чтобы между
+/// восстановлением и освобождением не появлялось кода (окно гейта 14 строк).
+pub(crate) fn release_effect_for_removed_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    device_id: i64,
+) -> Result<ReleaseEffect, AppError> {
+    let Some(group) = deps.groups.group_of_device_in_tx(tx, device_id)? else {
+        return Ok(ReleaseEffect::Skip);
+    };
+    let moved: HashSet<i64> = deps
+        .groups
+        .list_act_group_effects_in_tx(tx, act_id)?
+        .into_iter()
+        .filter(|e| e.kind == ActGroupEffectKind::Move)
+        .map(|e| e.group_id)
+        .collect();
+    if moved.is_empty() {
+        return Ok(ReleaseEffect::Skip);
+    }
+    // Обход предков ограничен: каждая группа посещается не более одного раза.
+    let mut seen: HashSet<i64> = HashSet::new();
+    let mut cur = Some(group);
+    while let Some(g) = cur {
+        if moved.contains(&g.id) {
+            return Ok(ReleaseEffect::Record);
+        }
+        if !seen.insert(g.id) {
+            break;
+        }
+        cur = match g.parent_group_id {
+            Some(p) => match deps.groups.get_group_in_tx(tx, p) {
+                Ok(parent) => Some(parent),
+                Err(AppError::NotFound { .. }) => None,
+                Err(e) => return Err(e),
+            },
+            None => None,
+        };
+    }
+    Ok(ReleaseEffect::Skip)
 }
 
 #[cfg(test)]
@@ -761,5 +1225,427 @@ mod tests {
         .unwrap();
         let snap = load_snapshot(&conn, &SqliteGroupRepository).expect("snapshot");
         assert_eq!(plan(&snap, &[1, 2]), ActGroupPlan::default());
+    }
+}
+
+#[cfg(test)]
+mod apply_tests {
+    use super::test_support::*;
+    use super::*;
+    use rusqlite::TransactionBehavior;
+    use trackly_infra::repos::audit_log_sqlite::SqliteAuditLogRepository;
+
+    const ACT: i64 = 7;
+
+    /// Места 1 «Склад А», 2 «Склад Б», 3 «Склад В»; контейнер 1 «АРМ #3» (место 1) из
+    /// монитора 1, принтера 2 (с картриджем) и мыши 3; контейнер 2 «АРМ #4» (место 1) из
+    /// устройств 4 и 5; контейнер 7 «Комплект #1» (место 1) с мышью 6 и вложенной
+    /// якорной группой 8 «Системный блок #6» (место 1, якорь 30, деталь 31).
+    fn seed(conn: &Connection) {
+        conn.execute_batch(&format!(
+            "INSERT INTO places (id, parent_id, kind, name, is_storage, created_at_utc, updated_at_utc)
+               VALUES (1, NULL, 'building', 'Склад А', 1, {NOW}, {NOW}),
+                      (2, NULL, 'building', 'Склад Б', 1, {NOW}, {NOW}),
+                      (3, NULL, 'building', 'Склад В', 1, {NOW}, {NOW});
+             INSERT INTO group_types (id, code, name, behavior, created_at_utc, updated_at_utc)
+               VALUES (100, 'workstation_test', 'АРМ', 'container', {NOW}, {NOW}),
+                      (101, 'assembly_test', 'Сборка', 'substitute', {NOW}, {NOW});
+             INSERT INTO devices (id, type_id, name, inventory_number, status_id, place_id,
+                                  created_at_utc, updated_at_utc)
+               VALUES (1, 1, 'Монитор #2', 'ИНВ-000001', 2, 1, {NOW}, {NOW}),
+                      (2, 1, 'Принтер #1', 'ИНВ-000002', 2, 1, {NOW}, {NOW}),
+                      (3, 1, 'Мышь #1', 'ИНВ-000003', 2, 1, {NOW}, {NOW}),
+                      (4, 1, 'Клавиатура #1', 'ИНВ-000004', 2, 1, {NOW}, {NOW}),
+                      (5, 1, 'Колонки #1', 'ИНВ-000005', 2, 1, {NOW}, {NOW}),
+                      (6, 1, 'Мышь #2', 'ИНВ-000006', 2, 1, {NOW}, {NOW}),
+                      (9, 1, 'Веб-камера #1', 'ИНВ-000009', 2, 1, {NOW}, {NOW}),
+                      (30, 1, 'Системный блок #6', 'ИНВ-000030', 2, 1, {NOW}, {NOW}),
+                      (31, 1, 'Планка памяти #3', 'ИНВ-000031', 2, 1, {NOW}, {NOW});
+             INSERT INTO groups (id, type_id, name, seq, place_id, parent_group_id, anchor_device_id,
+                                 created_at_utc, updated_at_utc)
+               VALUES (1, 100, 'АРМ #3', 3, 1, NULL, NULL, {NOW}, {NOW}),
+                      (2, 100, 'АРМ #4', 4, 1, NULL, NULL, {NOW}, {NOW}),
+                      (7, 100, 'Комплект #1', 5, 1, NULL, NULL, {NOW}, {NOW}),
+                      (8, 101, 'Системный блок #6', 6, 1, 7, 30, {NOW}, {NOW});
+             INSERT INTO group_devices (device_id, group_id, added_at_utc)
+               VALUES (1, 1, {NOW}), (2, 1, {NOW}), (3, 1, {NOW}),
+                      (4, 2, {NOW}), (5, 2, {NOW}),
+                      (6, 7, {NOW}), (30, 8, {NOW}), (31, 8, {NOW});
+             INSERT INTO acts (id, number, act_type, giver_name, receiver_name, created_at_utc, updated_at_utc)
+               VALUES (7, '7', 'handover', 'Иванов И.И.', 'Петров П.П.', {NOW}, {NOW});
+             INSERT INTO cartridge_models (id, brand, model, created_at_utc, updated_at_utc, version)
+               VALUES (1, 'Бренд', 'Модель-1', {NOW}, {NOW}, 1);
+             INSERT INTO cartridges (code, model_id, status_id, place_id, current_printer_device_id,
+                                     created_at_utc, updated_at_utc, version)
+               VALUES ('C-TEST-1', 1, 1, 1, 2, {NOW}, {NOW}, 1);"
+        ))
+        .expect("seed");
+    }
+
+    fn deps() -> GroupMoveDeps {
+        GroupMoveDeps::new()
+    }
+
+    fn plan_for(tx: &Transaction<'_>, ids: &[i64]) -> ActGroupPlan {
+        plan_in_tx(tx, ids).expect("plan")
+    }
+
+    fn device_place(conn: &Connection, id: i64) -> Option<i64> {
+        conn.query_row("SELECT place_id FROM devices WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .unwrap()
+    }
+
+    fn group_place(conn: &Connection, id: i64) -> Option<i64> {
+        conn.query_row("SELECT place_id FROM groups WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .unwrap()
+    }
+
+    fn group_parent(conn: &Connection, id: i64) -> Option<i64> {
+        conn.query_row(
+            "SELECT parent_group_id FROM groups WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn member_of(conn: &Connection, device_id: i64) -> Option<i64> {
+        conn.query_row(
+            "SELECT group_id FROM group_devices WHERE device_id = ?1",
+            [device_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .unwrap()
+    }
+
+    fn scalar(conn: &Connection, sql: &str) -> i64 {
+        conn.query_row(sql, [], |r| r.get(0)).unwrap()
+    }
+
+    /// (a) Полный перенос группы с принтером и картриджем: КАЖДАЯ строка журнала
+    /// (группа, устройства, принтер, картридж) несёт source='act', act_id и общий batch_id.
+    #[test]
+    fn apply_full_move_stamps_every_journal_row_with_the_act_and_one_batch() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[1, 2, 3]);
+        assert_eq!(p.moves.len(), 1);
+        let applied =
+            apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[1, 2, 3], None, NOW).expect("apply");
+        tx.commit().unwrap();
+
+        assert_eq!(applied.moved_device_ids, HashSet::from([1, 2, 3]));
+        assert_eq!(
+            applied.pre_snapshots[&1].place_id,
+            Some(1),
+            "снимок до переноса"
+        );
+        assert_eq!(applied.touched_place_ids, vec![1, 2]);
+        assert_eq!(applied.touched_group_ids, vec![1]);
+        assert_eq!(group_place(&conn, 1), Some(2));
+        assert_eq!(device_place(&conn, 3), Some(2));
+
+        // группа + 3 устройства + картридж = 5 строк
+        let total = scalar(&conn, "SELECT COUNT(*) FROM place_movements");
+        assert_eq!(total, 5);
+        let stamped = scalar(
+            &conn,
+            "SELECT COUNT(*) FROM place_movements WHERE act_id = 7 AND source = 'act' AND batch_id IS NOT NULL",
+        );
+        assert_eq!(stamped, total, "все строки несут акт");
+        assert_eq!(
+            scalar(
+                &conn,
+                "SELECT COUNT(*) FROM place_movements WHERE act_id IS NULL"
+            ),
+            0
+        );
+        assert_eq!(
+            scalar(
+                &conn,
+                "SELECT COUNT(DISTINCT batch_id) FROM place_movements"
+            ),
+            1,
+            "общий batch_id"
+        );
+        assert_eq!(
+            scalar(
+                &conn,
+                "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'cartridge' AND act_id = 7"
+            ),
+            1,
+            "картридж принтера-члена едет с актом (D-14)"
+        );
+    }
+
+    /// Детали группы, которых нет среди позиций акта, получают аудит со снимком «до».
+    #[test]
+    fn apply_audits_parts_that_are_not_act_items() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[30]);
+        assert_eq!(p.moves.len(), 1);
+        apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[30], None, NOW).expect("apply");
+        let mutations = SqliteAuditLogRepository
+            .select_device_mutations_for_act(&tx, ACT)
+            .unwrap();
+        tx.commit().unwrap();
+        // Деталь 31 едет с группой, но не позиция акта: её снимок «до» в аудите.
+        assert_eq!(mutations.len(), 1);
+        assert_eq!(mutations[0].0, 31);
+        assert!(
+            mutations[0].1.contains("\"place_id\":1"),
+            "{}",
+            mutations[0].1
+        );
+    }
+
+    /// (b) Вынос: след release записан, остальные члены на месте.
+    #[test]
+    fn apply_partial_releases_only_the_act_devices_and_records_the_effect() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[4]);
+        assert!(p.moves.is_empty() && p.releases.len() == 1);
+        let applied =
+            apply_plan_in_tx(&tx, &deps(), ACT, &p, None, &[4], None, NOW).expect("apply");
+        tx.commit().unwrap();
+
+        assert_eq!(member_of(&conn, 4), None);
+        assert_eq!(member_of(&conn, 5), Some(2), "остальные члены на месте");
+        assert_eq!(group_place(&conn, 2), Some(1));
+        assert_eq!(applied.touched_group_ids, vec![2]);
+        assert_eq!(
+            scalar(
+                &conn,
+                "SELECT COUNT(*) FROM act_group_effects WHERE act_id = 7 AND kind = 'release' AND device_id = 4 AND group_id = 2"
+            ),
+            1
+        );
+        assert_eq!(
+            scalar(&conn, "SELECT COUNT(*) FROM place_movements"),
+            0,
+            "вынос места не меняет"
+        );
+    }
+
+    #[test]
+    fn apply_without_target_place_rejects_a_plan_with_moves() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[1, 2, 3]);
+        let err = apply_plan_in_tx(&tx, &deps(), ACT, &p, None, &[1, 2, 3], None, NOW)
+            .expect_err("нет места");
+        match err {
+            AppError::Validation { field, message } => {
+                assert_eq!(field, "place_id");
+                assert_eq!(message, "Для передачи группы укажите место");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// (c) apply -> revert -> restore: группа на прежнем месте, членство цело.
+    #[test]
+    fn apply_then_revert_and_restore_returns_place_and_membership() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        // Группа 1 целиком + устройство 4 из группы 2 (часть).
+        let p = plan_for(&tx, &[1, 2, 3, 4]);
+        assert_eq!((p.moves.len(), p.releases.len()), (1, 1));
+        apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[1, 2, 3, 4], None, NOW).expect("apply");
+        // Устройство 4 как позиция акта уходит на место 2 (его двигает сервис актов).
+        tx.execute("UPDATE devices SET place_id = 2 WHERE id = 4", [])
+            .unwrap();
+        // Откат: группы -> снимки -> членство.
+        let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
+        assert!(reverted.notices.is_empty(), "{:?}", reverted.notices);
+        tx.execute("UPDATE devices SET place_id = 1 WHERE id = 4", [])
+            .unwrap();
+        let restored =
+            restore_released_members_in_tx(&tx, &deps(), ACT, None, NOW).expect("restore");
+        assert!(restored.notices.is_empty(), "{:?}", restored.notices);
+        tx.commit().unwrap();
+
+        assert_eq!(group_place(&conn, 1), Some(1));
+        for d in [1, 2, 3] {
+            assert_eq!(device_place(&conn, d), Some(1), "устройство {d}");
+            assert_eq!(member_of(&conn, d), Some(1));
+        }
+        assert_eq!(
+            member_of(&conn, 4),
+            Some(2),
+            "членство вынесенного возвращено"
+        );
+        assert_eq!(restored.touched_group_ids, vec![2]);
+        assert_eq!(reverted.touched_group_ids, vec![1]);
+    }
+
+    /// (d) Группу переместили после акта: уведомление, группа не двигается.
+    #[test]
+    fn revert_skips_a_group_that_was_moved_after_the_act() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[1, 2, 3]);
+        apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[1, 2, 3], None, NOW).expect("apply");
+        // «После акта» группу перенесли на место 3.
+        tx.execute("UPDATE groups SET place_id = 3 WHERE id = 1", [])
+            .unwrap();
+        let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
+        tx.commit().unwrap();
+
+        assert_eq!(
+            reverted.notices,
+            vec![GroupNotice {
+                message:
+                    "Группа «АРМ #3» не возвращена на прежнее место: после акта её переместили."
+                        .to_string(),
+                group_id: Some(1),
+            }]
+        );
+        assert_eq!(group_place(&conn, 1), Some(3), "группа не двигалась");
+    }
+
+    /// (e) Отцепление и возврат вложенной якорной группы туда и обратно.
+    #[test]
+    fn detach_and_reattach_a_nested_anchor_group() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[30]);
+        assert_eq!(p.moves[0].root_group_id, 8);
+        assert!(p.moves[0].detach.is_some());
+        let applied =
+            apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[30], None, NOW).expect("apply");
+        assert_eq!(group_parent(&tx, 8), None, "группа отцеплена");
+        assert_eq!(group_place(&tx, 8), Some(2));
+        assert_eq!(group_place(&tx, 7), Some(1), "родитель остался на месте");
+        assert_eq!(device_place(&tx, 30), Some(2));
+        assert_eq!(device_place(&tx, 31), Some(2), "деталь едет с группой");
+        assert_eq!(applied.touched_group_ids, vec![7, 8]);
+        assert_eq!(
+            scalar(
+                &tx,
+                "SELECT COUNT(*) FROM act_group_effects WHERE act_id = 7 AND kind = 'detach' AND from_parent_group_id = 7"
+            ),
+            1
+        );
+
+        let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
+        tx.commit().unwrap();
+        assert!(reverted.notices.is_empty(), "{:?}", reverted.notices);
+        assert_eq!(group_parent(&conn, 8), Some(7), "вложенность восстановлена");
+        assert_eq!(group_place(&conn, 8), Some(1));
+        assert_eq!(device_place(&conn, 30), Some(1));
+        assert_eq!(device_place(&conn, 31), Some(1));
+    }
+
+    #[test]
+    fn revert_does_not_reattach_when_the_parent_moved_away() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[30]);
+        apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[30], None, NOW).expect("apply");
+        // Родитель после акта уехал на место 3: место вложенной группы с ним уже не совпадёт.
+        tx.execute("UPDATE groups SET place_id = 3 WHERE id = 7", [])
+            .unwrap();
+        let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
+        tx.commit().unwrap();
+        assert_eq!(reverted.notices.len(), 1, "{:?}", reverted.notices);
+        assert_eq!(group_parent(&conn, 8), None);
+    }
+
+    #[test]
+    fn restore_released_members_reports_a_member_who_joined_another_group() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[4]);
+        apply_plan_in_tx(&tx, &deps(), ACT, &p, None, &[4], None, NOW).expect("apply");
+        // После акта устройство 4 вошло в другую группу.
+        tx.execute(
+            "INSERT INTO group_devices (device_id, group_id, added_at_utc) VALUES (4, 1, ?1)",
+            [NOW],
+        )
+        .unwrap();
+        let restored =
+            restore_released_members_in_tx(&tx, &deps(), ACT, None, NOW).expect("restore");
+        tx.commit().unwrap();
+        assert_eq!(restored.notices.len(), 1);
+        assert_eq!(
+            restored.notices[0].message,
+            "«Клавиатура #1» не вернулся в «АРМ #4»: устройство уже входит в «АРМ #3»."
+        );
+        assert_eq!(member_of(&conn, 4), Some(1), "чужое членство не тронуто");
+    }
+
+    #[test]
+    fn release_effect_for_removed_follows_the_group_moved_by_the_act() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let p = plan_for(&tx, &[1, 2, 3]);
+        apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[1, 2, 3], None, NOW).expect("apply");
+
+        let mode =
+            |device: i64| release_effect_for_removed_in_tx(&tx, &deps(), ACT, device).unwrap();
+        assert_eq!(mode(1), ReleaseEffect::Record, "член переехавшей группы");
+        assert_eq!(mode(4), ReleaseEffect::Skip, "член непереехавшей группы");
+        assert_eq!(mode(9), ReleaseEffect::Skip, "устройство вне групп");
+
+        // Вложенный член переехавшего корня: предок совпадает с группой эффекта.
+        tx.execute("UPDATE groups SET parent_group_id = 1 WHERE id = 2", [])
+            .unwrap();
+        assert_eq!(mode(4), ReleaseEffect::Record, "предок переехал актом");
+        tx.execute("UPDATE groups SET parent_group_id = NULL WHERE id = 2", [])
+            .unwrap();
+
+        // После удаления следа 'move' тот же член даёт Skip.
+        let effects = deps()
+            .groups
+            .list_act_group_effects_in_tx(&tx, ACT)
+            .unwrap();
+        let move_id = effects
+            .iter()
+            .find(|e| e.kind == ActGroupEffectKind::Move)
+            .unwrap()
+            .id;
+        deps()
+            .groups
+            .delete_act_group_effect_in_tx(&tx, move_id)
+            .unwrap();
+        assert_eq!(mode(1), ReleaseEffect::Skip);
     }
 }
