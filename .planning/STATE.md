@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-22T13:35:24.168Z"
+last_updated: "2026-10-22T13:44:02.085Z"
 last_activity: 2026-10-22
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 235
-  completed_plans: 226
+  completed_plans: 227
   percent: 54
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.2 (groups-acts-places) — EXECUTING
-Plan: 8 of 16
+Plan: 9 of 16
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -643,6 +643,7 @@ Last activity: 2026-10-22
 | Phase 41.2 P05 | 1h30m | 2 tasks | 5 files |
 | Phase 41.2 P06 | 2h | 3 tasks | 13 files |
 | Phase 41.2 P07 | 2h | 3 tasks | 9 files |
+| Phase 41.2 P08 | 45min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1383,6 +1384,7 @@ Recent decisions affecting current work:
 - [Phase 41.2]: [41.2-05] list_group_members LEFT JOINs place paths so sleeping-group members list with empty path
 - [Phase 41.2]: 41.2-06: groups_act_expansion and places_group_members are read-only commands; act_expansion NotFound on missing group, group_members empty list
 - [Phase 41.2]: [41.2-07] Place validation precedes group-release confirmation; confirmation-vs-first-write order is not behaviour-observable (tx rollback), held by plan 41.2-16 source-order guard
+- [Phase 41.2]: [41.2-08] expandGroups mode owned by PlacesPage (localStorage), group row focus-jump via single openGroup(); gate pins exactly one onclick in the group branch
 
 ### Pending Todos
 
@@ -1587,8 +1589,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-22T13:35:17.988Z
-Stopped at: Completed 41.2-04-PLAN.md
+Last session: 2026-10-22T13:44:02.075Z
+Stopped at: Completed 41.2-08-PLAN.md
 Resume file: None
 
 None
