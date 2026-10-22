@@ -191,7 +191,7 @@
 | 41.1. Группы × Устройства | v1.4 | 33/33 | Complete    | 2026-10-18 |
 | 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
 | 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 7/7 | Complete    | 2026-10-21 |
-| 41.2. Группы × Акты и Места | v1.4 | 0/16 | Planned | - |
+| 41.2. Группы × Акты и Места | v1.4 | 1/16 | In Progress|  |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
 | 41.5. Переписка в заявке | v1.4 | 0/TBD | Not started | - |
@@ -1450,7 +1450,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 41.2-01-PLAN.md — контрактная волна актов: confirm_group_release, ActSaveOutcome::NeedsGroupRelease, ActDeleteResultDto (delete_soft/acts_delete), около 90 литералов DTO, привязки
+- [x] 41.2-01-PLAN.md — контрактная волна актов: confirm_group_release, ActSaveOutcome::NeedsGroupRelease, ActDeleteResultDto (delete_soft/acts_delete), около 90 литералов DTO, привязки
 - [ ] 41.2-02-PLAN.md — миграция V049 act_group_effects (аддитивная, канарейка act_items) и методы репозитория: следы выноса/переноса/отцепления, читатели снимка групп
 
 **Wave 2**

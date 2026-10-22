@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-22T05:11:28.358Z"
-last_activity: 2026-10-22 -- Phase 41.2 planning complete
+last_updated: "2026-10-22T07:26:25.421Z"
+last_activity: 2026-10-22
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 235
-  completed_plans: 219
+  completed_plans: 220
   percent: 54
 ---
 
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 42 — умный подбор принтера в заявке
+**Current focus:** Phase 41.2 — groups-acts-places
 
 ## Current Position
 
-Phase: 42
-Plan: Not started
+Phase: 41.2 (groups-acts-places) — EXECUTING
+Plan: 2 of 16
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -149,7 +149,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-22 -- Phase 41.2 planning complete
+Last activity: 2026-10-22
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -636,6 +636,7 @@ Last activity: 2026-10-22 -- Phase 41.2 planning complete
 | Phase 41.12 P06 | 40min | 2 tasks | 2 files |
 | Phase 41.12 P04 | 50min | 2 tasks | 6 files |
 | Phase 41.12 P07 | 270min | 2 tasks | 2 files |
+| Phase 41.2 P01 | 2h | 3 tasks | 40 files |
 
 ## Accumulated Context
 
@@ -1367,6 +1368,7 @@ Recent decisions affecting current work:
 - [Phase 41.12]: [41.12-05] INT-15: инвалидация в общем DeviceRowMenu.handleDelete (не в DevicesPage); notifyAfter только у двух новых записей реестра; граница идентификатора только для литеральных маркеров
 - [Phase 41.12]: 41.12-06: stripComments гейта пути — один проход; копия из check-place-tree-invalidation.mjs стирает код после templates/*.html в строчном комментарии (там не проверялось)
 - [Phase 41.12]: [41.12-04] UI-гейт check-device-type-labels без освобождения для слова «Расходник» (D-01); EXEMPT пуст, движок E проверен self-test'ом
+- [Phase 41.2]: [41.2-01] Group-release confirmation is a distinct save outcome (NeedsGroupRelease); delete warnings ride in ActDeleteResultDto.notices
 
 ### Pending Todos
 
@@ -1571,9 +1573,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-21T23:41:37.357Z
+Last session: 2026-10-22T07:26:22.288Z
 Stopped at: Phase 41.2 UI-SPEC approved
-Resume file: .planning/phases/41.2-groups-acts-places/41.2-UI-SPEC.md
+Resume file: None
 
 None
 
