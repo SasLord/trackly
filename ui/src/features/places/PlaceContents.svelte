@@ -175,7 +175,7 @@
     let cancelled = false;
     loading = true;
     loadError = false;
-    apiCall<PlaceContentDto[]>('places_contents', { rootId, nested })
+    apiCall<PlaceContentDto[]>('places_contents', { rootId, nested, expandGroups: true })
       .then((r) => {
         if (!cancelled) rows = r;
       })
@@ -274,7 +274,11 @@
     const rootId = place.id;
     let cancelled = false;
     moveCountLoading = true;
-    const contents = apiCall<PlaceContentDto[]>('places_contents', { rootId, nested: true })
+    const contents = apiCall<PlaceContentDto[]>('places_contents', {
+      rootId,
+      nested: true,
+      expandGroups: true,
+    })
       .then((r) => {
         if (!cancelled) moveCount = r.length;
       })

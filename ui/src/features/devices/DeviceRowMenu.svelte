@@ -201,6 +201,9 @@
       place_path_short: dev.place_path_short ?? '',
       status_name: statusLabel(dev.status_id),
       status_code: dev.status_code,
+      group_type_name: null,
+      member_count: null,
+      printer_member_count: null,
     };
   }
 
