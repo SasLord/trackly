@@ -42,12 +42,15 @@ use trackly_infra::repos::{
 use crate::dto::act::{
     act_dto_from_row, format_act_number, ActCreateDto, ActDeleteResultDto, ActDto, ActFilter,
     ActItemDto, ActListResponse, ActReturnDto, ActReturnItemDto, ActSaveOutcome, ActUpdateDto,
-    ActUpdateReturnDto, ActsCountsDto, Pagination,
+    ActUpdateReturnDto, ActsCountsDto, GroupReleaseItemDto, GroupReleaseWarningDto, Pagination,
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
 use crate::dto::printer::WsEvent;
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
+use crate::services::act_kit::kit_for_item_in_tx;
+use crate::services::group_act_plan::{apply_plan_in_tx, plan_in_tx};
+use crate::services::group_place::GroupMoveDeps;
 use crate::services::number_template_service::{
     ensure_number_free_in_tx, fetch_candidate_rows, normalize_number_key, CandidateRow,
     NumberTemplateService,
@@ -56,6 +59,33 @@ use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
 use crate::services::place_path_display::compute_place_path_short;
 use crate::services::template_service::TemplateService;
+
+/// Итог шага записи акта внутри транзакции writer'а (Phase 41.2).
+///
+/// `NeedsGroupRelease` возвращается ДО первой записи: транзакция сбрасывается, в базе
+/// ничего нет. Один тип у создания и правки акта.
+enum ActWriteStep {
+    Done {
+        act_id: i64,
+        touched_place_ids: Vec<Option<i64>>,
+        touched_group_ids: Vec<i64>,
+    },
+    NeedsGroupRelease(GroupReleaseWarningDto),
+}
+
+/// Устройство можно передать актом: оно на складе либо состоит в живой группе
+/// (D-02). Одиночное устройство «В работе» вне групп остаётся конфликтом.
+fn is_act_assignable(
+    tx: &rusqlite::Transaction<'_>,
+    groups: &SqliteGroupRepository,
+    device: &DeviceRow,
+    on_warehouse_status_id: i64,
+) -> Result<bool, AppError> {
+    if device.status_id == on_warehouse_status_id {
+        return Ok(true);
+    }
+    Ok(groups.group_of_device_in_tx(tx, device.id)?.is_some())
+}
 
 /// Application service for act lifecycle. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
@@ -384,7 +414,7 @@ impl ActService {
         // transaction, so the returned ActDto can tell the client exactly
         // which place-tree nodes to invalidate — see doc-comment on
         // `ActDto::changed_place_ids`.
-        let (act_id, touched_place_ids) = self
+        let step = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -442,6 +472,37 @@ impl ActService {
                     format!("Акт №{number} уже существует")
                 })?;
 
+                // Phase 41.2: план групп считается здесь, в транзакции writer'а, ДО первой
+                // записи (D-04, D-05). Клиентский список не определяет, какие группы
+                // переезжают. Ошибка места поднимается раньше подтверждения (OQ-7), а
+                // подтверждение — раньше `insert_act_in_tx`: сброшенная транзакция не
+                // оставляет в базе ничего.
+                let mut act_device_ids: Vec<i64> = Vec::new();
+                for item in &payload.items {
+                    for id in std::iter::once(item.device_id).chain(item.device_ids.iter().copied())
+                    {
+                        if !act_device_ids.contains(&id) {
+                            act_device_ids.push(id);
+                        }
+                    }
+                }
+                let plan = plan_in_tx(&tx, &act_device_ids)?;
+                if !plan.moves.is_empty() && payload.place_id.is_none() {
+                    return Err(AppError::Validation {
+                        field: "place_id".into(),
+                        message: "Для передачи группы укажите место".into(),
+                    });
+                }
+                if plan.requires_confirmation() && !payload.confirm_group_release {
+                    return Ok(ActWriteStep::NeedsGroupRelease(GroupReleaseWarningDto {
+                        items: plan
+                            .warning_items()
+                            .into_iter()
+                            .map(|(name, group_name)| GroupReleaseItemDto { name, group_name })
+                            .collect(),
+                    }));
+                }
+
                 // 2. INSERT acts.
                 // G-2 (Phase 3.1 Plan 04): handover_date_utc — explicit
                 // payload value или fallback на now() (backward-compat для
@@ -479,6 +540,23 @@ impl ActService {
                 };
                 let act_id = acts_repo.insert_act_in_tx(&tx, &new_row)?;
 
+                // Phase 41.2: перенос групп целиком и вынос частей состава. Строки журнала
+                // группы, устройств и картриджей принтера-члена пишет пакет (D-14), поэтому
+                // для `moved_device_ids` ниже отдельная строка журнала не пишется.
+                let applied = apply_plan_in_tx(
+                    &tx,
+                    &GroupMoveDeps::new(),
+                    act_id,
+                    &plan,
+                    resolved_place_id,
+                    &act_device_ids,
+                    user_id_opt,
+                    now,
+                )?;
+                for place in &applied.touched_place_ids {
+                    touched_place_ids.push(Some(*place));
+                }
+
                 // 4. INSERT act_items + UPDATE devices + audit each device mutation.
                 //
                 // G-12 (Phase 03.1) clone-on-handover:
@@ -504,7 +582,12 @@ impl ActService {
                         // (защита от unintended group-substitution серийного устройства).
                         for &dev_id in &item.device_ids {
                             let d = devices_repo.get_in_tx(&tx, dev_id)?;
-                            if d.status_id != on_warehouse_status_id {
+                            if !is_act_assignable(
+                                &tx,
+                                &SqliteGroupRepository,
+                                &d,
+                                on_warehouse_status_id,
+                            )? {
                                 return Err(AppError::Conflict {
                                     reason: format!(
                                         "Устройство id={} больше не на складе — \
@@ -558,6 +641,14 @@ impl ActService {
                     // INSERT act_items: one row per effective device.
                     // The first row (original device_id) has parent_act_item_id = NULL.
                     // Subsequent rows reference the first row's id (clone provenance).
+                    // D-11: комплектация якоря группы собирается из её деталей, у прочих
+                    // устройств остаётся собственная.
+                    let item_kit = kit_for_item_in_tx(
+                        &tx,
+                        &devices_repo,
+                        &SqliteGroupRepository,
+                        &source_before,
+                    )?;
                     let mut first_act_item_id: Option<i64> = None;
                     for (idx, &dev_id) in effective_device_ids.iter().enumerate() {
                         let parent_aiid = if idx == 0 { None } else { first_act_item_id };
@@ -570,7 +661,7 @@ impl ActService {
                                 act_id,
                                 dev_id,
                                 source_before.state.as_deref(),
-                                source_before.kit.as_deref(),
+                                item_kit.as_deref(),
                                 parent_aiid,
                             ],
                         )
@@ -582,9 +673,14 @@ impl ActService {
 
                     // UPDATE devices (each effective device) + audit each mutation.
                     // We snapshot BEFORE status change (source: before status update;
-                    // clones: just after creation, before status update).
+                    // clones: just after creation, before status update). Устройство
+                    // переехавшей группы уже стоит на новом месте: состояние «до» берётся из
+                    // снимка пакета, иначе откат акта вернул бы новое место.
                     for &dev_id in &effective_device_ids {
-                        let before = devices_repo.get_in_tx(&tx, dev_id)?;
+                        let before = match applied.pre_snapshots.get(&dev_id) {
+                            Some(row) => row.clone(),
+                            None => devices_repo.get_in_tx(&tx, dev_id)?,
+                        };
                         let before_json =
                             device_snapshot_json(&before).map_err(|e| AppError::Internal {
                                 source_chain: format!("before_json: {e}"),
@@ -600,16 +696,19 @@ impl ActService {
                             resolved_place_id,
                             now,
                         )?;
-                        // Phase 41 D-22: акт выводит устройство из состава группы.
-                        crate::services::group_membership::release_device_in_tx(
-                            &tx,
-                            &SqliteGroupRepository,
-                            &audit_repo,
-                            dev_id,
-                            Some(act_id),
-                            user_id_opt,
-                            now,
-                        )?;
+                        // Phase 41 D-22: акт выводит устройство из состава группы. Устройства
+                        // переехавшей группы остаются в составе: их место поставила группа.
+                        if !applied.moved_device_ids.contains(&dev_id) {
+                            crate::services::group_membership::release_device_in_tx(
+                                &tx,
+                                &SqliteGroupRepository,
+                                &audit_repo,
+                                dev_id,
+                                Some(act_id),
+                                user_id_opt,
+                                now,
+                            )?;
+                        }
                         let after_json =
                             device_snapshot_json(&after).map_err(|e| AppError::Internal {
                                 source_chain: format!("after_json: {e}"),
@@ -635,20 +734,24 @@ impl ActService {
                         )?;
 
                         // HST-03: record the act-driven place change, linked
-                        // to this act's id (D-04/D-06 guard inside).
-                        place_movements_repo.record_movement_if_applicable(
-                            &tx,
-                            places_repo.as_ref(),
-                            MovementEntityKind::Device,
-                            dev_id,
-                            before.place_id,
-                            after.place_id,
-                            MovementSource::Act,
-                            None,
-                            Some(act_id),
-                            user_id_opt,
-                            now,
-                        )?;
+                        // to this act's id (D-04/D-06 guard inside). Устройство переехавшей
+                        // группы уже записано пакетом с `batch_id` (D-14): вторая строка
+                        // дала бы двойной след.
+                        if !applied.moved_device_ids.contains(&dev_id) {
+                            place_movements_repo.record_movement_if_applicable(
+                                &tx,
+                                places_repo.as_ref(),
+                                MovementEntityKind::Device,
+                                dev_id,
+                                before.place_id,
+                                after.place_id,
+                                MovementSource::Act,
+                                None,
+                                Some(act_id),
+                                user_id_opt,
+                                now,
+                            )?;
+                        }
                         touched_place_ids.push(before.place_id);
                         touched_place_ids.push(after.place_id);
                     }
@@ -692,9 +795,24 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok((act_id, touched_place_ids))
+                Ok(ActWriteStep::Done {
+                    act_id,
+                    touched_place_ids,
+                    touched_group_ids: applied.touched_group_ids,
+                })
             })
             .await?;
+
+        let (act_id, touched_place_ids, touched_group_ids) = match step {
+            ActWriteStep::NeedsGroupRelease(w) => {
+                return Ok(ActSaveOutcome::NeedsGroupRelease(w));
+            }
+            ActWriteStep::Done {
+                act_id,
+                touched_place_ids,
+                touched_group_ids,
+            } => (act_id, touched_place_ids, touched_group_ids),
+        };
 
         // D-14: best-effort invalidation broadcast — a new act number was
         // just written into the "act_create" numbering space.
@@ -709,7 +827,7 @@ impl ActService {
         // Unconditional: sent regardless of `number_changed` (trap P4).
         let changed = dedupe_place_ids(touched_place_ids);
         let place_ids = changed.clone();
-        self.broadcast_entities("create", place_ids, Vec::new(), Vec::new());
+        self.broadcast_entities("create", place_ids, Vec::new(), touched_group_ids);
 
         let dto = self.get(act_id).await?;
         Ok(ActSaveOutcome::Created(Box::new(ActDto {
@@ -3543,9 +3661,10 @@ impl ActService {
 
     /// Best-effort `WsEvent::EntitiesChanged` after a COMMITTED act mutation
     /// (outside the writer closure). Delegates to the single owner of the send
-    /// rule in `entities_broadcast`. Acts only ever send `place_ids`:
-    /// `device_ids`/`group_ids` stay empty because the writer closures return
-    /// touched places, not device ids (decision Q4).
+    /// rule in `entities_broadcast`. Acts send `place_ids`; `device_ids` stay
+    /// empty because the writer closures return touched places, not device ids
+    /// (decision Q4). `group_ids` carry the groups a create moved, detached or
+    /// released members from (Phase 41.2); the other act paths still pass none.
     fn broadcast_entities(
         &self,
         op: &'static str,

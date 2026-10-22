@@ -1060,6 +1060,8 @@ fn act_number(value: &str) -> NumberFieldInput {
     }
 }
 
+// Сценарии S3-S7 проверяют сам вынос из состава, поэтому подтверждение выноса здесь
+// выдано заранее; диалог подтверждения проверяет acts_groups.rs.
 async fn handover_act(ctx: &AppCtx, number: &str, devices: &[i64], place: i64) -> ActDto {
     ctx.acts
         .create(
@@ -1080,7 +1082,7 @@ async fn handover_act(ctx: &AppCtx, number: &str, devices: &[i64], place: i64) -
                         quantity: 1,
                     })
                     .collect(),
-                confirm_group_release: false,
+                confirm_group_release: true,
             },
         )
         .await
