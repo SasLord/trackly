@@ -182,11 +182,11 @@ fn group_dto_on(
     snap.dto(&row)
 }
 
+/// `(имя, инвентарный номер, серийный номер)` устройства.
+type DeviceBrief = (String, Option<String>, Option<String>);
+
 /// Живые устройства по id одним запросом: `id -> (имя, инв. номер, серийный номер)`.
-fn device_briefs(
-    conn: &Connection,
-    ids: &[i64],
-) -> Result<HashMap<i64, (String, Option<String>, Option<String>)>, AppError> {
+fn device_briefs(conn: &Connection, ids: &[i64]) -> Result<HashMap<i64, DeviceBrief>, AppError> {
     let mut out = HashMap::new();
     for chunk in ids.chunks(500) {
         let placeholders = vec!["?"; chunk.len()].join(",");

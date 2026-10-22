@@ -169,6 +169,7 @@ pub const REGISTRY: &[Entry] = &[
     ro(PLACE, "subtree_stats"),
     ro(PLACE, "full_path"),
     ro(PLACE, "list_subtree_contents"),
+    ro(PLACE, "group_members"),
     b(PLACE, "move_subtree_contents"),
     ro(PLACE, "search"),
     // ---- group_service ---------------------------------------------------

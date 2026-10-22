@@ -176,6 +176,16 @@ pub async fn build_places_contents(
     Ok(rows.into_iter().map(PlaceContentDto::from).collect())
 }
 
+/// Чтение: `ReadPlaces` — состав группы строками содержимого места (Phase 41.2, D-19).
+pub async fn build_places_group_members(
+    ctx: &AppCtx,
+    caller: &Identity,
+    group_id: i64,
+) -> Result<Vec<PlaceContentDto>, AppError> {
+    authorize(caller, &Action::ReadPlaces)?;
+    ctx.places.group_members(caller, group_id).await
+}
+
 /// Мутация (D-28 "Перенести всё содержимое в…"): требует `caller` с ОБОИМИ
 /// правами `MutateDevices` И `MutateCartridges` (D-13 — reuses the existing
 /// per-entity mutate permissions, not `MutatePlaces`, since the subtree may
@@ -342,6 +352,16 @@ pub async fn places_subtree_stats(
 ) -> Result<SubtreeStatsDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_places_subtree_stats(state.inner(), &caller, root_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn places_group_members(
+    state: tauri::State<'_, AppCtx>,
+    group_id: i32,
+) -> Result<Vec<PlaceContentDto>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_places_group_members(state.inner(), &caller, group_id as i64).await
 }
 
 #[tauri::command]

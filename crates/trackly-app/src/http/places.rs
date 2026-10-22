@@ -19,9 +19,10 @@ use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::places::{
     build_places_archive, build_places_contents, build_places_create, build_places_delete,
-    build_places_get, build_places_list_all, build_places_list_children, build_places_move,
-    build_places_move_subtree_contents, build_places_rename, build_places_search,
-    build_places_set_path_variant, build_places_subtree_stats, build_places_unarchive,
+    build_places_get, build_places_group_members, build_places_list_all,
+    build_places_list_children, build_places_move, build_places_move_subtree_contents,
+    build_places_rename, build_places_search, build_places_set_path_variant,
+    build_places_subtree_stats, build_places_unarchive,
 };
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,12 @@ pub struct ContentsPayload {
     /// Phase 41.2 (OQ-9): обязательное поле, без `serde(default)` — устаревший
     /// клиент получает ошибку десериализации, а не молча другой режим.
     pub expand_groups: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupMembersPayload {
+    pub group_id: i64,
 }
 
 #[derive(serde::Deserialize)]
@@ -330,6 +337,21 @@ pub async fn handler_contents(
     ))
 }
 
+pub async fn handler_group_members(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<GroupMembersPayload>,
+) -> Result<Json<Vec<PlaceContentDto>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_places_group_members(&ctx, &identity, payload.group_id)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 /// D-28 "Перенести всё содержимое в…" — bulk-relocate a subtree's devices,
 /// printers, and cartridges to `target_place_id`. Gated on
 /// `Action::MutateDevices` + `Action::MutateCartridges` (D-13) inside
@@ -392,6 +414,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/places_list_all", post(handler_list_all))
         .route("/api/v1/places_subtree_stats", post(handler_subtree_stats))
         .route("/api/v1/places_contents", post(handler_contents))
+        .route("/api/v1/places_group_members", post(handler_group_members))
         .route("/api/v1/places_search", post(handler_search))
         .route(
             "/api/v1/places_move_subtree_contents",

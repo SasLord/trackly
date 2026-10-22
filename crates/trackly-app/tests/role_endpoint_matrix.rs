@@ -4837,3 +4837,51 @@ async fn device_types_role_matrix() {
     .await
     .expect("device_types_role_matrix exceeded 60s");
 }
+
+/// Состав группы для раскрытия строки в «Местах» (Phase 41.2 plan 06):
+/// `Action::ReadPlaces`. Отдельная функция: фильтр cargo по имени не видит кейсов
+/// внутри монолита. Для manager/admin ожидается 200 с JSON-массивом (пустым: группы
+/// нет), а не index.html от `spa_fallback`, который тоже отдаёт 200.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn places_group_members_role_matrix() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let payload = json!({ "groupId": 999999 });
+
+        let (status, _) = gt_post(
+            &env,
+            &env.employee_cookie,
+            "places_group_members",
+            payload.clone(),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "employee -> places_group_members -> ожидался 403, получен {status}"
+        );
+
+        for (who, cookie) in [
+            ("manager", &env.manager_cookie),
+            ("admin", &env.admin_cookie),
+        ] {
+            let (status, body) =
+                gt_post(&env, cookie, "places_group_members", payload.clone()).await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "{who} -> places_group_members -> ожидался 200, получен {status}"
+            );
+            let items = body.as_array().unwrap_or_else(|| {
+                panic!("{who}: ответ не массив (spa_fallback вместо роута?): {body}")
+            });
+            assert!(
+                items.is_empty(),
+                "{who}: несуществующая группа даёт пустой список"
+            );
+        }
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("places_group_members_role_matrix exceeded 60s");
+}

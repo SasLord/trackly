@@ -201,6 +201,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::places::places_list_all,
         crate::tauri_cmds::places::places_subtree_stats,
         crate::tauri_cmds::places::places_contents,
+        crate::tauri_cmds::places::places_group_members,
         crate::tauri_cmds::places::places_search,
         crate::tauri_cmds::places::places_move_subtree_contents,
         // Phase 41 — Group types

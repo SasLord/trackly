@@ -51,7 +51,7 @@ use trackly_infra::repos::{
     SqliteDeviceRepository, SqlitePlaceMovementsRepository, SqlitePlaceRepository,
 };
 
-use crate::dto::place::{PlaceDto, PlacePathDto};
+use crate::dto::place::{PlaceContentDto, PlaceDto, PlacePathDto};
 use crate::dto::printer::WsEvent;
 
 /// Max caller-supplied query length for `search` (mirrors `act_service.rs`'s
@@ -733,6 +733,28 @@ impl PlaceService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })?
+    }
+
+    /// Phase 41.2 (D-19): состав группы строками содержимого места — плоский список
+    /// физических устройств поддерева корневой группы (`device`/`printer`),
+    /// `ORDER BY name, id`. Несуществующая группа — пустой список (UI: «Состав пуст»).
+    pub async fn group_members(
+        &self,
+        caller: &Identity,
+        group_id: i64,
+    ) -> Result<Vec<PlaceContentDto>, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.list_group_members(&conn, group_id)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+        .map(|rows| rows.into_iter().map(PlaceContentDto::from).collect())
     }
 
     /// D-28 "Перенести всё содержимое в…" — bulk-relocate every device,
