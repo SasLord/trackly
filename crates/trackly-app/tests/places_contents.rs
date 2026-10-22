@@ -89,7 +89,7 @@ async fn list_subtree_contents_nested_true_includes_nested_place_devices() {
         insert_device(&svc, floor.id, "Ноутбук №3").await;
 
         let nested = svc
-            .list_subtree_contents(&admin, building.id, true)
+            .list_subtree_contents(&admin, building.id, true, true)
             .await
             .expect("list_subtree_contents nested=true");
         assert_eq!(
@@ -99,7 +99,7 @@ async fn list_subtree_contents_nested_true_includes_nested_place_devices() {
         );
 
         let direct_only = svc
-            .list_subtree_contents(&admin, building.id, false)
+            .list_subtree_contents(&admin, building.id, false, true)
             .await
             .expect("list_subtree_contents nested=false");
         assert_eq!(
@@ -152,7 +152,7 @@ async fn list_subtree_contents_computes_place_path_short_per_effective_variant()
         insert_device(&svc, room.id, "Ноутбук №1").await;
 
         let contents = svc
-            .list_subtree_contents(&admin, building.id, true)
+            .list_subtree_contents(&admin, building.id, true, true)
             .await
             .expect("list_subtree_contents");
         assert_eq!(contents.len(), 1);
@@ -381,7 +381,7 @@ async fn list_subtree_contents_devices_carry_status_code_next_to_status_name() {
         insert_device_with_status(&svc, room.id, "Монитор №3", 1, "в_ремонте").await;
 
         let contents = svc
-            .list_subtree_contents(&admin, room.id, false)
+            .list_subtree_contents(&admin, room.id, false, true)
             .await
             .expect("list_subtree_contents");
         assert_eq!(contents.len(), 3);
@@ -444,7 +444,7 @@ async fn list_subtree_contents_status_code_survives_status_rename() {
             .expect("rename status");
 
         let contents = svc
-            .list_subtree_contents(&admin, room.id, false)
+            .list_subtree_contents(&admin, room.id, false, true)
             .await
             .expect("list_subtree_contents");
         assert_eq!(contents.len(), 1);
@@ -469,7 +469,7 @@ async fn list_subtree_contents_printer_carries_status_code() {
         insert_device_with_status(&svc, room.id, "Принтер №1", 2, "в_работе").await;
 
         let contents = svc
-            .list_subtree_contents(&admin, room.id, false)
+            .list_subtree_contents(&admin, room.id, false, true)
             .await
             .expect("list_subtree_contents");
         assert_eq!(contents.len(), 1);
@@ -514,7 +514,7 @@ async fn list_subtree_contents_cartridge_has_no_status_code() {
             .expect("insert fixture cartridge");
 
         let contents = svc
-            .list_subtree_contents(&admin, room.id, false)
+            .list_subtree_contents(&admin, room.id, false, true)
             .await
             .expect("list_subtree_contents");
         assert_eq!(contents.len(), 1);

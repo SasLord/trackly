@@ -74,7 +74,7 @@ const EXPORT_FORCED: &str =
     "export_csv выгружает ВСЕ устройства выборки: флаги якорей принудительно сброшены, \
      чтобы выгрузка не теряла детали членов якорных групп";
 
-/// Поле, путь, вердикт. Ровно 11 полей x 3 пути.
+/// Поле, путь, вердикт. Ровно 12 полей x 3 пути.
 const VERDICTS: &[(&str, Path, Verdict)] = &[
     ("type_id", List, Narrows),
     ("type_id", ListAll, Narrows),
@@ -125,6 +125,9 @@ const VERDICTS: &[(&str, Path, Verdict)] = &[
     ("member_of_group_id", List, Narrows),
     ("member_of_group_id", ListAll, Ignored(EXPORT_FORCED)),
     ("member_of_group_id", ListGrouped, Ignored(GROUPED_COLLAPSE)),
+    ("group_members_only", List, Narrows),
+    ("group_members_only", ListAll, Ignored(EXPORT_FORCED)),
+    ("group_members_only", ListGrouped, Ignored(GROUPED_COLLAPSE)),
 ];
 
 // ---------------------------------------------------------------------------
@@ -146,6 +149,7 @@ fn destructure_dto(filter: DeviceFilter) {
         anchors_only: _,
         exclude_anchors: _,
         member_of_group_id: _,
+        group_members_only: _,
     } = filter;
 }
 
@@ -164,6 +168,7 @@ fn destructure_domain(filter: trackly_core::domain::devices::DeviceFilter) {
         anchors_only: _,
         exclude_anchors: _,
         member_of_group_id: _,
+        group_members_only: _,
     } = filter;
 }
 
@@ -195,8 +200,8 @@ fn every_field_and_path_has_exactly_one_verdict() {
     let fields = verdict_fields();
     assert_eq!(
         fields.len(),
-        11,
-        "в реестре должно быть 11 полей: {fields:?}"
+        12,
+        "в реестре должно быть 12 полей: {fields:?}"
     );
     for field in &fields {
         for path in PATHS {
@@ -210,7 +215,7 @@ fn every_field_and_path_has_exactly_one_verdict() {
             );
         }
     }
-    assert_eq!(VERDICTS.len(), 11 * 3, "матрица обязана быть полной");
+    assert_eq!(VERDICTS.len(), 12 * 3, "матрица обязана быть полной");
 }
 
 #[test]
@@ -541,6 +546,7 @@ fn apply_probe(field: &str, fx: &Fx, f: &mut DeviceFilter) {
         "anchors_only" => f.anchors_only = true,
         "exclude_anchors" => f.exclude_anchors = true,
         "member_of_group_id" => f.member_of_group_id = Some(fx.group_id),
+        "group_members_only" => f.group_members_only = true,
         other => panic!("для поля {other} нет зонда: добавьте его в apply_probe"),
     }
 }
@@ -562,6 +568,8 @@ fn expected_effect(field: &str) -> BTreeSet<String> {
         "anchors_only" => set(&[F]),
         "exclude_anchors" => minus(all_live(), &[F]),
         "member_of_group_id" => set(&[G]),
+        // Якорь и член единственной живой группы фикстуры.
+        "group_members_only" => set(&[F, G]),
         other => panic!("для поля {other} нет ожидаемого эффекта"),
     }
 }

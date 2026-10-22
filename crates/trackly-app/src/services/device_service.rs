@@ -956,6 +956,7 @@ impl DeviceService {
             anchors_only: filter.anchors_only,
             exclude_anchors: filter.exclude_anchors,
             member_of_group_id: filter.member_of_group_id,
+            group_members_only: filter.group_members_only,
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
@@ -1428,6 +1429,7 @@ impl DeviceService {
             anchors_only: filter.anchors_only,
             exclude_anchors: filter.exclude_anchors,
             member_of_group_id: filter.member_of_group_id,
+            group_members_only: filter.group_members_only,
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
@@ -1956,6 +1958,7 @@ impl DeviceService {
             anchors_only: false,
             exclude_anchors: false,
             member_of_group_id: None,
+            group_members_only: false,
         };
 
         use trackly_core::ports::devices::DeviceRepository;

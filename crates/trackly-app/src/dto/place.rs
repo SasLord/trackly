@@ -215,6 +215,14 @@ pub struct PlaceContentDto {
     pub status_name: Option<String>,
     /// Машинный ключ статуса для устройств и принтеров, `None` у картриджей.
     pub status_code: Option<String>,
+    /// Phase 41.2 (D-18): название типа группы; только у строки вида `group`.
+    pub group_type_name: Option<String>,
+    /// Phase 41.2 (D-18, D-23): число членов группы; только у строки вида `group`.
+    #[specta(type = Option<i32>)]
+    pub member_count: Option<i64>,
+    /// Phase 41.2 (D-23): число принтеров среди членов; только у строки `group`.
+    #[specta(type = Option<i32>)]
+    pub printer_member_count: Option<i64>,
 }
 
 impl From<PlaceContentRow> for PlaceContentDto {
@@ -228,6 +236,9 @@ impl From<PlaceContentRow> for PlaceContentDto {
             place_path_short: row.place_path_short,
             status_name: row.status_name,
             status_code: row.status_code,
+            group_type_name: row.group_type_name,
+            member_count: row.member_count,
+            printer_member_count: row.printer_member_count,
         }
     }
 }

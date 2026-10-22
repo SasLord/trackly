@@ -44,7 +44,7 @@ use crate::dto::printer::WsEvent;
 use crate::services::group_membership::release_device_in_tx;
 use crate::services::group_place::{
     apply_group_place_to_device_in_tx, move_group_in_tx, propagate_group_place_in_tx,
-    GroupMoveDeps, GroupMoveOutcome,
+    GroupMoveCause, GroupMoveDeps, GroupMoveOutcome,
 };
 use crate::services::place_path_display::compute_place_path_short_with_conn;
 use crate::services::plural::ru_plural;
@@ -938,6 +938,7 @@ impl GroupService {
                             group_id,
                             user_id,
                             now,
+                            GroupMoveCause::GROUP,
                         )?;
                         if change.changed {
                             if let Some(p) = change.previous_place {
@@ -1103,6 +1104,7 @@ impl GroupService {
                                 &batch_id,
                                 user_id,
                                 now,
+                                GroupMoveCause::GROUP,
                             )?;
                         }
                         None => {

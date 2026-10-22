@@ -160,16 +160,18 @@ pub async fn build_places_subtree_stats(
 /// Чтение: требует `caller` с правом `ReadPlaces` (D-20, Admin|Manager).
 /// Wraps `PlaceService::list_subtree_contents` (PLC-06 / D-23 — "content of
 /// place" listing; `nested: true` default per D-24 includes the whole subtree).
+/// `expand_groups` (Phase 41.2) is required, no default: a stale client must fail.
 pub async fn build_places_contents(
     ctx: &AppCtx,
     caller: &Identity,
     root_id: i64,
     nested: bool,
+    expand_groups: bool,
 ) -> Result<Vec<PlaceContentDto>, AppError> {
     authorize(caller, &Action::ReadPlaces)?;
     let rows = ctx
         .places
-        .list_subtree_contents(caller, root_id, nested)
+        .list_subtree_contents(caller, root_id, nested, expand_groups)
         .await?;
     Ok(rows.into_iter().map(PlaceContentDto::from).collect())
 }
@@ -348,9 +350,17 @@ pub async fn places_contents(
     state: tauri::State<'_, AppCtx>,
     root_id: i32,
     nested: bool,
+    expand_groups: bool,
 ) -> Result<Vec<PlaceContentDto>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_places_contents(state.inner(), &caller, root_id as i64, nested).await
+    build_places_contents(
+        state.inner(),
+        &caller,
+        root_id as i64,
+        nested,
+        expand_groups,
+    )
+    .await
 }
 
 #[tauri::command]

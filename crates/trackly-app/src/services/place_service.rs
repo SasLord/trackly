@@ -712,18 +712,22 @@ impl PlaceService {
     /// `root_id`. `nested: true` (default, D-24) includes the whole subtree;
     /// `nested: false` ("Только здесь") restricts to items whose `place_id`
     /// is exactly `root_id`.
+    ///
+    /// `expand_groups` (Phase 41.2, OQ-9) обязателен без значения по умолчанию:
+    /// `true` — физическое содержимое, `false` — члены групп свёрнуты в строку группы.
     pub async fn list_subtree_contents(
         &self,
         caller: &Identity,
         root_id: i64,
         nested: bool,
+        expand_groups: bool,
     ) -> Result<Vec<PlaceContentRow>, AppError> {
         authorize(caller, &Action::ReadPlaces)?;
         let readers = self.readers.clone();
         let repo = self.repo.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.list_subtree_contents(&conn, root_id, nested)
+            repo.list_subtree_contents(&conn, root_id, nested, expand_groups)
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -773,7 +777,10 @@ impl PlaceService {
                 let devices_repo = SqliteDeviceRepository;
                 let place_movements_repo = SqlitePlaceMovementsRepository;
 
-                let items = places_repo.list_subtree_contents(&tx, root_id, true)?;
+                // expand_groups=true ОБЯЗАТЕЛЬНО (Phase 41.2, P-09): группы находятся
+                // через устройства-члены; свёрнутый режим скрыл бы их, и массовый
+                // перенос перестал бы переносить группы.
+                let items = places_repo.list_subtree_contents(&tx, root_id, true, true)?;
 
                 // Phase 41 (D-23, GRP-07, Pitfall 2): the device of a group whose
                 // ROOT group has a place must not move on its own — the single-device

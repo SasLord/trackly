@@ -108,6 +108,9 @@ pub struct SubtreeStatsPayload {
 pub struct ContentsPayload {
     pub root_id: i64,
     pub nested: bool,
+    /// Phase 41.2 (OQ-9): обязательное поле, без `serde(default)` — устаревший
+    /// клиент получает ошибку десериализации, а не молча другой режим.
+    pub expand_groups: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -315,9 +318,15 @@ pub async fn handler_contents(
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_places_contents(&ctx, &identity, payload.root_id, payload.nested)
-            .await
-            .map_err(AppErrorResponse::from)?,
+        build_places_contents(
+            &ctx,
+            &identity,
+            payload.root_id,
+            payload.nested,
+            payload.expand_groups,
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
     ))
 }
 

@@ -38,6 +38,35 @@ impl GroupMoveDeps {
     }
 }
 
+/// Причина записи журнала при протаскивании места: источник и (для акта) его id.
+///
+/// Phase 41.2 (D-15): параметризация вместо форка. Существующие вызовы передают
+/// [`GroupMoveCause::GROUP`] и поведения не меняют; акт передаст
+/// [`GroupMoveCause::act`], чтобы откат акта находил строки журнала по `act_id`
+/// (в том числе строки картриджей принтера-члена, D-14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GroupMoveCause {
+    pub source: MovementSource,
+    pub act_id: Option<i64>,
+}
+
+impl GroupMoveCause {
+    /// Операция над группой без акта (состав, место группы).
+    pub(crate) const GROUP: Self = Self {
+        source: MovementSource::Group,
+        act_id: None,
+    };
+
+    /// Перенос как следствие акта `act_id`.
+    #[allow(dead_code)] // первый вызов — планы 41.2-04/06
+    pub(crate) const fn act(act_id: i64) -> Self {
+        Self {
+            source: MovementSource::Act,
+            act_id: Some(act_id),
+        }
+    }
+}
+
 /// Итог переноса группы.
 #[derive(Debug, Default)]
 pub(crate) struct GroupMoveOutcome {
@@ -73,6 +102,7 @@ pub(crate) fn apply_group_place_to_device_in_tx(
     group_id: i64,
     user_id: Option<i64>,
     now: i64,
+    cause: GroupMoveCause,
 ) -> Result<DevicePlaceChange, AppError> {
     let before = deps.devices.get_in_tx(tx, device_id)?;
     if before.place_id == Some(target_place) {
@@ -97,9 +127,9 @@ pub(crate) fn apply_group_place_to_device_in_tx(
         device_id,
         before.place_id,
         Some(target_place),
-        MovementSource::Group,
+        cause.source,
         None,
-        None,
+        cause.act_id,
         user_id,
         now,
         batch_id,
@@ -129,13 +159,14 @@ pub(crate) fn apply_group_place_to_device_in_tx(
         tx,
         device_id,
         Some(target_place),
-        MovementSource::Group,
+        cause.source,
         "вместе с принтером",
         user_id,
         now,
         batch_id,
         entity_label,
         Some(group_id),
+        cause.act_id,
     )?;
 
     Ok(DevicePlaceChange {
@@ -210,6 +241,7 @@ pub(crate) fn move_group_in_tx(
         &batch_id,
         user_id,
         now,
+        GroupMoveCause::GROUP,
     )?;
     if outcome.batch_id.is_none() {
         return Ok(outcome);
@@ -257,6 +289,7 @@ pub(crate) fn propagate_group_place_in_tx(
     batch_id: &str,
     user_id: Option<i64>,
     now: i64,
+    cause: GroupMoveCause,
 ) -> Result<GroupMoveOutcome, AppError> {
     let group = deps.groups.get_group_in_tx(tx, group_id)?;
     let group_ids = deps.groups.subtree_group_ids_in_tx(tx, group_id)?;
@@ -275,9 +308,9 @@ pub(crate) fn propagate_group_place_in_tx(
             group_id,
             old_place,
             Some(target_place),
-            MovementSource::Group,
+            cause.source,
             None,
-            None,
+            cause.act_id,
             user_id,
             now,
             Some(batch_id),
@@ -301,6 +334,7 @@ pub(crate) fn propagate_group_place_in_tx(
             group_id,
             user_id,
             now,
+            cause,
         )?;
         if change.changed {
             moved_devices += 1;

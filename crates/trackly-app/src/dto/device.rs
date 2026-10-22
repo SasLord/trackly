@@ -343,6 +343,10 @@ pub struct DeviceFilter {
     #[serde(default)]
     #[specta(type = Option<i32>)]
     pub member_of_group_id: Option<i64>,
+    /// Phase 41.2 (D-02), opt-in: только устройства, состоящие в живой группе.
+    /// Сужает только `list`; пикер акта ставит его без фильтра статуса.
+    #[serde(default)]
+    pub group_members_only: bool,
 }
 
 /// Параметры пагинации.

@@ -260,7 +260,7 @@ async fn imported_printer_is_visible_as_printer_kind() {
 
     let contents = ctx
         .places
-        .list_subtree_contents(&Identity::trusted_admin(), place_id, true)
+        .list_subtree_contents(&Identity::trusted_admin(), place_id, true, true)
         .await
         .expect("contents");
     let row = contents
