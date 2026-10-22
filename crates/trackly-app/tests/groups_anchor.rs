@@ -1,7 +1,9 @@
 //! Phase 41.1 Plan 09: серверная охрана инварианта якоря группы (GRP-10, D-14/D-20/D-36).
 //!
 //! Якорь нельзя ни удалить (мягкое удаление FK не ловит, охрана в `DeviceService`),
-//! ни вывести из состава (`remove_devices`), ни передать актом (`release_device_in_tx`).
+//! ни вывести из состава (`remove_devices`). Передача якоря актом разрешена (Phase 41.2,
+//! D-13): он уходит вместе с группой, охрана в `release_device_in_tx` остаётся внутренним
+//! инвариантом.
 //! Запись разбора с живыми деталями не удаляется. Реальный `AppCtx` на временном
 //! каталоге; имена вымышленные.
 //!
@@ -307,7 +309,7 @@ async fn anchor_remove_devices_rejects_anchor_but_accepts_ordinary_member() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4 + 7: передача якоря актом (release_device_in_tx)
+// Test 4 + 7: передача якоря актом (группа переезжает целиком)
 // ---------------------------------------------------------------------------
 
 fn act_number(value: &str) -> NumberFieldInput {
@@ -341,7 +343,7 @@ fn handover_dto(number: &str, devices: &[i64], place: i64) -> ActCreateDto {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn anchor_act_handover_is_rejected_and_state_unchanged() {
+async fn anchor_act_handover_moves_group_whole() {
     let (ctx, _dir) = make_test_ctx().await;
     let place_a = seed_place(&ctx, "Склад А").await;
     let place_b = seed_place(&ctx, "Склад Б").await;
@@ -356,15 +358,13 @@ async fn anchor_act_handover_is_rejected_and_state_unchanged() {
     .await;
     let outsider = seed_device(&ctx, "Ноутбук #1", "INV-AN-4O", Some(place_a)).await;
 
-    // Якорь вместе с посторонним: акт отклонён целиком.
-    let err = ctx
-        .acts
+    // Phase 41.2 (D-13): акт якоря больше не отклоняется — якорь передаётся вместе с группой.
+    // Якорь вместе с посторонним: акт создан, группа и якорь переехали на место акта.
+    ctx.acts
         .create(&admin(), handover_dto("AN-1", &[outsider, anchor], place_b))
         .await
-        .expect_err("якорь актом не передаётся");
-    let msg = validation(err, "id");
-    assert!(msg.contains("актом"), "{msg}");
-    assert!(msg.contains("Системный блок #4"), "{msg}");
+        .expect("якорь передаётся актом вместе с группой")
+        .expect_created("anchor handover");
 
     assert_eq!(member_rows(&ctx, anchor).await, 1, "членство якоря цело");
     assert!(group_alive(&ctx, g).await);
@@ -372,24 +372,30 @@ async fn anchor_act_handover_is_rejected_and_state_unchanged() {
         let ctx = &ctx;
         async move { scalar_i64(ctx, "SELECT place_id FROM devices WHERE id = ?1", id).await }
     };
-    assert_eq!(place_of(anchor).await, place_a, "место якоря не менялось");
+    assert_eq!(place_of(anchor).await, place_b, "якорь на месте акта");
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT place_id FROM groups WHERE id = ?1", g).await,
+        place_b,
+        "группа переехала вместе с якорем"
+    );
     assert_eq!(
         place_of(outsider).await,
-        place_a,
-        "откат: посторонний тоже не передан"
+        place_b,
+        "посторонний тоже передан"
     );
     assert_eq!(
         scalar_i64(&ctx, "SELECT COUNT(*) FROM acts WHERE id > ?1", 0).await,
-        0,
-        "акт не создан"
+        1,
+        "акт создан"
     );
 
     // Контроль: обычное устройство вне групп передаётся как раньше.
+    let plain = seed_device(&ctx, "Ноутбук #2", "INV-AN-4P", Some(place_a)).await;
     ctx.acts
-        .create(&admin(), handover_dto("AN-2", &[outsider], place_b))
+        .create(&admin(), handover_dto("AN-2", &[plain], place_b))
         .await
         .expect("обычное устройство передаётся");
-    assert_eq!(place_of(outsider).await, place_b);
+    assert_eq!(place_of(plain).await, place_b);
 }
 
 // ---------------------------------------------------------------------------

@@ -1725,3 +1725,210 @@ fn number_reconstruction_gate_fails_on_prefix_snapshot_and_all_whitespace_varian
         "канонический act.number_display не должен считаться нарушением"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.2 Plan 07: комплектация якоря группы в печатной форме (D-11, D-12)
+// ---------------------------------------------------------------------------
+
+/// Якорная группа с деталями прямо в БД: возвращает id якорного устройства.
+/// `parts`: (название, инвентарный номер, серийный номер).
+async fn seed_anchor_with_parts(
+    writer: &Arc<WriterHandle>,
+    place: i64,
+    parts: &[(&str, Option<&str>, Option<&str>)],
+) -> i64 {
+    let parts: Vec<(String, Option<String>, Option<String>)> = parts
+        .iter()
+        .map(|(n, i, s)| (n.to_string(), i.map(str::to_string), s.map(str::to_string)))
+        .collect();
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(map_rusqlite)?;
+            tx.execute(
+                "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+                 VALUES ('html_t_container', 'Тип теста', 'container', 1700000000, 1700000000)",
+                [],
+            )
+            .map_err(map_rusqlite)?;
+            let type_id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO groups (type_id, name, seq, place_id, created_at_utc, \
+                 updated_at_utc, version) VALUES (?1, 'Сборка #4', 1, ?2, 1700000000, 1700000000, 1)",
+                params![type_id, place],
+            )
+            .map_err(map_rusqlite)?;
+            let group = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO devices (type_id, name, complectation, place_id, status_id, \
+                 version, created_at_utc, updated_at_utc) \
+                 VALUES (1, 'Системный блок #4', 'Корпус Mid Tower', ?1, 1, 1, 1700000000, 1700000000)",
+                params![place],
+            )
+            .map_err(map_rusqlite)?;
+            let anchor = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO group_devices (device_id, group_id, added_at_utc) VALUES (?1, ?2, 1700000000)",
+                params![anchor, group],
+            )
+            .map_err(map_rusqlite)?;
+            tx.execute(
+                "UPDATE groups SET anchor_device_id = ?1 WHERE id = ?2",
+                params![anchor, group],
+            )
+            .map_err(map_rusqlite)?;
+            for (name, inv, serial) in &parts {
+                tx.execute(
+                    "INSERT INTO devices (type_id, name, inventory_number, serial_number, \
+                     place_id, status_id, version, created_at_utc, updated_at_utc) \
+                     VALUES (1, ?1, ?2, ?3, ?4, 1, 1, 1700000000, 1700000000)",
+                    params![name, inv, serial, place],
+                )
+                .map_err(map_rusqlite)?;
+                let part = tx.last_insert_rowid();
+                tx.execute(
+                    "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+                     VALUES (?1, ?2, 1700000000)",
+                    params![part, group],
+                )
+                .map_err(map_rusqlite)?;
+            }
+            tx.commit().map_err(map_rusqlite)?;
+            Ok(anchor)
+        })
+        .await
+        .expect("seed anchor group")
+}
+
+async fn seed_target_place(writer: &Arc<WriterHandle>, name: &str) -> i64 {
+    let name = name.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO places (kind, name, parent_id, is_storage, created_at_utc, \
+                 updated_at_utc, version) VALUES ('room', ?1, NULL, 0, 1700000000, 1700000000, 1)",
+                params![name],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed place")
+}
+
+async fn create_handover_at(
+    svc: &ActService,
+    device_ids: &[i64],
+    place: i64,
+) -> trackly_app::dto::act::ActDto {
+    let payload = ActCreateDto {
+        number_input: NumberFieldInput {
+            value: "41".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
+        giver_name: "Иванов И.И.".into(),
+        receiver_name: "Петров П.П.".into(),
+        place_id: Some(place),
+        notes: None,
+        deadline_utc: None,
+        handover_date_utc: None,
+        items: device_ids
+            .iter()
+            .map(|&id| ActItemNewDto {
+                device_id: id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            })
+            .collect(),
+        confirm_group_release: false,
+    };
+    svc.create(&Identity::trusted_admin(), payload)
+        .await
+        .expect("create handover")
+        .expect_created("create handover")
+}
+
+/// Комплектация якоря с деталями печатается на листе с одной позицией и в Приложении №1;
+/// символ `&` в названии детали экранируется шаблонизатором, на сервере строка хранится как есть.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_anchor_kit_lists_parts_in_both_branches() {
+    const KIT_HTML: &str = "Комплектация: Корпус Mid Tower; SSD Kingston 480ГБ (инв. 114); БП 500W; Кулер R&amp;D; ОЗУ 8ГБ (с&#x2f;н AB123)";
+    const KIT_STORED: &str =
+        "Корпус Mid Tower; SSD Kingston 480ГБ (инв. 114); БП 500W; Кулер R&D; ОЗУ 8ГБ (с/н AB123)";
+    let parts: [(&str, Option<&str>, Option<&str>); 4] = [
+        ("SSD Kingston 480ГБ", Some("114"), None),
+        ("ОЗУ 8ГБ", None, Some("AB123")),
+        ("БП 500W", None, None),
+        ("Кулер R&D", None, None),
+    ];
+
+    // Одна позиция: ветка `.device-block`.
+    let p = make_full_pipeline().await;
+    let place = seed_target_place(&p.writer, "Кабинет 1").await;
+    let anchor = seed_anchor_with_parts(&p.writer, place, &parts).await;
+    let target = seed_target_place(&p.writer, "Кабинет 2").await;
+    let act = create_handover_at(&p.acts, &[anchor], target).await;
+    let stored: Option<String> = p
+        .writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT complectation_at_time FROM act_items WHERE act_id = ?1",
+                params![act.id],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("stored kit");
+    assert_eq!(
+        stored.as_deref(),
+        Some(KIT_STORED),
+        "на сервере строка не экранируется"
+    );
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+    assert!(
+        html.contains("<div class=\"device-block\">"),
+        "ветка одной позиции"
+    );
+    assert!(
+        html.contains(KIT_HTML),
+        "комплектация в листе одной позиции"
+    );
+
+    // Две позиции: Приложение №1 (`tbody.device-group`).
+    let p = make_full_pipeline().await;
+    let place = seed_target_place(&p.writer, "Кабинет 1").await;
+    let anchor = seed_anchor_with_parts(&p.writer, place, &parts).await;
+    let plain = seed_device(&p.writer, "Монитор #2").await;
+    let target = seed_target_place(&p.writer, "Кабинет 2").await;
+    let act = create_handover_at(&p.acts, &[anchor, plain], target).await;
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+    assert!(!html.contains("<div class=\"device-block\">"));
+    assert_eq!(html.matches("<tbody class=\"device-group").count(), 2);
+    assert!(html.contains(KIT_HTML), "комплектация в Приложении №1");
+}
+
+/// Шаблонизатор экранирует и косую черту (`&#x2f;`). Угловая скобка в названии детали экранируется как `&lt;`: разметка из названия не попадает в печать.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_anchor_kit_escapes_markup_in_part_names() {
+    let p = make_full_pipeline().await;
+    let place = seed_target_place(&p.writer, "Кабинет 1").await;
+    let anchor = seed_anchor_with_parts(
+        &p.writer,
+        place,
+        &[("Плата <b>rev2</b>", None, Some("S-1"))],
+    )
+    .await;
+    let target = seed_target_place(&p.writer, "Кабинет 2").await;
+    let act = create_handover_at(&p.acts, &[anchor], target).await;
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+    assert!(
+        html.contains("Плата &lt;b&gt;rev2&lt;&#x2f;b&gt; (с&#x2f;н S-1)"),
+        "скобки экранированы"
+    );
+    assert!(
+        !html.contains("Плата <b>rev2</b>"),
+        "сырая разметка не должна попасть в печать"
+    );
+}
