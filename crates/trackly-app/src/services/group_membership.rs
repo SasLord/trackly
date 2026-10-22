@@ -19,7 +19,6 @@ use trackly_infra::repos::SqliteGroupRepository;
 /// `Record` — вывод при убирании позиции из акта, когда группа устройства переехала
 /// этим же актом: откат акта обязан вернуть такое устройство в группу.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Record подключают планы 41.2-09 и 41.2-11
 pub(crate) enum ReleaseEffect {
     Record,
     Skip,
@@ -185,7 +184,6 @@ pub(crate) fn release_if_locked_device_in_tx(
 /// обещало бы механическое обращение (Phase 41.2). Тексты — фиксированные русские
 /// шаблоны без внутренних токенов.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // первый вызов — планы 41.2-09, -11, -13
 pub(crate) struct GroupNotice {
     pub message: String,
     /// Группа, о которой речь (тост называет её и ведёт к ней); `None`, если её нет.
@@ -194,7 +192,6 @@ pub(crate) struct GroupNotice {
 
 /// Итог возврата устройства в группу при откате акта.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // первый вызов — планы 41.2-09, -11, -13
 pub(crate) enum RestoreOutcome {
     Restored,
     Skipped(GroupNotice),
@@ -210,7 +207,7 @@ pub(crate) enum RestoreOutcome {
 /// группу с местом группы и без собственного места и нарушило бы «член живёт в месте
 /// группы», D-13/D-14 фазы 41.1); (d) иначе устройство добавлено в группу.
 /// Нарушение правила — не ошибка: откат проходит, менеджер получает уведомление.
-#[allow(clippy::too_many_arguments, dead_code)] // первый вызов — планы 41.2-09, -11, -13
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn restore_membership_in_tx(
     tx: &Transaction<'_>,
     groups: &SqliteGroupRepository,
@@ -281,7 +278,7 @@ pub(crate) fn restore_membership_in_tx(
 ///
 /// Члены контейнерных групп не затрагиваются: их выводит `release_if_locked` при
 /// расхождении места. «Спящая» якорная группа (без места) конфликта не даёт.
-#[allow(clippy::too_many_arguments, dead_code)] // первый вызов — планы 41.2-09, -11, -13
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn anchor_restore_conflict_in_tx(
     tx: &Transaction<'_>,
     groups: &SqliteGroupRepository,

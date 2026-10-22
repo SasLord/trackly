@@ -30,10 +30,12 @@ use std::collections::{HashMap, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use trackly_core::domain::devices::DeviceRow;
-use trackly_core::domain::groups::{ActGroupEffectKind, ActGroupEffectNew, PlanGroupRow};
+use trackly_core::domain::groups::{
+    ActGroupEffectKind, ActGroupEffectNew, ActGroupEffectRow, PlanGroupRow,
+};
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::audit_log_sqlite::AuditEntry;
+use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::SqliteGroupRepository;
 
 use crate::services::act_service::device_snapshot_json;
@@ -633,104 +635,16 @@ pub(crate) fn revert_group_moves_in_tx(
     for effect in effects.iter().rev() {
         match effect.kind {
             ActGroupEffectKind::Move => {
-                let label = effect.group_label.clone();
-                let moved_notice = |label: &str| {
-                    GroupNotice {
-                    message: format!(
-                        "Группа «{label}» не возвращена на прежнее место: после акта её переместили."
-                    ),
-                    group_id: Some(effect.group_id),
-                }
-                };
-                let result = guarded(tx, || {
-                    let group = match deps.groups.get_group_in_tx(tx, effect.group_id) {
-                        Ok(g) => g,
-                        Err(AppError::NotFound { .. }) => return Ok(None),
-                        Err(e) => return Err(e),
-                    };
-                    if group.parent_group_id.is_some() || group.place_id != effect.to_place_id {
-                        return Ok(None);
-                    }
-                    let mut changed: Vec<i64> = Vec::new();
-                    match effect.from_place_id {
-                        Some(from) => {
-                            let batch_id = uuid::Uuid::new_v4().to_string();
-                            let outcome = propagate_group_place_in_tx(
-                                tx,
-                                deps,
-                                effect.group_id,
-                                from,
-                                group.place_id,
-                                &batch_id,
-                                user_id,
-                                now,
-                                GroupMoveCause::act(act_id),
-                            )?;
-                            changed.extend(outcome.changed_place_ids);
-                            changed.push(from);
-                        }
-                        None => {
-                            deps.groups
-                                .set_subtree_place_in_tx(tx, effect.group_id, None, now)?;
-                            if let Some(p) = group.place_id {
-                                changed.push(p);
-                            }
-                        }
-                    }
-                    Ok(Some(changed))
-                });
-                match result {
-                    Ok(Some(changed)) => {
-                        for place in changed {
-                            push_unique(&mut out.touched_place_ids, place);
-                        }
-                        push_unique(&mut out.touched_group_ids, effect.group_id);
-                    }
-                    Ok(None) | Err(_) => out.notices.push(moved_notice(&label)),
-                }
+                absorb(
+                    &mut out,
+                    revert_move_effect_in_tx(tx, deps, effect, user_id, now)?,
+                );
             }
             ActGroupEffectKind::Detach => {
-                let notice = GroupNotice {
-                    message: format!(
-                        "Группа «{}» не возвращена в прежнюю группу: после акта изменились её место или состав.",
-                        effect.group_label
-                    ),
-                    group_id: Some(effect.group_id),
-                };
-                let Some(parent_id) = effect.from_parent_group_id else {
-                    out.notices.push(notice);
-                    continue;
-                };
-                let result = guarded(tx, || {
-                    let group = match deps.groups.get_group_in_tx(tx, effect.group_id) {
-                        Ok(g) => g,
-                        Err(AppError::NotFound { .. }) => return Ok(false),
-                        Err(e) => return Err(e),
-                    };
-                    let parent = match deps.groups.get_group_in_tx(tx, parent_id) {
-                        Ok(g) => g,
-                        Err(AppError::NotFound { .. }) => return Ok(false),
-                        Err(e) => return Err(e),
-                    };
-                    if group.parent_group_id.is_some() || group.place_id != parent.place_id {
-                        return Ok(false);
-                    }
-                    deps.groups.set_parent_in_tx(
-                        tx,
-                        group.id,
-                        group.version,
-                        Some(parent_id),
-                        now,
-                    )?;
-                    Ok(true)
-                });
-                match result {
-                    Ok(true) => {
-                        push_unique(&mut out.touched_group_ids, effect.group_id);
-                        push_unique(&mut out.touched_group_ids, parent_id);
-                    }
-                    Ok(false) | Err(_) => out.notices.push(notice),
-                }
+                absorb(
+                    &mut out,
+                    revert_detach_effect_in_tx(tx, deps, effect, user_id, now)?,
+                );
             }
             ActGroupEffectKind::Release => {}
         }
@@ -738,6 +652,186 @@ pub(crate) fn revert_group_moves_in_tx(
     out.touched_place_ids.sort_unstable();
     out.touched_group_ids.sort_unstable();
     Ok(out)
+}
+
+fn absorb(out: &mut GroupRevertOutcome, other: GroupRevertOutcome) {
+    out.notices.extend(other.notices);
+    for place in other.touched_place_ids {
+        push_unique(&mut out.touched_place_ids, place);
+    }
+    for group in other.touched_group_ids {
+        push_unique(&mut out.touched_group_ids, group);
+    }
+}
+
+/// Обратить ОДИН эффект `move` (Phase 41.2): группа жива, её место равно `to_place_id`
+/// (не двигалась с тех пор) и она корневая, иначе группа остаётся на месте и возвращается
+/// уведомление. Строки обратного переноса несут `source = 'act'` и `act_id` эффекта.
+/// Удаление самого эффекта и порядок относительно `detach` — у вызывающего.
+pub(crate) fn revert_move_effect_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    effect: &ActGroupEffectRow,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<GroupRevertOutcome, AppError> {
+    let mut out = GroupRevertOutcome::default();
+    let act_id = effect.act_id;
+    let label = effect.group_label.clone();
+    let result = guarded(tx, || {
+        let group = match deps.groups.get_group_in_tx(tx, effect.group_id) {
+            Ok(g) => g,
+            Err(AppError::NotFound { .. }) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        if group.parent_group_id.is_some() || group.place_id != effect.to_place_id {
+            return Ok(None);
+        }
+        let mut changed: Vec<i64> = Vec::new();
+        match effect.from_place_id {
+            Some(from) => {
+                let batch_id = uuid::Uuid::new_v4().to_string();
+                let outcome = propagate_group_place_in_tx(
+                    tx,
+                    deps,
+                    effect.group_id,
+                    from,
+                    group.place_id,
+                    &batch_id,
+                    user_id,
+                    now,
+                    GroupMoveCause::act(act_id),
+                )?;
+                changed.extend(outcome.changed_place_ids);
+                changed.push(from);
+            }
+            None => {
+                deps.groups
+                    .set_subtree_place_in_tx(tx, effect.group_id, None, now)?;
+                if let Some(p) = group.place_id {
+                    changed.push(p);
+                }
+            }
+        }
+        Ok(Some(changed))
+    });
+    match result {
+        Ok(Some(changed)) => {
+            for place in changed {
+                push_unique(&mut out.touched_place_ids, place);
+            }
+            push_unique(&mut out.touched_group_ids, effect.group_id);
+        }
+        Ok(None) | Err(_) => out.notices.push(GroupNotice {
+            message: format!(
+                "Группа «{label}» не возвращена на прежнее место: после акта её переместили."
+            ),
+            group_id: Some(effect.group_id),
+        }),
+    }
+    Ok(out)
+}
+
+/// Обратить ОДИН эффект `detach` (вызывается ПОСЛЕ обращения `move` той же группы): родитель
+/// жив, группа корневая и её место совпадает с местом родителя — вложенность
+/// восстанавливается; иначе уведомление.
+pub(crate) fn revert_detach_effect_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    effect: &ActGroupEffectRow,
+    _user_id: Option<i64>,
+    now: i64,
+) -> Result<GroupRevertOutcome, AppError> {
+    let mut out = GroupRevertOutcome::default();
+    let notice = GroupNotice {
+        message: format!(
+            "Группа «{}» не возвращена в прежнюю группу: после акта изменились её место или состав.",
+            effect.group_label
+        ),
+        group_id: Some(effect.group_id),
+    };
+    let Some(parent_id) = effect.from_parent_group_id else {
+        out.notices.push(notice);
+        return Ok(out);
+    };
+    let result = guarded(tx, || {
+        let group = match deps.groups.get_group_in_tx(tx, effect.group_id) {
+            Ok(g) => g,
+            Err(AppError::NotFound { .. }) => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        let parent = match deps.groups.get_group_in_tx(tx, parent_id) {
+            Ok(g) => g,
+            Err(AppError::NotFound { .. }) => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        if group.parent_group_id.is_some() || group.place_id != parent.place_id {
+            return Ok(false);
+        }
+        deps.groups
+            .set_parent_in_tx(tx, group.id, group.version, Some(parent_id), now)?;
+        Ok(true)
+    });
+    match result {
+        Ok(true) => {
+            push_unique(&mut out.touched_group_ids, effect.group_id);
+            push_unique(&mut out.touched_group_ids, parent_id);
+        }
+        Ok(false) | Err(_) => out.notices.push(notice),
+    }
+    Ok(out)
+}
+
+/// Устройства, покрываемые группой при передаче актом (Phase 41.2): для контейнера — состав
+/// со вложенными группами, для якорной группы — один якорь. Правка акта сверяет это
+/// покрытие с убираемыми позициями: группа возвращается, когда из акта убрано ВСЁ покрытие.
+pub(crate) fn units_of_group_in_tx(
+    tx: &Transaction<'_>,
+    group_id: i64,
+) -> Result<Vec<i64>, AppError> {
+    let snapshot = load_snapshot(tx, &SqliteGroupRepository)?;
+    let mut ids: Vec<i64> = act_units(&snapshot, group_id)
+        .into_iter()
+        .map(|u| u.device_id)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
+}
+
+/// Id эффекта `release` ЭТОГО акта по устройству, записанного РАНЬШЕ текущей операции
+/// (при создании акта или прошлой правке), либо `None`. Читатель без записей: вызывать до
+/// любых записей по устройству, иначе эффект, который запишет сама правка (режим
+/// `Record`), будет принят за прежний и потрачен возвратом членства.
+pub(crate) fn prior_release_effect_id_in_tx(
+    tx: &Transaction<'_>,
+    groups: &SqliteGroupRepository,
+    act_id: i64,
+    device_id: i64,
+) -> Result<Option<i64>, AppError> {
+    Ok(groups
+        .list_act_group_effects_in_tx(tx, act_id)?
+        .into_iter()
+        .find(|e| e.kind == ActGroupEffectKind::Release && e.device_id == Some(device_id))
+        .map(|e| e.id))
+}
+
+/// Отвязать от акта аудит `custom:group_moved_by_act` по деталям снятой с акта группы:
+/// иначе позднее удаление акта восстановило бы из него устаревший снимок деталей поверх
+/// их более поздних правок. Возвращает число отвязанных строк.
+pub(crate) fn forget_moved_details_in_tx(
+    tx: &Transaction<'_>,
+    groups: &SqliteGroupRepository,
+    audit: &SqliteAuditLogRepository,
+    act_id: i64,
+    group_id: i64,
+) -> Result<usize, AppError> {
+    let mut detached = 0;
+    for device_id in groups.subtree_device_ids_in_tx(tx, group_id)? {
+        detached +=
+            audit.detach_act_link_in_tx(tx, act_id, "custom:group_moved_by_act", device_id)?;
+    }
+    Ok(detached)
 }
 
 /// Вернуть в группы устройства, вынесенные актом (след `release`). Вызывается ПОСЛЕ

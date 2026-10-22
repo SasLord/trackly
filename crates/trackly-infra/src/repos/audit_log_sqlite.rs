@@ -160,6 +160,36 @@ impl SqliteAuditLogRepository {
         .optional()
         .map_err(map_rusqlite)
     }
+
+    /// Отвязать от акта строки аудита одного устройства с заданным `action` (Phase 41.2).
+    ///
+    /// Нужна, когда правка акта сняла группу с акта: следы `custom:group_moved_by_act`
+    /// по деталям этой группы несут снимок «до» и `act_id`, и позднее удаление акта
+    /// восстановило бы из него устаревшее состояние деталей поверх их более поздних правок.
+    /// Строка остаётся в журнале как история: `action` получает суффикс `_reverted`, из
+    /// `payload_json` убирается `act_id`, добавляется `reverted_act_id`. Чтения по акту
+    /// (`select_device_mutations_for_act`, `select_latest_device_mutation`) её больше не видят.
+    /// Возвращает число отвязанных строк. Единственный UPDATE над `audit_log`.
+    pub fn detach_act_link_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        action: &str,
+        device_id: i64,
+    ) -> Result<usize, AppError> {
+        tx.execute(
+            "UPDATE audit_log \
+             SET action = action || '_reverted', \
+                 payload_json = json_set(json_remove(payload_json, '$.act_id'), \
+                                         '$.reverted_act_id', ?1) \
+             WHERE entity_type = 'device' \
+               AND entity_id = ?2 \
+               AND action = ?3 \
+               AND json_extract(payload_json, '$.act_id') = ?1",
+            params![act_id, device_id, action],
+        )
+        .map_err(map_rusqlite)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -365,5 +395,81 @@ mod tests {
         );
 
         tx.commit().expect("commit");
+    }
+
+    #[test]
+    fn detach_act_link_hides_only_the_matching_rows_from_act_reads() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqliteAuditLogRepository;
+        let tx = conn.transaction().expect("tx");
+        let put = |device: i64, action: &str, act: i64, before: &str| {
+            repo.insert(
+                &tx,
+                AuditEntry {
+                    entity_type: "device",
+                    entity_id: device,
+                    action,
+                    user_id: None,
+                    before_json: Some(before.into()),
+                    after_json: None,
+                    payload_json: Some(format!("{{\"act_id\":{act}}}")),
+                    created_at_utc: 1_700_000_000,
+                },
+            )
+            .expect("insert");
+        };
+        // Целевая строка, соседняя строка того же устройства с другим action,
+        // строка другого акта и строка другого устройства.
+        put(7, "custom:group_moved_by_act", 42, "{\"place_id\":1}");
+        put(7, "update", 42, "{\"place_id\":2}");
+        put(7, "custom:group_moved_by_act", 43, "{\"place_id\":3}");
+        put(8, "custom:group_moved_by_act", 42, "{\"place_id\":4}");
+
+        let before = repo
+            .select_device_mutations_for_act(&tx, 42)
+            .expect("select before");
+        assert_eq!(before.len(), 3, "до отвязки акт видит три строки");
+
+        let n = repo
+            .detach_act_link_in_tx(&tx, 42, "custom:group_moved_by_act", 7)
+            .expect("detach");
+        assert_eq!(n, 1, "отвязана ровно одна строка");
+
+        let after = repo
+            .select_device_mutations_for_act(&tx, 42)
+            .expect("select after");
+        assert_eq!(
+            after.len(),
+            2,
+            "осталось: другой action и другое устройство"
+        );
+        assert!(after
+            .iter()
+            .any(|(d, b)| *d == 7 && b.contains("\"place_id\":2")));
+        assert!(after.iter().any(|(d, _)| *d == 8));
+        assert_eq!(
+            repo.select_device_mutations_for_act(&tx, 43)
+                .expect("select other act")
+                .len(),
+            1,
+            "строка другого акта не тронута"
+        );
+        let (action, payload): (String, String) = tx
+            .query_row(
+                "SELECT action, payload_json FROM audit_log \
+                 WHERE entity_id = 7 AND action LIKE '%_reverted'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("reverted row stays as history");
+        assert_eq!(action, "custom:group_moved_by_act_reverted");
+        assert!(payload.contains("\"reverted_act_id\":42"));
+        assert!(!payload.contains("\"act_id\":42"));
+        // Повторный вызов ничего не находит.
+        assert_eq!(
+            repo.detach_act_link_in_tx(&tx, 42, "custom:group_moved_by_act", 7)
+                .expect("detach again"),
+            0
+        );
     }
 }
