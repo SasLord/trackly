@@ -13,7 +13,8 @@
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use trackly_core::domain::groups::{
-    GroupNew, GroupRow, GroupValueRow, MemberDeviceRow, PrinterRefRow,
+    ActGroupEffectKind, ActGroupEffectNew, ActGroupEffectRow, GroupNew, GroupRow, GroupValueRow,
+    MemberDeviceRow, PlanGroupRow, PrinterRefRow,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::groups::GroupRepository;
@@ -951,6 +952,177 @@ impl SqliteGroupRepository {
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .map_err(map_rusqlite)?
             .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+}
+
+/// Следы действий акта над группами (V049, Phase 41.2, D-08/D-09) и читатели
+/// снимка групп для планировщика. Весь SQL статический, ввод — только через
+/// `rusqlite::params!`.
+impl SqliteGroupRepository {
+    /// Записать след действия акта; возвращает id строки.
+    pub fn insert_act_group_effect_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        effect: &ActGroupEffectNew,
+    ) -> Result<i64, AppError> {
+        tx.execute(
+            "INSERT INTO act_group_effects
+               (act_id, kind, group_id, group_label, device_id, from_place_id,
+                to_place_id, from_parent_group_id, created_at_utc)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                effect.act_id,
+                effect.kind.as_str(),
+                effect.group_id,
+                effect.group_label,
+                effect.device_id,
+                effect.from_place_id,
+                effect.to_place_id,
+                effect.from_parent_group_id,
+                effect.created_at_utc,
+            ],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(tx.last_insert_rowid())
+    }
+
+    /// Следы акта по возрастанию id. Строка с неизвестным `kind` пропускается:
+    /// токен без SQL CHECK не должен ронять откат/удаление акта.
+    pub fn list_act_group_effects_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+    ) -> Result<Vec<ActGroupEffectRow>, AppError> {
+        let mut stmt = tx
+            .prepare(
+                "SELECT id, act_id, kind, group_id, group_label, device_id, from_place_id,
+                        to_place_id, from_parent_group_id, created_at_utc
+                 FROM act_group_effects WHERE act_id = ?1 ORDER BY id ASC",
+            )
+            .map_err(map_rusqlite)?;
+        let raw = stmt
+            .query_map(rusqlite::params![act_id], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, Option<i64>>(5)?,
+                    r.get::<_, Option<i64>>(6)?,
+                    r.get::<_, Option<i64>>(7)?,
+                    r.get::<_, Option<i64>>(8)?,
+                    r.get::<_, i64>(9)?,
+                ))
+            })
+            .map_err(map_rusqlite)?;
+        let mut out = Vec::new();
+        for item in raw {
+            let (
+                id,
+                act_id,
+                kind,
+                group_id,
+                group_label,
+                device_id,
+                from_place_id,
+                to_place_id,
+                from_parent_group_id,
+                created_at_utc,
+            ) = item.map_err(map_rusqlite)?;
+            let Some(kind) = ActGroupEffectKind::from_str_lenient(&kind) else {
+                continue;
+            };
+            out.push(ActGroupEffectRow {
+                id,
+                act_id,
+                kind,
+                group_id,
+                group_label,
+                device_id,
+                from_place_id,
+                to_place_id,
+                from_parent_group_id,
+                created_at_utc,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Удалить один след (после его отката).
+    pub fn delete_act_group_effect_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        effect_id: i64,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "DELETE FROM act_group_effects WHERE id = ?1",
+            rusqlite::params![effect_id],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
+    /// Удалить все следы акта; возвращает число удалённых строк.
+    pub fn delete_act_group_effects_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+    ) -> Result<usize, AppError> {
+        tx.execute(
+            "DELETE FROM act_group_effects WHERE act_id = ?1",
+            rusqlite::params![act_id],
+        )
+        .map_err(map_rusqlite)
+    }
+
+    /// Снимок всех живых групп для планировщика. Принимает `&Connection`:
+    /// `Transaction` разыменовывается в `Connection`, поэтому метод годится и
+    /// для читателя, и для транзакции writer'а.
+    pub fn list_live_groups_for_plan(
+        &self,
+        conn: &Connection,
+    ) -> Result<Vec<PlanGroupRow>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, parent_group_id, name, place_id, version, anchor_device_id
+                 FROM groups WHERE deleted_at_utc IS NULL ORDER BY id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(PlanGroupRow {
+                    id: r.get(0)?,
+                    parent_group_id: r.get(1)?,
+                    name: r.get(2)?,
+                    place_id: r.get(3)?,
+                    version: r.get(4)?,
+                    anchor_device_id: r.get(5)?,
+                })
+            })
+            .map_err(map_rusqlite)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Пары `(device_id, group_id)` только для живых групп и живых устройств.
+    pub fn list_live_memberships(&self, conn: &Connection) -> Result<Vec<(i64, i64)>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT gd.device_id, gd.group_id
+                 FROM group_devices gd
+                 JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL
+                 JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+                 ORDER BY gd.device_id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(map_rusqlite)?
+            .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(map_rusqlite)?;
         Ok(rows)
     }

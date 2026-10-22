@@ -253,6 +253,84 @@ pub struct MemberDeviceRow {
     pub status_code: Option<String>,
 }
 
+/// Вид следа действия акта над группой (Phase 41.2, D-08): токены таблицы
+/// `act_group_effects.kind`. В БД токен хранится без SQL CHECK, поэтому чтение
+/// идёт через `from_str_lenient`: неизвестный токен не роняет экран.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActGroupEffectKind {
+    /// Деталь вынесена из группы актом.
+    Release,
+    /// Корень группы перенесён в другое место актом.
+    Move,
+    /// Группа отцеплена от родителя актом.
+    Detach,
+}
+
+impl ActGroupEffectKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Release => "release",
+            Self::Move => "move",
+            Self::Detach => "detach",
+        }
+    }
+
+    /// Мягкий разбор для чтения: неизвестный токен — `None`.
+    pub fn from_str_lenient(s: &str) -> Option<Self> {
+        match s {
+            "release" => Some(Self::Release),
+            "move" => Some(Self::Move),
+            "detach" => Some(Self::Detach),
+            _ => None,
+        }
+    }
+}
+
+/// Данные для записи следа действия акта над группой.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActGroupEffectNew {
+    pub act_id: i64,
+    pub kind: ActGroupEffectKind,
+    pub group_id: i64,
+    /// Снимок имени группы: тост предупреждения называет группу и после её удаления.
+    pub group_label: String,
+    /// Для `Release` — вынесенный член.
+    pub device_id: Option<i64>,
+    /// Для `Move` — место корня до переноса.
+    pub from_place_id: Option<i64>,
+    /// Для `Move` — место корня после переноса (сверка «группа не двигалась»).
+    pub to_place_id: Option<i64>,
+    /// Для `Detach` — прежний родитель.
+    pub from_parent_group_id: Option<i64>,
+    pub created_at_utc: i64,
+}
+
+/// Строка следа действия акта над группой.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActGroupEffectRow {
+    pub id: i64,
+    pub act_id: i64,
+    pub kind: ActGroupEffectKind,
+    pub group_id: i64,
+    pub group_label: String,
+    pub device_id: Option<i64>,
+    pub from_place_id: Option<i64>,
+    pub to_place_id: Option<i64>,
+    pub from_parent_group_id: Option<i64>,
+    pub created_at_utc: i64,
+}
+
+/// Узел снимка живых групп для планировщика актов (Phase 41.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanGroupRow {
+    pub id: i64,
+    pub parent_group_id: Option<i64>,
+    pub name: String,
+    pub place_id: Option<i64>,
+    pub version: i64,
+    pub anchor_device_id: Option<i64>,
+}
+
 /// Название: trim, пустое — «Укажите название.», длиннее `NAME_MAX_CHARS` — ошибка.
 pub fn validate_name(raw: &str, field: &str) -> Result<String, AppError> {
     let s = raw.trim();
@@ -317,6 +395,15 @@ mod tests {
             validate_name(&"а".repeat(NAME_MAX_CHARS + 1), "name"),
             Err(AppError::Validation { .. })
         ));
+    }
+
+    #[test]
+    fn act_group_effect_kind_round_trip() {
+        for t in ["release", "move", "detach"] {
+            assert_eq!(ActGroupEffectKind::from_str_lenient(t).unwrap().as_str(), t);
+        }
+        assert_eq!(ActGroupEffectKind::from_str_lenient("bogus"), None);
+        assert_eq!(ActGroupEffectKind::from_str_lenient(""), None);
     }
 
     #[test]
