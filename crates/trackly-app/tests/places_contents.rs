@@ -528,3 +528,352 @@ async fn list_subtree_contents_cartridge_has_no_status_code() {
     .await
     .expect("test timed out");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.2 Plan 05 (GAM-04): режим «группа вместо членов».
+//
+// ОДНА расходящаяся фикстура: место с группой из трёх устройств (одно из них
+// принтер с прикреплённым картриджем), «спящая» группа без места (её члены живут
+// в собственных местах), одиночное устройство вне групп, вложенное место с ещё
+// одним устройством. Члены с разными статусами.
+// ---------------------------------------------------------------------------
+
+struct GroupFixture {
+    root: i64,
+    nested: i64,
+    group: i64,
+    member_block: i64,
+    member_monitor: i64,
+    member_printer: i64,
+    cartridge: i64,
+    dormant_group: i64,
+    dormant_a: i64,
+    dormant_b: i64,
+    single: i64,
+    nested_device: i64,
+}
+
+/// Сырой посев устройства: `type_id` 1 — обычное, 2 — принтер.
+async fn seed_device_row(
+    svc: &PlaceService,
+    type_id: i64,
+    name: &str,
+    place_id: i64,
+    status_id: i64,
+    group_id: Option<i64>,
+) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, place_id, status_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (?1, ?2, ?3, ?4, 1, 0, 0)",
+                rusqlite::params![type_id, name, place_id, status_id],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            let id = conn.last_insert_rowid();
+            if let Some(g) = group_id {
+                conn.execute(
+                    "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+                     VALUES (?1, ?2, 0)",
+                    rusqlite::params![id, g],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            }
+            Ok(id)
+        })
+        .await
+        .expect("seed device row")
+}
+
+async fn seed_group_row(svc: &PlaceService, name: &str, seq: i64, place_id: Option<i64>) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            // Тип создаёт сам тест: справочник типов групп сеет AppCtx, не миграция.
+            conn.execute(
+                "INSERT OR IGNORE INTO group_types \
+                 (code, name, behavior, created_at_utc, updated_at_utc) \
+                 VALUES ('ws_fixture', 'АРМ', 'repair', 0, 0)",
+                [],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            conn.execute(
+                "INSERT INTO groups (type_id, name, seq, place_id, version, \
+                 created_at_utc, updated_at_utc) \
+                 VALUES ((SELECT id FROM group_types WHERE code = 'ws_fixture'), \
+                         ?1, ?2, ?3, 1, 0, 0)",
+                rusqlite::params![name, seq, place_id],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed group row")
+}
+
+async fn group_fixture(svc: &PlaceService) -> GroupFixture {
+    let admin = admin_caller();
+    let root = svc
+        .create(&admin, new_place(PlaceKind::Room, "Кабинет 201", None))
+        .await
+        .expect("create root")
+        .id;
+    let nested = svc
+        .create(
+            &admin,
+            new_place(PlaceKind::Room, "Подсобка 201", Some(root)),
+        )
+        .await
+        .expect("create nested")
+        .id;
+    let group = seed_group_row(svc, "АРМ #3", 3, Some(root)).await;
+    let member_block = seed_device_row(svc, 1, "Системный блок №1", root, 1, Some(group)).await;
+    let member_monitor = seed_device_row(svc, 1, "Монитор №1", root, 2, Some(group)).await;
+    let member_printer = seed_device_row(svc, 2, "Принтер №1", root, 3, Some(group)).await;
+    // Картридж, установленный в принтер-член группы.
+    let cartridge = svc
+        .writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO cartridge_models (brand, model, created_at_utc, updated_at_utc, version) \
+                 VALUES ('Бренд', 'Модель-7', 0, 0, 1)",
+                [],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            let model_id = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO cartridges \
+                 (code, model_id, status_id, place_id, current_printer_device_id, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('C-GRP-1', ?1, 1, ?2, ?3, 0, 0, 1)",
+                rusqlite::params![model_id, root, member_printer],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed cartridge");
+    // «Спящая» группа: место NULL, члены живут в собственных местах.
+    let dormant_group = seed_group_row(svc, "АРМ #4", 4, None).await;
+    let dormant_a = seed_device_row(svc, 1, "Спящий член А", root, 1, Some(dormant_group)).await;
+    let dormant_b = seed_device_row(svc, 1, "Спящий член Б", nested, 1, Some(dormant_group)).await;
+    let single = seed_device_row(svc, 1, "Ноутбук Одиночный", root, 1, None).await;
+    let nested_device = seed_device_row(svc, 1, "Ноутбук Вложенный", nested, 1, None).await;
+    GroupFixture {
+        root,
+        nested,
+        group,
+        member_block,
+        member_monitor,
+        member_printer,
+        cartridge,
+        dormant_group,
+        dormant_a,
+        dormant_b,
+        single,
+        nested_device,
+    }
+}
+
+fn ids_of(rows: &[trackly_core::domain::places::PlaceContentRow], kind: &str) -> Vec<i64> {
+    let mut v: Vec<i64> = rows
+        .iter()
+        .filter(|r| r.kind == kind)
+        .map(|r| r.id)
+        .collect();
+    v.sort_unstable();
+    v
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn expand_false_collapses_group_members_into_one_group_row() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let f = group_fixture(&svc).await;
+        let rows = svc
+            .list_subtree_contents(&admin_caller(), f.root, true, false)
+            .await
+            .expect("list collapsed");
+
+        let groups: Vec<_> = rows.iter().filter(|r| r.kind == "group").collect();
+        assert_eq!(groups.len(), 1, "одна строка группы (спящая — без места)");
+        let g = groups[0];
+        assert_eq!(g.id, f.group);
+        assert_eq!(g.name, "АРМ #3", "чистое имя группы, без склейки счётчика");
+        assert_eq!(g.group_type_name.as_deref(), Some("АРМ"));
+        assert_eq!(g.member_count, Some(3));
+        assert_eq!(g.printer_member_count, Some(1));
+        assert_eq!(g.inventory_or_code, None);
+        assert_eq!(g.status_name, None);
+        assert_eq!(g.status_code, None);
+        assert!(g.full_path.contains("Кабинет 201"));
+
+        let dev = ids_of(&rows, "device");
+        let prn = ids_of(&rows, "printer");
+        for hidden in [f.member_block, f.member_monitor] {
+            assert!(!dev.contains(&hidden), "член группы скрыт: device {hidden}");
+        }
+        assert!(
+            !prn.contains(&f.member_printer),
+            "принтер-член скрыт тем же предикатом"
+        );
+        assert_eq!(
+            ids_of(&rows, "cartridge"),
+            vec![f.cartridge],
+            "картридж принтера остаётся своей строкой"
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn expand_true_keeps_every_member_and_has_no_group_rows() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let f = group_fixture(&svc).await;
+        let rows = svc
+            .list_subtree_contents(&admin_caller(), f.root, true, true)
+            .await
+            .expect("list physical");
+        assert!(ids_of(&rows, "group").is_empty(), "строк группы нет");
+        let dev = ids_of(&rows, "device");
+        for id in [f.member_block, f.member_monitor, f.single, f.nested_device] {
+            assert!(
+                dev.contains(&id),
+                "устройство {id} видно в физическом режиме"
+            );
+        }
+        assert_eq!(ids_of(&rows, "printer"), vec![f.member_printer]);
+        assert!(rows.iter().all(|r| r.group_type_name.is_none()
+            && r.member_count.is_none()
+            && r.printer_member_count.is_none()));
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dormant_group_members_stay_visible_without_group_row() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let f = group_fixture(&svc).await;
+        let rows = svc
+            .list_subtree_contents(&admin_caller(), f.root, true, false)
+            .await
+            .expect("list collapsed");
+        let dev = ids_of(&rows, "device");
+        assert!(
+            dev.contains(&f.dormant_a),
+            "член спящей группы виден (P-10)"
+        );
+        assert!(
+            dev.contains(&f.dormant_b),
+            "член спящей группы виден (P-10)"
+        );
+        assert!(
+            !rows
+                .iter()
+                .any(|r| r.kind == "group" && r.id == f.dormant_group),
+            "у группы без места строки нет"
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn physical_counts_equal_in_both_modes_while_row_count_differs() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+        let f = group_fixture(&svc).await;
+
+        let stats = svc.subtree_stats(&admin, f.root).await.expect("stats");
+        // 3 члена + 2 спящих + одиночное + вложенное = 7, физически, в обоих режимах.
+        assert_eq!(stats.device_count, 7);
+
+        let physical = svc
+            .list_subtree_contents(&admin, f.root, true, true)
+            .await
+            .expect("physical");
+        let collapsed = svc
+            .list_subtree_contents(&admin, f.root, true, false)
+            .await
+            .expect("collapsed");
+        assert!(
+            collapsed.len() < physical.len(),
+            "строк при expand_groups=false строго меньше: {} против {}",
+            collapsed.len(),
+            physical.len()
+        );
+        // Строка группы не прибавляет единицу к device_count: счётчик не зависит от режима.
+        let stats_after = svc
+            .subtree_stats(&admin, f.root)
+            .await
+            .expect("stats again");
+        assert_eq!(stats_after.device_count, stats.device_count);
+        let device_like = |rows: &[trackly_core::domain::places::PlaceContentRow]| {
+            rows.iter()
+                .filter(|r| matches!(r.kind.as_str(), "device" | "printer"))
+                .count()
+        };
+        assert_eq!(device_like(&physical), 7);
+        assert_eq!(device_like(&collapsed), 4, "7 минус 3 скрытых члена");
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn nested_false_returns_group_row_only_in_the_groups_own_place() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+        let f = group_fixture(&svc).await;
+
+        let here = svc
+            .list_subtree_contents(&admin, f.root, false, false)
+            .await
+            .expect("only here");
+        assert_eq!(ids_of(&here, "group"), vec![f.group]);
+
+        let child = svc
+            .list_subtree_contents(&admin, f.nested, false, false)
+            .await
+            .expect("child only");
+        assert!(
+            ids_of(&child, "group").is_empty(),
+            "во вложенном месте строки группы нет"
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn expand_false_keeps_member_outside_group_place_visible() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+        let f = group_fixture(&svc).await;
+        // Старые данные: член живёт не в месте группы (нарушенный инвариант).
+        let stray =
+            seed_device_row(&svc, 1, "Монитор Расхождение", f.nested, 1, Some(f.group)).await;
+
+        let rows = svc
+            .list_subtree_contents(&admin, f.root, true, false)
+            .await
+            .expect("collapsed");
+        assert!(
+            ids_of(&rows, "device").contains(&stray),
+            "член с расходящимся местом не прячется"
+        );
+        let group_row = rows.iter().find(|r| r.kind == "group").expect("group row");
+        assert_eq!(group_row.member_count, Some(4), "счётчик физический: 3 + 1");
+    })
+    .await
+    .expect("test timed out");
+}
