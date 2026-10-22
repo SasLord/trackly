@@ -1167,6 +1167,7 @@ impl ActService {
                         Some(payload.id),
                         user_id_opt,
                         now,
+                        crate::services::group_membership::ReleaseEffect::Skip,
                     )?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
@@ -2351,6 +2352,7 @@ impl ActService {
                         Some(payload.id),
                         user_id_opt,
                         now,
+                        crate::services::group_membership::ReleaseEffect::Skip,
                     )?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
@@ -3774,6 +3776,7 @@ fn undo_device_mutations_for_act(
             Some(act_id),
             user_id_opt,
             now,
+            crate::services::group_membership::ReleaseEffect::Skip,
         )?;
         touched_place_ids.push(place_before_undo.place_id);
         touched_place_ids.push(restored.place_id);
@@ -3830,7 +3833,7 @@ fn dedupe_place_ids(ids: Vec<Option<i64>>) -> Vec<i64> {
     out
 }
 
-fn device_snapshot_json(row: &DeviceRow) -> Result<String, serde_json::Error> {
+pub(crate) fn device_snapshot_json(row: &DeviceRow) -> Result<String, serde_json::Error> {
     serde_json::to_string(&serde_json::json!({
         "id": row.id,
         "type_id": row.type_id,

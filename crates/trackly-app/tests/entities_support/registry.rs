@@ -191,12 +191,16 @@ pub const REGISTRY: &[Entry] = &[
     b(GROUP, "set_values"),
     // ---- group_place (примитивы внутри транзакции) -------------------------
     ro(GPLACE, "new"),
+    // Конструктор причины переноса (GroupMoveCause::act): чистая const-функция, ничего не пишет.
+    ro(GPLACE, "act"),
     ex(GPLACE, "apply_group_place_to_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GPLACE, "move_group_in_tx", TX_PRIMITIVE_REASON),
     ex(GPLACE, "propagate_group_place_in_tx", TX_PRIMITIVE_REASON),
     // ---- group_membership (примитивы внутри транзакции) --------------------
     ex(GMEMB, "release_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "release_if_locked_device_in_tx", TX_PRIMITIVE_REASON),
+    ex(GMEMB, "restore_membership_in_tx", TX_PRIMITIVE_REASON),
+    ex(GMEMB, "anchor_restore_conflict_in_tx", TX_PRIMITIVE_REASON),
     // ---- group_type_service ------------------------------------------------
     ro(GTYPE, "plural_groups"),
     ro(GTYPE, "new"),
@@ -238,6 +242,8 @@ pub const REGISTRY: &[Entry] = &[
     ro(ACT, "render_acceptance_pdf"),
     ro(ACT, "format_ru_date"),
     ro(ACT, "format_iso_date"),
+    // Сериализует строку устройства для аудита и ничего не пишет; pub(crate) ради group_act_plan.
+    ro(ACT, "device_snapshot_json"),
     // Единственная pub-функция ПОСЛЕ первого `#[cfg(test)]` (слепая зона отрезания хвоста).
     ro(ACT, "build_fts_query"),
     // ---- device_service ----------------------------------------------------
