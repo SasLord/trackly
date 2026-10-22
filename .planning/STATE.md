@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-22T07:26:25.421Z"
+last_updated: "2026-10-22T08:07:10.603Z"
 last_activity: 2026-10-22
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 235
-  completed_plans: 220
+  completed_plans: 221
   percent: 54
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.2 (groups-acts-places) — EXECUTING
-Plan: 2 of 16
+Plan: 3 of 16
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -637,6 +637,7 @@ Last activity: 2026-10-22
 | Phase 41.12 P04 | 50min | 2 tasks | 6 files |
 | Phase 41.12 P07 | 270min | 2 tasks | 2 files |
 | Phase 41.2 P01 | 2h | 3 tasks | 40 files |
+| Phase 41.2 P02 | ~1h | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1369,6 +1370,7 @@ Recent decisions affecting current work:
 - [Phase 41.12]: 41.12-06: stripComments гейта пути — один проход; копия из check-place-tree-invalidation.mjs стирает код после templates/*.html в строчном комментарии (там не проверялось)
 - [Phase 41.12]: [41.12-04] UI-гейт check-device-type-labels без освобождения для слова «Расходник» (D-01); EXEMPT пуст, движок E проверен self-test'ом
 - [Phase 41.2]: [41.2-01] Group-release confirmation is a distinct save outcome (NeedsGroupRelease); delete warnings ride in ActDeleteResultDto.notices
+- [Phase 41.2]: [41.2-02] act_group_effects: no FK on act_id/group_id, group_label snapshot, kind validated in Rust (D-08/D-09)
 
 ### Pending Todos
 
@@ -1573,7 +1575,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-22T07:26:22.288Z
+Last session: 2026-10-22T08:07:07.444Z
 Stopped at: Phase 41.2 UI-SPEC approved
 Resume file: None
 
