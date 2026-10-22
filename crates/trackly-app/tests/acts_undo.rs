@@ -549,3 +549,38 @@ async fn undo_restores_serial_number_and_complectation_cleared_after_handover() 
     .await
     .expect("undo scenario-1 budget");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.2 (D-09): delete_soft returns a structured result.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn delete_soft_returns_structured_result() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Кабинет-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
+
+        let result = svc
+            .delete_soft(handover.id, handover.version)
+            .await
+            .expect("delete handover");
+
+        assert!(
+            !result.changed_place_ids.is_empty(),
+            "undo must report the places it touched"
+        );
+        assert!(
+            result.changed_place_ids.contains(&loc_a),
+            "the warehouse the device returned to must be reported"
+        );
+        assert!(
+            result.notices.is_empty(),
+            "no notices are produced before plan 41.2-13"
+        );
+    })
+    .await
+    .expect("delete_soft_returns_structured_result budget");
+}

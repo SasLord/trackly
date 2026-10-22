@@ -13,8 +13,8 @@
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActSaveOutcome, ActUpdateDto,
-    ActUpdateReturnDto, ActsCountsDto, Pagination,
+    ActCreateDto, ActDeleteResultDto, ActDto, ActFilter, ActListResponse, ActReturnDto,
+    ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::tauri_cmds::users::resolve_tauri_identity;
@@ -82,7 +82,7 @@ pub async fn build_acts_delete(
     caller: &Identity,
     id: i64,
     version: i64,
-) -> Result<Vec<i64>, AppError> {
+) -> Result<ActDeleteResultDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts.delete_soft(id, version).await
 }
@@ -220,11 +220,9 @@ pub async fn acts_delete(
     state: tauri::State<'_, AppCtx>,
     id: i32,
     version: i32,
-) -> Result<Vec<i32>, AppError> {
+) -> Result<ActDeleteResultDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    let changed_place_ids =
-        build_acts_delete(state.inner(), &caller, id as i64, version as i64).await?;
-    Ok(changed_place_ids.into_iter().map(|v| v as i32).collect())
+    build_acts_delete(state.inner(), &caller, id as i64, version as i64).await
 }
 
 #[tauri::command]

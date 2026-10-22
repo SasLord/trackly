@@ -450,7 +450,8 @@ async fn delete_soft_surfaces_undone_place() {
         let changed = svc
             .delete_soft(act.id, act.version)
             .await
-            .expect("delete_soft");
+            .expect("delete_soft")
+            .changed_place_ids;
 
         assert_eq!(
             changed,

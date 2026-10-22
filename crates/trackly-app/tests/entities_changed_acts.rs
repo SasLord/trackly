@@ -340,7 +340,8 @@ async fn scenario_delete_soft() {
             .acts
             .delete_soft(act.id, act.version)
             .await
-            .expect("delete_soft");
+            .expect("delete_soft")
+            .changed_place_ids;
 
         let (places, devices, groups) = assert_one_entities(&mut rx, "delete_soft");
         assert!(!touched.is_empty(), "откат вернул затронутые места");

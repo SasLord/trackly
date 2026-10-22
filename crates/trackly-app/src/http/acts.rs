@@ -13,8 +13,8 @@ use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActSaveOutcome, ActUpdateDto,
-    ActUpdateReturnDto, ActsCountsDto, Pagination,
+    ActCreateDto, ActDeleteResultDto, ActDto, ActFilter, ActListResponse, ActReturnDto,
+    ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::error_axum::AppErrorResponse;
@@ -181,7 +181,7 @@ pub async fn handler_delete(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(p): Json<DeletePayload>,
-) -> Result<Json<Vec<i64>>, AppErrorResponse> {
+) -> Result<Json<ActDeleteResultDto>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;

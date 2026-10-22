@@ -40,8 +40,8 @@ use trackly_infra::repos::{
 };
 
 use crate::dto::act::{
-    act_dto_from_row, format_act_number, ActCreateDto, ActDto, ActFilter, ActItemDto,
-    ActListResponse, ActReturnDto, ActReturnItemDto, ActSaveOutcome, ActUpdateDto,
+    act_dto_from_row, format_act_number, ActCreateDto, ActDeleteResultDto, ActDto, ActFilter,
+    ActItemDto, ActListResponse, ActReturnDto, ActReturnItemDto, ActSaveOutcome, ActUpdateDto,
     ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
@@ -2992,7 +2992,7 @@ impl ActService {
     /// place-tree counters — soft-deleting an act moves every one of its
     /// devices back to a prior place just as surely as `create`/`update`/
     /// `do_return`/`update_return` move them forward.
-    pub async fn delete_soft(&self, id: i64, version: i64) -> Result<Vec<i64>, AppError> {
+    pub async fn delete_soft(&self, id: i64, version: i64) -> Result<ActDeleteResultDto, AppError> {
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -3145,7 +3145,11 @@ impl ActService {
         // D-03/D-04 (41.7): the event carries the very list the caller gets back.
         let place_ids = touched.clone();
         self.broadcast_entities("delete_soft", place_ids, Vec::new(), Vec::new());
-        Ok(touched)
+        // Phase 41.2 (D-09): `notices` is filled by plan 41.2-13.
+        Ok(ActDeleteResultDto {
+            changed_place_ids: touched,
+            notices: Vec::new(),
+        })
     }
 
     // -----------------------------------------------------------------------
