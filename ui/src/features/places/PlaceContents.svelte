@@ -26,6 +26,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import RowChevron from '$lib/components/icons/RowChevron.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { statusTone } from '$lib/stores/deviceStatuses.svelte';
@@ -142,6 +143,73 @@
     void push(`#/groups?id=${row.id}`);
   }
 
+  // Phase 41.2 (D-19, D-20): inline expansion of a group's composition. All of
+  // this lives for the lifetime of the screen only (UI-SPEC §11.3) — unlike the
+  // «Разворачивать группы» mode itself it is NOT owned by PlacesPage.
+  let expandedGroupIds = $state<Set<number>>(new Set());
+  // Per-group cache and its key: one group's spinner or error must never leak
+  // into another group's row, so nothing here is a single shared flag.
+  let membersByGroup = $state<Record<number, PlaceContentDto[] | undefined>>({});
+  let loadedKeyByGroup = $state<Record<number, string | undefined>>({});
+  // Bumped after the main rows request resolved: the composition is re-read
+  // whenever the place contents were reloaded (edit, WS event, mode toggle).
+  let rowsGen = $state(0);
+  // Plain variables, not $state: dropping a stale answer and de-duplicating a
+  // request must not make the effect depend on its own writes.
+  const loadSeqByGroup = new Map<number, number>();
+  const loadingKeyByGroup = new Map<number, string>();
+
+  function toggleGroup(groupId: number): void {
+    const next = new Set(expandedGroupIds);
+    if (next.has(groupId)) next.delete(groupId);
+    else next.add(groupId);
+    expandedGroupIds = next;
+  }
+
+  function collapseGroup(groupId: number): void {
+    if (!expandedGroupIds.has(groupId)) return;
+    const next = new Set(expandedGroupIds);
+    next.delete(groupId);
+    expandedGroupIds = next;
+  }
+
+  // The only path that loads a composition. $state is written ONLY in the
+  // continuation after the await, never from an effect body (otherwise an
+  // effect reading its own writes loops: effect_update_depth_exceeded).
+  function loadMembers(groupId: number, key: string): void {
+    const seq = (loadSeqByGroup.get(groupId) ?? 0) + 1;
+    loadSeqByGroup.set(groupId, seq);
+    loadingKeyByGroup.set(groupId, key);
+    apiCall<PlaceContentDto[]>('places_group_members', { groupId })
+      .then((members) => {
+        if (loadSeqByGroup.get(groupId) !== seq) return;
+        membersByGroup = { ...membersByGroup, [groupId]: members };
+        loadedKeyByGroup = { ...loadedKeyByGroup, [groupId]: key };
+      })
+      .catch(() => {
+        if (loadSeqByGroup.get(groupId) !== seq) return;
+        pushToast('error', 'Не удалось загрузить состав группы. Попробуйте ещё раз.');
+        collapseGroup(groupId);
+      })
+      .finally(() => {
+        if (loadSeqByGroup.get(groupId) === seq) loadingKeyByGroup.delete(groupId);
+      });
+  }
+
+  // Turning the mode ON clears the expanded set: group rows disappear together
+  // with their expanded state, their members are shown as ordinary rows. The
+  // write happens here, in the handler, not in an effect.
+  function handleExpandGroupsChange(v: boolean): void {
+    if (v) expandedGroupIds = new Set();
+    onExpandGroupsChange(v);
+  }
+
+  // A double click on a chevron (two toggles) must not also jump to «Группы».
+  function handleGroupRowDblClick(e: MouseEvent, row: PlaceContentDto): void {
+    if (e.target instanceof Element && e.target.closest('button[aria-expanded]')) return;
+    openGroup(row);
+  }
+
   // «(6 устройств)» is assembled on the client (UI-SPEC §11.2): the server sends
   // no glued label, only member_count.
   function deviceCountLabel(n: number): string {
@@ -202,7 +270,10 @@
     loadError = false;
     apiCall<PlaceContentDto[]>('places_contents', { rootId, nested, expandGroups })
       .then((r) => {
-        if (!cancelled) rows = r;
+        if (!cancelled) {
+          rows = r;
+          rowsGen += 1;
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -216,6 +287,22 @@
     return () => {
       cancelled = true;
     };
+  });
+
+  // Loads the composition of every expanded group whose cache was loaded under
+  // another rows generation (or not loaded at all). Reads `rows`, `rowsGen`,
+  // `expandedGroupIds` and `loadedKeyByGroup`; the request itself is made by
+  // loadMembers, never here. Until the new answer arrives the old rows stay on
+  // screen, so «Загрузка…» does not flicker on a refresh.
+  $effect(() => {
+    const generation = rowsGen;
+    for (const r of rows ?? []) {
+      if (r.kind !== 'group' || !expandedGroupIds.has(r.id)) continue;
+      const key = `${r.id}@${generation}`;
+      if (loadedKeyByGroup[r.id] !== key && loadingKeyByGroup.get(r.id) !== key) {
+        loadMembers(r.id, key);
+      }
+    }
   });
 
   const counts = $derived.by(() => {
@@ -399,6 +486,55 @@
   }
 </script>
 
+{#snippet rowCells(row: PlaceContentDto)}
+  {#if showKindColumn}
+    <td
+      class="cell cell-kind"
+      role="button"
+      tabindex="0"
+      onclick={() => openView(row)}
+      onkeydown={(e) => handleRowActivateKeydown(e, row)}
+    >
+      {CONTENT_KIND_LABELS[row.kind] ?? row.kind}
+    </td>
+    <td class="cell" title={row.name} onclick={() => openView(row)}>{row.name}</td>
+  {:else}
+    <td
+      class="cell"
+      title={row.name}
+      role="button"
+      tabindex="0"
+      onclick={() => openView(row)}
+      onkeydown={(e) => handleRowActivateKeydown(e, row)}
+    >
+      {row.name}
+    </td>
+  {/if}
+  <td class="cell" onclick={() => openView(row)}>
+    <span class="tr-mono">{row.inventory_or_code ?? '—'}</span>
+  </td>
+  {#if !onlyHere}
+    <td class="cell" title={row.full_path} onclick={() => openView(row)}>
+      {row.place_path_short}
+    </td>
+  {/if}
+  <td class="cell" onclick={() => openView(row)}>
+    {#if row.status_name}
+      {#if row.kind === 'cartridge'}
+        <Badge variant={cartridgeStatusVariant(row.status_name)}>{row.status_name}</Badge>
+      {:else}
+        <Badge
+          variant={statusTone(row.status_code).variant}
+          appearance={statusTone(row.status_code).appearance}
+          muted={statusTone(row.status_code).muted}>{row.status_name}</Badge
+        >
+      {/if}
+    {:else}
+      —
+    {/if}
+  </td>
+{/snippet}
+
 <div class="place-contents">
   <header class="contents-header">
     {#if breadcrumbs.length > 0}
@@ -434,7 +570,7 @@
         </Checkbox>
         <Checkbox
           checked={expandGroups}
-          onchange={onExpandGroupsChange}
+          onchange={handleExpandGroupsChange}
           id="place-contents-expand-groups"
         >
           <span title="Показывать устройства из групп отдельными строками вместо строки группы"
@@ -475,12 +611,17 @@
         {#if row.kind === 'group'}
           <TableRow
             class="place-content-row place-content-group-row"
-            ondblclick={() => openGroup(row)}
+            ondblclick={(e) => handleGroupRowDblClick(e, row)}
           >
             {#if showKindColumn}
               <td class="cell cell-kind cell-static">{row.group_type_name ?? ''}</td>
             {/if}
             <td class="cell cell-static" title={row.name}>
+              <RowChevron
+                expanded={expandedGroupIds.has(row.id)}
+                onclick={() => toggleGroup(row.id)}
+                label={expandedGroupIds.has(row.id) ? 'Свернуть состав' : 'Развернуть состав'}
+              />
               <button type="button" class="group-name-link" onclick={() => openGroup(row)}
                 >{row.name}</button
               >
@@ -492,54 +633,27 @@
             {/if}
             <td class="cell cell-static">—</td>
           </TableRow>
+          {#if expandedGroupIds.has(row.id)}
+            {@const members = membersByGroup[row.id]}
+            {#if members === undefined}
+              <tr class="children-loading-row">
+                <td colspan={columnCount} class="children-loading">Загрузка…</td>
+              </tr>
+            {:else if members.length === 0}
+              <tr class="children-loading-row">
+                <td colspan={columnCount} class="children-loading">Состав пуст</td>
+              </tr>
+            {:else}
+              {#each members as member, i (`${member.kind}-${member.id}`)}
+                <TableRow class="place-content-row" indent last={i === members.length - 1}>
+                  {@render rowCells(member)}
+                </TableRow>
+              {/each}
+            {/if}
+          {/if}
         {:else}
           <TableRow class="place-content-row">
-            {#if showKindColumn}
-              <td
-                class="cell cell-kind"
-                role="button"
-                tabindex="0"
-                onclick={() => openView(row)}
-                onkeydown={(e) => handleRowActivateKeydown(e, row)}
-              >
-                {CONTENT_KIND_LABELS[row.kind] ?? row.kind}
-              </td>
-              <td class="cell" title={row.name} onclick={() => openView(row)}>{row.name}</td>
-            {:else}
-              <td
-                class="cell"
-                title={row.name}
-                role="button"
-                tabindex="0"
-                onclick={() => openView(row)}
-                onkeydown={(e) => handleRowActivateKeydown(e, row)}
-              >
-                {row.name}
-              </td>
-            {/if}
-            <td class="cell" onclick={() => openView(row)}>
-              <span class="tr-mono">{row.inventory_or_code ?? '—'}</span>
-            </td>
-            {#if !onlyHere}
-              <td class="cell" title={row.full_path} onclick={() => openView(row)}>
-                {row.place_path_short}
-              </td>
-            {/if}
-            <td class="cell" onclick={() => openView(row)}>
-              {#if row.status_name}
-                {#if row.kind === 'cartridge'}
-                  <Badge variant={cartridgeStatusVariant(row.status_name)}>{row.status_name}</Badge>
-                {:else}
-                  <Badge
-                    variant={statusTone(row.status_code).variant}
-                    appearance={statusTone(row.status_code).appearance}
-                    muted={statusTone(row.status_code).muted}>{row.status_name}</Badge
-                  >
-                {/if}
-              {:else}
-                —
-              {/if}
-            </td>
+            {@render rowCells(row)}
           </TableRow>
         {/if}
       {/each}
@@ -719,6 +833,19 @@
     &:hover {
       text-decoration: underline;
     }
+  }
+
+  // Composition placeholder rows (loading / empty): a full-width row, verbatim
+  // the children-loading-row of DeviceGroupRow.
+  .children-loading-row td {
+    background: var(--tr-bg);
+  }
+
+  .children-loading {
+    padding: var(--tr-space-2xs) var(--tr-space-md);
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-tertiary);
+    border-bottom: 1px solid var(--tr-border);
   }
 
   .group-count {
