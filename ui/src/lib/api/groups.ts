@@ -12,6 +12,7 @@
 import { apiCall } from './client';
 import type {
   DeviceMembershipDto,
+  GroupActExpansionDto,
   GroupAddDevicesDto,
   GroupAddDevicesResultDto,
   GroupCardDto,
@@ -69,7 +70,7 @@ export const groupTypes = {
     apiCall<GroupRefDto[]>('group_type_properties_empty_groups', { propertyId }),
 };
 
-/** Группы (15 команд; чтение — ReadGroups, мутации — MutateGroups). */
+/** Группы (16 команд; чтение — ReadGroups, мутации — MutateGroups). */
 export const groups = {
   list: () => apiCall<GroupDto[]>('groups_list'),
 
@@ -78,6 +79,10 @@ export const groups = {
   card: (id: number) => apiCall<GroupCardDto>('groups_card', { id }),
 
   composition: (groupId: number) => apiCall<GroupCompositionDto>('groups_composition', { groupId }),
+
+  /** Разворот группы в единицы акта (чтение; маркером мутации не является). */
+  actExpansion: (groupId: number) =>
+    apiCall<GroupActExpansionDto>('groups_act_expansion', { groupId }),
 
   search: (query: string, excludeGroupId: number | null) =>
     apiCall<GroupSearchHitDto[]>('groups_search', { query, excludeGroupId }),

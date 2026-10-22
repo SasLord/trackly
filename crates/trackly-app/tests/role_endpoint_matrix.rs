@@ -3935,6 +3935,11 @@ fn group_cases() -> Vec<(&'static str, GroupGate, serde_json::Value)> {
             json!({ "groupId": 999999 }),
         ),
         (
+            "groups_act_expansion",
+            GroupGate::Read,
+            json!({ "groupId": 999999 }),
+        ),
+        (
             "groups_search",
             GroupGate::Read,
             json!({ "query": "а", "excludeGroupId": null }),
@@ -4001,6 +4006,9 @@ async fn groups_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Resul
         "groups_get" => g::build_groups_get(ctx, caller, 999999).await.map(|_| ()),
         "groups_card" => g::build_groups_card(ctx, caller, 999999).await.map(|_| ()),
         "groups_composition" => g::build_groups_composition(ctx, caller, 999999)
+            .await
+            .map(|_| ()),
+        "groups_act_expansion" => g::build_groups_act_expansion(ctx, caller, 999999)
             .await
             .map(|_| ()),
         "groups_search" => g::build_groups_search(ctx, caller, "а".to_string(), None)
@@ -4696,7 +4704,48 @@ fn groups_http_route_completeness() {
         Vec::<&String>::new(),
         "команда есть в таблице, но нет маршрута в http/groups.rs"
     );
-    assert_eq!(in_source.len(), 15);
+    assert_eq!(in_source.len(), 16);
+}
+
+/// Разворот группы в единицы акта (Phase 41.2 plan 06): `Action::ReadGroups`.
+/// Отдельная функция: фильтр cargo по имени не видит кейсов внутри монолита.
+/// Для manager/admin ожидается ровно 404 JSON-ошибкой (группы нет), а не 200:
+/// `spa_fallback` на незарегистрированный маршрут отдаёт index.html с 200.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn groups_act_expansion_role_matrix() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let payload = json!({ "groupId": 999999 });
+
+        let (status, _) = gt_post(
+            &env,
+            &env.employee_cookie,
+            "groups_act_expansion",
+            payload.clone(),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "employee -> groups_act_expansion -> ожидался 403, получен {status}"
+        );
+
+        for (who, cookie) in [
+            ("manager", &env.manager_cookie),
+            ("admin", &env.admin_cookie),
+        ] {
+            let (status, body) =
+                gt_post(&env, cookie, "groups_act_expansion", payload.clone()).await;
+            assert_eq!(
+                status,
+                StatusCode::NOT_FOUND,
+                "{who} -> groups_act_expansion -> ожидался 404 (нет группы), получен {status} ({body})"
+            );
+        }
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("groups_act_expansion_role_matrix exceeded 60s");
 }
 
 /// Справочник статусов устройств (Phase 41.1, D-06): `Action::ReadData`.

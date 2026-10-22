@@ -177,6 +177,7 @@ pub const REGISTRY: &[Entry] = &[
     ro(GROUP, "list_groups"),
     ro(GROUP, "get_group"),
     ro(GROUP, "composition"),
+    ro(GROUP, "act_expansion"),
     ro(GROUP, "search"),
     ro(GROUP, "for_devices"),
     b(GROUP, "create_group"),

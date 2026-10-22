@@ -18,9 +18,9 @@
 
 use crate::context::AppCtx;
 use crate::dto::groups::{
-    DeviceMembershipDto, GroupAddDevicesDto, GroupAddDevicesResultDto, GroupCardDto,
-    GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto, GroupMoveDto,
-    GroupMoveResultDto, GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto,
+    DeviceMembershipDto, GroupActExpansionDto, GroupAddDevicesDto, GroupAddDevicesResultDto,
+    GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
+    GroupMoveDto, GroupMoveResultDto, GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto,
     GroupSetValuesDto, UserOptionDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
@@ -65,6 +65,16 @@ pub async fn build_groups_composition(
 ) -> Result<GroupCompositionDto, AppError> {
     authorize(caller, &Action::ReadGroups)?;
     ctx.groups.composition(caller, group_id).await
+}
+
+/// Чтение: `ReadGroups` — разворот группы в единицы акта (Phase 41.2, D-03).
+pub async fn build_groups_act_expansion(
+    ctx: &AppCtx,
+    caller: &Identity,
+    group_id: i64,
+) -> Result<GroupActExpansionDto, AppError> {
+    authorize(caller, &Action::ReadGroups)?;
+    ctx.groups.act_expansion(caller, group_id).await
 }
 
 /// Чтение: `ReadGroups` — поиск группы для вложения/добавления.
@@ -226,6 +236,16 @@ pub async fn groups_composition(
 ) -> Result<GroupCompositionDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_groups_composition(state.inner(), &caller, group_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn groups_act_expansion(
+    state: tauri::State<'_, AppCtx>,
+    group_id: i32,
+) -> Result<GroupActExpansionDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_groups_act_expansion(state.inner(), &caller, group_id as i64).await
 }
 
 #[tauri::command]

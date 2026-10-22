@@ -11,18 +11,19 @@ use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::groups::{
-    DeviceMembershipDto, GroupAddDevicesDto, GroupAddDevicesResultDto, GroupCardDto,
-    GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto, GroupMoveDto,
-    GroupMoveResultDto, GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto,
+    DeviceMembershipDto, GroupActExpansionDto, GroupAddDevicesDto, GroupAddDevicesResultDto,
+    GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
+    GroupMoveDto, GroupMoveResultDto, GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto,
     GroupSetValuesDto, UserOptionDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::groups::{
-    build_groups_add_devices, build_groups_card, build_groups_composition, build_groups_create,
-    build_groups_delete, build_groups_for_devices, build_groups_get, build_groups_list,
-    build_groups_move, build_groups_remove_devices, build_groups_search, build_groups_set_parent,
-    build_groups_set_values, build_groups_update, build_groups_user_options,
+    build_groups_act_expansion, build_groups_add_devices, build_groups_card,
+    build_groups_composition, build_groups_create, build_groups_delete, build_groups_for_devices,
+    build_groups_get, build_groups_list, build_groups_move, build_groups_remove_devices,
+    build_groups_search, build_groups_set_parent, build_groups_set_values, build_groups_update,
+    build_groups_user_options,
 };
 
 // ---------------------------------------------------------------------------
@@ -162,6 +163,21 @@ pub async fn handler_composition(
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_groups_composition(&ctx, &identity, payload.group_id)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_act_expansion(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<CompositionPayload>,
+) -> Result<Json<GroupActExpansionDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_groups_act_expansion(&ctx, &identity, payload.group_id)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -338,6 +354,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/groups_get", post(handler_get))
         .route("/api/v1/groups_card", post(handler_card))
         .route("/api/v1/groups_composition", post(handler_composition))
+        .route("/api/v1/groups_act_expansion", post(handler_act_expansion))
         .route("/api/v1/groups_search", post(handler_search))
         .route("/api/v1/groups_for_devices", post(handler_for_devices))
         .route("/api/v1/groups_user_options", post(handler_user_options))

@@ -219,6 +219,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::groups::groups_get,
         crate::tauri_cmds::groups::groups_card,
         crate::tauri_cmds::groups::groups_composition,
+        crate::tauri_cmds::groups::groups_act_expansion,
         crate::tauri_cmds::groups::groups_search,
         crate::tauri_cmds::groups::groups_for_devices,
         crate::tauri_cmds::groups::groups_user_options,
