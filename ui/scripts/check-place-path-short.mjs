@@ -46,6 +46,9 @@
 //                      (прежний INV-4);
 //       PASSTHROUGH    в `<script>` одновременно ключи `full_path:` и
 //                      `place_path_short:` (объект, который отдаётся дальше);
+//       SLOT_TEXT      сокращённый путь читается в `<script>` и уходит в слот
+//                      выпадающего списка (Dropdown не даёт повесить title): в
+//                      файле нет полного пути, а в разметке нет и SHORT;
 //   P3 устаревание  — вердикт без файла; FULL_BY_DESIGN / DATA_ONLY / PASSTHROUGH
 //                     / DEMO без идентификатора семейства; SHORT в разметке
 //                     FULL_BY_DESIGN / DATA_ONLY (вердикт неверен); дубль пути;
@@ -87,10 +90,10 @@ const MIN_REASON = 20;
 
 /** Пороги антивакуума: равны фактическим числам первого прогона по репозиторию. */
 const MIN_SHORT_CONSUMERS = 9;
-const MIN_VERDICTS = 22;
+const MIN_VERDICTS = 23;
 
 /** Виды вердикта, требующие `reason` (освобождения). */
-const EXEMPT_KINDS = new Set(['PASSTHROUGH', 'FULL_BY_DESIGN', 'DATA_ONLY', 'DEMO']);
+const EXEMPT_KINDS = new Set(['PASSTHROUGH', 'FULL_BY_DESIGN', 'DATA_ONLY', 'DEMO', 'SLOT_TEXT']);
 /** Виды-потребители SHORT: считаются в MIN_SHORT_CONSUMERS и применимы только к `.svelte`-файлу. */
 const CONSUMER_KINDS = new Set(['ROW_CELL', 'LINK_BUTTON', 'REPORT_TABLE', 'PASSTHROUGH']);
 const ALL_KINDS = new Set([...EXEMPT_KINDS, ...CONSUMER_KINDS]);
@@ -177,6 +180,14 @@ const VERDICTS = [
     path: 'src/features/groups/AddToGroupModal.svelte',
     kind: 'FULL_BY_DESIGN',
     reason: 'место ГРУППЫ в диалоге добавления (place_path группы): сокращённого варианта нет',
+  },
+
+  // --- SLOT_TEXT: short читается в script и уходит в слот Dropdown (title недоступен) ---
+  {
+    path: 'src/features/acts/ActFormItemsTable.svelte',
+    kind: 'SLOT_TEXT',
+    reason:
+      'подстрока строки-группы в пикере позиции акта: place_path_short идёт в слот Dropdown, полного пути в файле нет',
   },
 
   // --- DATA_ONLY: идентификатор есть, текст пользователю не печатается ---
@@ -596,6 +607,33 @@ function collectViolations(read, files, verdicts = VERDICTS) {
       else if (v.kind === 'PASSTHROUGH') found = checkPassthrough(src);
       for (const x of found) add(f, 'P2', x.message, x.hint);
 
+      if (v.kind === 'SLOT_TEXT') {
+        if (!SHORT_RE.test(code.get(f))) {
+          add(
+            f,
+            'P3',
+            'вердикт SLOT_TEXT: сокращённого пути в файле больше нет',
+            'Освобождение устарело — удали запись либо верни проверяемое.',
+          );
+        }
+        if (FULL_RE.test(code.get(f))) {
+          add(
+            f,
+            'P3',
+            'вердикт SLOT_TEXT: в файле появился полный путь',
+            'SLOT_TEXT допускает только сокращённый путь в слоте списка; файл с полным путём получает ROW_CELL / FULL_BY_DESIGN.',
+          );
+        }
+        if (f.endsWith('.svelte') && SHORT_RE.test(markupOnly(raw.get(f)))) {
+          add(
+            f,
+            'P3',
+            'вердикт SLOT_TEXT: в разметке появился сокращённый путь (place_path_short)',
+            'Файл теперь потребитель SHORT в разметке — переведи вердикт в ROW_CELL / LINK_BUTTON, чтобы контракт «текст short, title full» удерживался.',
+          );
+        }
+      }
+
       if (v.kind === 'FULL_BY_DESIGN' || v.kind === 'DATA_ONLY') {
         if (!FULL_RE.test(code.get(f)) && isFamily(f)) {
           add(
@@ -986,6 +1024,34 @@ function selftest(root) {
           verdicts: [...VERDICTS, rowVerdict('src/features/zz_synthetic/Both.svelte')],
         }),
       expect: ['P2'],
+    },
+    {
+      name: 'SLOT_TEXT: в пикере акта в разметке появился short — P3',
+      run: () =>
+        run({
+          over: new Map([
+            [
+              'src/features/acts/ActFormItemsTable.svelte',
+              disk('src/features/acts/ActFormItemsTable.svelte') +
+                '\n<td>{x.place_path_short}</td>\n',
+            ],
+          ]),
+        }),
+      expect: ['P3'],
+    },
+    {
+      name: 'SLOT_TEXT: в пикере акта появился полный путь — P3',
+      run: () =>
+        run({
+          over: new Map([
+            [
+              'src/features/acts/ActFormItemsTable.svelte',
+              disk('src/features/acts/ActFormItemsTable.svelte') +
+                '\n<script>const f = x.full_path;</script>\n',
+            ],
+          ]),
+        }),
+      expect: ['P3'],
     },
     {
       name: 'P4: причина освобождения короче 20 символов',

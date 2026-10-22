@@ -125,6 +125,21 @@ const ALLOWLIST = [
     file: 'src/features/devices/DevicesPage.svelte',
     markers: ['Не удалось загрузить состав группы.'],
   },
+  {
+    // 41.2-10 (D-01, D-03): пикер позиции акта. Пять узких маркеров, реально
+    // стоящих в литералах: заголовки двух секций панели, плейсхолдер, тост
+    // ошибки состава и сессионная подсказка якоря. Остальные тексты разворота
+    // («нет устройств — добавить в акт нечего», «Весь состав … уже в акте»)
+    // корня «груп» не содержат. Любая другая надпись про группу в файле красная.
+    file: 'src/features/acts/ActFormItemsTable.svelte',
+    markers: [
+      'Группы',
+      'Устройства в составе групп',
+      'Не удалось получить состав группы',
+      'Состав группы попадёт в комплектацию акта',
+      'Устройство или группа',
+    ],
+  },
 ];
 
 function allowEntryFor(relPath) {
@@ -441,6 +456,30 @@ function runSelfTest() {
       name: 'негатив (41.1-19): прочая надпись про группу в DevicesPage (маркер узкий)',
       file: 'src/features/devices/DevicesPage.svelte',
       src: "pushToast('error', 'Группа недоступна');",
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.2-10): пять надписей пикера позиции акта в ActFormItemsTable',
+      file: 'src/features/acts/ActFormItemsTable.svelte',
+      src: [
+        "const A = 'Группы';",
+        "const B = 'Устройства в составе групп';",
+        "pushToast('error', 'Не удалось получить состав группы. Попробуйте ещё раз.');",
+        '<p>Состав группы попадёт в комплектацию акта</p>',
+        '<Dropdown placeholder="Устройство или группа — название, инвентарный или серийный номер" />',
+      ].join('\n'),
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.2-10): прочая надпись про группу в ActFormItemsTable (маркеры узкие)',
+      file: 'src/features/acts/ActFormItemsTable.svelte',
+      src: "const A = 'Группы';\npushToast('warning', 'Группа пуста');",
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (41.2-10): «Группа похожих» в ActFormItemsTable (deny-list не гасится маркером)',
+      file: 'src/features/acts/ActFormItemsTable.svelte',
+      src: "const A = 'Группа похожих устройств';",
       expectViolations: 1,
     },
     {
