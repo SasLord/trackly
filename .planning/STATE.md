@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-22T09:02:31.456Z"
+last_updated: "2026-10-22T10:20:03.654Z"
 last_activity: 2026-10-22
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 235
-  completed_plans: 222
+  completed_plans: 223
   percent: 54
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.2 (groups-acts-places) — EXECUTING
-Plan: 4 of 16
+Plan: 5 of 16
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -639,6 +639,7 @@ Last activity: 2026-10-22
 | Phase 41.2 P01 | 2h | 3 tasks | 40 files |
 | Phase 41.2 P02 | ~1h | 2 tasks | 5 files |
 | Phase 41.2 P03 | 105min | 3 tasks | 20 files |
+| Phase 41.2 P04 | 80m | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1373,6 +1374,8 @@ Recent decisions affecting current work:
 - [Phase 41.2]: [41.2-01] Group-release confirmation is a distinct save outcome (NeedsGroupRelease); delete warnings ride in ActDeleteResultDto.notices
 - [Phase 41.2]: [41.2-02] act_group_effects: no FK on act_id/group_id, group_label snapshot, kind validated in Rust (D-08/D-09)
 - [Phase 41.2]: 41.2-03: GroupMoveCause {source, act_id} parameterises the group_place journal cause (GROUP const / act(id)); expand_groups is required with no default on all layers; group_members_only is an opt-in list-only filter
+- [Phase 41.2]: [41.2-04] Whole-vs-part group rule lives only in group_act_plan::plan; nested-covered-group detach (OQ-1/A9) is a planner extension outside CONTEXT, to be listed in HUMAN-UAT by 41.2-16
+- [Phase 41.2]: [41.2-04] release_if_locked compares device place with group place inside the primitive; release_device_in_tx records a release effect whenever act_id is Some
 
 ### Pending Todos
 
@@ -1577,8 +1580,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-22T09:02:26.662Z
-Stopped at: Phase 41.2 UI-SPEC approved
+Last session: 2026-10-22T10:20:03.645Z
+Stopped at: Completed 41.2-04-PLAN.md
 Resume file: None
 
 None
