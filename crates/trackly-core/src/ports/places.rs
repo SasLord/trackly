@@ -140,6 +140,16 @@ pub trait PlaceRepository {
         expand_groups: bool,
     ) -> Result<Vec<PlaceContentRow>, AppError>;
 
+    /// Phase 41.2 (GAM-04): physical composition of one group for expanding a
+    /// `group` row in the place contents — every live device of the group, of its
+    /// nested groups and the anchor, as flat `device`/`printer` rows ordered by
+    /// `name, id`. A missing or soft-deleted group yields an empty list.
+    fn list_group_members(
+        &self,
+        conn: &Self::Conn,
+        group_id: i64,
+    ) -> Result<Vec<PlaceContentRow>, AppError>;
+
     /// All place IDs where `is_storage = true` on the node itself OR any ancestor
     /// (D-11.4).
     fn list_storage_place_ids(&self, conn: &Self::Conn) -> Result<Vec<i64>, AppError>;

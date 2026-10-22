@@ -261,6 +261,65 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
     .map_err(map_rusqlite)
 }
 
+/// Phase 41.2 (D-20): the ONE predicate that hides a group member from the
+/// place contents when `expand_groups = false`. Type-independent — it is spliced
+/// verbatim into BOTH the device and the printer branch (USB printers are no
+/// exception). Fixed text, never user data (T-41.2-19).
+///
+/// The group-has-a-place condition (P-10): a member of a "sleeping" group lives in its
+/// own place and cannot be hidden, otherwise the device would vanish from
+/// "Места" altogether. `g.place_id = d.place_id` keeps a device with a broken
+/// "member lives in the group's place" invariant (legacy data) visible.
+const HIDE_GROUP_MEMBER_PREDICATE: &str = "AND NOT EXISTS (
+             SELECT 1 FROM group_devices gd
+             JOIN groups g ON g.id = gd.group_id
+              AND g.deleted_at_utc IS NULL
+              AND g.place_id IS NOT NULL
+              AND g.place_id = d.place_id
+             WHERE gd.device_id = d.id)";
+
+/// Phase 41.2: the `closure(root, id)` CTE body — every live group together with
+/// all its live descendants, seeded from ROOT groups only (D-17). One recursive
+/// query instead of a correlated sub-select per row (same shape as
+/// `SqliteGroupRepository::tree_counts`).
+const GROUP_CLOSURE_CTE: &str = "closure(root, id) AS (
+            SELECT id, id FROM groups
+             WHERE deleted_at_utc IS NULL AND parent_group_id IS NULL
+            UNION ALL
+            SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id
+             WHERE g.deleted_at_utc IS NULL
+         )";
+
+/// Builds one `PlaceContentRow` from the shared 11-column shape of every branch
+/// (and of `list_group_members`). Column order: kind, id, name, inventory_or_code,
+/// full_path, status_name, effective_variant, status_code, group_type_name,
+/// member_count, printer_member_count.
+fn content_row_from_row(
+    row: &rusqlite::Row<'_>,
+    sep_ends: &str,
+    sep_last_two: &str,
+) -> rusqlite::Result<PlaceContentRow> {
+    let full_path: String = row.get(4)?;
+    let effective_variant: Option<String> = row.get(6)?;
+    let place_path_short = effective_variant
+        .and_then(|token| PathDisplayVariant::from_str(&token).ok())
+        .map(|variant| shorten_place_path(&full_path, variant, sep_ends, sep_last_two))
+        .unwrap_or_else(|| full_path.clone());
+    Ok(PlaceContentRow {
+        kind: row.get(0)?,
+        id: row.get(1)?,
+        name: row.get(2)?,
+        inventory_or_code: row.get(3)?,
+        full_path,
+        place_path_short,
+        status_name: row.get(5)?,
+        status_code: row.get(7)?,
+        group_type_name: row.get(8)?,
+        member_count: row.get(9)?,
+        printer_member_count: row.get(10)?,
+    })
+}
+
 /// Pattern 2's "content of place" leg (PLC-06 / D-23): devices, printers
 /// (devices whose `type_id` is the seeded "Принтер" type — printers have no
 /// `place_id` of their own, they resolve through `devices.place_id`, per
@@ -268,29 +327,81 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
 /// shape. `nested: true` (default, D-24) includes the whole subtree via the
 /// Pattern 2 descendant CTE; `nested: false` restricts to `place_id = root_id`
 /// exactly ("Только здесь").
+///
+/// Phase 41.2 (GAM-04): `expand_groups = true` is the physical listing (every
+/// device, no `group` rows). `expand_groups = false` hides the members of a live
+/// group that has a place (one shared predicate for devices AND printers) and
+/// adds a fourth `group` branch — one row per ROOT live group with a place.
 fn list_subtree_contents_impl(
     conn: &Connection,
     root_id: i64,
     nested: bool,
-    _expand_groups: bool,
+    expand_groups: bool,
 ) -> Result<Vec<PlaceContentRow>, AppError> {
     let (sep_ends, sep_last_two) = read_path_display_separators(conn);
-    let cte = if nested {
-        "WITH RECURSIVE subtree(id) AS (
+
+    let mut ctes: Vec<&str> = Vec::new();
+    if nested {
+        ctes.push(
+            "subtree(id) AS (
             SELECT id FROM places WHERE id = ?1 AND deleted_at_utc IS NULL
             UNION ALL
             SELECT p.id FROM places p
             JOIN subtree s ON p.parent_id = s.id
             WHERE p.deleted_at_utc IS NULL
-         )
-         "
+         )",
+        );
+    }
+    if !expand_groups {
+        ctes.push(GROUP_CLOSURE_CTE);
+    }
+    let cte = if ctes.is_empty() {
+        String::new()
     } else {
-        ""
+        format!("WITH RECURSIVE {}\n         ", ctes.join(",\n         "))
     };
     let place_filter = if nested {
         "IN (SELECT id FROM subtree)"
     } else {
         "= ?1"
+    };
+    let hide_members = if expand_groups {
+        ""
+    } else {
+        HIDE_GROUP_MEMBER_PREDICATE
+    };
+    // The fourth branch exists only in the collapsed mode (physical mode keeps the
+    // previous SQL shape exactly).
+    let group_branch = if expand_groups {
+        String::new()
+    } else {
+        format!(
+            "
+         UNION ALL
+         SELECT 'group' AS kind, g.id, g.name, NULL AS inventory_or_code,
+                pfp.full_path, NULL AS status_name, pev.effective_variant,
+                NULL AS status_code,
+                gt.name AS group_type_name,
+                COALESCE(gc.member_count, 0) AS member_count,
+                COALESCE(gc.printer_member_count, 0) AS printer_member_count
+         FROM groups g
+         JOIN group_types gt ON gt.id = g.type_id
+         JOIN place_full_paths pfp ON pfp.place_id = g.place_id
+         LEFT JOIN place_effective_variant pev ON pev.place_id = g.place_id
+         LEFT JOIN (
+             SELECT c.root AS root,
+                    COUNT(d.id) AS member_count,
+                    COALESCE(SUM(CASE WHEN d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
+                                      THEN 1 ELSE 0 END), 0) AS printer_member_count
+             FROM closure c
+             JOIN group_devices gd ON gd.group_id = c.id
+             JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+             GROUP BY c.root
+         ) gc ON gc.root = g.id
+         WHERE g.deleted_at_utc IS NULL
+           AND g.parent_group_id IS NULL
+           AND g.place_id {place_filter}"
+        )
     };
 
     let sql = format!(
@@ -306,6 +417,7 @@ fn list_subtree_contents_impl(
          WHERE d.deleted_at_utc IS NULL
            AND d.type_id != (SELECT id FROM device_types WHERE name = 'Принтер')
            AND d.place_id {place_filter}
+           {hide_members}
          UNION ALL
          SELECT 'printer' AS kind, d.id, d.name, d.inventory_number,
                 pfp.full_path, ds.name AS status_name, pev.effective_variant,
@@ -319,6 +431,7 @@ fn list_subtree_contents_impl(
          WHERE d.deleted_at_utc IS NULL
            AND d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
            AND d.place_id {place_filter}
+           {hide_members}
          UNION ALL
          SELECT 'cartridge' AS kind, c.id, (m.brand || ' ' || m.model) AS name, c.code,
                 pfp.full_path, cs.name AS status_name, pev.effective_variant,
@@ -331,31 +444,57 @@ fn list_subtree_contents_impl(
          LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id
          LEFT JOIN place_effective_variant pev ON pev.place_id = c.place_id
          WHERE c.deleted_at_utc IS NULL
-           AND c.place_id {place_filter}"
+           AND c.place_id {place_filter}{group_branch}"
     );
 
     let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
     let rows = stmt
         .query_map(rusqlite::params![root_id], |row| {
-            let full_path: String = row.get(4)?;
-            let effective_variant: Option<String> = row.get(6)?;
-            let place_path_short = effective_variant
-                .and_then(|token| PathDisplayVariant::from_str(&token).ok())
-                .map(|variant| shorten_place_path(&full_path, variant, &sep_ends, &sep_last_two))
-                .unwrap_or_else(|| full_path.clone());
-            Ok(PlaceContentRow {
-                kind: row.get(0)?,
-                id: row.get(1)?,
-                name: row.get(2)?,
-                inventory_or_code: row.get(3)?,
-                full_path,
-                place_path_short,
-                status_name: row.get(5)?,
-                status_code: row.get(7)?,
-                group_type_name: row.get(8)?,
-                member_count: row.get(9)?,
-                printer_member_count: row.get(10)?,
-            })
+            content_row_from_row(row, &sep_ends, &sep_last_two)
+        })
+        .map_err(map_rusqlite)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(map_rusqlite)
+}
+
+/// Phase 41.2 (GAM-04, UI-SPEC 11.2): the physical composition of one group for
+/// expanding a `group` row — every live device of the group, of its nested groups
+/// and the anchor, as flat `device`/`printer` rows, `ORDER BY name, id`. A missing
+/// or soft-deleted group yields an empty list. Devices without a place (sleeping
+/// group) keep an empty path.
+fn list_group_members_impl(
+    conn: &Connection,
+    group_id: i64,
+) -> Result<Vec<PlaceContentRow>, AppError> {
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
+    let mut stmt = conn
+        .prepare(
+            "WITH RECURSIVE sub(id) AS (
+                SELECT id FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL
+                UNION
+                SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id
+                WHERE g.deleted_at_utc IS NULL
+             )
+             SELECT CASE WHEN d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
+                         THEN 'printer' ELSE 'device' END AS kind,
+                    d.id, d.name, d.inventory_number,
+                    COALESCE(pfp.full_path, '') AS full_path,
+                    ds.name AS status_name, pev.effective_variant,
+                    ds.code AS status_code,
+                    NULL AS group_type_name, NULL AS member_count,
+                    NULL AS printer_member_count
+             FROM group_devices gd
+             JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+             LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
+             LEFT JOIN device_statuses ds ON ds.id = d.status_id
+             LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
+             WHERE gd.group_id IN (SELECT id FROM sub)
+             ORDER BY d.name, d.id",
+        )
+        .map_err(map_rusqlite)?;
+    let rows = stmt
+        .query_map(rusqlite::params![group_id], |row| {
+            content_row_from_row(row, &sep_ends, &sep_last_two)
         })
         .map_err(map_rusqlite)?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -680,6 +819,14 @@ impl PlaceRepository for SqlitePlaceRepository {
         expand_groups: bool,
     ) -> Result<Vec<PlaceContentRow>, AppError> {
         list_subtree_contents_impl(conn, root_id, nested, expand_groups)
+    }
+
+    fn list_group_members(
+        &self,
+        conn: &Self::Conn,
+        group_id: i64,
+    ) -> Result<Vec<PlaceContentRow>, AppError> {
+        list_group_members_impl(conn, group_id)
     }
 
     fn list_storage_place_ids(&self, conn: &Self::Conn) -> Result<Vec<i64>, AppError> {
