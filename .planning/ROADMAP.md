@@ -1450,7 +1450,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 41.2-01-PLAN.md — контрактная волна актов: confirm_group_release, ActSaveOutcome::NeedsGroupRelease, ActDeleteResultDto (delete_soft/acts_delete), ~91 литерал DTO, привязки
+- [ ] 41.2-01-PLAN.md — контрактная волна актов: confirm_group_release, ActSaveOutcome::NeedsGroupRelease, ActDeleteResultDto (delete_soft/acts_delete), около 90 литералов DTO, привязки
 - [ ] 41.2-02-PLAN.md — миграция V049 act_group_effects (аддитивная, канарейка act_items) и методы репозитория: следы выноса/переноса/отцепления, читатели снимка групп
 
 **Wave 2**
@@ -1486,6 +1486,9 @@ Plans:
 **Wave 8**
 
 - [ ] 41.2-15-PLAN.md — удаление акта в UI (тосты предупреждений, текст подтверждения) и групповой хвост основания в таймлайне перемещений
+
+**Wave 9**
+
 - [ ] 41.2-16-PLAN.md — граница фазы: страж порядка подтверждения, расширение гейта write-site, WS и отчёт, карта проверок, чек-лист для пользователя, единственный полный прогон
 
 **UI hint**: yes
