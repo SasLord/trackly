@@ -206,7 +206,8 @@
 
   // A double click on a chevron (two toggles) must not also jump to «Группы».
   function handleGroupRowDblClick(e: MouseEvent, row: PlaceContentDto): void {
-    if (e.target instanceof Element && e.target.closest('button[aria-expanded]')) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button[aria-expanded]')) return;
     openGroup(row);
   }
 
