@@ -35,12 +35,13 @@ use trackly_infra::repos::{
 
 use crate::dto::device::DeviceDto;
 use crate::dto::groups::{
-    DeviceMembershipDto, GroupAddDevicesResultDto, GroupCardDto, GroupCompositionDto,
-    GroupCreateDto, GroupDeleteResultDto, GroupDto, GroupMemberDeviceDto, GroupMoveResultDto,
-    GroupPrinterDto, GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto,
-    UserOptionDto,
+    DeviceMembershipDto, GroupActExpansionDto, GroupActUnitDto, GroupAddDevicesResultDto,
+    GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
+    GroupMemberDeviceDto, GroupMoveResultDto, GroupPrinterDto, GroupPropertyValueDto,
+    GroupSearchHitDto, GroupUserDto, GroupValueInputDto, UserOptionDto,
 };
 use crate::dto::printer::WsEvent;
+use crate::services::group_act_plan;
 use crate::services::group_membership::release_device_in_tx;
 use crate::services::group_place::{
     apply_group_place_to_device_in_tx, move_group_in_tx, propagate_group_place_in_tx,
@@ -179,6 +180,41 @@ fn group_dto_on(
         })?
         .clone();
     snap.dto(&row)
+}
+
+/// Живые устройства по id одним запросом: `id -> (имя, инв. номер, серийный номер)`.
+fn device_briefs(
+    conn: &Connection,
+    ids: &[i64],
+) -> Result<HashMap<i64, (String, Option<String>, Option<String>)>, AppError> {
+    let mut out = HashMap::new();
+    for chunk in ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = [
+            "SELECT id, name, inventory_number, serial_number FROM devices
+             WHERE deleted_at_utc IS NULL AND id IN (",
+            &placeholders,
+            ")",
+        ]
+        .concat();
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter().copied()), |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    (
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                    ),
+                ))
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        out.extend(rows);
+    }
+    Ok(out)
 }
 
 fn to_json<T: serde::Serialize>(v: &T) -> Result<String, AppError> {
@@ -321,6 +357,78 @@ impl GroupService {
         .map_err(join_err)?
     }
 
+    /// Разворот группы в единицы акта (Phase 41.2, D-03, D-10): плоский список
+    /// устройств с учётом вложенных контейнеров; якорная группа даёт один юнит — якорь.
+    /// Правило берётся из `group_act_plan::act_units` (то же, что у планировщика актов).
+    /// Ничего не пишет и не рассылает.
+    pub async fn act_expansion(
+        &self,
+        caller: &Identity,
+        group_id: i64,
+    ) -> Result<GroupActExpansionDto, AppError> {
+        authorize(caller, &Action::ReadGroups)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let type_repo = self.type_repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let snap = GroupSnapshot::load(&conn, &repo, &type_repo)?;
+            let row = snap
+                .row(group_id)
+                .ok_or(AppError::NotFound {
+                    entity: "group",
+                    id: group_id,
+                })?
+                .clone();
+            let type_behavior = snap
+                .types
+                .get(&row.type_id)
+                .map(|t| t.behavior.clone())
+                .unwrap_or_default();
+            let plan_snap = group_act_plan::load_snapshot(&conn, &repo)?;
+            let units = group_act_plan::act_units(&plan_snap, group_id);
+            let ids: Vec<i64> = units.iter().map(|u| u.device_id).collect();
+            let briefs = device_briefs(&conn, &ids)?;
+            // Порядок: по обходу act_units; внутри одной группы-источника (подряд идущие
+            // юниты с тем же via) — по (имя, id).
+            let mut out: Vec<GroupActUnitDto> = Vec::with_capacity(units.len());
+            for u in units {
+                let Some((name, inv, serial)) = briefs.get(&u.device_id) else {
+                    // Мягко удалённое устройство в единицы не попадает.
+                    continue;
+                };
+                out.push(GroupActUnitDto {
+                    device_id: u.device_id,
+                    name: name.clone(),
+                    inventory_number: inv.clone(),
+                    serial_number: serial.clone(),
+                    via_group_name: u.via_group_name,
+                });
+            }
+            let mut sorted: Vec<GroupActUnitDto> = Vec::with_capacity(out.len());
+            let mut i = 0;
+            while i < out.len() {
+                let mut j = i + 1;
+                while j < out.len() && out[j].via_group_name == out[i].via_group_name {
+                    j += 1;
+                }
+                let mut chunk = out[i..j].to_vec();
+                chunk.sort_by(|a, b| a.name.cmp(&b.name).then(a.device_id.cmp(&b.device_id)));
+                sorted.extend(chunk);
+                i = j;
+            }
+            Ok(GroupActExpansionDto {
+                group_id,
+                group_name: row.name,
+                type_behavior,
+                anchor_device_id: row.anchor_device_id,
+                units: sorted,
+            })
+        })
+        .await
+        .map_err(join_err)?
+    }
+
     /// Кандидаты во вложенные группы (D-04): без самой группы и её потомков,
     /// подстрока по имени без учёта регистра (в Rust, не средствами SQL), не более 50.
     pub async fn search(
@@ -375,6 +483,11 @@ impl GroupService {
                     type_name: dto.type_name,
                     device_count: dto.device_count,
                     has_parent: dto.parent_group_id.is_some(),
+                    place_path_short: compute_place_path_short_with_conn(
+                        &conn,
+                        dto.place_id,
+                        dto.place_path.clone(),
+                    ),
                 });
                 if out.len() >= SEARCH_RESULT_LIMIT {
                     break;

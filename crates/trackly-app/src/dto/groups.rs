@@ -100,6 +100,35 @@ pub struct GroupSearchHitDto {
     #[specta(type = i32)]
     pub device_count: i64,
     pub has_parent: bool,
+    /// Сокращённый путь места группы (серверная формула); `None` — «Без места».
+    /// Нужен подсказке-группе пикера акта (UI-SPEC §7.2, §7.6).
+    pub place_path_short: Option<String>,
+}
+
+/// Единица акта: устройство, в которое разворачивается группа (Phase 41.2, D-03).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupActUnitDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub name: String,
+    pub inventory_number: Option<String>,
+    pub serial_number: Option<String>,
+    /// Имя вложенной группы, через которую пришло устройство; `None` — устройство корня.
+    pub via_group_name: Option<String>,
+}
+
+/// Разворот группы в «единицы акта» (Phase 41.2, D-03, D-10): плоский список без
+/// вложенности; якорная группа даёт единственную единицу — якорь.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupActExpansionDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    pub group_name: String,
+    /// Машинный ключ поведения типа: 'container' | 'substitute' | 'teardown'.
+    pub type_behavior: String,
+    #[specta(type = Option<i32>)]
+    pub anchor_device_id: Option<i64>,
+    pub units: Vec<GroupActUnitDto>,
 }
 
 /// Членство устройства в группе (D-01/D-19).
