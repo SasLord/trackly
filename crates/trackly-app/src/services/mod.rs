@@ -5,6 +5,7 @@
 //! `WriterHandle::execute(closure)`, all reads through `ReaderPool::acquire()`.
 //! Business validation (required fields, optimistic-lock checks) also lives here.
 
+pub(crate) mod act_kit;
 pub mod act_number_display;
 pub mod act_service;
 pub mod auth;
