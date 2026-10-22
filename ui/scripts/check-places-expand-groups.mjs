@@ -29,9 +29,25 @@
 //       (счётчик массового переноса), шлёт литерал `expandGroups: true`; основной
 //       шлёт `expandGroups` без литерала.
 //   (D) Ветка `row.kind === 'group'` обязана существовать (нижний порог
-//       антивакуума); в ней нет openView( и role="button", ровно один onclick
-//       (кнопка-имя), openGroup( вызван не меньше двух раз (кнопка и двойной клик);
+//       антивакуума); в ней нет openView( и role="button". Шеврон (<RowChevron … />)
+//       из подсчёта вырезается: ПОСЛЕ этого остаётся ровно один onclick (кнопка-имя),
+//       так что тело строки инертно, а шеврон — единственное исключение. openGroup(
+//       вызван в ветке (кнопка-имя), двойной клик по строке ведёт в openGroup(
+//       (прямо или через обработчик, чьё тело зовёт openGroup( и не зовёт openView();
 //       тело openGroup содержит `#/groups?id=` и не зовёт openView.
+//   (E) Шеврон: в файле ровно один <RowChevron (общий компонент; собственной
+//       кнопки tr-row-chevron нет), он стоит в ветке группы, его onclick зовёт
+//       toggleGroup(, а toggleGroup меняет expandedGroupIds.
+//   (F) Загрузка состава: apiCall('places_group_members') ровно один раз и внутри
+//       loadMembers, не внутри $effect; какой-то $effect зовёт loadMembers( (эффект
+//       не мёртв) и не пишет состояние состава; внутри loadMembers запись
+//       membersByGroup/loadedKeyByGroup стоит ПОСЛЕ `.then(` (после await).
+//   (G) handleExpandGroupsChange при истинном значении обнуляет expandedGroupIds и
+//       зовёт onExpandGroupsChange(; чекбокс place-contents-expand-groups подключён
+//       именно к нему.
+//   (H) Второго уровня раскрытия нет: строки состава и общий сниппет rowCells не
+//       содержат шеврона; сниппет rowCells объявлен и используется не меньше двух
+//       раз (обычные строки и строки состава), а ветка группы рисует состав через него.
 // Файл не читается или не разобрать — нарушение с понятным сообщением, не SKIP.
 //
 // Self-test (`--selftest`): чистые РЕАЛЬНЫЕ исходники проходят; затем мутанты по
@@ -289,17 +305,38 @@ function scanContents(raw, violations) {
         `(D) ${F}: ветка строки группы содержит role="button" — тело строки группы инертно (R-03).`,
       );
     }
-    const clicks = count(branch, /\bonclick\s*=/g);
+    // Шеврон — единственное исключение из «одиночный клик по телу инертен»: его
+    // тег вырезается, всё остальное обязано дать ровно один onclick (кнопка-имя).
+    const clicks = count(stripChevronTags(branch), /\bonclick\s*=/g);
     if (clicks !== 1) {
       violations.push(
-        `(D) ${F}: в ветке строки группы ${clicks} onclick=, нужен ровно один (кнопка-имя); одиночный клик по телу строки инертен (R-03).`,
+        `(D) ${F}: в ветке строки группы вне шеврона ${clicks} onclick=, нужен ровно один (кнопка-имя); одиночный клик по телу строки инертен (R-03).`,
       );
     }
     const opens = count(branch, /\bopenGroup\s*\(/g);
-    if (opens < 2) {
+    if (opens < 1) {
       violations.push(
-        `(D) ${F}: openGroup( вызван в ветке ${opens} раз, нужно не меньше двух (кнопка-имя и двойной клик по строке).`,
+        `(D) ${F}: openGroup( не вызван в ветке строки группы — у кнопки-имени нет клавиатурного пути в «Группы».`,
       );
+    }
+    const dbl = /\bondblclick\s*=\s*\{/.exec(branch);
+    if (dbl === null) {
+      violations.push(
+        `(D) ${F}: у строки группы нет ondblclick — двойной клик обязан вести в «Группы» (D-19).`,
+      );
+    } else {
+      const value = extractBalanced(branch, branch.indexOf('{', dbl.index), '{', '}') ?? '';
+      let ok = /\bopenGroup\s*\(/.test(value);
+      if (!ok) {
+        const handler = /\b([A-Za-z_]\w*)\s*\(/.exec(value);
+        const body = handler ? functionBody(code, handler[1]) : null;
+        ok = body !== null && /\bopenGroup\s*\(/.test(body) && !/\bopenView\s*\(/.test(body);
+      }
+      if (!ok) {
+        violations.push(
+          `(D) ${F}: ondblclick строки группы не ведёт в openGroup( (прямо или через обработчик без openView().`,
+        );
+      }
     }
   }
   const openGroup = functionBody(code, 'openGroup');
@@ -312,6 +349,163 @@ function scanContents(raw, violations) {
     if (/\bopenView\s*\(/.test(openGroup)) {
       violations.push(`(D) ${F}: openGroup вызывает openView(.`);
     }
+  }
+}
+
+/** Текст без тегов `<RowChevron … />` (граница — первый `/>`; `=>` его не содержит). */
+function stripChevronTags(text) {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const at = text.indexOf('<RowChevron', i);
+    if (at === -1) return out + text.slice(i);
+    out += text.slice(i, at);
+    const end = text.indexOf('/>', at);
+    if (end === -1) return out;
+    i = end + 2;
+  }
+}
+
+/** Содержимое тега `<RowChevron … />` (все вхождения). */
+function chevronTags(text) {
+  const tags = [];
+  let i = 0;
+  for (;;) {
+    const at = text.indexOf('<RowChevron', i);
+    if (at === -1) return tags;
+    const end = text.indexOf('/>', at);
+    if (end === -1) return tags;
+    tags.push(text.slice(at, end));
+    i = end + 2;
+  }
+}
+
+/** Тело сниппета `{#snippet name(...)} … {/snippet}` или null. */
+function snippetBody(code, name) {
+  const at = code.search(new RegExp(`\\{#snippet\\s+${name}\\s*\\(`));
+  if (at === -1) return null;
+  const from = code.indexOf('}', at) + 1;
+  const end = code.indexOf('{/snippet}', from);
+  return end === -1 ? null : code.slice(from, end);
+}
+
+const STATE_WRITE =
+  /\b(?:membersByGroup|loadedKeyByGroup|expandedGroupIds|rowsGen)\s*(?:=(?!=)|\+=)/;
+
+function scanExpansion(raw, violations) {
+  const code = stripComments(raw);
+  const F = CONTENTS_FILE;
+  const branch = ifBranch(code, "{#if row.kind === 'group'}") ?? '';
+
+  // (E) шеврон.
+  const allTags = chevronTags(code);
+  if (allTags.length !== 1) {
+    violations.push(
+      `(E) ${F}: <RowChevron найден ${allTags.length} раз, нужен ровно один (в строке группы; второго уровня раскрытия нет).`,
+    );
+  }
+  const inBranch = chevronTags(branch);
+  if (inBranch.length !== 1) {
+    violations.push(
+      `(E) ${F}: в ветке строки группы ${inBranch.length} шевронов, нужен ровно один.`,
+    );
+  } else if (!/\bonclick\s*=\s*\{[^}]*\btoggleGroup\s*\(/.test(inBranch[0])) {
+    violations.push(`(E) ${F}: onclick шеврона не вызывает toggleGroup(.`);
+  }
+  if (/tr-row-chevron/.test(code)) {
+    violations.push(
+      `(E) ${F}: собственная реализация шеврона (tr-row-chevron) — нужен общий RowChevron.`,
+    );
+  }
+  const toggle = functionBody(code, 'toggleGroup');
+  if (toggle === null || !/\bexpandedGroupIds\s*=/.test(toggle)) {
+    violations.push(`(E) ${F}: toggleGroup не меняет expandedGroupIds (или функции нет).`);
+  }
+
+  // (F) загрузка состава.
+  const callRe = /apiCall\s*(?:<[^>]*>)?\s*\(\s*'places_group_members'/g;
+  const callCount = count(code, callRe);
+  if (callCount !== 1) {
+    violations.push(`(F) ${F}: вызовов places_group_members ${callCount}, нужен ровно один.`);
+  }
+  const load = functionBody(code, 'loadMembers');
+  if (load === null) {
+    violations.push(`(F) ${F}: не найдена функция loadMembers.`);
+  } else {
+    if (count(load, callRe) !== 1) {
+      violations.push(`(F) ${F}: apiCall('places_group_members') стоит не внутри loadMembers.`);
+    }
+    const thenAt = load.indexOf('.then(');
+    const firstWrite = load.search(/\b(?:membersByGroup|loadedKeyByGroup)\s*=(?!=)/);
+    if (thenAt === -1 || firstWrite === -1 || firstWrite < thenAt) {
+      violations.push(
+        `(F) ${F}: в loadMembers запись состава стоит не после \`.then(\` (после await) — риск effect_update_depth_exceeded.`,
+      );
+    }
+  }
+  let effectCallsLoader = false;
+  for (const m of code.matchAll(/\$effect(?:\.pre)?\s*\(/g)) {
+    const body = extractBalanced(code, code.indexOf('(', m.index), '(', ')') ?? '';
+    if (count(body, callRe) > 0) {
+      violations.push(
+        `(F) ${F}: apiCall('places_group_members') внутри $effect — запрос стоит только в loadMembers.`,
+      );
+    }
+    if (/\bloadMembers\s*\(/.test(body)) {
+      effectCallsLoader = true;
+      if (STATE_WRITE.test(body)) {
+        violations.push(
+          `(F) ${F}: $effect, зовущий loadMembers, пишет состояние состава — писать можно только после await.`,
+        );
+      }
+    }
+  }
+  if (!effectCallsLoader) {
+    violations.push(
+      `(F) ${F}: ни один $effect не вызывает loadMembers( — раскрытие не загрузит состав.`,
+    );
+  }
+
+  // (G) смена режима.
+  const change = functionBody(code, 'handleExpandGroupsChange');
+  if (change === null) {
+    violations.push(`(G) ${F}: не найдена функция handleExpandGroupsChange.`);
+  } else {
+    if (!/\bif\s*\(\s*v\s*\)\s*expandedGroupIds\s*=\s*new Set\(\s*\)/.test(change)) {
+      violations.push(
+        `(G) ${F}: handleExpandGroupsChange не обнуляет expandedGroupIds при включении режима.`,
+      );
+    }
+    if (!/\bonExpandGroupsChange\s*\(\s*v\s*\)/.test(change)) {
+      violations.push(`(G) ${F}: handleExpandGroupsChange не вызывает onExpandGroupsChange(v).`);
+    }
+  }
+  const boxAt = code.indexOf('id="place-contents-expand-groups"');
+  const boxStart = boxAt === -1 ? -1 : code.lastIndexOf('<Checkbox', boxAt);
+  const boxEnd = boxAt === -1 ? -1 : code.indexOf('>', boxAt);
+  const box = boxStart === -1 || boxEnd === -1 ? '' : code.slice(boxStart, boxEnd);
+  if (!/\bonchange\s*=\s*\{handleExpandGroupsChange\}/.test(box)) {
+    violations.push(
+      `(G) ${F}: чекбокс place-contents-expand-groups подключён не к handleExpandGroupsChange.`,
+    );
+  }
+
+  // (H) один уровень.
+  const cells = snippetBody(code, 'rowCells');
+  if (cells === null) {
+    violations.push(`(H) ${F}: не объявлен сниппет rowCells.`);
+  } else if (/<RowChevron/.test(cells)) {
+    violations.push(
+      `(H) ${F}: сниппет rowCells содержит шеврон — строки состава раскрываться не должны.`,
+    );
+  }
+  if (count(code, /\{@render\s+rowCells\s*\(/g) < 2) {
+    violations.push(
+      `(H) ${F}: rowCells используется меньше двух раз (обычные строки и строки состава).`,
+    );
+  }
+  if (!/\{@render\s+rowCells\s*\(\s*member\s*\)/.test(branch)) {
+    violations.push(`(H) ${F}: состав группы в ветке группы рисуется не через rowCells(member).`);
   }
 }
 
@@ -330,7 +524,10 @@ function readFile(root, rel, violations) {
 /** Чистая функция сканирования: принимает уже прочитанные исходники, fs не трогает. */
 function scanSource({ page, contents }, violations) {
   if (page !== null) scanPage(page, violations);
-  if (contents !== null) scanContents(contents, violations);
+  if (contents !== null) {
+    scanContents(contents, violations);
+    scanExpansion(contents, violations);
+  }
 }
 
 function checkRepo(root, violations) {
@@ -510,7 +707,7 @@ function runSelfTest() {
           page,
           contents: mutate(
             contents,
-            '            ondblclick={() => openGroup(row)}\n',
+            '            ondblclick={(e) => handleGroupRowDblClick(e, row)}\n',
             '',
             'no-dblclick',
           ),
@@ -547,6 +744,167 @@ function runSelfTest() {
         name: '(8) PlacesPage не передаёт {expandGroups} в PlaceContents',
         src: { page: mutate(page, '              {expandGroups}\n', '', 'no-prop'), contents },
         rules: ['A'],
+      },
+      {
+        name: '(9) шеврон снят с ветки группы (состав раскрыть нечем)',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            `              <RowChevron
+                expanded={expandedGroupIds.has(row.id)}
+                onclick={() => toggleGroup(row.id)}
+                label={expandedGroupIds.has(row.id) ? 'Свернуть состав' : 'Развернуть состав'}
+              />
+`,
+            '',
+            'no-chevron',
+          ),
+        },
+        rules: ['E'],
+      },
+      {
+        name: '(10) apiCall(places_group_members) перенесён из loadMembers в $effect',
+        src: {
+          page,
+          contents: mutate(
+            mutate(
+              contents,
+              'loadMembers(r.id, key);',
+              "void apiCall<PlaceContentDto[]>('places_group_members', { groupId: r.id });",
+              'call-into-effect',
+            ),
+            "apiCall<PlaceContentDto[]>('places_group_members', { groupId })",
+            'Promise.resolve([] as PlaceContentDto[])',
+            'call-out-of-loader',
+          ),
+        },
+        rules: ['F'],
+      },
+      {
+        name: '(10б) ПЕРЕСТАНОВКА: запись состава вынесена из .then() ПЕРЕД запросом (до await)',
+        src: {
+          page,
+          contents: mutate(
+            mutate(
+              contents,
+              '        membersByGroup = { ...membersByGroup, [groupId]: members };\n',
+              '',
+              'write-out-of-then',
+            ),
+            "    apiCall<PlaceContentDto[]>('places_group_members', { groupId })",
+            "    membersByGroup = { ...membersByGroup, [groupId]: [] };\n    apiCall<PlaceContentDto[]>('places_group_members', { groupId })",
+            'write-before-await',
+          ),
+        },
+        rules: ['F'],
+      },
+      {
+        name: '(10в) $effect пишет состояние состава в своём теле',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            '    const generation = rowsGen;\n',
+            '    const generation = rowsGen;\n    membersByGroup = {};\n',
+            'effect-writes-state',
+          ),
+        },
+        rules: ['F'],
+      },
+      {
+        name: '(10г) эффект больше не зовёт loadMembers (мёртвый эффект)',
+        src: {
+          page,
+          contents: mutate(contents, 'loadMembers(r.id, key);', 'void key;', 'dead-effect'),
+        },
+        rules: ['F'],
+      },
+      {
+        name: '(11) из handleExpandGroupsChange убрано обнуление expandedGroupIds',
+        src: {
+          page,
+          contents: mutate(contents, '    if (v) expandedGroupIds = new Set();\n', '', 'no-reset'),
+        },
+        rules: ['G'],
+      },
+      {
+        name: '(12) чекбокс подключён напрямую к onExpandGroupsChange, минуя обработчик',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            'onchange={handleExpandGroupsChange}',
+            'onchange={onExpandGroupsChange}',
+            'checkbox-bypass',
+          ),
+        },
+        rules: ['G'],
+      },
+      {
+        name: '(13) шеврон добавлен в общий сниппет rowCells (второй уровень раскрытия)',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            '<span class="tr-mono">{row.inventory_or_code ?? \'—\'}</span>',
+            '<RowChevron expanded={false} onclick={() => {}} /><span class="tr-mono">{row.inventory_or_code ?? \'—\'}</span>',
+            'chevron-in-cells',
+          ),
+        },
+        rules: ['E', 'H'],
+      },
+      {
+        name: '(13б) состав группы рисуется не через rowCells(member)',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            '{@render rowCells(member)}',
+            '{@render rowCells(row)}',
+            'members-not-via-snippet',
+          ),
+        },
+        rules: ['H'],
+      },
+      {
+        name: '(14) ослабленное правило D: тело строки группы получило второй onclick (toggleGroup, без openView)',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            '<td class="cell cell-static" title={row.name}>',
+            '<td class="cell cell-static" title={row.name} onclick={() => toggleGroup(row.id)}>',
+            'body-click-toggle',
+          ),
+        },
+        rules: ['D'],
+      },
+      {
+        name: '(14б) onclick шеврона ведёт в «Просмотр» (openView) вместо toggleGroup',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            '                onclick={() => toggleGroup(row.id)}\n',
+            '                onclick={() => openView(row)}\n',
+            'chevron-openview',
+          ),
+        },
+        rules: ['D', 'E'],
+      },
+      {
+        name: '(14в) ondblclick строки группы ведёт в «Просмотр»',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            'ondblclick={(e) => handleGroupRowDblClick(e, row)}',
+            'ondblclick={() => openView(row)}',
+            'dblclick-openview',
+          ),
+        },
+        rules: ['D'],
       },
     ];
   } catch (e) {
