@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-26T19:57:22.139Z"
+last_updated: "2026-10-26T20:11:52.326Z"
 last_activity: 2026-10-26
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 235
-  completed_plans: 231
+  completed_plans: 232
   percent: 54
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.2 (groups-acts-places) — EXECUTING
-Plan: 12 of 16
+Plan: 13 of 16
 Status: Ready to execute
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
@@ -648,6 +648,7 @@ Last activity: 2026-10-26
 | Phase 41.2 P10 | 55min | 3 tasks | 5 files |
 | Phase 41.2 P14 | 50min | 2 tasks | 2 files |
 | Phase 41.2 P11 | 6h | 3 tasks | 4 files |
+| Phase 41.2 P12 | 1.5h | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1395,6 +1396,7 @@ Recent decisions affecting current work:
 - [Phase 41.2-14]: Group composition cache keyed groupId@rowsGen, state written only after await; chevron double-click does not navigate; gate rule D admits the chevron only
 - [Phase 41.2-11]: Return moves only anchor groups; other returned members are released with a release effect; an anchor without a return place keeps its group — A7/OQ-5: an anchor is never released from its group, so its return must carry the group
 - [Phase 41.2-11]: update_return D-11 guard skips the place comparison for a removed anchor; anchor_restore_conflict_in_tx exempts parts of a group moved by the same act — Anchor place follows its group; a part at the act destination is not a group moved after the act
+- [Phase 41.2]: 41.2-12: подтверждение выноса из состава привязано к сигнатуре состава позиций и сбрасывается концом попытки сохранения; попап поднимается только из submitCreate/submitEdit (D-06/D-07)
 
 ### Pending Todos
 
@@ -1599,8 +1601,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-26T19:57:10.210Z
-Stopped at: Completed 41.2-11-PLAN.md
+Last session: 2026-10-26T20:11:52.315Z
+Stopped at: Completed 41.2-12-PLAN.md
 Resume file: None
 
 None
