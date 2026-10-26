@@ -7,7 +7,10 @@
 //! Plan 41.2-09 добавляет правку акта (`update_*`): добавление позиций по тем же правилам,
 //! удаление позиций возвращает членство и место.
 //!
-//! Префиксы тестов: `create_`, `update_`.
+//! Plan 41.2-11 добавляет возвраты (`return_*`): якорь едет к месту возврата вместе с группой,
+//! члены контейнеров освобождаются, правка возврата откатывается по эффектам возвратного акта.
+//!
+//! Префиксы тестов: `create_`, `update_`, `return_`.
 
 use std::future::Future;
 use std::time::Duration;
@@ -17,7 +20,8 @@ use rusqlite::types::Value;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::act::{
-    ActCreateDto, ActItemNewDto, ActNumberEditInput, ActSaveOutcome, ActUpdateDto, ActUpdateItemDto,
+    ActCreateDto, ActItemNewDto, ActNumberEditInput, ActReturnDto, ActReturnItemDto,
+    ActSaveOutcome, ActUpdateDto, ActUpdateItemDto, ActUpdateReturnDto,
 };
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
 use trackly_app::dto::number_template::NumberFieldInput;
@@ -1497,6 +1501,635 @@ async fn update_removing_the_anchor_detaches_part_traces_from_the_act() {
             .as_deref(),
             Some("Позднее изменение"),
             "правка детали не затёрта устаревшим снимком"
+        );
+    })
+    .await;
+}
+
+// (u12) деталь якорной группы, которую переместил сам акт, вписана в акт отдельной позицией;
+// правка убирает её: это не «группу переместили после акта», деталь выводится из состава с
+// эффектом release. Регресс анкера из плана 41.2-11: без исключения пропуск восстановления
+// оставлял деталь в группе.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_removing_a_part_of_an_anchor_group_moved_by_this_act_releases_it() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let part = f.parts[2];
+        let act = create_ok(&ctx, dto("U-12", &[f.anchor, part], Some(b), false)).await;
+
+        update_ok(&ctx, act, &[f.anchor], false).await;
+
+        assert_eq!(
+            member_rows(&ctx, part).await,
+            0,
+            "деталь выведена из группы"
+        );
+        assert_eq!(group_place(&ctx, f.group).await, Some(b));
+        assert_eq!(
+            device_place(&ctx, part).await,
+            Some(a),
+            "деталь на месте до акта"
+        );
+        assert_eq!(device_effects(&ctx, act, "release", part).await, 1);
+        assert_eq!(
+            audit_rows(&ctx, part, "custom:group_restore_skipped").await,
+            0
+        );
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// Возвраты (план 41.2-11)
+// ---------------------------------------------------------------------------
+
+fn return_item(id: i64) -> ActReturnItemDto {
+    ActReturnItemDto {
+        act_item_id: id,
+        device_id: id,
+        device_ids: vec![id],
+        quantity: 1,
+        condition_override: Some("Исправно".into()),
+        place_id_override: None,
+    }
+}
+
+async fn return_ok(ctx: &AppCtx, parent: i64, ids: &[i64], place: Option<i64>) -> i64 {
+    ctx.acts
+        .do_return(
+            &admin(),
+            parent,
+            ActReturnDto {
+                bulk_condition: None,
+                bulk_place_id: place,
+                apply_to_all: true,
+                items: ids.iter().map(|&id| return_item(id)).collect(),
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
+            },
+        )
+        .await
+        .expect("do_return")
+        .id
+}
+
+async fn update_return_ok(ctx: &AppCtx, ret: i64, ids: &[i64], place: Option<i64>) {
+    let act = ctx.acts.get(ret).await.expect("get return");
+    ctx.acts
+        .update_return(
+            &admin(),
+            ActUpdateReturnDto {
+                id: act.id,
+                expected_version: act.version,
+                giver_name: act.giver_name.clone(),
+                receiver_name: act.receiver_name.clone(),
+                place_id: act.place_id,
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: act.handover_date_utc,
+                bulk_condition: None,
+                bulk_place_id: place,
+                apply_to_all: true,
+                items: ids.iter().map(|&id| return_item(id)).collect(),
+            },
+        )
+        .await
+        .expect("update_return");
+}
+
+async fn movement_rows_of_act(ctx: &AppCtx, act: i64, device: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 \
+         AND entity_type = 'device' AND entity_id = ?2",
+        vec![int(act), int(device)],
+    )
+    .await
+}
+
+async fn device_status(ctx: &AppCtx, id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT status_id FROM devices WHERE id = ?1",
+        vec![int(id)],
+    )
+    .await
+}
+
+/// Следы акта в аудите по устройствам: строки `custom:group_moved_by_act` с этим `act_id`.
+async fn moved_traces(ctx: &AppCtx, act: i64, devices: &[i64]) -> i64 {
+    let ids = serde_json::to_string(devices).expect("ids");
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'device' \
+                 AND action = 'custom:group_moved_by_act' \
+                 AND json_extract(payload_json, '$.act_id') = ?1 \
+                 AND entity_id IN (SELECT value FROM json_each(?2))",
+                params![act, ids],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("moved traces")
+}
+
+// (r1) возврат якоря: группа едет к месту возврата вместе с якорём и деталями, якорь остаётся
+// в составе, на устройство ровно одна строка журнала возвратного акта, пакет один.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_anchor_moves_the_group_and_keeps_membership() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let handover = create_ok(&ctx, dto("R-1", &[solo, f.anchor], Some(b), false)).await;
+        assert_eq!(
+            group_place(&ctx, f.group).await,
+            Some(b),
+            "до возврата группа у места выдачи"
+        );
+
+        let ret = return_ok(&ctx, handover, &[f.anchor], Some(a)).await;
+
+        assert_eq!(group_place(&ctx, f.group).await, Some(a));
+        assert_eq!(device_place(&ctx, f.anchor).await, Some(a));
+        assert_eq!(device_status(&ctx, f.anchor).await, ON_WAREHOUSE);
+        for p in &f.parts {
+            assert_eq!(
+                device_place(&ctx, *p).await,
+                Some(a),
+                "деталь поехала с группой"
+            );
+        }
+        assert_eq!(
+            member_rows(&ctx, f.anchor).await,
+            1,
+            "якорь остался в составе"
+        );
+        assert_eq!(group_members(&ctx, f.group).await, 5);
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
+        assert_eq!(effects(&ctx, ret, "release").await, 0);
+        assert_eq!(act_item_rows(&ctx, ret, f.anchor).await, 1);
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM act_items WHERE act_id = ?1",
+                vec![int(ret)]
+            )
+            .await,
+            1,
+            "в возврате одна позиция, деталей нет"
+        );
+        // Журнал: группа, якорь и четыре детали — шесть строк пакета, все с источником act.
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1",
+                vec![int(ret)]
+            )
+            .await,
+            6
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 AND source <> 'act'",
+                vec![int(ret)]
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(DISTINCT batch_id) FROM place_movements \
+                 WHERE act_id = ?1 AND batch_id IS NOT NULL",
+                vec![int(ret)]
+            )
+            .await,
+            1,
+            "у пакета ровно один batch_id"
+        );
+        assert_eq!(
+            movement_rows_of_act(&ctx, ret, f.anchor).await,
+            1,
+            "якорь: одна строка"
+        );
+        for p in &f.parts {
+            assert_eq!(
+                movement_rows_of_act(&ctx, ret, *p).await,
+                1,
+                "деталь: одна строка"
+            );
+        }
+    })
+    .await;
+}
+
+// (r2) без места возврата группа и якорь остаются на месте, якорь не освобождён.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_anchor_without_a_return_place_keeps_group_and_anchor_together() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let handover = create_ok(&ctx, dto("R-2", &[solo, f.anchor], Some(b), false)).await;
+
+        let ret = return_ok(&ctx, handover, &[f.anchor], None).await;
+
+        assert_eq!(
+            group_place(&ctx, f.group).await,
+            Some(b),
+            "группа не двигалась"
+        );
+        assert_eq!(
+            device_place(&ctx, f.anchor).await,
+            Some(b),
+            "место якоря = место группы"
+        );
+        for p in &f.parts {
+            assert_eq!(device_place(&ctx, *p).await, Some(b));
+        }
+        assert_eq!(member_rows(&ctx, f.anchor).await, 1, "якорь не освобождён");
+        assert_eq!(device_status(&ctx, f.anchor).await, ON_WAREHOUSE);
+        assert_eq!(effects(&ctx, ret, "move").await, 0);
+        assert_eq!(effects(&ctx, ret, "release").await, 0);
+    })
+    .await;
+}
+
+// (r3) тот же набор, что у выдачи контейнера: возврат всех трёх членов освобождает их по одному,
+// контейнер не переезжает. Расхождение с (r1): там якорная группа едет, здесь контейнер стоит.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_whole_container_releases_members_and_does_not_move_the_group() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let arm = seed_arm(&ctx, a).await;
+        let handover = create_ok(&ctx, dto("R-3", &arm.devices, Some(b), false)).await;
+        assert_eq!(
+            effects(&ctx, handover, "move").await,
+            1,
+            "выдача группы целиком"
+        );
+
+        let ret = return_ok(&ctx, handover, &arm.devices, Some(a)).await;
+
+        assert_eq!(effects(&ctx, ret, "release").await, 3);
+        assert_eq!(effects(&ctx, ret, "move").await, 0);
+        assert_eq!(group_members(&ctx, arm.group).await, 0);
+        assert_eq!(
+            group_place(&ctx, arm.group).await,
+            Some(b),
+            "контейнер не переехал"
+        );
+        for d in &arm.devices {
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+            assert_eq!(movement_rows_of_act(&ctx, ret, *d).await, 1);
+        }
+    })
+    .await;
+}
+
+// (r4) частичный возврат: освобождён один член, остальные в составе.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_one_member_of_a_container_releases_only_that_member() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let arm = seed_arm(&ctx, a).await;
+        let handover = create_ok(&ctx, dto("R-4", &arm.devices, Some(b), false)).await;
+        let one = arm.devices[0];
+
+        let ret = return_ok(&ctx, handover, &[one], Some(a)).await;
+
+        assert_eq!(member_rows(&ctx, one).await, 0);
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        assert_eq!(device_effects(&ctx, ret, "release", one).await, 1);
+        assert_eq!(effects(&ctx, ret, "release").await, 1);
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(device_place(&ctx, one).await, Some(a));
+    })
+    .await;
+}
+
+// (r5) правка возврата: добавление якоря переносит группу, удаление якоря возвращает её на
+// место выдачи и отвязывает следы деталей, удаление позиции-члена возвращает его в группу.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_update_adds_and_removes_anchor_and_member_positions() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let handover = create_ok(&ctx, dto("R-5", &[solo, f.anchor], Some(b), false)).await;
+        let ret = return_ok(&ctx, handover, &[solo], Some(a)).await;
+        assert_eq!(
+            group_place(&ctx, f.group).await,
+            Some(b),
+            "якорь ещё не возвращён"
+        );
+
+        // Добавление якоря в возврат переносит его группу.
+        update_return_ok(&ctx, ret, &[solo, f.anchor], Some(a)).await;
+        assert_eq!(group_place(&ctx, f.group).await, Some(a));
+        assert_eq!(device_place(&ctx, f.anchor).await, Some(a));
+        assert_eq!(member_rows(&ctx, f.anchor).await, 1);
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
+        assert_eq!(
+            movement_rows_of_act(&ctx, ret, f.anchor).await,
+            1,
+            "одна строка на якорь"
+        );
+        assert_eq!(
+            moved_traces(&ctx, ret, &f.parts).await,
+            f.parts.len() as i64
+        );
+
+        // Удаление якоря возвращает группу на место выдачи.
+        update_return_ok(&ctx, ret, &[solo], Some(a)).await;
+        assert_eq!(group_place(&ctx, f.group).await, Some(b));
+        assert_eq!(device_place(&ctx, f.anchor).await, Some(b));
+        assert_eq!(device_status(&ctx, f.anchor).await, IN_WORK);
+        for p in &f.parts {
+            assert_eq!(device_place(&ctx, *p).await, Some(b));
+        }
+        assert_eq!(member_rows(&ctx, f.anchor).await, 1);
+        assert_eq!(
+            effects(&ctx, ret, "move").await,
+            0,
+            "эффект move возврата удалён"
+        );
+        assert_eq!(
+            moved_traces(&ctx, ret, &f.parts).await,
+            0,
+            "следы деталей отвязаны"
+        );
+
+        // Член контейнера: освобождён возвратом, правка убирает позицию, членство возвращается.
+        let arm = seed_arm_named(&ctx, a, "АРМ #7").await;
+        let handover2 = create_ok(&ctx, dto("R-5B", &arm.devices, Some(b), false)).await;
+        let ret2 = return_ok(&ctx, handover2, &[arm.devices[0], arm.devices[1]], Some(a)).await;
+        assert_eq!(member_rows(&ctx, arm.devices[0]).await, 0);
+        assert_eq!(
+            device_effects(&ctx, ret2, "release", arm.devices[0]).await,
+            1
+        );
+
+        update_return_ok(&ctx, ret2, &[arm.devices[1]], Some(a)).await;
+        assert_eq!(
+            member_rows(&ctx, arm.devices[0]).await,
+            1,
+            "член вернулся в группу"
+        );
+        assert_eq!(device_place(&ctx, arm.devices[0]).await, Some(b));
+        assert_eq!(
+            device_effects(&ctx, ret2, "release", arm.devices[0]).await,
+            0,
+            "потраченный эффект удалён"
+        );
+        assert_eq!(
+            member_rows(&ctx, arm.devices[1]).await,
+            0,
+            "оставшийся в возврате не вернулся"
+        );
+    })
+    .await;
+}
+
+// (r6) принтер-деталь с картриджем: строка журнала картриджа несёт source act, act_id возврата и
+// batch_id пакета. Расходящаяся фикстура: картридж прикреплён к принтеру.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_anchor_carries_the_cartridge_of_a_printer_part_in_the_batch() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let printer = f.parts[0];
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET type_id = 2 WHERE id = ?1",
+                    params![printer],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("make printer");
+        let model = ctx
+            .cartridges
+            .model_create(CartridgeModelCreateDto {
+                brand: "HP".into(),
+                model: "CE285A".into(),
+                kind_id: 1,
+                color: Some("Чёрный".into()),
+                notes: None,
+                compatibility: vec![],
+            })
+            .await
+            .expect("model")
+            .id;
+        let cartridge = ctx
+            .cartridges
+            .create(CartridgeCreateDto {
+                model_id: model,
+                number_input: NumberFieldInput {
+                    value: "C-ACTR-00001".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
+                state_id: Some(1),
+                place_id: Some(a),
+                notes: None,
+            })
+            .await
+            .expect("cartridge")
+            .expect_created("cartridge")
+            .id;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE cartridges SET current_printer_device_id = ?1 WHERE id = ?2",
+                    params![printer, cartridge],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("attach cartridge");
+        let handover = create_ok(&ctx, dto("R-6", &[f.anchor], Some(b), false)).await;
+
+        let ret = return_ok(&ctx, handover, &[f.anchor], Some(a)).await;
+
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 \
+                 AND entity_type = 'cartridge' AND entity_id = ?2 \
+                 AND source = 'act' AND batch_id IS NOT NULL",
+                vec![int(ret), int(cartridge)]
+            )
+            .await,
+            1,
+            "картридж принтера-детали в пакете возврата"
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(DISTINCT batch_id) FROM place_movements \
+                 WHERE act_id = ?1 AND batch_id IS NOT NULL",
+                vec![int(ret)]
+            )
+            .await,
+            1
+        );
+    })
+    .await;
+}
+
+// (r7) B-2: группу переместили ПОСЛЕ возврата, правка убирает якорь -> правка проходит, всё
+// остаётся в третьем месте. Расхождение: вторая группа без перемещения возвращается на место
+// выдачи.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_update_removing_anchor_of_a_group_moved_after_the_return_passes() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let g = seed_anchor_group_with(&ctx, a, "Сборка #9", ["214", "SN-SSD-2", "AB456"]).await;
+        let handover = create_ok(
+            &ctx,
+            dto("R-7", &[solo, f.anchor, g.anchor], Some(b), false),
+        )
+        .await;
+        let ret = return_ok(&ctx, handover, &[solo, f.anchor, g.anchor], Some(a)).await;
+        let version = group_version(&ctx, f.group).await;
+        ctx.groups
+            .move_group(&admin(), f.group, version, c)
+            .await
+            .expect("move group after the return");
+
+        update_return_ok(&ctx, ret, &[solo, g.anchor], Some(a)).await;
+
+        assert_eq!(
+            group_place(&ctx, f.group).await,
+            Some(c),
+            "группа осталась в третьем месте"
+        );
+        assert_eq!(device_place(&ctx, f.anchor).await, Some(c));
+        for p in &f.parts {
+            assert_eq!(device_place(&ctx, *p).await, Some(c));
+        }
+        assert_eq!(member_rows(&ctx, f.anchor).await, 1, "членство цело");
+        assert_eq!(act_item_rows(&ctx, ret, f.anchor).await, 0);
+        assert_eq!(
+            audit_rows(&ctx, f.anchor, "custom:group_restore_skipped").await,
+            1
+        );
+        let group_id = f.group;
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM audit_log WHERE entity_id = ?1 \
+                 AND action = 'custom:group_restore_skipped' \
+                 AND json_extract(payload_json, '$.group_id') = ?2 \
+                 AND json_extract(payload_json, '$.act_id') = ?3 \
+                 AND json_extract(payload_json, '$.reason') IS NOT NULL",
+                vec![int(f.anchor), int(group_id), int(ret)]
+            )
+            .await,
+            1,
+            "причина пропуска записана в аудит"
+        );
+        // Контроль: вторая группа не перемещалась, её якорь остался в возврате.
+        assert_eq!(group_place(&ctx, g.group).await, Some(a));
+        update_return_ok(&ctx, ret, &[solo], Some(a)).await;
+        assert_eq!(
+            group_place(&ctx, g.group).await,
+            Some(b),
+            "без перемещения после возврата группа возвращается на место выдачи"
+        );
+        assert_eq!(
+            audit_rows(&ctx, g.anchor, "custom:group_restore_skipped").await,
+            0
+        );
+    })
+    .await;
+}
+
+// (r8) V-4: деталь якорной группы вписана в возврат отдельной позицией; правка убирает её из
+// возврата, якорь остаётся. Группа переехала этим возвратом (режим Record): деталь выводится из
+// группы, эффект release пишет сама правка и он доживает до отката возврата. Расхождение с (r5):
+// там эффект release существовал ДО правки и удаляется, здесь его записывает правка. Откат через
+// delete_soft этого возврата добавляет план 41.2-13 (сейчас его останавливает охрана якоря).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_update_removing_a_part_of_a_moved_group_records_a_release_effect_that_survives() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let part = f.parts[2];
+        let handover = create_ok(&ctx, dto("R-8", &[f.anchor, part], Some(b), false)).await;
+        let ret = return_ok(&ctx, handover, &[f.anchor, part], Some(a)).await;
+        assert_eq!(group_place(&ctx, f.group).await, Some(a));
+        assert_eq!(member_rows(&ctx, part).await, 1, "деталь едет с группой");
+        assert_eq!(device_effects(&ctx, ret, "release", part).await, 0);
+
+        update_return_ok(&ctx, ret, &[f.anchor], Some(a)).await;
+
+        assert_eq!(
+            member_rows(&ctx, part).await,
+            0,
+            "деталь выведена из группы"
+        );
+        assert_eq!(group_members(&ctx, f.group).await, 4);
+        assert_eq!(
+            group_place(&ctx, f.group).await,
+            Some(a),
+            "группа осталась у места возврата"
+        );
+        assert_eq!(device_place(&ctx, f.anchor).await, Some(a));
+        assert_eq!(
+            device_effects(&ctx, ret, "release", part).await,
+            1,
+            "эффект release записан правкой и не потрачен её же шагом возврата членства"
+        );
+        assert_eq!(
+            audit_rows(&ctx, part, "custom:group_member_restored").await,
+            0
+        );
+
+        // Эффект указывает на группу, в которую откат вернёт деталь. Само обращение через
+        // `delete_soft` возврата с якорем недоступно до плана 41.2-13 (путь удаления ещё
+        // упирается в охрану якоря); контроль «деталь вернулась в группу» добавляет тот план.
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM act_group_effects WHERE act_id = ?1 AND kind = 'release' \
+                 AND device_id = ?2 AND group_id = ?3",
+                vec![int(ret), int(part), int(f.group)]
+            )
+            .await,
+            1
         );
     })
     .await;

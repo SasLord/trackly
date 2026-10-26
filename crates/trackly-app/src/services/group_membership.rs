@@ -301,6 +301,24 @@ pub(crate) fn anchor_restore_conflict_in_tx(
     if snapshot_place_id == Some(group_place) {
         return Ok(None);
     }
+    // Деталь (не якорь) группы, которую переместил САМ этот акт и которая стоит у места
+    // назначения акта: группу не «переместили после акта», конфликта нет. Деталь вернётся на
+    // место снимка и будет выведена из состава общим путём `release_if_locked`. Якорь сюда
+    // не попадает: его группа возвращается раньше (эффект `move` снят), а при перемещении
+    // после акта место группы не равно месту назначения.
+    if group.anchor_device_id != Some(device_id) {
+        let moved_by_this_act = groups
+            .list_act_group_effects_in_tx(tx, act_id)?
+            .into_iter()
+            .any(|e| {
+                e.kind == ActGroupEffectKind::Move
+                    && e.group_id == group.id
+                    && e.to_place_id == Some(group_place)
+            });
+        if moved_by_this_act {
+            return Ok(None);
+        }
+    }
     let device_name: String = tx
         .query_row(
             "SELECT name FROM devices WHERE id = ?1",
