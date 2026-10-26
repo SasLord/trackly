@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-22T15:21:21.687Z"
-last_activity: 2026-10-22
+last_updated: "2026-10-26T19:57:22.139Z"
+last_activity: 2026-10-26
 progress:
   total_phases: 26
   completed_phases: 14
   total_plans: 235
-  completed_plans: 230
+  completed_plans: 231
   percent: 54
 ---
 
@@ -149,7 +149,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-22
+Last activity: 2026-10-26
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -647,6 +647,7 @@ Last activity: 2026-10-22
 | Phase 41.2 P09 | 3h | 3 tasks | 7 files |
 | Phase 41.2 P10 | 55min | 3 tasks | 5 files |
 | Phase 41.2 P14 | 50min | 2 tasks | 2 files |
+| Phase 41.2 P11 | 6h | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1392,6 +1393,8 @@ Recent decisions affecting current work:
 - [Phase 41.2]: 41.2-10: group/member picker items expand into one synthetic member row so Dropdown AUTO-05 single-result flatten stays correct (no shared Dropdown change) — Dropdown calls onExpandGroup for a single result regardless of isGroupExpandable
 - [Phase 41.2]: 41.2-10: check-place-path-short gets exempt verdict kind SLOT_TEXT for a short path read in script into a Dropdown slot — no existing verdict kind expressed it
 - [Phase 41.2-14]: Group composition cache keyed groupId@rowsGen, state written only after await; chevron double-click does not navigate; gate rule D admits the chevron only
+- [Phase 41.2-11]: Return moves only anchor groups; other returned members are released with a release effect; an anchor without a return place keeps its group — A7/OQ-5: an anchor is never released from its group, so its return must carry the group
+- [Phase 41.2-11]: update_return D-11 guard skips the place comparison for a removed anchor; anchor_restore_conflict_in_tx exempts parts of a group moved by the same act — Anchor place follows its group; a part at the act destination is not a group moved after the act
 
 ### Pending Todos
 
@@ -1596,8 +1599,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-22T15:21:13.022Z
-Stopped at: Completed 41.2-10-PLAN.md
+Last session: 2026-10-26T19:57:10.210Z
+Stopped at: Completed 41.2-11-PLAN.md
 Resume file: None
 
 None
