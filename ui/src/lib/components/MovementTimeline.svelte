@@ -90,6 +90,20 @@
     return 'причина не определена';
   }
 
+  // Plan 41.2-15 (D-14, UI-SPEC §10.1, R-13): строки пакета, вызванного актом,
+  // тоже несут source = 'act', поэтому ветка «актом №N» стёрла бы групповой
+  // контекст, который D-28 фазы 41 показывает у `source = 'group'`. Хвост после
+  // номера акта: у строки самой группы — «перенос группы» (на себя она не
+  // ссылается), у члена группы — «в составе группы «имя»» со ссылкой, у
+  // устройства, переехавшего актом само по себе, и без снимка имени — ничего.
+  function actTail(entry: MovementEntryDto): 'group' | 'member' | null {
+    if (entry.entity_type === 'group') return 'group';
+    if (entry.group_id !== null && onNavigateToGroup && (entry.group_label?.trim() ?? '') !== '') {
+      return 'member';
+    }
+    return null;
+  }
+
   function handleNavigateToPlace(placeId: number) {
     void onNavigateToPlace?.(placeId);
   }
@@ -156,9 +170,24 @@
               {entry.act_number}
             </button>
           </span>
+          {#if actTail(entry) === 'group'}
+            <span class="timeline-sep">·</span>
+            <span class="timeline-reason">перенос группы</span>
+          {:else if actTail(entry) === 'member'}
+            <span class="timeline-sep">·</span>
+            <span class="timeline-reason">
+              в составе группы «<button
+                type="button"
+                class="timeline-link"
+                onclick={() => handleNavigateToGroup(entry.group_id as number)}
+              >
+                {entry.group_label?.trim()}
+              </button>»
+            </span>
+          {/if}
         {:else if entry.source === 'group' && entry.entity_type !== 'group' && entry.group_id !== null && onNavigateToGroup && (entry.group_label?.trim() ?? '').length > 0}
           <!-- D-28: group_id приходит в каждой групповой строке, поэтому ссылка
-               есть всегда; id — number, имя только как текст (без {@html}). -->
+               есть всегда; id — number, имя только как текст (без разметки из строки). -->
           <span class="timeline-reason">
             в составе группы «<button
               type="button"
