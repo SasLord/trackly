@@ -3,11 +3,15 @@
 //! в печати и CSV (D-25/D-26/D-27). Реальный `AppCtx` на временном каталоге;
 //! имена вымышленные.
 //!
+//! Phase 41.2 (D-16): пакет, записанный АКТОМ, сворачивается тем же механизмом, без
+//! правок отчётного кода и `ReportTable.svelte`.
+//!
 //! Префикс тестов: `report_batch_`.
 
 use rusqlite::params;
 
 use trackly_app::context::AppCtx;
+use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActSaveOutcome};
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
 use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::dto::reports::{PeriodDto, ReportFilter, ReportRow};
@@ -582,6 +586,139 @@ async fn report_batch_csv_full_composition() {
     }
     let reason = expected_member_reason();
     assert_eq!(data.iter().filter(|l| l.ends_with(&reason)).count(), 6);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 41.2, D-16: пакет, записанный актом, сворачивается как групповой перенос
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_batch_act_package_folds_like_group_transfer() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let f = seed_fixture(&ctx).await;
+    // Акт переносит «АРМ #3» целиком: все шесть устройств корня и вложенной «АРМ #4».
+    let act = match ctx
+        .acts
+        .create(
+            &admin(),
+            ActCreateDto {
+                number_input: NumberFieldInput {
+                    value: "8801".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
+                giver_name: "Иванов И.И.".into(),
+                receiver_name: "Петров П.П.".into(),
+                place_id: Some(f.place_b),
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: f
+                    .devices
+                    .iter()
+                    .map(|&id| ActItemNewDto {
+                        device_id: id,
+                        device_ids: vec![id],
+                        quantity: 1,
+                    })
+                    .collect(),
+                confirm_group_release: false,
+            },
+        )
+        .await
+        .expect("create act")
+    {
+        ActSaveOutcome::Created(a) => *a,
+        other => panic!("ожидали Created, получили {other:?}"),
+    };
+    let reason = format!("актом №{}", act.number);
+
+    let rows = report(&ctx, ReportFilter::default()).await;
+    // Та же форма, что у группового переноса: строка группы + 6 устройств.
+    assert_eq!(rows.len(), 7, "строка группы + 6 устройств");
+
+    let headers: Vec<&ReportRow> = rows
+        .iter()
+        .filter(|r| r.batch_role.as_deref() == Some("header"))
+        .collect();
+    assert_eq!(headers.len(), 1, "ровно одна свёртываемая строка группы");
+    assert_eq!(headers[0].entity_type_label.as_deref(), Some("Группа"));
+    assert_eq!(headers[0].device_name.as_deref(), Some(GROUP_NAME));
+    let batch_id = headers[0]
+        .batch_id
+        .clone()
+        .expect("непустой batch_id у заголовка пакета акта");
+    assert!(!batch_id.is_empty());
+
+    let members: Vec<&ReportRow> = rows
+        .iter()
+        .filter(|r| r.batch_role.as_deref() == Some("member"))
+        .collect();
+    assert_eq!(members.len(), 6, "в пакете акта шесть устройств");
+    for r in &rows {
+        assert_eq!(
+            r.batch_id.as_deref(),
+            Some(batch_id.as_str()),
+            "один batch_id на весь пакет акта"
+        );
+        assert_eq!(r.batch_label.as_deref(), Some(GROUP_NAME));
+        assert_eq!(r.batch_size, Some(6));
+        assert_eq!(
+            r.reason.as_deref(),
+            Some(reason.as_str()),
+            "основание строки пакета — номер акта, а не «перенос группы»"
+        );
+    }
+
+    // Печать (HTML отчёта): полный состав, шаблон отчёта не менялся.
+    let html = build_reports_export_pdf(
+        &ctx,
+        &admin(),
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(wide_period()),
+    )
+    .await
+    .expect("movements print html");
+    assert_eq!(html_data_rows(&html), 7, "заголовок группы + 6 устройств");
+    for name in device_names() {
+        assert_eq!(
+            html.matches(&format!("<td>{name}</td>")).count(),
+            1,
+            "устройство {name} должно быть в печати акта ровно один раз"
+        );
+    }
+    assert_eq!(
+        html.matches(&format!("<td>{reason}</td>")).count(),
+        7,
+        "основание «{reason}» у каждой строки пакета"
+    );
+
+    // CSV: полный состав.
+    let bytes = build_reports_export_csv(
+        &ctx,
+        &admin(),
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(wide_period()),
+    )
+    .await
+    .expect("movements csv");
+    let text = String::from_utf8(bytes).expect("utf8");
+    let text = text.trim_start_matches('\u{FEFF}');
+    let data: Vec<&str> = text.lines().filter(|l| !l.is_empty()).skip(1).collect();
+    assert_eq!(data.len(), 7);
+    for name in device_names() {
+        assert_eq!(
+            data.iter()
+                .filter(|l| l.contains(&format!(";{name};")))
+                .count(),
+            1,
+            "устройство {name} в CSV пакета акта"
+        );
+    }
+    assert_eq!(data.iter().filter(|l| l.ends_with(&reason)).count(), 7);
 }
 
 #[test]

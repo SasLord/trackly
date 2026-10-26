@@ -10,8 +10,15 @@
 //! `try_recv()` сразу после `.await`. Списки сравниваются как множества.
 //! Фикстуры расходятся намеренно (устройства стоят на разных местах, акт и
 //! возврат идут на третьи), чтобы неверный набор id в событии ронял тест.
-//! У актов `device_ids` и `group_ids` события пусты всегда (Q4): сверяются
-//! `place_ids`, и они обязаны совпасть с `changed_place_ids` ОТВЕТА (D-03).
+//! У актов `device_ids` события пуст всегда (Q4), сверяются `place_ids`, и они
+//! обязаны совпасть с `changed_place_ids` ОТВЕТА (D-03).
+//!
+//! `group_ids` события несёт группы, которые акт затронул (Phase 41.2, D-14, D-24):
+//! перенос группы целиком, вынос части состава, возврат членства при откате. Пусты
+//! они только там, где групп нет: сценарии без групп (`scenario_*`) продолжают
+//! утверждать `groups.is_empty()` как КОНТРОЛЬ, а сценарии с группами носят префикс
+//! `group_ids_` и сценариями реестра не считаются (реестровый гейт требует ровно один
+//! `scenario_<функция>` на строку `Broadcasts`; лишний `scenario_*` — «устаревший»).
 //! Данные вымышленные.
 
 mod entities_support;
@@ -19,7 +26,8 @@ mod entities_support;
 use std::time::Duration;
 
 use entities_support::fixture::{
-    admin, assert_no_entities, assert_one_entities, drain, make_test_ctx, seed_device, seed_place,
+    admin, assert_no_entities, assert_one_entities, drain, make_test_ctx, seed_device,
+    seed_group_type_and_group, seed_place,
 };
 use trackly_app::context::AppCtx;
 use trackly_app::dto::act::{
@@ -356,6 +364,142 @@ async fn scenario_delete_soft() {
     })
     .await
     .expect("scenario_delete_soft вышел за бюджет");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 41.2: событие актов несёт группы (D-14, D-24)
+// ---------------------------------------------------------------------------
+
+/// «АРМ #3» из трёх устройств на `place`; возвращает `(group_id, device_ids)`.
+async fn seed_arm(ctx: &AppCtx, place: i64) -> (i64, Vec<i64>) {
+    let (_, group) = seed_group_type_and_group(ctx, "АРМ #3", 3, Some(place)).await;
+    let mut devices = Vec::new();
+    for (i, name) in ["Системный блок #4", "Монитор #2", "Клавиатура #5"]
+        .iter()
+        .enumerate()
+    {
+        devices
+            .push(seed_device(ctx, 1, name, &format!("INV-G{i}"), Some(place), Some(group)).await);
+    }
+    (group, devices)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_ids_create_whole_group_names_the_group_and_both_places() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        // Расходящиеся места: группа стоит на A, акт идёт на B.
+        let a = seed_place(&ctx, "Склад A").await;
+        let b = seed_place(&ctx, "Кабинет B").await;
+        let (group, devices) = seed_arm(&ctx, a).await;
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        let act = handover_act(&ctx, "8701", &devices, b).await;
+
+        let (places, dev_ids, groups) = assert_one_entities(&mut rx, "create");
+        assert_eq!(
+            sorted(groups),
+            vec![group],
+            "group_ids == {{перенесённая группа}}"
+        );
+        assert_eq!(
+            sorted(places.clone()),
+            sorted(act.changed_place_ids.clone()),
+            "place_ids события == changed_place_ids ответа (D-03)"
+        );
+        assert!(places.contains(&a), "прежнее место группы");
+        assert!(places.contains(&b), "место акта");
+        assert!(dev_ids.is_empty(), "device_ids пуст (Q4)");
+    })
+    .await
+    .expect("group_ids_create_whole_group вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_ids_create_container_without_direct_devices_names_the_moved_root() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад A").await;
+        let b = seed_place(&ctx, "Кабинет B").await;
+        // Корень без собственных устройств-позиций: все устройства во вложенной группе.
+        let (_, root) = seed_group_type_and_group(&ctx, "АРМ #3", 3, Some(a)).await;
+        let (_, inner) = seed_group_type_and_group(&ctx, "Периферия #1", 1, Some(a)).await;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE groups SET parent_group_id = ?1 WHERE id = ?2",
+                    rusqlite::params![root, inner],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("nest");
+        let d1 = seed_device(&ctx, 1, "Монитор #2", "INV-N1", Some(a), Some(inner)).await;
+        let d2 = seed_device(&ctx, 1, "Клавиатура #5", "INV-N2", Some(a), Some(inner)).await;
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        let act = handover_act(&ctx, "8702", &[d1, d2], b).await;
+
+        let (places, _dev_ids, groups) = assert_one_entities(&mut rx, "create");
+        // Событие называет перенесённый КОРЕНЬ (как `move_group`, D-17); вложенная группа едет
+        // за ним и отдельным id не называется. Корень не имеет собственных устройств-позиций,
+        // но событие и места не пусты.
+        assert_eq!(
+            sorted(groups),
+            vec![root],
+            "корень без устройств-позиций назван в событии"
+        );
+        assert_ne!(root, inner);
+        assert_eq!(
+            sorted(places.clone()),
+            sorted(act.changed_place_ids.clone())
+        );
+        assert!(places.contains(&a) && places.contains(&b));
+    })
+    .await
+    .expect("group_ids_create_container вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_ids_delete_soft_names_the_group_that_goes_back() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад A").await;
+        let b = seed_place(&ctx, "Кабинет B").await;
+        let (group, devices) = seed_arm(&ctx, a).await;
+        let act = handover_act(&ctx, "8703", &devices, b).await;
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        let touched = ctx
+            .acts
+            .delete_soft(act.id, act.version)
+            .await
+            .expect("delete_soft")
+            .changed_place_ids;
+
+        let (places, dev_ids, groups) = assert_one_entities(&mut rx, "delete_soft");
+        assert_eq!(
+            sorted(groups),
+            vec![group],
+            "group_ids == {{откатываемая группа}}"
+        );
+        assert_eq!(
+            sorted(places.clone()),
+            sorted(touched),
+            "place_ids == результат (D-03)"
+        );
+        assert!(
+            places.contains(&a) && places.contains(&b),
+            "оба места группы"
+        );
+        assert!(dev_ids.is_empty());
+    })
+    .await
+    .expect("group_ids_delete_soft вышел за бюджет");
 }
 
 // ---------------------------------------------------------------------------

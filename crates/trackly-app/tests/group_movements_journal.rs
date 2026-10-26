@@ -8,6 +8,7 @@
 use rusqlite::params;
 
 use trackly_app::context::AppCtx;
+use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActSaveOutcome};
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
 use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_core::auth::Identity;
@@ -609,5 +610,121 @@ async fn journal_first_assignment() {
         assert_eq!(tl[0].batch_id.as_deref(), Some(batch.as_str()));
         assert_eq!(tl[0].from_place_id, a);
         assert_eq!(tl[0].to_place_id, b);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 41.2: пакет, записанный актом (D-14, D-16)
+// ---------------------------------------------------------------------------
+
+/// Акт переносит «АРМ #3» целиком (6 устройств в двух группах) и одно устройство вне
+/// групп. Строки журнала акта: источник только `act`; без `batch_id` остаётся только
+/// позиция вне переехавших групп.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn journal_act_package_rows_have_act_source_and_batch_only_for_group_members() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let f = seed_fixture(&ctx).await;
+    let loose = seed_device(
+        &ctx,
+        "Принтер отдельный",
+        "INV-LOOSE",
+        "SN-LOOSE",
+        Some(f.place_a),
+        None,
+    )
+    .await;
+    let mut ids = f.devices.clone();
+    ids.push(loose);
+    let act = match ctx
+        .acts
+        .create(
+            &admin(),
+            ActCreateDto {
+                number_input: NumberFieldInput {
+                    value: "8802".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
+                giver_name: "Иванов И.И.".into(),
+                receiver_name: "Петров П.П.".into(),
+                place_id: Some(f.place_b),
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: ids
+                    .iter()
+                    .map(|&id| ActItemNewDto {
+                        device_id: id,
+                        device_ids: vec![id],
+                        quantity: 1,
+                    })
+                    .collect(),
+                confirm_group_release: false,
+            },
+        )
+        .await
+        .expect("create act")
+    {
+        ActSaveOutcome::Created(a) => *a,
+        other => panic!("ожидали Created, получили {other:?}"),
+    };
+
+    // Контроль не вакуумен: у акта есть строки журнала и среди них строки пакета.
+    let total = scalar_i64(
+        &ctx,
+        "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1",
+        vec![int(act.id)],
+    )
+    .await;
+    let batched = scalar_i64(
+        &ctx,
+        "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 AND batch_id IS NOT NULL",
+        vec![int(act.id)],
+    )
+    .await;
+    assert!(total >= 7, "строки акта есть: {total}");
+    assert!(batched >= 7, "строки пакета группы есть: {batched}");
+
+    // Ни одна строка с act_id не носит источник, отличный от `act`.
+    let foreign_source = scalar_i64(
+        &ctx,
+        "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 AND source <> 'act'",
+        vec![int(act.id)],
+    )
+    .await;
+    assert_eq!(foreign_source, 0, "источник строк акта — только act");
+
+    // Без batch_id остаётся только позиция вне переехавших групп.
+    let unbatched: Vec<(String, i64)> = ctx
+        .writer
+        .execute({
+            let act_id = act.id;
+            move |conn| {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT entity_type, entity_id FROM place_movements \
+                         WHERE act_id = ?1 AND batch_id IS NULL ORDER BY id",
+                    )
+                    .map_err(map_rusqlite)?;
+                let rows = stmt
+                    .query_map(params![act_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .map_err(map_rusqlite)?;
+                let mut out = Vec::new();
+                for row in rows {
+                    out.push(row.map_err(map_rusqlite)?);
+                }
+                Ok(out)
+            }
+        })
+        .await
+        .expect("unbatched rows");
+    assert!(!unbatched.is_empty(), "строка позиции вне групп есть");
+    for (kind, id) in &unbatched {
+        assert_eq!(kind, "device");
+        assert_eq!(
+            *id, loose,
+            "без batch_id только позиция вне переехавших групп"
+        );
     }
 }
