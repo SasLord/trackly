@@ -6,6 +6,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { parseIdFromHash } from '$lib/utils/hashId';
+  import { pluralizeRu } from '$lib/utils/pluralize';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import ActsSearchAndTabs from './ActsSearchAndTabs.svelte';
   import ActsMasterDetail from './ActsMasterDetail.svelte';
@@ -18,6 +19,7 @@
   import type {
     ActDto,
     ActFilter,
+    ActNoticeDto,
     ActListResponse,
     ActsCountsDto,
     Pagination,
@@ -288,14 +290,46 @@
     }
   }
 
+  /** Сколько предупреждений D-09 показывать отдельными тостами; остальные —
+   *  одним сводным (UI-SPEC §10.4: тост не список). */
+  const MAX_NOTICE_TOASTS = 5;
+
+  /** Отдельные sticky warning-тосты невернувшегося членства. Одинаковые по тексту
+   *  сворачиваются ДО подсчёта: стор всё равно не покажет два одинаковых
+   *  sticky-тоста, и сводка «И ещё K» иначе врала бы про число. Группы не
+   *  сворачиваются: у каждого уведомления своё устройство, а `group_id` — это
+   *  цель ссылки (может быть чужая группа), а не признак одной причины. */
+  function showRollbackNotices(notices: ActNoticeDto[]) {
+    const seen = new Set<string>();
+    const unique = notices.filter((n) => !seen.has(n.message) && seen.add(n.message));
+    for (const n of unique.slice(0, MAX_NOTICE_TOASTS)) {
+      pushToast('warning', n.message, {
+        sticky: true,
+        link:
+          n.group_id !== null
+            ? { label: 'Открыть группу', href: '#/groups?id=' + n.group_id }
+            : undefined,
+      });
+    }
+    const rest = unique.length - MAX_NOTICE_TOASTS;
+    if (rest > 0) {
+      const tail = pluralizeRu(rest, [
+        'позиция не вернулась в свою группу',
+        'позиции не вернулись в свои группы',
+        'позиций не вернулись в свои группы',
+      ]);
+      pushToast('warning', `И ещё ${rest} ${tail}.`, { sticky: true });
+    }
+  }
+
   async function handleDelete(act: ActDto) {
     const isReturn = act.act_type === 'return';
     const heading = isReturn
       ? `Удалить акт возврата №${act.number}?`
       : `Удалить акт №${act.number}?`;
     const body = isReturn
-      ? 'Акт будет помечен как удалённый. Состояние и Расположение устройств вернутся к значениям на момент выдачи. Если parent был в Архиве — выйдет из архива.'
-      : 'Акт будет помечен как удалённый. Все устройства из акта вернутся на склад в исходные Состояние и Расположение (на момент выдачи). Связанные возвраты также будут отменены. Действие можно отменить только восстановлением из бэкапа БД.';
+      ? 'Акт будет помечен как удалённый. Состояние и Расположение устройств вернутся к значениям на момент выдачи. Если parent был в Архиве — выйдет из архива. Устройства, выведенные этим возвратом из состава групп, вернутся в свои группы.'
+      : 'Акт будет помечен как удалённый. Все устройства из акта вернутся на склад в исходные Состояние и Расположение (на момент выдачи). Связанные возвраты также будут отменены. Устройства, выведенные этим актом из состава групп, вернутся в свои группы. Действие можно отменить только восстановлением из бэкапа БД.';
     const confirmed = window.confirm(`${heading}\n\n${body}`);
     if (!confirmed) return;
     try {
@@ -312,6 +346,10 @@
           ? `Акт возврата №${act.number} удалён. Устройства возвращены к состоянию на момент выдачи.`
           : `Акт №${act.number} удалён. Устройства восстановлены.`,
       );
+      // 41.2-15 (D-09, UI-SPEC §10.4): удаление проходит в любом случае, а то, что
+      // откат не смог вернуть в группу, приходит с сервера готовыми фразами
+      // (`result.notices`) — по тосту на каждую, ПОСЛЕ success-тоста.
+      showRollbackNotices(result.notices);
       selectedActId = null;
       refresh();
       refreshCounts();
