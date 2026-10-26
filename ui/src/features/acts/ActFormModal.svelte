@@ -16,6 +16,7 @@
   import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
   import NumberMismatchPopup from '$lib/components/NumberMismatchPopup.svelte';
   import NumberScriptWarningPopup from '$lib/components/NumberScriptWarningPopup.svelte';
+  import GroupReleaseConfirmPopup from './GroupReleaseConfirmPopup.svelte';
   import ActFormBody from './ActFormBody.svelte';
   import type { ActNumberPopupState } from './ActFormBody.svelte';
   import type { ActDto } from '../../bindings';
@@ -110,5 +111,14 @@
     doppelganger={numberPopup.doppelganger}
     onFix={numberPopup.onFix}
     onContinue={numberPopup.onContinue}
+  />
+{:else if numberPopup?.kind === 'groupRelease'}
+  <!-- GAM-02: подтверждение выноса из состава. Рисуется здесь, а не в
+       ActFormBody, по той же причине, что остальные попапы цепочки. -->
+  <GroupReleaseConfirmPopup
+    items={numberPopup.items}
+    loading={numberPopup.loading}
+    onConfirm={numberPopup.onConfirm}
+    onClose={numberPopup.onClose}
   />
 {/if}

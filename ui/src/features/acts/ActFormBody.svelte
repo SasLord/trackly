@@ -53,6 +53,16 @@
         onFix: () => void;
         onContinue: () => void;
       }
+    | {
+        // GAM-02 (D-06/D-07): the server answered `needs_group_release` —
+        // saving would take items out of their groups. Rendered by
+        // ActFormModal like the other popups; «Отмена» never touches `items`.
+        kind: 'groupRelease';
+        items: { name: string; groupName: string }[];
+        loading: boolean;
+        onConfirm: () => void;
+        onClose: () => void;
+      }
     | null;
 </script>
 
