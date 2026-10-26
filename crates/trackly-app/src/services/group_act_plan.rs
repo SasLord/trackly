@@ -23,9 +23,6 @@
 //! Чистая часть (`plan`, `act_units`) не знает про БД и тестируется на вымышленных
 //! снимках. Часть с БД работает только на `&Transaction`; коммит делает вызывающий.
 
-// Первые вызовы — планы 41.2-06, -07, -09, -11, -13.
-#![allow(dead_code)]
-
 use std::collections::{HashMap, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, Transaction};

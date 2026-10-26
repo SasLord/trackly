@@ -42,8 +42,9 @@ use trackly_infra::repos::{
 
 use crate::dto::act::{
     act_dto_from_row, format_act_number, ActCreateDto, ActDeleteResultDto, ActDto, ActFilter,
-    ActItemDto, ActListResponse, ActReturnDto, ActReturnItemDto, ActSaveOutcome, ActUpdateDto,
-    ActUpdateReturnDto, ActsCountsDto, GroupReleaseItemDto, GroupReleaseWarningDto, Pagination,
+    ActItemDto, ActListResponse, ActNoticeDto, ActReturnDto, ActReturnItemDto, ActSaveOutcome,
+    ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupReleaseItemDto, GroupReleaseWarningDto,
+    Pagination,
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
 use crate::dto::printer::WsEvent;
@@ -53,9 +54,12 @@ use crate::services::act_kit::kit_for_item_in_tx;
 use crate::services::group_act_plan::{
     apply_plan_in_tx, apply_return_plan_in_tx, forget_moved_details_in_tx, plan_for_return_in_tx,
     plan_in_tx, prior_release_effect_id_in_tx, release_effect_for_removed_in_tx,
-    revert_detach_effect_in_tx, revert_move_effect_in_tx, units_of_group_in_tx,
+    restore_released_members_in_tx, revert_detach_effect_in_tx, revert_group_moves_in_tx,
+    revert_move_effect_in_tx, units_of_group_in_tx,
 };
-use crate::services::group_membership::{anchor_restore_conflict_in_tx, RestoreOutcome};
+use crate::services::group_membership::{
+    anchor_restore_conflict_in_tx, GroupNotice, RestoreOutcome,
+};
 use crate::services::group_place::GroupMoveDeps;
 use crate::services::number_template_service::{
     ensure_number_free_in_tx, fetch_candidate_rows, normalize_number_key, CandidateRow,
@@ -3679,11 +3683,16 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = None;
 
-        let touched = self
+        let (touched, touched_group_ids, notices) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
+                // Phase 41.2 (D-09): группы, затронутые откатом, и уведомления о том,
+                // что обратить не удалось. Уведомление НЕ делает удаление ошибкой.
+                let group_deps = GroupMoveDeps::new();
+                let mut touched_group_ids: Vec<i64> = Vec::new();
+                let mut notices: Vec<GroupNotice> = Vec::new();
 
                 // Optimistic-lock check + load row (включая deleted_at_utc).
                 let act = acts_repo.fetch_full_in_tx(&tx, id)?;
@@ -3708,14 +3717,18 @@ impl ActService {
                         let returns = acts_repo.list_returns_for_parent_in_tx(&tx, id)?;
                         // Reverse order для LIFO.
                         for ret in returns.iter().rev() {
-                            touched_place_ids.extend(undo_device_mutations_for_act(
+                            let undone = undo_device_mutations_for_act(
                                 &tx,
+                                &group_deps,
                                 &devices_repo,
                                 &audit_repo,
                                 ret.id,
                                 user_id_opt,
                                 now,
-                            )?);
+                            )?;
+                            touched_place_ids.extend(undone.touched_place_ids);
+                            extend_unique(&mut touched_group_ids, undone.touched_group_ids);
+                            notices.extend(undone.notices);
                             // Soft-delete return-акт + DELETE items (CASCADE
                             // не сработает на soft-delete — делаем явно через
                             // helper repo).
@@ -3746,14 +3759,18 @@ impl ActService {
                         }
 
                         // Now undo handover's own device mutations.
-                        touched_place_ids.extend(undo_device_mutations_for_act(
+                        let undone = undo_device_mutations_for_act(
                             &tx,
+                            &group_deps,
                             &devices_repo,
                             &audit_repo,
                             id,
                             user_id_opt,
                             now,
-                        )?);
+                        )?;
+                        touched_place_ids.extend(undone.touched_place_ids);
+                        extend_unique(&mut touched_group_ids, undone.touched_group_ids);
+                        notices.extend(undone.notices);
                         acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
                         // D-03/HST-03: the handover's own delete, at its own
                         // point in the flow, scoped to its own act_id.
@@ -3774,14 +3791,18 @@ impl ActService {
                     }
                     ActType::Return => {
                         // Undo own device mutations → soft-delete → recompute parent.
-                        touched_place_ids.extend(undo_device_mutations_for_act(
+                        let undone = undo_device_mutations_for_act(
                             &tx,
+                            &group_deps,
                             &devices_repo,
                             &audit_repo,
                             id,
                             user_id_opt,
                             now,
-                        )?);
+                        )?;
+                        touched_place_ids.extend(undone.touched_place_ids);
+                        extend_unique(&mut touched_group_ids, undone.touched_group_ids);
+                        notices.extend(undone.notices);
                         acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
                         // D-03/HST-03: standalone return's own delete, scoped
                         // to its own act_id.
@@ -3815,7 +3836,11 @@ impl ActService {
                 }
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(dedupe_place_ids(touched_place_ids))
+                Ok((
+                    dedupe_place_ids(touched_place_ids),
+                    touched_group_ids,
+                    notices,
+                ))
             })
             .await?;
         // BE-CR-04 (D-14): deleting an act frees its number; deleting a
@@ -3823,11 +3848,18 @@ impl ActService {
         self.broadcast_act_number_space_changed();
         // D-03/D-04 (41.7): the event carries the very list the caller gets back.
         let place_ids = touched.clone();
-        self.broadcast_entities("delete_soft", place_ids, Vec::new(), Vec::new());
-        // Phase 41.2 (D-09): `notices` is filled by plan 41.2-13.
+        self.broadcast_entities("delete_soft", place_ids, Vec::new(), touched_group_ids);
+        // Phase 41.2 (D-09): the deletion succeeded; whatever the rollback could not
+        // give back is reported, never turned into an error.
         Ok(ActDeleteResultDto {
             changed_place_ids: touched,
-            notices: Vec::new(),
+            notices: notices
+                .into_iter()
+                .map(|n| ActNoticeDto {
+                    message: n.message,
+                    group_id: n.group_id,
+                })
+                .collect(),
         })
     }
 
@@ -4416,9 +4448,38 @@ mod compute_return_suffix_tests {
 // Helpers — undo path
 // ---------------------------------------------------------------------------
 
-/// Восстанавливает все devices, на которых данный акт оставил mutation, из
-/// `audit_log.before_json`. Для каждого восстановленного device пишет
-/// `audit_log` запись `action='custom:undo'`.
+/// Итог отката одного акта (Phase 41.2): затронутые места и группы и уведомления о том, что
+/// обратить не удалось (D-09). Уведомление не делает удаление ошибкой.
+#[derive(Default)]
+struct UndoOutcome {
+    touched_place_ids: Vec<Option<i64>>,
+    touched_group_ids: Vec<i64>,
+    notices: Vec<GroupNotice>,
+}
+
+/// Дополнить список id без повторов (порядок первого появления).
+fn extend_unique(into: &mut Vec<i64>, more: Vec<i64>) {
+    for id in more {
+        if !into.contains(&id) {
+            into.push(id);
+        }
+    }
+}
+
+/// Откатывает акт: возвращает группы, устройства и членство «как будто акта не было».
+///
+/// Порядок (D-08, D-09, ловушка P-05) — от него зависит результат:
+/// 1. `revert_group_moves_in_tx` — обратить переносы и отцепления групп ДО снимков;
+/// 2. восстановить снимки устройств из `audit_log.before_json` (в обратном порядке); для
+///    устройства якорной группы, которую переместили ПОСЛЕ акта, снимок пропускается
+///    (`anchor_restore_conflict_in_tx`), оно остаётся на месте своей группы;
+/// 3. `restore_released_members_in_tx` — вернуть членство ПОСЛЕ снимков;
+/// 4. `delete_act_group_effects_in_tx` — стереть следы акта, когда по ним всё сделано.
+///
+/// Для каждого восстановленного device пишется `audit_log` запись `action='custom:undo'`.
+///
+/// Акты, проведённые до V049, следов не имеют: группы не обращаются, членство не
+/// возвращается, уведомлений нет — откат идёт как раньше (не дефект).
 ///
 /// Используется и для handover undo, и для return undo (single shared path).
 /// Returns every device's (current-before-undo, restored) `place_id` pair,
@@ -4430,34 +4491,73 @@ mod compute_return_suffix_tests {
 /// removed-device branches: the snapshot IS what `restored.place_id` becomes).
 fn undo_device_mutations_for_act(
     tx: &rusqlite::Transaction<'_>,
+    deps: &GroupMoveDeps,
     devices_repo: &SqliteDeviceRepository,
     audit_repo: &SqliteAuditLogRepository,
     act_id: i64,
     user_id_opt: Option<i64>,
     now: i64,
-) -> Result<Vec<Option<i64>>, AppError> {
-    let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
+) -> Result<UndoOutcome, AppError> {
+    let mut out = UndoOutcome::default();
+    // (1) Группы: перенос и отцепление обращаются до снимков устройств.
+    let reverted = revert_group_moves_in_tx(tx, deps, act_id, user_id_opt, now)?;
+    out.touched_place_ids
+        .extend(reverted.touched_place_ids.into_iter().map(Some));
+    extend_unique(&mut out.touched_group_ids, reverted.touched_group_ids);
+    out.notices.extend(reverted.notices);
+
+    // (2) Снимки устройств.
     let rows = audit_repo.select_device_mutations_for_act(tx, act_id)?;
     for (device_id, before_json) in rows.into_iter().rev() {
         let snapshot: serde_json::Value =
             serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
                 source_chain: format!("undo: corrupt before_json for device {device_id}: {e}"),
             })?;
+        let snapshot_place: Option<i64> = snapshot.get("place_id").and_then(|v| v.as_i64());
         let place_before_undo = devices_repo.get_in_tx(tx, device_id)?;
-        let restored = devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
-        // Phase 41 D-22: акт выводит устройство из состава группы.
-        crate::services::group_membership::release_if_locked_device_in_tx(
+        // D-09: якорную группу переместили ПОСЛЕ акта — снимок не восстанавливается,
+        // устройство остаётся на месте своей группы; откат при этом проходит.
+        let anchor_conflict = anchor_restore_conflict_in_tx(
             tx,
             &SqliteGroupRepository,
             audit_repo,
             device_id,
-            Some(act_id),
+            snapshot_place,
+            act_id,
             user_id_opt,
             now,
-            crate::services::group_membership::ReleaseEffect::Skip,
         )?;
-        touched_place_ids.push(place_before_undo.place_id);
-        touched_place_ids.push(restored.place_id);
+        let restored = match anchor_conflict {
+            Some(notice) => {
+                if let Some(group_id) = notice.group_id {
+                    extend_unique(&mut out.touched_group_ids, vec![group_id]);
+                }
+                out.notices.push(notice);
+                place_before_undo.clone()
+            }
+            None => {
+                let restored =
+                    devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
+                // Phase 41 D-22: акт выводит устройство из состава группы.
+                if let Some(group_id) =
+                    crate::services::group_membership::release_if_locked_device_in_tx(
+                        tx,
+                        &SqliteGroupRepository,
+                        audit_repo,
+                        device_id,
+                        Some(act_id),
+                        user_id_opt,
+                        now,
+                        crate::services::group_membership::ReleaseEffect::Skip,
+                    )?
+                {
+                    extend_unique(&mut out.touched_group_ids, vec![group_id]);
+                }
+                restored
+            }
+        };
+        out.touched_place_ids.push(place_before_undo.place_id);
+        out.touched_place_ids.push(restored.place_id);
         let after_json = device_snapshot_json(&restored).map_err(|e| AppError::Internal {
             source_chain: format!("undo after_json: {e}"),
         })?;
@@ -4479,7 +4579,17 @@ fn undo_device_mutations_for_act(
             },
         )?;
     }
-    Ok(touched_place_ids)
+
+    // (3) Членство возвращается ПОСЛЕ снимков: место читается уже восстановленное.
+    let members = restore_released_members_in_tx(tx, deps, act_id, user_id_opt, now)?;
+    out.touched_place_ids
+        .extend(members.touched_place_ids.into_iter().map(Some));
+    extend_unique(&mut out.touched_group_ids, members.touched_group_ids);
+    out.notices.extend(members.notices);
+
+    // (4) Следы акта стираются, только когда по ним всё сделано (порядок важен).
+    deps.groups.delete_act_group_effects_in_tx(tx, act_id)?;
+    Ok(out)
 }
 
 /// Канонический snapshot device-row для записи в `audit_log.{before,after}_json`.

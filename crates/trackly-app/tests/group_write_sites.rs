@@ -1508,10 +1508,11 @@ async fn s7_undo_releases_if_locked() {
     assert_eq!(release_audit_count(&ctx, y).await, 0);
 }
 
-/// Членство НЕ восстанавливается: бывший член группы, выведенный актом, после
-/// удаления акта возвращается на старое место, но в состав не возвращается.
+/// Откат акта ВОЗВРАЩАЕТ членство (D-08, фаза 41.2): бывший член группы, выведенный актом,
+/// после удаления акта возвращается на старое место и в состав. До этой фазы тест назывался
+/// s7_undo_does_not_restore_membership и утверждал обратное.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn s7_undo_does_not_restore_membership() {
+async fn s7_undo_restores_membership_of_released_member() {
     let (ctx, _dir) = make_test_ctx().await;
     let arm = type_id_by_code(&ctx, "workstation").await;
     let place_a = seed_place(&ctx, "Склад А").await;
@@ -1541,13 +1542,39 @@ async fn s7_undo_does_not_restore_membership() {
         Some(place_a),
         "место вернулось"
     );
-    assert_eq!(member_rows(&ctx, y).await, 0, "членство не восстановлено");
+    assert_eq!(member_rows(&ctx, y).await, 1, "членство возвращено");
+    let mut expected = vec![y, mate];
+    expected.sort_unstable();
+    assert_eq!(group_member_ids(&ctx, g).await, expected);
     assert_eq!(
         release_audit_count(&ctx, y).await,
         1,
-        "undo не пишет второго вывода: членства уже не было"
+        "undo не пишет второго вывода: вывод был ровно один, при передаче"
     );
-    assert_eq!(group_member_ids(&ctx, g).await, vec![mate]);
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM audit_log \
+             WHERE action = 'custom:group_member_restored' AND entity_id = ?1",
+            vec![int(y)],
+        )
+        .await,
+        1,
+        "аудит возврата членства: ровно одна запись"
+    );
+    let restored = text_of(
+        &ctx,
+        "SELECT payload_json FROM audit_log \
+         WHERE action = 'custom:group_member_restored' AND entity_id = ?1",
+        vec![int(y)],
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&restored).expect("payload json");
+    assert_eq!(
+        v["group_id"].as_i64(),
+        Some(g),
+        "аудит возврата назвал группу"
+    );
 }
 
 /// Undo акта возврата — тот же helper, ветка `ActType::Return`.
