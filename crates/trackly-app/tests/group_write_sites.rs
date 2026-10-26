@@ -2478,3 +2478,372 @@ fn s11_anchor_guard_mutations_are_detected() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.2 plan 16: два предиката гейта write-site актов — РАСШИРЕНИЕ, не замена.
+//
+// Старый `write_site_gate_act_service_every_site_has_release` остаётся нетронутым
+// (счёт 8/8, WINDOW = 14): он видит «release есть где-то в 14 строках после
+// write-site'а» и слеп к двум вещам, которые добавила фаза 41.2:
+//   (i)  УСЛОВНОСТЬ: на прямых путях release стоит под `if`, и если условие
+//        `moved_device_ids` пропадает, release снова вызывается у устройств, чьё место
+//        поставила группа (старый гейт зелёный: вызов по-прежнему в окне);
+//   (ii) ВПЛОТНУЮ: на restore-путях release стоит сразу за `restore_from_snapshot_in_tx`
+//        и получает режим следа последним аргументом; код, вставленный между ними,
+//        старый гейт терпит до 14 строк.
+// ---------------------------------------------------------------------------
+
+const ACT_SERVICE_SRC_PHASE_412: &str = include_str!("../src/services/act_service.rs");
+
+/// Пути записи актов, на которых `release_device_in_tx(` обязан быть условным.
+const ACT_DIRECT_PATH_SIGS: [&str; 4] = [
+    "pub async fn create(",
+    "pub async fn update(",
+    "pub async fn do_return(",
+    "pub async fn update_return(",
+];
+
+/// Окно (в строках от строки с ИМЕНЕМ вызова), в котором должен встретиться режим
+/// следа. Режим — восьмой, последний аргумент; формат rustfmt «по аргументу на
+/// строку» ставит его на +8 от имени, поэтому окно не меньше 10 (W-8).
+const MODE_WINDOW: usize = 10;
+/// Расстояние (в строках) от `restore_from_snapshot_in_tx(` до `release_if_locked...`.
+const ADJACENT_WINDOW: usize = 6;
+
+fn act_line_indent(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
+
+fn act_has_call(code: &str, needle: &str) -> bool {
+    code.match_indices(needle).any(|(pos, _)| {
+        code[..pos]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+    })
+}
+
+/// Диапазон индексов строк `[from, to)` тела функции с сигнатурой `sig`. Сигнатура
+/// обязана встречаться РОВНО один раз: переименование — красный тест, не пропуск.
+fn act_fn_line_range(lines: &[&str], sig: &str) -> (usize, usize) {
+    let hits: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.contains(sig))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "сигнатура `{sig}`: {} вхождений, нужно 1",
+        hits.len()
+    );
+    let from = hits[0];
+    let indent = act_line_indent(lines[from]);
+    let to = lines[from + 1..]
+        .iter()
+        .position(|l| {
+            let t = l.trim_start();
+            act_line_indent(l) == indent
+                && [
+                    "pub async fn ",
+                    "async fn ",
+                    "pub fn ",
+                    "pub(crate) fn ",
+                    "fn ",
+                ]
+                .iter()
+                .any(|p| t.starts_with(p))
+        })
+        .map_or(lines.len(), |p| from + 1 + p);
+    (from, to)
+}
+
+/// Условие ближайшего охватывающего `if` строки `at` (строка `if` плюс продолжение до
+/// строки, оканчивающейся на `{`). `None`, если охватывающей строки нет или она не `if`.
+fn act_enclosing_if_condition(lines: &[&str], from: usize, at: usize) -> Option<(usize, String)> {
+    let indent = act_line_indent(lines[at]);
+    let mut i = at;
+    while i > from {
+        i -= 1;
+        let code = code_of_phase_412(lines[i]);
+        if code.trim().is_empty() {
+            continue;
+        }
+        if act_line_indent(lines[i]) < indent {
+            let t = code.trim_start();
+            if t.starts_with("if ") || t.starts_with("} else if ") {
+                let mut cond = String::new();
+                let mut j = i;
+                loop {
+                    let c = code_of_phase_412(lines[j]);
+                    cond.push_str(c);
+                    cond.push(' ');
+                    if c.trim_end().ends_with('{') || j + 1 >= lines.len() {
+                        break;
+                    }
+                    j += 1;
+                }
+                return Some((i, cond));
+            }
+            return None;
+        }
+    }
+    None
+}
+
+fn code_of_phase_412(line: &str) -> &str {
+    line.split("//").next().unwrap_or("")
+}
+
+/// Утверждение `let group_placed = ...;` выше строки `at` в пределах функции читает
+/// `moved_device_ids` (на возвратах `group_placed` — производная от плана групп).
+fn act_group_placed_is_move_aware(lines: &[&str], from: usize, at: usize) -> bool {
+    let Some(start) = (from..at)
+        .rev()
+        .find(|&i| code_of_phase_412(lines[i]).contains("let group_placed"))
+    else {
+        return false;
+    };
+    let mut stmt = String::new();
+    for l in &lines[start..at] {
+        let c = code_of_phase_412(l);
+        stmt.push_str(c);
+        if c.trim_end().ends_with(';') {
+            break;
+        }
+    }
+    stmt.contains("moved_device_ids")
+}
+
+/// Предикат (i). Возвращает номера строк (с 1) вызовов `release_device_in_tx(` в
+/// create/update/do_return/update_return, которые НЕ стоят под `if` с условием
+/// `moved_device_ids` (прямо или через `group_placed`), а также любые вызовы
+/// `release_device_in_tx(` внутри циклов `for &removed_id in &removed`. Пустой вектор =
+/// зелёный. Счётные константы и `count_calls` не затрагиваются.
+fn release_unconditional_sites(src: &str) -> Vec<usize> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut bad: Vec<usize> = Vec::new();
+    for sig in ACT_DIRECT_PATH_SIGS {
+        let (from, to) = act_fn_line_range(&lines, sig);
+        // Вызовы release на прямых путях.
+        for at in from..to {
+            let code = code_of_phase_412(lines[at]);
+            if code.contains("fn ") || !act_has_call(code, "release_device_in_tx(") {
+                continue;
+            }
+            let ok = match act_enclosing_if_condition(&lines, from, at) {
+                Some((_, cond)) => {
+                    cond.contains("moved_device_ids")
+                        || (cond.contains("group_placed")
+                            && act_group_placed_is_move_aware(&lines, from, at))
+                }
+                None => false,
+            };
+            if !ok {
+                bad.push(at + 1);
+            }
+        }
+        // В ветках removed вызовов release_device_in_tx( нет вообще.
+        for start in from..to {
+            if !code_of_phase_412(lines[start]).contains("for &removed_id in &removed") {
+                continue;
+            }
+            let indent = act_line_indent(lines[start]);
+            let end = (start + 1..to)
+                .find(|&i| {
+                    act_line_indent(lines[i]) == indent && lines[i].trim_start().starts_with('}')
+                })
+                .unwrap_or(to);
+            for (at, line) in lines.iter().enumerate().take(end).skip(start) {
+                if act_has_call(code_of_phase_412(line), "release_device_in_tx(") {
+                    bad.push(at + 1);
+                }
+            }
+        }
+    }
+    bad.sort_unstable();
+    bad.dedup();
+    bad
+}
+
+/// Строки (с 1) вызовов `release_if_locked_device_in_tx(` и расстояние до режима
+/// следа: пары (номер строки вызова, расстояние до `ReleaseEffect::` / `release_mode`
+/// в строках от имени вызова; `None`, если в окне режима нет).
+fn restore_release_modes(src: &str) -> Vec<(usize, Option<usize>)> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out = Vec::new();
+    for (at, line) in lines.iter().enumerate() {
+        let code = code_of_phase_412(line);
+        if code.contains("fn ") || !act_has_call(code, "release_if_locked_device_in_tx(") {
+            continue;
+        }
+        let dist = (at..(at + MODE_WINDOW + 4).min(lines.len())).find(|&j| {
+            let c = code_of_phase_412(lines[j]);
+            c.contains("ReleaseEffect::") || c.contains("release_mode")
+        });
+        out.push((at + 1, dist.map(|j| j - at)));
+    }
+    out
+}
+
+/// Предикат (ii). Номера строк (с 1) вызовов `release_if_locked_device_in_tx(`, у
+/// которых (а) выше, не дальше `ADJACENT_WINDOW` строк, нет строки с
+/// `restore_from_snapshot_in_tx(` либо (б) в окне `MODE_WINDOW` нет режима следа.
+/// Пустой вектор = зелёный.
+fn restore_release_far_sites(src: &str) -> Vec<usize> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut bad: Vec<usize> = Vec::new();
+    for (line_no, dist) in restore_release_modes(src) {
+        let at = line_no - 1;
+        let near_restore = (at.saturating_sub(ADJACENT_WINDOW)..at).any(|j| {
+            let c = code_of_phase_412(lines[j]);
+            !c.contains("fn ") && act_has_call(c, "restore_from_snapshot_in_tx(")
+        });
+        let mode_ok = dist.is_some_and(|d| d < MODE_WINDOW);
+        if !near_restore || !mode_ok {
+            bad.push(line_no);
+        }
+    }
+    bad
+}
+
+/// Индекс (с 0) строки `if`, охватывающей первый `release_device_in_tx(` внутри `sig`.
+fn act_first_release_if_line(lines: &[&str], sig: &str) -> usize {
+    let (from, to) = act_fn_line_range(lines, sig);
+    let at = (from..to)
+        .find(|&i| act_has_call(code_of_phase_412(lines[i]), "release_device_in_tx("))
+        .expect("в теле есть release_device_in_tx(");
+    act_enclosing_if_condition(lines, from, at)
+        .expect("release под if")
+        .0
+}
+
+fn act_join(lines: &[String]) -> String {
+    let mut s = lines.join("\n");
+    s.push('\n');
+    s
+}
+
+#[test]
+fn write_site_gate_act_release_is_move_aware() {
+    let src = ACT_SERVICE_SRC_PHASE_412;
+    // Чистый исходник: все 5 прямых release условны.
+    assert_eq!(
+        release_unconditional_sites(src),
+        Vec::<usize>::new(),
+        "release_device_in_tx( на прямом пути act_service.rs стоит без условия moved_device_ids \
+         — устройства переехавшей группы снова будут выводиться из состава"
+    );
+    // Охрана не вакуумна: предикат действительно видит 5 прямых вызовов.
+    let direct: usize = ACT_DIRECT_PATH_SIGS
+        .iter()
+        .map(|sig| {
+            let lines: Vec<&str> = src.lines().collect();
+            let (a, b) = act_fn_line_range(&lines, sig);
+            (a..b)
+                .filter(|&i| act_has_call(code_of_phase_412(lines[i]), "release_device_in_tx("))
+                .count()
+        })
+        .sum();
+    assert_eq!(direct, 5, "прямых release_device_in_tx( должно быть 5");
+
+    // Мутант 1: у release в create убрано условие (`if true {`).
+    let lines: Vec<&str> = src.lines().collect();
+    let if_line = act_first_release_if_line(&lines, "pub async fn create(");
+    let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    let indent = " ".repeat(act_line_indent(lines[if_line]));
+    mutated[if_line] = format!("{indent}if true {{");
+    let m = act_join(&mutated);
+    assert_ne!(m, src);
+    assert!(
+        !release_unconditional_sites(&m).is_empty(),
+        "мутант create без moved_device_ids обязан краснеть"
+    );
+
+    // Мутант 2: то же в update (added).
+    let if_line = act_first_release_if_line(&lines, "pub async fn update(");
+    let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    let indent = " ".repeat(act_line_indent(lines[if_line]));
+    mutated[if_line] = format!("{indent}if true {{");
+    assert!(!release_unconditional_sites(&act_join(&mutated)).is_empty());
+
+    // Мутант 3: на возврате условие `!group_placed && !is_anchor` заменено на `true`.
+    let if_line = act_first_release_if_line(&lines, "pub async fn do_return(");
+    let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    let indent = " ".repeat(act_line_indent(lines[if_line]));
+    mutated[if_line] = format!("{indent}if true {{");
+    assert!(!release_unconditional_sites(&act_join(&mutated)).is_empty());
+
+    // Мутант 4: release_device_in_tx( появился в ветке removed правки.
+    let (from, to) = act_fn_line_range(&lines, "pub async fn update(");
+    let at = (from..to)
+        .find(|&i| code_of_phase_412(lines[i]).contains("for &removed_id in &removed"))
+        .expect("цикл removed");
+    let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    mutated.insert(
+        at + 1,
+        "                    release_device_in_tx(&tx, &SqliteGroupRepository, &audit_repo, removed_id, None, None, 0);"
+            .to_string(),
+    );
+    assert!(
+        !release_unconditional_sites(&act_join(&mutated)).is_empty(),
+        "release_device_in_tx( в ветке removed обязан краснеть"
+    );
+}
+
+#[test]
+fn write_site_gate_act_restore_release_adjacent() {
+    let src = ACT_SERVICE_SRC_PHASE_412;
+    assert_eq!(
+        restore_release_far_sites(src),
+        Vec::<usize>::new(),
+        "release_if_locked_device_in_tx( не вплотную к restore_from_snapshot_in_tx( или без режима \
+         следа в окне"
+    );
+    // Охрана не вакуумна: три restore-пути, режим измерен и строго меньше окна.
+    let modes = restore_release_modes(src);
+    assert_eq!(
+        modes.len(),
+        3,
+        "restore-путей должно быть 3 (update, update_return, undo)"
+    );
+    for (line, dist) in &modes {
+        let d = dist.unwrap_or_else(|| panic!("act_service.rs:{line}: режим следа не найден"));
+        assert!(
+            d < MODE_WINDOW,
+            "act_service.rs:{line}: режим на +{d} строк, окно {MODE_WINDOW} без запаса"
+        );
+    }
+
+    // Мутант 1: десять строк между restore_from_snapshot_in_tx( и release в update.
+    let lines: Vec<&str> = src.lines().collect();
+    let (from, to) = act_fn_line_range(&lines, "pub async fn update(");
+    let restore = (from..to)
+        .find(|&i| act_has_call(code_of_phase_412(lines[i]), "restore_from_snapshot_in_tx("))
+        .expect("restore в update");
+    let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    for _ in 0..10 {
+        mutated.insert(
+            restore + 1,
+            "                            let _pad = ();".to_string(),
+        );
+    }
+    let m = act_join(&mutated);
+    assert!(
+        !restore_release_far_sites(&m).is_empty(),
+        "десять строк между restore и release обязаны краснеть"
+    );
+
+    // Мутант 2: режим следа убран из вызова в undo (последний аргумент заменён).
+    let m2 = src.replacen(
+        "crate::services::group_membership::ReleaseEffect::Skip,\n                    )?\n                {\n                    extend_unique(",
+        "None::<()>,\n                    )?\n                {\n                    extend_unique(",
+        1,
+    );
+    assert_ne!(m2, src, "якорь мутанта режима найден в undo");
+    assert!(
+        !restore_release_far_sites(&m2).is_empty(),
+        "вызов без режима следа обязан краснеть"
+    );
+}
