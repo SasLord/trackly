@@ -142,6 +142,8 @@ pub(crate) struct GroupDetach {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GroupMove {
     pub root_group_id: i64,
+    /// Якорь переезжающей группы; `None` у контейнера. Возврат ищет по нему место возврата.
+    pub anchor_device_id: Option<i64>,
     pub root_name: String,
     pub root_version: i64,
     pub from_place_id: Option<i64>,
@@ -271,6 +273,7 @@ pub(crate) fn plan(snapshot: &ActGroupSnapshot, act_device_ids: &[i64]) -> ActGr
         moved_devices.extend(subtree_device_ids.iter().copied());
         moves.push(GroupMove {
             root_group_id: g.id,
+            anchor_device_id: g.anchor_device_id,
             root_name: g.name.clone(),
             root_version: g.version,
             from_place_id: g.place_id,
@@ -306,6 +309,99 @@ pub(crate) fn plan(snapshot: &ActGroupSnapshot, act_device_ids: &[i64]) -> ActGr
         });
     }
 
+    ActGroupPlan { moves, releases }
+}
+
+/// Что делать с группами, если в возврат попали устройства `returned_device_ids`.
+///
+/// Отличие от `plan`: при возврате переезжают ТОЛЬКО якорные группы, чей якорь возвращается
+/// (якорь никогда не выводится из своей группы, D-13). Контейнер не переезжает: его
+/// возвращаемые члены освобождаются поодиночке, как и до фазы 41.2. Покрытая якорная группа
+/// внутри контейнера становится самостоятельным корнем перемещения с отцеплением от родителя
+/// (A9/OQ-1). Подтверждение для возврата не требуется: `requires_confirmation` не вызывается.
+pub(crate) fn plan_for_return(
+    snapshot: &ActGroupSnapshot,
+    returned_device_ids: &[i64],
+) -> ActGroupPlan {
+    let returned: HashSet<i64> = returned_device_ids.iter().copied().collect();
+    let covered_anchor_groups: HashSet<i64> = snapshot
+        .groups
+        .iter()
+        .filter(|g| g.anchor_device_id.is_some_and(|a| returned.contains(&a)))
+        .map(|g| g.id)
+        .collect();
+
+    let mut moves: Vec<GroupMove> = Vec::new();
+    let mut moved_devices: HashSet<i64> = HashSet::new();
+    for g in &snapshot.groups {
+        if !covered_anchor_groups.contains(&g.id) {
+            continue;
+        }
+        // Корень перемещения: ни один предок не является покрытой якорной группой.
+        let mut seen: HashSet<i64> = HashSet::new();
+        let mut cur = g.parent_group_id;
+        let mut under_covered = false;
+        while let Some(p) = cur {
+            if !seen.insert(p) {
+                break;
+            }
+            if covered_anchor_groups.contains(&p) {
+                under_covered = true;
+                break;
+            }
+            cur = snapshot.group(p).and_then(|row| row.parent_group_id);
+        }
+        if under_covered {
+            continue;
+        }
+        let live_parent = g
+            .parent_group_id
+            .and_then(|p| snapshot.group(p).map(|row| (p, row)));
+        let detach = live_parent.map(|(p, row)| GroupDetach {
+            parent_group_id: p,
+            parent_name: row.name.clone(),
+        });
+        let subtree_group_ids = snapshot.subtree_groups(g.id);
+        let mut subtree_device_ids: Vec<i64> = subtree_group_ids
+            .iter()
+            .flat_map(|gid| snapshot.direct_of(*gid).iter().copied())
+            .collect();
+        subtree_device_ids.sort_unstable();
+        subtree_device_ids.dedup();
+        moved_devices.extend(subtree_device_ids.iter().copied());
+        moves.push(GroupMove {
+            root_group_id: g.id,
+            anchor_device_id: g.anchor_device_id,
+            root_name: g.name.clone(),
+            root_version: g.version,
+            from_place_id: g.place_id,
+            detach,
+            subtree_group_ids,
+            subtree_device_ids,
+        });
+    }
+
+    let mut returned_sorted: Vec<i64> = returned.iter().copied().collect();
+    returned_sorted.sort_unstable();
+    let mut releases: Vec<DeviceRelease> = Vec::new();
+    for device_id in returned_sorted {
+        let Some(group_id) = snapshot.group_of_device.get(&device_id).copied() else {
+            continue;
+        };
+        if moved_devices.contains(&device_id) || snapshot.anchors.contains(&device_id) {
+            continue;
+        }
+        let group_name = snapshot
+            .group(group_id)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+        releases.push(DeviceRelease {
+            device_id,
+            device_name: String::new(),
+            group_id,
+            group_name,
+        });
+    }
     ActGroupPlan { moves, releases }
 }
 
@@ -404,6 +500,97 @@ pub(crate) fn plan_in_tx(
     Ok(result)
 }
 
+/// План групп для возврата внутри транзакции writer'а: загрузка снимка + `plan_for_return`.
+/// Клиентский список не определяет, какие группы переезжают (T-41.2-13).
+pub(crate) fn plan_for_return_in_tx(
+    tx: &Transaction<'_>,
+    returned_device_ids: &[i64],
+) -> Result<ActGroupPlan, AppError> {
+    let snapshot = load_snapshot(tx, &SqliteGroupRepository)?;
+    Ok(plan_for_return(&snapshot, returned_device_ids))
+}
+
+/// Применить план возврата: якорные группы едут к месту возврата своего якоря, прочие
+/// возвращаемые члены групп освобождаются (с эффектом `release` возвратного акта).
+///
+/// `return_places` — место возврата каждого возвращаемого устройства из позиций акта.
+/// Якорь без места возврата не двигает группу (место якоря = место группы, D-13 фазы 41.1):
+/// такая группа остаётся на месте, её устройства попадают в `stationary_device_ids`.
+/// Перенос идёт отдельным вызовом `apply_plan_in_tx` на каждую группу, потому что у
+/// каждой группы своё место назначения.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_return_plan_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    plan: &ActGroupPlan,
+    return_places: &HashMap<i64, Option<i64>>,
+    item_device_ids: &[i64],
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<AppliedGroupPlan, AppError> {
+    let mut total = AppliedGroupPlan::default();
+    for mv in &plan.moves {
+        let target = mv
+            .anchor_device_id
+            .and_then(|anchor| return_places.get(&anchor).copied().flatten());
+        let Some(target) = target else {
+            total
+                .stationary_device_ids
+                .extend(mv.subtree_device_ids.iter().copied());
+            continue;
+        };
+        let single = ActGroupPlan {
+            moves: vec![mv.clone()],
+            releases: Vec::new(),
+        };
+        let part = apply_plan_in_tx(
+            tx,
+            deps,
+            act_id,
+            &single,
+            Some(target),
+            item_device_ids,
+            user_id,
+            now,
+        )?;
+        absorb_applied(&mut total, part);
+    }
+    if !plan.releases.is_empty() {
+        let only_releases = ActGroupPlan {
+            moves: Vec::new(),
+            releases: plan.releases.clone(),
+        };
+        let part = apply_plan_in_tx(
+            tx,
+            deps,
+            act_id,
+            &only_releases,
+            None,
+            item_device_ids,
+            user_id,
+            now,
+        )?;
+        absorb_applied(&mut total, part);
+    }
+    total.touched_place_ids.sort_unstable();
+    total.touched_group_ids.sort_unstable();
+    Ok(total)
+}
+
+fn absorb_applied(total: &mut AppliedGroupPlan, part: AppliedGroupPlan) {
+    for (id, row) in part.pre_snapshots {
+        total.pre_snapshots.entry(id).or_insert(row);
+    }
+    total.moved_device_ids.extend(part.moved_device_ids);
+    for place in part.touched_place_ids {
+        push_unique(&mut total.touched_place_ids, place);
+    }
+    for group in part.touched_group_ids {
+        push_unique(&mut total.touched_group_ids, group);
+    }
+}
+
 /// Итог применения плана внутри транзакции акта.
 #[derive(Debug, Default)]
 pub(crate) struct AppliedGroupPlan {
@@ -413,6 +600,9 @@ pub(crate) struct AppliedGroupPlan {
     /// Все устройства переехавших поддеревьев: вызывающий НЕ пишет им отдельную строку
     /// журнала места и НЕ вызывает release (их место уже поставила группа).
     pub moved_device_ids: HashSet<i64>,
+    /// Устройства якорных групп, чей перенос возврат пропустил из-за незаданного места:
+    /// группа осталась на месте, поэтому место устройства определяет она, а не позиция акта.
+    pub stationary_device_ids: HashSet<i64>,
     /// Прежние и новое места групп и устройств (включая место ПУСТОЙ группы), без дублей.
     pub touched_place_ids: Vec<i64>,
     /// Корни переехавших групп, отцепленные группы и группы-источники выноса.
@@ -1110,6 +1300,88 @@ mod tests {
             anchor_and_part.releases.is_empty(),
             "деталь едет с группой и отдельной позицией выноса не получает"
         );
+    }
+
+    /// Вымышленный АРМ: контейнер 1 («АРМ #3», устройства 10, 11) с вложенной якорной
+    /// группой 3 («Системный блок #4», якорь 30, деталь 31).
+    fn nested_anchor_fixture() -> ActGroupSnapshot {
+        ActGroupSnapshot::new(
+            vec![
+                grp(1, None, "АРМ #3", Some(5), None),
+                grp(3, Some(1), "Системный блок #4", Some(5), Some(30)),
+            ],
+            vec![(10, 1), (11, 1), (30, 3), (31, 3)],
+        )
+    }
+
+    #[test]
+    fn return_of_nested_anchor_moves_only_the_anchor_group_with_detach() {
+        let p = plan_for_return(&nested_anchor_fixture(), &[30]);
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].root_group_id, 3);
+        assert_eq!(p.moves[0].subtree_device_ids, vec![30, 31]);
+        assert_eq!(
+            p.moves[0].detach,
+            Some(GroupDetach {
+                parent_group_id: 1,
+                parent_name: "АРМ #3".to_string()
+            })
+        );
+        assert!(p.releases.is_empty());
+    }
+
+    /// Расходящаяся пара: тот же набор устройств, `plan` двигает контейнер, возврат — освобождает.
+    #[test]
+    fn return_of_whole_container_releases_members_while_plan_moves_the_container() {
+        let snap = container_fixture();
+        let by_plan = plan(&snap, &[10, 11, 12]);
+        let by_return = plan_for_return(&snap, &[10, 11, 12]);
+        assert_eq!(by_plan.moves.len(), 1);
+        assert!(
+            by_return.moves.is_empty(),
+            "контейнер при возврате не переезжает"
+        );
+        assert_eq!(
+            by_return
+                .releases
+                .iter()
+                .map(|r| r.device_id)
+                .collect::<Vec<_>>(),
+            vec![10, 11, 12]
+        );
+        assert_ne!(by_plan, by_return);
+    }
+
+    #[test]
+    fn return_of_anchor_with_parts_keeps_parts_out_of_releases() {
+        let p = plan_for_return(&nested_anchor_fixture(), &[30, 31]);
+        assert_eq!(p.moves.len(), 1);
+        assert!(p.releases.is_empty(), "детали едут с группой");
+    }
+
+    #[test]
+    fn return_of_part_without_anchor_releases_the_part_only() {
+        let p = plan_for_return(&nested_anchor_fixture(), &[31]);
+        assert!(p.moves.is_empty());
+        assert_eq!(p.releases.len(), 1);
+        assert_eq!(p.releases[0].device_id, 31);
+    }
+
+    #[test]
+    fn return_of_container_members_and_nested_anchor_splits_into_move_and_releases() {
+        let p = plan_for_return(&nested_anchor_fixture(), &[10, 11, 30]);
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].root_group_id, 3);
+        assert_eq!(
+            p.releases.iter().map(|r| r.device_id).collect::<Vec<_>>(),
+            vec![10, 11]
+        );
+    }
+
+    #[test]
+    fn return_ignores_devices_outside_groups() {
+        let p = plan_for_return(&nested_anchor_fixture(), &[99]);
+        assert!(p.moves.is_empty() && p.releases.is_empty());
     }
 
     #[test]

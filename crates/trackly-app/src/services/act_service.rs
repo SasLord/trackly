@@ -51,9 +51,9 @@ use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
 use crate::services::act_kit::kit_for_item_in_tx;
 use crate::services::group_act_plan::{
-    apply_plan_in_tx, forget_moved_details_in_tx, plan_in_tx, prior_release_effect_id_in_tx,
-    release_effect_for_removed_in_tx, revert_detach_effect_in_tx, revert_move_effect_in_tx,
-    units_of_group_in_tx,
+    apply_plan_in_tx, apply_return_plan_in_tx, forget_moved_details_in_tx, plan_for_return_in_tx,
+    plan_in_tx, prior_release_effect_id_in_tx, release_effect_for_removed_in_tx,
+    revert_detach_effect_in_tx, revert_move_effect_in_tx, units_of_group_in_tx,
 };
 use crate::services::group_membership::{anchor_restore_conflict_in_tx, RestoreOutcome};
 use crate::services::group_place::GroupMoveDeps;
@@ -1824,7 +1824,7 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let (return_act_id, touched_place_ids) = self
+        let (return_act_id, touched_place_ids, touched_group_ids) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -1919,6 +1919,16 @@ impl ActService {
                 // 3a. D-18: bulk_place_id приходит напрямую от caller'а
                 // (PlacePicker), без name-based резолва.
                 let resolved_bulk_place_id: Option<i64> = payload.bulk_place_id;
+
+                // Phase 41.2 (D-13): план групп для возврата считается в транзакции writer'а
+                // раньше любой записи. Возврат подтверждения не требует: устройства выбраны
+                // позициями самого акта, а якорная группа едет к месту возврата якоря.
+                let (returned_ids, return_places) = returned_devices_and_places(
+                    &payload.items,
+                    payload.apply_to_all,
+                    resolved_bulk_place_id,
+                );
+                let group_plan = plan_for_return_in_tx(&tx, &returned_ids)?;
 
                 // 4. Next sub_number (Phase 40.5, D-04/D-05/D-17): наименьший
                 //    свободный среди живых возвратов родителя, пропускающий
@@ -2026,6 +2036,23 @@ impl ActService {
                     "аллокатор обязан был перешагнуть занятую позицию"
                 );
 
+                // Phase 41.2: перенос якорных групп к месту возврата и освобождение прочих членов
+                // групп. Строки журнала группы, устройств и картриджей принтера-детали пишет
+                // пакет (D-14): для `moved_device_ids` ниже отдельная строка журнала не пишется.
+                let applied = apply_return_plan_in_tx(
+                    &tx,
+                    &GroupMoveDeps::new(),
+                    return_act_id,
+                    &group_plan,
+                    &return_places,
+                    &returned_ids,
+                    user_id_opt,
+                    now,
+                )?;
+                for place in &applied.touched_place_ids {
+                    touched_place_ids.push(Some(*place));
+                }
+
                 // 6. For each return-item: snapshot → insert act_item → update device → audit.
                 //
                 // G-12 (Phase 03.1) flat-iterate over canonical device_ids:
@@ -2054,20 +2081,24 @@ impl ActService {
                         });
                     // D-18: place_id_override приходит от caller'а (PlacePicker),
                     // без name-based резолва.
-                    let per_row_place_id: Option<i64> = item.place_id_override;
                     // DEF-3: если effective_place=None, update_full_in_tx запишет
                     // NULL в place_id. Caller обязан передать bulk_place_id или
                     // place_id_override для восстановления расположения при возврате.
-                    let effective_location: Option<i64> = per_row_place_id.or({
-                        if payload.apply_to_all {
-                            resolved_bulk_place_id
-                        } else {
-                            None
-                        }
-                    });
+                    let effective_location: Option<i64> = effective_return_location(
+                        item,
+                        payload.apply_to_all,
+                        resolved_bulk_place_id,
+                    );
 
                     for &device_id in &dids {
-                        let before = devices_repo.get_in_tx(&tx, device_id)?;
+                        // Устройство переехавшей группы уже стоит на новом месте: состояние
+                        // «до» берётся из снимка пакета, иначе откат вернул бы новое место.
+                        let before = match applied.pre_snapshots.get(&device_id) {
+                            Some(row) => row.clone(),
+                            None => devices_repo.get_in_tx(&tx, device_id)?,
+                        };
+                        let group_placed = applied.moved_device_ids.contains(&device_id)
+                            || applied.stationary_device_ids.contains(&device_id);
 
                         // CR-02 (ACT-13): status guard. Защита от двойного
                         // возврата — device должен быть 'в_работе'.
@@ -2156,24 +2187,39 @@ impl ActService {
                         )?;
 
                         // UPDATE devices: → склад + condition.
+                        //
+                        // Место устройства группы, которое определяет сама группа (она
+                        // переехала или осталась на месте), берётся текущее: позиция акта не
+                        // может разойтись с местом группы (D-13 фазы 41.1). Якорь из состава
+                        // не выводится никогда, устройства группы остаются в составе.
+                        let location_for_device = if group_placed {
+                            devices_repo.get_in_tx(&tx, device_id)?.place_id
+                        } else {
+                            effective_location
+                        };
+                        let is_anchor = SqliteGroupRepository
+                            .anchor_group_of_device_in_tx(&tx, device_id)?
+                            .is_some();
                         let after = devices_repo.update_full_in_tx(
                             &tx,
                             device_id,
                             on_warehouse_status_id,
-                            effective_location,
+                            location_for_device,
                             effective_condition.as_deref(),
                             now,
                         )?;
                         // Phase 41 D-22: акт выводит устройство из состава группы.
-                        crate::services::group_membership::release_device_in_tx(
-                            &tx,
-                            &SqliteGroupRepository,
-                            &audit_repo,
-                            device_id,
-                            Some(return_act_id),
-                            user_id_opt,
-                            now,
-                        )?;
+                        if !group_placed && !is_anchor {
+                            crate::services::group_membership::release_device_in_tx(
+                                &tx,
+                                &SqliteGroupRepository,
+                                &audit_repo,
+                                device_id,
+                                Some(return_act_id),
+                                user_id_opt,
+                                now,
+                            )?;
+                        }
                         let after_json =
                             device_snapshot_json(&after).map_err(|e| AppError::Internal {
                                 source_chain: format!("return after_json: {e}"),
@@ -2204,19 +2250,21 @@ impl ActService {
                         // `effective_location` is `None` and the guard
                         // inside `record_movement_if_applicable` skips the
                         // insert entirely — no extra check needed here.
-                        place_movements_repo.record_movement_if_applicable(
-                            &tx,
-                            places_repo.as_ref(),
-                            MovementEntityKind::Device,
-                            device_id,
-                            before.place_id,
-                            after.place_id,
-                            MovementSource::Act,
-                            None,
-                            Some(return_act_id),
-                            user_id_opt,
-                            now,
-                        )?;
+                        if !applied.moved_device_ids.contains(&device_id) {
+                            place_movements_repo.record_movement_if_applicable(
+                                &tx,
+                                places_repo.as_ref(),
+                                MovementEntityKind::Device,
+                                device_id,
+                                before.place_id,
+                                after.place_id,
+                                MovementSource::Act,
+                                None,
+                                Some(return_act_id),
+                                user_id_opt,
+                                now,
+                            )?;
+                        }
                         touched_place_ids.push(before.place_id);
                         touched_place_ids.push(after.place_id);
                     }
@@ -2253,7 +2301,7 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok((return_act_id, touched_place_ids))
+                Ok((return_act_id, touched_place_ids, applied.touched_group_ids))
             })
             .await?;
 
@@ -2264,7 +2312,7 @@ impl ActService {
         // D-03/D-04 (41.7): one deduped list for both the event and the DTO.
         let changed = dedupe_place_ids(touched_place_ids);
         let place_ids = changed.clone();
-        self.broadcast_entities("do_return", place_ids, Vec::new(), Vec::new());
+        self.broadcast_entities("do_return", place_ids, Vec::new(), touched_group_ids);
 
         let dto = self.get(return_act_id).await?;
         Ok(ActDto {
@@ -4171,6 +4219,36 @@ fn undo_device_mutations_for_act(
 /// G-12 canonical device_ids per ReturnItemDto с fallback на legacy
 /// `[device_id]` (для совместимости с уже существующими тестами / клиентами,
 /// которые шлют единственный device_id + quantity=1).
+/// Место возврата позиции: собственное `place_id_override` либо общее при `apply_to_all`.
+fn effective_return_location(
+    item: &ActReturnItemDto,
+    apply_to_all: bool,
+    bulk_place_id: Option<i64>,
+) -> Option<i64> {
+    item.place_id_override
+        .or(if apply_to_all { bulk_place_id } else { None })
+}
+
+/// Возвращаемые устройства и место возврата каждого (то же правило, что в цикле позиций).
+fn returned_devices_and_places(
+    items: &[ActReturnItemDto],
+    apply_to_all: bool,
+    bulk_place_id: Option<i64>,
+) -> (Vec<i64>, std::collections::HashMap<i64, Option<i64>>) {
+    let mut ids: Vec<i64> = Vec::new();
+    let mut places: std::collections::HashMap<i64, Option<i64>> = std::collections::HashMap::new();
+    for item in items {
+        let location = effective_return_location(item, apply_to_all, bulk_place_id);
+        for id in effective_device_ids(item) {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+            places.insert(id, location);
+        }
+    }
+    (ids, places)
+}
+
 fn effective_device_ids(item: &ActReturnItemDto) -> Vec<i64> {
     if item.device_ids.is_empty() {
         vec![item.device_id]
