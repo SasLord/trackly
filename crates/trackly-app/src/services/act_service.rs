@@ -2413,11 +2413,12 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let (return_act_id, touched_place_ids) = self
+        let (return_act_id, touched_place_ids, touched_group_ids) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
+                let mut touched_group_ids: Vec<i64> = Vec::new();
 
                 // 1. Load act (incl. soft-deleted flag).
                 let act = acts_repo.fetch_full_in_tx(&tx, payload.id)?;
@@ -2689,6 +2690,7 @@ impl ActService {
                     }
                 }
 
+                let removed_set: std::collections::HashSet<i64> = removed.iter().copied().collect();
                 for &dev_id in removed.iter().chain(retained_with_change.iter()) {
                     let (_before_json, after_json) = audit_repo
                         .select_latest_device_mutation_pair(&tx, payload.id, dev_id)?
@@ -2706,9 +2708,19 @@ impl ActService {
                             ),
                         })?;
                     let current = devices_repo.get_in_tx(&tx, dev_id)?;
+                    // Phase 41.2 (D-09): место якоря определяет его группа, одинокой ручной
+                    // перестановки якоря не бывает. Если группу переместили после возврата,
+                    // убираемая позиция-якорь не конфликт: место не восстанавливается
+                    // (anchor_restore_conflict_in_tx ниже), статус и состояние проверяются.
+                    let anchor_place_follows_group = removed_set.contains(&dev_id)
+                        && SqliteGroupRepository
+                            .anchor_group_of_device_in_tx(&tx, dev_id)?
+                            .is_some();
                     let safe = expected.get("status_id").and_then(|v| v.as_i64())
                         == Some(current.status_id)
-                        && expected.get("place_id").and_then(|v| v.as_i64()) == current.place_id
+                        && (anchor_place_follows_group
+                            || expected.get("place_id").and_then(|v| v.as_i64())
+                                == current.place_id)
                         && expected.get("state").and_then(|v| v.as_str())
                             == current.state.as_deref();
                     if !safe {
@@ -2725,7 +2737,81 @@ impl ActService {
                 // 9. MUTATE `removed` — un-return: restore to the MOST
                 // RECENT prior state (same Pitfall-2-class DESC LIMIT 1
                 // lookup `update()` uses), then delete the act_items row.
+                // Phase 41.2 (D-08, D-09): правка «как будто позиции не было». Сначала на
+                // уровне групп: якорная группа, чей якорь убран из возврата, возвращается на
+                // прежнее место (до восстановления снимков устройств). Эффекты акта читаются
+                // ровно один раз, ДО любых записей по устройствам: возврат членства ниже
+                // опирается только на эффект `release`, существовавший до правки. Эффекты
+                // `move` обходятся с конца: после смены места при правке их у группы два.
+                let group_deps = GroupMoveDeps::new();
+                let effects_before = group_deps
+                    .groups
+                    .list_act_group_effects_in_tx(&tx, payload.id)?;
+                for effect in effects_before
+                    .iter()
+                    .rev()
+                    .filter(|e| e.kind == ActGroupEffectKind::Move)
+                {
+                    let coverage = units_of_group_in_tx(&tx, effect.group_id)?;
+                    if coverage.is_empty() || !coverage.iter().all(|d| removed_set.contains(d)) {
+                        // Якорь остаётся в возврате: группа остаётся переехавшей.
+                        continue;
+                    }
+                    let mut reverted =
+                        revert_move_effect_in_tx(&tx, &group_deps, effect, user_id_opt, now)?;
+                    // Следы деталей снятой группы отвязываются от акта: позднее удаление
+                    // акта не должно восстановить из них устаревший снимок.
+                    forget_moved_details_in_tx(
+                        &tx,
+                        &group_deps.groups,
+                        &group_deps.audit,
+                        payload.id,
+                        effect.group_id,
+                    )?;
+                    for detach in effects_before
+                        .iter()
+                        .filter(|e| e.kind == ActGroupEffectKind::Detach)
+                        .filter(|e| e.group_id == effect.group_id)
+                    {
+                        let back =
+                            revert_detach_effect_in_tx(&tx, &group_deps, detach, user_id_opt, now)?;
+                        reverted.notices.extend(back.notices);
+                        reverted.touched_place_ids.extend(back.touched_place_ids);
+                        reverted.touched_group_ids.extend(back.touched_group_ids);
+                        group_deps
+                            .groups
+                            .delete_act_group_effect_in_tx(&tx, detach.id)?;
+                    }
+                    group_deps
+                        .groups
+                        .delete_act_group_effect_in_tx(&tx, effect.id)?;
+                    for notice in &reverted.notices {
+                        tracing::warn!(
+                            act_id = payload.id,
+                            group_id = ?notice.group_id,
+                            "act update_return: {}",
+                            notice.message
+                        );
+                    }
+                    for place in reverted.touched_place_ids {
+                        touched_place_ids.push(Some(place));
+                    }
+                    for group in reverted.touched_group_ids {
+                        if !touched_group_ids.contains(&group) {
+                            touched_group_ids.push(group);
+                        }
+                    }
+                }
                 for &removed_id in &removed {
+                    // Эффект `release`, записанный РАНЬШЕ этой правки (W-7): читается первым
+                    // действием, до любых записей по устройству. Эффект, который ниже запишет
+                    // сама правка в режиме `Record`, в возврате членства не участвует.
+                    let prior_release = prior_release_effect_id_in_tx(
+                        &tx,
+                        &SqliteGroupRepository,
+                        payload.id,
+                        removed_id,
+                    )?;
                     let before_json = audit_repo
                         .select_latest_device_mutation(&tx, payload.id, removed_id)?
                         .ok_or_else(|| AppError::Internal {
@@ -2741,25 +2827,102 @@ impl ActService {
                                 "update_return: corrupt before_json for device {removed_id}: {e}"
                             ),
                         })?;
-                    // CR-01: same reasoning as `update()`'s removed-device
-                    // branch — capture the current (in-act) place BEFORE the
-                    // restore, so the movement recorded below is a real
-                    // in-act-place -> restored-place reversion rather than a
-                    // no-op comparison against the snapshot's own value.
-                    let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
-                    let restored = devices_repo
-                        .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
-                    // Phase 41 D-22: акт выводит устройство из состава группы.
-                    crate::services::group_membership::release_if_locked_device_in_tx(
+                    let snapshot_place: Option<i64> =
+                        snapshot.get("place_id").and_then(|v| v.as_i64());
+                    // Режим следа вычисляется ВЫШЕ восстановления снимка: `Record`, если
+                    // устройство состоит в группе, переехавшей этим возвратом (откат акта
+                    // вернёт его в группу), иначе `Skip`.
+                    let release_mode =
+                        release_effect_for_removed_in_tx(&tx, &group_deps, payload.id, removed_id)?;
+                    // D-09: якорную группу переместили ПОСЛЕ возврата — снимок не
+                    // восстанавливается, группа и якорь остаются на месте группы.
+                    let anchor_conflict = anchor_restore_conflict_in_tx(
                         &tx,
                         &SqliteGroupRepository,
                         &audit_repo,
                         removed_id,
-                        Some(payload.id),
+                        snapshot_place,
+                        payload.id,
                         user_id_opt,
                         now,
-                        crate::services::group_membership::ReleaseEffect::Skip,
                     )?;
+                    // CR-01: capture the current (in-act) place BEFORE the
+                    // restore, so the movement recorded below is a real
+                    // in-act-place -> restored-place reversion rather than a
+                    // no-op comparison against the snapshot's own value.
+                    let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
+                    let restored = match &anchor_conflict {
+                        Some(notice) => {
+                            tracing::warn!(
+                                act_id = payload.id,
+                                group_id = ?notice.group_id,
+                                "act update_return: {}",
+                                notice.message
+                            );
+                            place_before_restore.clone()
+                        }
+                        None => {
+                            let restored = devices_repo
+                                .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
+                            // Phase 41 D-22: акт выводит устройство из состава группы.
+                            if let Some(group_id) =
+                                crate::services::group_membership::release_if_locked_device_in_tx(
+                                    &tx,
+                                    &SqliteGroupRepository,
+                                    &audit_repo,
+                                    removed_id,
+                                    Some(payload.id),
+                                    user_id_opt,
+                                    now,
+                                    release_mode,
+                                )?
+                            {
+                                if !touched_group_ids.contains(&group_id) {
+                                    touched_group_ids.push(group_id);
+                                }
+                            }
+                            restored
+                        }
+                    };
+                    // Возврат членства: только по эффекту `release`, существовавшему ДО
+                    // правки. Пропуск возврата не прерывает правку.
+                    if anchor_conflict.is_none() {
+                        if let Some(effect_id) = prior_release {
+                            if let Some(effect) = effects_before.iter().find(|e| e.id == effect_id)
+                            {
+                                match crate::services::group_membership::restore_membership_in_tx(
+                                    &tx,
+                                    &SqliteGroupRepository,
+                                    &audit_repo,
+                                    removed_id,
+                                    effect.group_id,
+                                    &effect.group_label,
+                                    &restored.name,
+                                    restored.place_id,
+                                    payload.id,
+                                    user_id_opt,
+                                    now,
+                                )? {
+                                    RestoreOutcome::Restored => {
+                                        if !touched_group_ids.contains(&effect.group_id) {
+                                            touched_group_ids.push(effect.group_id);
+                                        }
+                                    }
+                                    RestoreOutcome::Skipped(notice) => {
+                                        tracing::warn!(
+                                            act_id = payload.id,
+                                            group_id = ?notice.group_id,
+                                            "act update_return: {}",
+                                            notice.message
+                                        );
+                                    }
+                                }
+                            }
+                            group_deps
+                                .groups
+                                .delete_act_group_effect_in_tx(&tx, effect_id)?;
+                        }
+                    }
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return remove after_json: {e}"),
@@ -2771,21 +2934,24 @@ impl ActService {
                     // also erase movement history for OTHER devices still on
                     // this return act), so it is not used for this
                     // per-device edit.
-                    place_movements_repo.record_movement_if_applicable(
-                        &tx,
-                        places_repo.as_ref(),
-                        MovementEntityKind::Device,
-                        removed_id,
-                        place_before_restore.place_id,
-                        restored.place_id,
-                        MovementSource::Act,
-                        None,
-                        Some(payload.id),
-                        user_id_opt,
-                        now,
-                    )?;
-                    touched_place_ids.push(place_before_restore.place_id);
-                    touched_place_ids.push(restored.place_id);
+                    // Конфликт якоря: место не менялось, возвратной строки нет.
+                    if anchor_conflict.is_none() {
+                        place_movements_repo.record_movement_if_applicable(
+                            &tx,
+                            places_repo.as_ref(),
+                            MovementEntityKind::Device,
+                            removed_id,
+                            place_before_restore.place_id,
+                            restored.place_id,
+                            MovementSource::Act,
+                            None,
+                            Some(payload.id),
+                            user_id_opt,
+                            now,
+                        )?;
+                        touched_place_ids.push(place_before_restore.place_id);
+                        touched_place_ids.push(restored.place_id);
+                    }
 
                     audit_repo.insert(
                         &tx,
@@ -2812,8 +2978,46 @@ impl ActService {
                 // 10. MUTATE `added` — newly returned outstanding devices:
                 // в_работе → на_складе (reuses `do_return`'s per-device
                 // transition), INSERT act_items row.
+                //
+                // Phase 41.2 (D-13): якорная группа возвращаемого якоря едет к месту возврата,
+                // прочие возвращаемые члены групп освобождаются. План читается здесь, после
+                // шага 9: снимок групп должен учитывать возвраты групп на прежнее место.
+                // Подтверждения возврат не требует.
+                let added_places: std::collections::HashMap<i64, Option<i64>> = added
+                    .iter()
+                    .map(|id| {
+                        let location = effective_by_device.get(id).and_then(|e| e.2);
+                        (*id, location)
+                    })
+                    .collect();
+                let added_plan = plan_for_return_in_tx(&tx, &added)?;
+                let applied_added = apply_return_plan_in_tx(
+                    &tx,
+                    &group_deps,
+                    payload.id,
+                    &added_plan,
+                    &added_places,
+                    &added,
+                    user_id_opt,
+                    now,
+                )?;
+                for place in &applied_added.touched_place_ids {
+                    touched_place_ids.push(Some(*place));
+                }
+                for group in &applied_added.touched_group_ids {
+                    if !touched_group_ids.contains(group) {
+                        touched_group_ids.push(*group);
+                    }
+                }
                 for &added_id in &added {
-                    let before = devices_repo.get_in_tx(&tx, added_id)?;
+                    // Устройство переехавшей группы уже стоит на новом месте: состояние
+                    // «до» берётся из снимка пакета, иначе откат вернул бы новое место.
+                    let before = match applied_added.pre_snapshots.get(&added_id) {
+                        Some(row) => row.clone(),
+                        None => devices_repo.get_in_tx(&tx, added_id)?,
+                    };
+                    let group_placed = applied_added.moved_device_ids.contains(&added_id)
+                        || applied_added.stationary_device_ids.contains(&added_id);
                     let before_json =
                         device_snapshot_json(&before).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return add before_json: {e}"),
@@ -2828,7 +3032,17 @@ impl ActService {
                     // location must not wipe the device's already-established
                     // location — preserve it when no new location was
                     // supplied.
-                    let effective_location = location.or(before.place_id);
+                    //
+                    // Место устройства группы определяет сама группа (она переехала или
+                    // осталась на месте): берётся текущее. Якорь из состава не выводится.
+                    let effective_location = if group_placed {
+                        devices_repo.get_in_tx(&tx, added_id)?.place_id
+                    } else {
+                        location.or(before.place_id)
+                    };
+                    let is_anchor = SqliteGroupRepository
+                        .anchor_group_of_device_in_tx(&tx, added_id)?
+                        .is_some();
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         added_id,
@@ -2838,15 +3052,17 @@ impl ActService {
                         now,
                     )?;
                     // Phase 41 D-22: акт выводит устройство из состава группы.
-                    crate::services::group_membership::release_device_in_tx(
-                        &tx,
-                        &SqliteGroupRepository,
-                        &audit_repo,
-                        added_id,
-                        Some(payload.id),
-                        user_id_opt,
-                        now,
-                    )?;
+                    if !group_placed && !is_anchor {
+                        crate::services::group_membership::release_device_in_tx(
+                            &tx,
+                            &SqliteGroupRepository,
+                            &audit_repo,
+                            added_id,
+                            Some(payload.id),
+                            user_id_opt,
+                            now,
+                        )?;
+                    }
                     let after_json =
                         device_snapshot_json(&after).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return add after_json: {e}"),
@@ -2870,19 +3086,22 @@ impl ActService {
 
                     // HST-03: record the return-driven place change, linked
                     // to this return act's id (D-04/D-06 guard inside).
-                    place_movements_repo.record_movement_if_applicable(
-                        &tx,
-                        places_repo.as_ref(),
-                        MovementEntityKind::Device,
-                        added_id,
-                        before.place_id,
-                        after.place_id,
-                        MovementSource::Act,
-                        None,
-                        Some(payload.id),
-                        user_id_opt,
-                        now,
-                    )?;
+                    // Устройство переехавшей группы записано пакетом (D-14): второй строки нет.
+                    if !applied_added.moved_device_ids.contains(&added_id) {
+                        place_movements_repo.record_movement_if_applicable(
+                            &tx,
+                            places_repo.as_ref(),
+                            MovementEntityKind::Device,
+                            added_id,
+                            before.place_id,
+                            after.place_id,
+                            MovementSource::Act,
+                            None,
+                            Some(payload.id),
+                            user_id_opt,
+                            now,
+                        )?;
+                    }
                     touched_place_ids.push(before.place_id);
                     touched_place_ids.push(after.place_id);
 
@@ -2913,8 +3132,48 @@ impl ActService {
                 // WRONG (post-return, pre-edit) snapshot instead of its
                 // original в_работе state. `select_latest_device_mutation`
                 // excludes this action for exactly that reason.
+                //
+                // Phase 41.2 (D-13): у якоря, чьё место возврата изменилось, группа едет на
+                // новое место (второй эффект `move` с from = текущее место группы).
+                let mut moving_anchors: Vec<i64> = Vec::new();
+                let mut retained_places: std::collections::HashMap<i64, Option<i64>> =
+                    std::collections::HashMap::new();
                 for &dev_id in &retained_with_change {
-                    let before = devices_repo.get_in_tx(&tx, dev_id)?;
+                    let location = effective_by_device.get(&dev_id).and_then(|e| e.2);
+                    let current_place = devices_repo.get_in_tx(&tx, dev_id)?.place_id;
+                    let is_anchor = SqliteGroupRepository
+                        .anchor_group_of_device_in_tx(&tx, dev_id)?
+                        .is_some();
+                    if is_anchor && location.is_some() && location != current_place {
+                        moving_anchors.push(dev_id);
+                        retained_places.insert(dev_id, location);
+                    }
+                }
+                let retained_plan = plan_for_return_in_tx(&tx, &moving_anchors)?;
+                let applied_retained = apply_return_plan_in_tx(
+                    &tx,
+                    &group_deps,
+                    payload.id,
+                    &retained_plan,
+                    &retained_places,
+                    &moving_anchors,
+                    user_id_opt,
+                    now,
+                )?;
+                for place in &applied_retained.touched_place_ids {
+                    touched_place_ids.push(Some(*place));
+                }
+                for group in &applied_retained.touched_group_ids {
+                    if !touched_group_ids.contains(group) {
+                        touched_group_ids.push(*group);
+                    }
+                }
+                for &dev_id in &retained_with_change {
+                    let before = match applied_retained.pre_snapshots.get(&dev_id) {
+                        Some(row) => row.clone(),
+                        None => devices_repo.get_in_tx(&tx, dev_id)?,
+                    };
+                    let group_placed = applied_retained.moved_device_ids.contains(&dev_id);
                     let before_json =
                         device_snapshot_json(&before).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return retained before_json: {e}"),
@@ -2926,7 +3185,14 @@ impl ActService {
                     // CR-01: same location-preservation fix as the `added`
                     // loop above — a condition-only edit must not NULL the
                     // device's current location.
-                    let effective_location = location.or(before.place_id);
+                    let effective_location = if group_placed {
+                        devices_repo.get_in_tx(&tx, dev_id)?.place_id
+                    } else {
+                        location.or(before.place_id)
+                    };
+                    let is_anchor = SqliteGroupRepository
+                        .anchor_group_of_device_in_tx(&tx, dev_id)?
+                        .is_some();
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         dev_id,
@@ -2935,16 +3201,19 @@ impl ActService {
                         condition.as_deref(),
                         now,
                     )?;
-                    // Phase 41 D-22: акт выводит устройство из состава группы.
-                    crate::services::group_membership::release_device_in_tx(
-                        &tx,
-                        &SqliteGroupRepository,
-                        &audit_repo,
-                        dev_id,
-                        Some(payload.id),
-                        user_id_opt,
-                        now,
-                    )?;
+                    // Phase 41 D-22: акт выводит устройство из состава группы. Якорь не
+                    // выводится никогда.
+                    if !group_placed && !is_anchor {
+                        crate::services::group_membership::release_device_in_tx(
+                            &tx,
+                            &SqliteGroupRepository,
+                            &audit_repo,
+                            dev_id,
+                            Some(payload.id),
+                            user_id_opt,
+                            now,
+                        )?;
+                    }
                     let after_json =
                         device_snapshot_json(&after).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return retained after_json: {e}"),
@@ -2968,19 +3237,21 @@ impl ActService {
 
                     // HST-03: record the return-driven place change, linked
                     // to this return act's id (D-04/D-06 guard inside).
-                    place_movements_repo.record_movement_if_applicable(
-                        &tx,
-                        places_repo.as_ref(),
-                        MovementEntityKind::Device,
-                        dev_id,
-                        before.place_id,
-                        after.place_id,
-                        MovementSource::Act,
-                        None,
-                        Some(payload.id),
-                        user_id_opt,
-                        now,
-                    )?;
+                    if !group_placed {
+                        place_movements_repo.record_movement_if_applicable(
+                            &tx,
+                            places_repo.as_ref(),
+                            MovementEntityKind::Device,
+                            dev_id,
+                            before.place_id,
+                            after.place_id,
+                            MovementSource::Act,
+                            None,
+                            Some(payload.id),
+                            user_id_opt,
+                            now,
+                        )?;
+                    }
                     touched_place_ids.push(before.place_id);
                     touched_place_ids.push(after.place_id);
 
@@ -3077,14 +3348,14 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok((payload.id, touched_place_ids))
+                Ok((payload.id, touched_place_ids, touched_group_ids))
             })
             .await?;
 
         // D-03/D-04 (41.7): one deduped list for both the event and the DTO.
         let changed = dedupe_place_ids(touched_place_ids);
         let place_ids = changed.clone();
-        self.broadcast_entities("update_return", place_ids, Vec::new(), Vec::new());
+        self.broadcast_entities("update_return", place_ids, Vec::new(), touched_group_ids);
 
         let dto = self.get(return_act_id).await?;
         Ok(ActDto {
