@@ -102,6 +102,7 @@
     ActDto,
     ActSaveOutcome,
     ActUpdateDto,
+    GroupReleaseWarningDto,
     NumberWarningDto,
     OccupyingRecordDto,
     TemplateContextDto,
@@ -210,7 +211,7 @@
   // one shared shape across all three *FormBody components (devices/acts/
   // cartridges), per that plan's own "recommended for future plans" note.
   // ---------------------------------------------------------------------------
-  let activePopup = $state<'taken' | 'mismatch' | 'scriptWarning' | null>(null);
+  let activePopup = $state<'taken' | 'mismatch' | 'scriptWarning' | 'groupRelease' | null>(null);
   // FE-CR-01: a confirmation belongs to ONE number (see saveChain.ts) —
   // reset by every «Поправлю»/«Закрыть»/«Взять следующий свободный» and
   // ignored as soon as the number differs from the confirmed one.
@@ -234,6 +235,15 @@
   let scriptWarningNumber = $state('');
   let scriptWarningMessage = $state('');
   let scriptWarningDoppelganger = $state<ActScriptWarningDoppelganger | null>(null);
+
+  // GAM-02 (D-06): positions the server is about to take out of their groups,
+  // as the popup lists them.
+  let groupReleaseItems = $state<{ name: string; groupName: string }[]>([]);
+  // The confirmation belongs to ONE composition of positions (T-41.2-51): it
+  // stores the signature of `items` at the moment of «Вывести и передать» and
+  // counts only while the current signature is equal. Nothing writes this on
+  // item changes — a changed composition simply stops matching.
+  let confirmedItemsSignature = $state<string | null>(null);
 
   const validItemCount = $derived(
     items.filter((it) => it.device_id !== null && it.quantity >= 1).length,
@@ -292,6 +302,14 @@
         doppelganger: scriptWarningDoppelganger,
         onFix: closeScriptWarningPopup,
         onContinue: continueScriptWarning,
+      });
+    } else if (activePopup === 'groupRelease') {
+      onPopupChange({
+        kind: 'groupRelease',
+        items: groupReleaseItems,
+        loading: submitting,
+        onConfirm: confirmGroupRelease,
+        onClose: closeGroupReleasePopup,
       });
     } else {
       onPopupChange(null);
@@ -367,6 +385,7 @@
   function closeTakenPopup() {
     activePopup = null;
     pendingConfirm = null;
+    confirmedItemsSignature = null;
     fieldErrors = { ...fieldErrors, number: 'Номер уже занят.' };
     focusNumberField();
   }
@@ -392,6 +411,7 @@
       // under itself — back to the form so the user can pick/type another.
       activePopup = null;
       pendingConfirm = null;
+      confirmedItemsSignature = null;
       focusNumberField();
     } finally {
       takeNextLoading = false;
@@ -411,6 +431,7 @@
   function closeMismatchPopup() {
     activePopup = null;
     pendingConfirm = null;
+    confirmedItemsSignature = null;
     focusNumberField();
   }
 
@@ -437,11 +458,54 @@
   function closeScriptWarningPopup() {
     activePopup = null;
     pendingConfirm = null;
+    confirmedItemsSignature = null;
     focusNumberField();
   }
 
   function continueScriptWarning() {
     pendingConfirm = withConfirm(pendingConfirm, numberValue, 'scriptMix');
+    activePopup = null;
+    void handleSubmit();
+  }
+
+  // ---------------------------------------------------------------------------
+  // GAM-02 (D-06/D-07) — confirmation of taking items out of their groups.
+  // Raised from submitCreate/submitEdit by the server outcome, never from the
+  // item picker.
+  // ---------------------------------------------------------------------------
+
+  // Composition of the positions as the payload will send it: row, quantity
+  // and the picked group units. Order-independent.
+  function itemsSignature(): string {
+    return JSON.stringify(
+      items
+        .filter((it) => it.device_id !== null)
+        .map(
+          (it) =>
+            `${it.device_id}:${it.quantity}:${(it.group_ids ?? []).slice(0, it.quantity).join(',')}`,
+        )
+        .sort(),
+    );
+  }
+
+  function groupReleaseConfirmed(): boolean {
+    return confirmedItemsSignature !== null && confirmedItemsSignature === itemsSignature();
+  }
+
+  function openGroupReleasePopup(outcome: GroupReleaseWarningDto) {
+    groupReleaseItems = outcome.items.map((it) => ({ name: it.name, groupName: it.group_name }));
+    activePopup = 'groupRelease';
+  }
+
+  // «Отмена», Esc, крестик, оверлей: back to the form, nothing saved, the
+  // positions stay as the user left them (D-07).
+  function closeGroupReleasePopup() {
+    activePopup = null;
+    confirmedItemsSignature = null;
+  }
+
+  function confirmGroupRelease() {
+    confirmedItemsSignature = itemsSignature();
     activePopup = null;
     void handleSubmit();
   }
@@ -482,7 +546,7 @@
       deadline_utc: isoToUnix(deadlineISO),
       handover_date_utc: isoToUnix(handoverDateISO),
       items: payloadItems,
-      confirm_group_release: false,
+      confirm_group_release: groupReleaseConfirmed(),
     };
 
     let outcome: ActSaveOutcome;
@@ -495,18 +559,14 @@
       return;
     }
 
+    if (outcome.outcome === 'needs_group_release') {
+      openGroupReleasePopup(outcome);
+      return;
+    }
     if (outcome.outcome === 'created') {
       pendingConfirm = null;
       pushToast('success', `Создан акт №${outcome.number}`);
       onSaved(outcome);
-      return;
-    }
-    if (outcome.outcome === 'needs_group_release') {
-      // Placeholder until plan 41.2-12 replaces it with the confirmation popup.
-      pushToast(
-        'error',
-        'Не удалось сохранить акт: требуется подтверждение вывода устройств из состава.',
-      );
       return;
     }
     if (outcome.kind === 'mismatch') {
@@ -566,7 +626,7 @@
       deadline_utc: isoToUnix(deadlineISO),
       handover_date_utc: isoToUnix(handoverDateISO),
       items: updateItems,
-      confirm_group_release: false,
+      confirm_group_release: groupReleaseConfirmed(),
     };
 
     let outcome: ActSaveOutcome;
@@ -578,18 +638,14 @@
       return;
     }
 
+    if (outcome.outcome === 'needs_group_release') {
+      openGroupReleasePopup(outcome);
+      return;
+    }
     if (outcome.outcome === 'created') {
       pendingConfirm = null;
       pushToast('success', `Акт №${outcome.number} обновлён`);
       onSaved(outcome);
-      return;
-    }
-    if (outcome.outcome === 'needs_group_release') {
-      // Placeholder until plan 41.2-12 replaces it with the confirmation popup.
-      pushToast(
-        'error',
-        'Не удалось сохранить акт: требуется подтверждение вывода устройств из состава.',
-      );
       return;
     }
     if (outcome.kind === 'script_mix') {
@@ -643,6 +699,9 @@
     } finally {
       loading = false;
       submitting = false;
+      // The confirmation covers one save attempt: it survives only while the
+      // number chain keeps a popup open for that same attempt.
+      if (activePopup === null) confirmedItemsSignature = null;
     }
   }
 </script>
@@ -728,9 +787,15 @@
 
   <!-- Row 3: Место, Заметки (2 колонки) -->
   <div class="grid-2">
-    <div class="field">
+    <div class="field" class:has-error={!!fieldErrors['place_id']}>
       <label class="label" for="act-place">Место</label>
-      <PlacePicker value={placeId} id="act-place" onChange={(id) => (placeId = id)} />
+      <PlacePicker
+        value={placeId}
+        id="act-place"
+        invalid={!!fieldErrors['place_id']}
+        onChange={(id) => (placeId = id)}
+      />
+      {#if fieldErrors['place_id']}<p class="error">{fieldErrors['place_id']}</p>{/if}
     </div>
 
     <div class="field">
