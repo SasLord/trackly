@@ -578,9 +578,42 @@ async fn delete_soft_returns_structured_result() {
         );
         assert!(
             result.notices.is_empty(),
-            "no notices are produced before plan 41.2-13"
+            "an act without groups produces no notices"
         );
     })
     .await
     .expect("delete_soft_returns_structured_result budget");
+}
+
+/// Phase 41.2 (план 13), регрессия: удаление обычного акта без групп возвращает места как
+/// раньше, `notices` пуст, а следов группового отката не появляется. Расходящаяся пара с
+/// (d1) из `acts_groups.rs`: там тот же сценарий с группой.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn delete_soft_of_an_act_without_groups_restores_places_and_has_no_notices() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Кабинет-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 2, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
+        for &id in &device_ids {
+            assert_eq!(read_device_snap(&svc, id).await.place_id, Some(loc_b));
+        }
+
+        let result = svc
+            .delete_soft(handover.id, handover.version)
+            .await
+            .expect("delete handover");
+
+        assert!(result.notices.is_empty(), "{:?}", result.notices);
+        for &id in &device_ids {
+            assert_eq!(
+                read_device_snap(&svc, id).await.place_id,
+                Some(loc_a),
+                "места вернулись, как до введения групп"
+            );
+        }
+    })
+    .await
+    .expect("delete_soft_of_an_act_without_groups budget");
 }
