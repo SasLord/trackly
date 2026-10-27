@@ -2662,10 +2662,42 @@ fn release_unconditional_sites(src: &str) -> Vec<usize> {
             }
         }
     }
+    // Инвентарь ОТ ФАЙЛА, а не от имён функций: каждый вызов `release_device_in_tx(`
+    // в act_service.rs обязан лежать в теле одного из четырёх путей выше (там он проверен
+    // на условность) либо быть явно освобождён в `ACT_RELEASE_EXEMPT_FNS`. Новый вызов в
+    // `delete_soft`, `undo_...` или новой функции без вердикта краснит гейт, а не остаётся
+    // невидимым для предиката, привязанного к четырём сигнатурам.
+    let ranges: Vec<(usize, usize)> = ACT_DIRECT_PATH_SIGS
+        .iter()
+        .map(|sig| act_fn_line_range(&lines, sig))
+        .collect();
+    let exempt: Vec<(usize, usize)> = ACT_RELEASE_EXEMPT_FNS
+        .iter()
+        .map(|sig| act_fn_line_range(&lines, sig))
+        .collect();
+    for (at, line) in lines.iter().enumerate() {
+        let code = code_of_phase_412(line);
+        if code.contains("fn ") || !act_has_call(code, "release_device_in_tx(") {
+            continue;
+        }
+        let covered = ranges
+            .iter()
+            .chain(exempt.iter())
+            .any(|&(a, b)| at >= a && at < b);
+        if !covered {
+            bad.push(at + 1);
+        }
+    }
     bad.sort_unstable();
     bad.dedup();
     bad
 }
+
+/// Функции, в которых `release_device_in_tx(` разрешён БЕЗ условия `moved_device_ids`.
+/// Пусто сознательно: прямых путей записи вне четырёх `ACT_DIRECT_PATH_SIGS` нет, restore-пути
+/// зовут `release_if_locked_device_in_tx(`. Добавлять сюда можно только с вердиктом в
+/// шапке файла.
+const ACT_RELEASE_EXEMPT_FNS: [&str; 0] = [];
 
 /// Строки (с 1) вызовов `release_if_locked_device_in_tx(` и расстояние до режима
 /// следа: пары (номер строки вызова, расстояние до `ReleaseEffect::` / `release_mode`
@@ -2774,6 +2806,22 @@ fn write_site_gate_act_release_is_move_aware() {
     let indent = " ".repeat(act_line_indent(lines[if_line]));
     mutated[if_line] = format!("{indent}if true {{");
     assert!(!release_unconditional_sites(&act_join(&mutated)).is_empty());
+
+    // Мутант 5: вызов появился в delete_soft (функция вне четырёх путей, без вердикта).
+    {
+        let (from, to) = act_fn_line_range(&lines, "pub async fn delete_soft(");
+        assert!(to > from + 2, "тело delete_soft найдено");
+        let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        mutated.insert(
+            from + 1,
+            "        release_device_in_tx(&tx, &SqliteGroupRepository, &audit_repo, 1, None, None, 0);"
+                .to_string(),
+        );
+        assert!(
+            !release_unconditional_sites(&act_join(&mutated)).is_empty(),
+            "release_device_in_tx( вне четырёх путей без вердикта обязан краснеть"
+        );
+    }
 
     // Мутант 4: release_device_in_tx( появился в ветке removed правки.
     let (from, to) = act_fn_line_range(&lines, "pub async fn update(");
