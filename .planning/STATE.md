@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-10-26T22:00:47.326Z"
-last_activity: 2026-10-26
+status: verifying
+last_updated: "2026-10-27T05:51:57.262Z"
+last_activity: 2026-10-27
 progress:
   total_phases: 26
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 235
-  completed_plans: 234
-  percent: 54
+  completed_plans: 235
+  percent: 58
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41.2 (groups-acts-places) — EXECUTING
 Plan: 16 of 16
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
 TD-2 (selftest check-device-list-mode занижает счётчики), TD-4 (предусловие не отличает passed
@@ -149,7 +149,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-26
+Last activity: 2026-10-27
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1605,7 +1605,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-26T22:00:47.316Z
+Last session: 2026-10-27T05:51:57.250Z
 Stopped at: Completed 41.2-15-PLAN.md
 Resume file: None
 
