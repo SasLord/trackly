@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-28T07:38:50.613Z"
+last_updated: "2026-10-28T09:33:11.852Z"
 last_activity: 2026-10-28 -- Phase 41.13 planning complete
 progress:
   total_phases: 27
   completed_phases: 15
   total_plans: 243
-  completed_plans: 235
+  completed_plans: 236
   percent: 56
 ---
 
@@ -657,6 +657,7 @@ Last activity: 2026-10-28 -- Phase 41.13 planning complete
 | Phase 41.2 P12 | 1.5h | 3 tasks | 6 files |
 | Phase 41.2 P13 | 4h | 2 tasks | 5 files |
 | Phase 41.2 P15 | 75min | 3 tasks | 6 files |
+| Phase 41.13 P01 | 180min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1408,6 +1409,7 @@ Recent decisions affecting current work:
 - [Phase 41.2]: 41.2-12: подтверждение выноса из состава привязано к сигнатуре состава позиций и сбрасывается концом попытки сохранения; попап поднимается только из submitCreate/submitEdit (D-06/D-07)
 - [Phase 41.2-13]: Act rollback order is groups -> snapshots -> membership -> effect cleanup; notices never turn delete_soft into an Err (D-09)
 - [Phase 41.2]: 41.2-15: act-rollback notices are not folded by group_id (would drop device names); exact duplicates are collapsed before the cap of five
+- [Phase 41.13]: 41.13-01: приоритет происхождения принтера в карточке группы USB > ссылка > в составе; задаётся порядком циклов слияния (member последним)
 
 ### Pending Todos
 
@@ -1613,8 +1615,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-27T05:51:57.250Z
-Stopped at: Completed 41.2-15-PLAN.md
+Last session: 2026-10-28T09:33:11.509Z
+Stopped at: Completed 41.13-01-PLAN.md
 Resume file: None
 
 None
