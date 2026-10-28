@@ -615,6 +615,35 @@ impl SqliteGroupRepository {
         }
     }
 
+    /// Принтеры, состоящие в группе или её вложенных группах (PGR-01, D-02): третий
+    /// источник «Подключённых принтеров». Принтером считается устройство со строкой
+    /// в `printers` (как в `live_printer_device_ids`), а не код типа устройства; тип
+    /// группы и наличие IP значения не имеют. Только живые устройства.
+    /// Дедупликацию с USB и ссылками делает сервис (приоритет USB > ссылка > в составе).
+    pub fn member_printers_for_group(
+        &self,
+        conn: &Connection,
+        group_id: i64,
+    ) -> Result<Vec<PrinterRefRow>, AppError> {
+        let sql = [
+            SUBTREE_CTE,
+            " SELECT d.id, d.name, d.inventory_number, d.serial_number
+              FROM group_devices gd
+              JOIN sub ON gd.group_id = sub.id
+              JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+              JOIN printers p ON p.device_id = d.id
+              ORDER BY d.name, d.id",
+        ]
+        .concat();
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params![group_id], printer_ref_from_row)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
     /// Принтеры, USB-привязанные к устройствам состава группы (включая вложенные
     /// группы): производные, ручной записи нет (GRP-08, D-12). Только живые
     /// устройства — и принтер, и хост. Дедупликацию с явными ссылками делает сервис.

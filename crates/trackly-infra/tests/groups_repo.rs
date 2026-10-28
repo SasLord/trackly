@@ -811,6 +811,65 @@ fn usb_printers_come_from_composition_including_nested_group() {
 }
 
 #[test]
+fn member_printers_follow_membership_including_nested_group() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let root = make_group(&mut conn, &repo, t, "Корень", None);
+    let nested = make_group(&mut conn, &repo, t, "Вложенная", None);
+    let stranger = make_group(&mut conn, &repo, t, "Чужая", None);
+    set_parent(&mut conn, &repo, nested.id, Some(root.id)).unwrap();
+    // Принтеры: 21 — в корне, 22 — во вложенной, 23 — в чужой группе, 24 — вне групп,
+    // 25 — сетевой (с IP) в корне. Правило от подключения не зависит.
+    for (id, name) in [
+        (21, "Принтер Б"),
+        (22, "Принтер А"),
+        (23, "Принтер В"),
+        (24, "Принтер Г"),
+        (25, "Принтер Д"),
+    ] {
+        insert_device(&conn, id, name);
+        insert_printer(&conn, id, None);
+    }
+    conn.execute(
+        "UPDATE printers SET ip_address = '192.0.2.25' WHERE device_id = 25",
+        [],
+    )
+    .expect("set ip");
+    // Обычное устройство (без строки printers) в корне.
+    insert_device(&conn, 31, "Системный блок");
+    add_device(&mut conn, &repo, root.id, 21);
+    add_device(&mut conn, &repo, nested.id, 22);
+    add_device(&mut conn, &repo, stranger.id, 23);
+    add_device(&mut conn, &repo, root.id, 25);
+    add_device(&mut conn, &repo, root.id, 31);
+
+    let found = repo.member_printers_for_group(&conn, root.id).unwrap();
+    assert_eq!(
+        ids(&found),
+        vec![22, 21, 25],
+        "корень + вложенная, по названию (А, Б, Д); сетевой включён, обычное устройство и чужая группа нет"
+    );
+    assert_eq!(found[0].name, "Принтер А");
+    assert_eq!(found[0].inventory_number.as_deref(), Some("ИНВ-000022"));
+    assert_eq!(
+        ids(&repo.member_printers_for_group(&conn, nested.id).unwrap()),
+        vec![22]
+    );
+    assert_eq!(
+        ids(&repo.member_printers_for_group(&conn, stranger.id).unwrap()),
+        vec![23]
+    );
+
+    // Мягко удалённый принтер исключается.
+    soft_delete_device(&conn, 22);
+    assert_eq!(
+        ids(&repo.member_printers_for_group(&conn, root.id).unwrap()),
+        vec![21, 25]
+    );
+}
+
+#[test]
 fn ref_devices_follow_device_refs_and_overlap_with_usb() {
     let (mut conn, _g) = test_db();
     let repo = SqliteGroupRepository;
