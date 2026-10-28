@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: Фаза вставлена 2026-10-28 после 41.2; следующий шаг — /gsd-plan-phase 41.13
-last_updated: "2026-10-28T04:42:59.799Z"
-last_activity: "2026-10-28 - Completed quick task 261028-fw6: подтверждение удаления акта своим модальным окном вместо нативного window.confirm"
+status: executing
+last_updated: "2026-10-28T07:38:50.613Z"
+last_activity: 2026-10-28 -- Phase 41.13 planning complete
 progress:
   total_phases: 27
   completed_phases: 15
-  total_plans: 235
+  total_plans: 243
   completed_plans: 235
   percent: 56
 ---
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41.13 (printers-usb-host) — NOT PLANNED YET
 Plan: 0 of TBD
-Status: Фаза вставлена 2026-10-28 после 41.2; следующий шаг — /gsd-plan-phase 41.13
+Status: Ready to execute
 Предыдущая, 41.2 (groups-acts-places): 16/16 планов, живая UAT пройдена (H1–H3, H6–H9 на
 браузерном стенде оркестратором; H4, H5 пользователем на Windows 2026-10-28). Открытыми по 41.2
 остаются: пробел IN-01 (правка возвратного акта только по состоянию выбрасывает члена группы),
@@ -155,7 +155,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-28 - Completed quick task 261028-fw6: подтверждение удаления акта своим модальным окном вместо нативного window.confirm
+Last activity: 2026-10-28 -- Phase 41.13 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
