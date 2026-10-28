@@ -577,6 +577,12 @@ impl DeviceService {
         match type_id {
             Self::PRINTER_TYPE_ID => {
                 if !printer_repo.exists_for_device_in_tx(tx, device_id)? {
+                    let usb_host_device_id = printer_override.and_then(|b| b.usb_host_device_id);
+                    if let Some(host_id) = usb_host_device_id {
+                        // Phase 41.13 (D-01): самоссылка / несуществующий / мягко
+                        // удалённый хост отклоняются ДО записи строки.
+                        printer_repo.validate_usb_host_in_tx(tx, device_id, host_id)?;
+                    }
                     let (ip_address, community_raw) = match printer_override {
                         Some(block) => {
                             let ip_address = block
@@ -608,7 +614,7 @@ impl DeviceService {
                             community_raw,
                             snmp_version: "v2c".to_string(),
                             oid_profile_id: None,
-                            usb_host_device_id: None,
+                            usb_host_device_id,
                         },
                         now_utc,
                     )?;
@@ -1040,6 +1046,10 @@ impl DeviceService {
         let place_movements_repo = self.place_movements_repo.clone();
         let cartridge_repo = self.cartridge_repo.clone();
         let groups = self.groups.clone();
+        // Phase 41.13 (D-07): хост лежит в `printers`, а не в `devices`, и в доменный
+        // патч не переносится. Читаем ДО `patch.into()`. Тип Option<Option<i64>> —
+        // три случая: None = не трогать, Some(None) = сбросить, Some(Some(id)) = задать.
+        let usb_host_patch: Option<Option<i64>> = patch.usb_host_device_id;
         let mut domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         if let Some(number) = resolved_number {
             // Outer `Some` = "field touched"; inner `None`/`Some(v)` decide
@@ -1104,6 +1114,21 @@ impl DeviceService {
 
                 let after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now, None)?;
+                // Phase 41.13 (D-07): запись хоста при РЕДАКТИРОВАНИИ — отдельная
+                // операция ПОСЛЕ sync_printer_row_in_tx (при одновременной смене типа
+                // на «Принтер» строка уже создана). sync_* её не заменяет: ветка
+                // создания обёрнута в exists-гард и на существующей строке молчит.
+                if let Some(host) = usb_host_patch {
+                    if after.type_id == Self::PRINTER_TYPE_ID {
+                        printer_repo.set_usb_host_in_tx(&tx, id, host, now)?;
+                    } else if host.is_some() {
+                        return Err(AppError::Validation {
+                            field: "usb_host_device_id".to_string(),
+                            message: "Устройство-хост можно указать только у принтера."
+                                .to_string(),
+                        });
+                    }
+                }
                 let after_json =
                     serde_json::to_string(&DeviceDto::from(after.clone())).map_err(|e| {
                         AppError::Internal {

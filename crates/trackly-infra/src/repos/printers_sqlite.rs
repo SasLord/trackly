@@ -240,6 +240,71 @@ impl SqlitePrinterRepository {
         })
     }
 
+    /// Проверить кандидата в USB-хосты (Phase 41.13, D-01/D-07, T-41.13-08/09).
+    ///
+    /// FK `printers.usb_host_device_id -> devices(id)` отсекает только
+    /// несуществующий id; самого себя и мягко удалённое устройство он пропускает,
+    /// поэтому проверка живёт здесь. Ошибка — `Validation` с полем
+    /// `usb_host_device_id`.
+    pub fn validate_usb_host_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        device_id: i64,
+        host_id: i64,
+    ) -> Result<(), AppError> {
+        if host_id == device_id {
+            return Err(AppError::Validation {
+                field: "usb_host_device_id".to_string(),
+                message: "Устройство не может быть собственным хостом.".to_string(),
+            });
+        }
+        let alive: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM devices WHERE id = ?1 AND deleted_at_utc IS NULL)",
+                params![host_id],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        if !alive {
+            return Err(AppError::Validation {
+                field: "usb_host_device_id".to_string(),
+                message: "Выбрать можно только существующее устройство.".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Записать (или сбросить в NULL) USB-хост уже существующей строки `printers`
+    /// (Phase 41.13, D-07). Отдельная операция: `sync_printer_row_in_tx` на
+    /// существующей строке ничего не пишет (exists-гард), поэтому редактирование
+    /// хоста идёт мимо него. `Some(h)` предварительно проходит
+    /// [`Self::validate_usb_host_in_tx`]. Нет строки принтера — `NotFound`.
+    pub fn set_usb_host_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        device_id: i64,
+        host: Option<i64>,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        if let Some(h) = host {
+            self.validate_usb_host_in_tx(tx, device_id, h)?;
+        }
+        let affected = tx
+            .execute(
+                "UPDATE printers SET usb_host_device_id = ?1, updated_at_utc = ?2, \
+                 version = version + 1 WHERE device_id = ?3",
+                params![host, now_utc, device_id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "printer",
+                id: device_id,
+            });
+        }
+        Ok(())
+    }
+
     /// Проверить, существует ли строка `printers` для данного device_id.
     /// Гейт идемпотентности для конверсии типа устройства (quick 260820-rdj).
     pub fn exists_for_device_in_tx(
