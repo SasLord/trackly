@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-10-27T05:51:57.262Z"
-last_activity: 2026-10-27
+status: Фаза вставлена 2026-10-28 после 41.2; следующий шаг — /gsd-plan-phase 41.13
+last_updated: "2026-10-28T04:42:59.799Z"
+last_activity: "2026-10-28 - Completed quick task 261028-fw6: подтверждение удаления акта своим модальным окном вместо нативного window.confirm"
 progress:
-  total_phases: 26
+  total_phases: 27
   completed_phases: 15
   total_plans: 235
   completed_plans: 235
-  percent: 58
+  percent: 56
 ---
 
 # Project State
@@ -20,13 +20,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.2 — groups-acts-places
+**Current focus:** Phase 41.13 — printers-usb-host (вставлена после 41.2)
 
 ## Current Position
 
-Phase: 41.2 (groups-acts-places) — EXECUTING
-Plan: 16 of 16
-Status: Phase complete — ready for verification
+Phase: 41.13 (printers-usb-host) — NOT PLANNED YET
+Plan: 0 of TBD
+Status: Фаза вставлена 2026-10-28 после 41.2; следующий шаг — /gsd-plan-phase 41.13
+Предыдущая, 41.2 (groups-acts-places): 16/16 планов, живая UAT пройдена (H1–H3, H6–H9 на
+браузерном стенде оркестратором; H4, H5 пользователем на Windows 2026-10-28). Открытыми по 41.2
+остаются: пробел IN-01 (правка возвратного акта только по состоянию выбрасывает члена группы),
+пробел W3 (нет теста на непустой group_ids в двух WS-событиях возвратных путей), /gsd-secure-phase
+41.2 и 8 решений D1–D8 из чеклиста. Дефект «удаление акта без подтверждения», найденный на H4,
+закрыт быстрой задачей 261028-fw6.
 Фаза 41.11 закрыта 2026-10-19 (12/12 планов, верификация 5/5, живая UAT 3/3). TD-1 и TD-3
 закрыты сразу быстрой задачей 261020-9o4 (9209493a, 44f92070, 3d07ded0); открытыми остались
 TD-2 (selftest check-device-list-mode занижает счётчики), TD-4 (предусловие не отличает passed
@@ -705,6 +711,7 @@ Last activity: 2026-10-28 - Completed quick task 261028-fw6: подтвержд�
 - Phase 41.7 inserted after Phase 41: Долг выпуска v1.4: WS-события сущностей (INT-01), bootstrap по LAN (INT-03), поиск номера возврата (INT-02); исполняется ДО Фазы 41.1 (URGENT)
 - Phase 41.11 inserted after Phase 41.1: Долг фазы 41.1: гейты и свёртка (URGENT)
 - Phase 41.12 inserted after Phase 41.11: Три находки аудита вехи 2026-10-20: INT-14 неверный хардкод type_id -> подпись (импорт CSV молча создаёт устройства не того типа), INT-15 удаление устройства и картриджа вне реестра инвалидации, INT-07 гейт формата пути с фиксированным списком вместо скана (URGENT)
+- Phase 41.13 inserted after Phase 41.2: Принтеры: подключение к АРМ — членство в группе как источник «подключённости» + выбор USB-хоста; найдено пользователем на UAT 41.2 (URGENT)
 
 ### Decisions
 
