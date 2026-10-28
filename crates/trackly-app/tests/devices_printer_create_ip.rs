@@ -104,6 +104,7 @@ async fn printer_block_writes_ip_and_community_atomically() {
         let printer_block = PrinterCreateBlockDto {
             ip_address: Some("192.0.2.50".to_string()),
             community: Some("private".to_string()),
+            usb_host_device_id: None,
         };
 
         let outcome = svc
@@ -180,6 +181,7 @@ async fn printer_block_on_non_printer_type_is_rejected() {
         let printer_block = PrinterCreateBlockDto {
             ip_address: Some("192.0.2.51".to_string()),
             community: None,
+            usb_host_device_id: None,
         };
 
         let err = svc

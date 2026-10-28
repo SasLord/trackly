@@ -459,6 +459,7 @@ async fn bulk_create_with_printer_rejects_non_empty_printer_block() {
         let printer = PrinterCreateBlockDto {
             ip_address: Some("192.0.2.10".to_string()),
             community: Some("public".to_string()),
+            usb_host_device_id: None,
         };
 
         let err = svc

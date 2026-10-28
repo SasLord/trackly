@@ -156,16 +156,24 @@ pub struct PrinterCreateDto {
     pub usb_host_device_id: Option<i32>,
 }
 
-/// Optional printer block (IP + SNMP community) carried by the interactive
-/// single-device/printer create path (`create_single_with_number_check_with_printer`,
-/// Phase 40.3 Plan 04, NUM-06/NUM-08). `None` preserves today's defaults
-/// (`ip_address = None`, `community = "public"`) written by
-/// `sync_printer_row_in_tx`.
+/// Optional printer block (IP + SNMP community + USB host) carried by the
+/// interactive single-device/printer create path
+/// (`create_single_with_number_check_with_printer`, Phase 40.3 Plan 04,
+/// NUM-06/NUM-08). `None` preserves today's defaults (`ip_address = None`,
+/// `community = "public"`, no USB host) written by `sync_printer_row_in_tx`.
+///
+/// Phase 41.13 Plan 03 (D-01): `usb_host_device_id` is the explicit choice of
+/// the device the USB printer is plugged into. Absent key in an old request
+/// body deserialises to `None`. The server accepts a host together with an IP
+/// (the schema allows it); mutual exclusion is a form behaviour.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PrinterCreateBlockDto {
     pub ip_address: Option<String>,
     pub community: Option<String>,
+    #[serde(default)]
+    #[specta(type = Option<i32>)]
+    pub usb_host_device_id: Option<i64>,
 }
 
 /// A printer found during SNMP discovery scan (D-Discovery-01).

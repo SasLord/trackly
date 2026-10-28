@@ -99,6 +99,7 @@ async fn create_printer_device(
             Some(PrinterCreateBlockDto {
                 ip_address: Some(ip.to_string()),
                 community: Some(community.to_string()),
+                usb_host_device_id: None,
             }),
         )
         .await

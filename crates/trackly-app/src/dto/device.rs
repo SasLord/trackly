@@ -243,6 +243,14 @@ pub struct DevicePatch {
     pub place_id: Option<Option<i64>>,
     #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
+    /// Phase 41.13 Plan 03 (D-07): USB host of a printer device. The column
+    /// belongs to `printers`, not `devices`, so it is NOT carried into the
+    /// domain patch; `DeviceService::update` writes it separately.
+    /// Outer `None` = leave untouched, `Some(None)` = reset to NULL,
+    /// `Some(Some(id))` = set.
+    #[serde(default, with = "serde_with::rust::double_option")]
+    #[specta(type = Option<Option<i32>>)]
+    pub usb_host_device_id: Option<Option<i64>>,
 }
 
 impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
@@ -295,6 +303,9 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
         if let Some(v) = dto.status_id {
             p.status_id = Some(v);
         }
+        // `usb_host_device_id` is intentionally NOT set here — the column
+        // lives in `printers` and is written by the service separately
+        // (Phase 41.13 Plan 03).
         p
     }
 }

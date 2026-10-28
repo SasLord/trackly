@@ -148,6 +148,7 @@ async fn place_movements_manual_device() {
                 state: None,
                 place_id: Some(Some(place_b)),
                 status_id: None,
+                usb_host_device_id: None,
             },
         )
         .await
@@ -232,6 +233,7 @@ async fn place_movements_manual_device_status_only_noop() {
                 state: None,
                 place_id: None,
                 status_id: Some(1),
+                usb_host_device_id: None,
             },
         )
         .await
@@ -280,6 +282,7 @@ async fn place_movements_manual_device_first_assignment_noop() {
                 state: None,
                 place_id: Some(Some(place_a)),
                 status_id: None,
+                usb_host_device_id: None,
             },
         )
         .await
