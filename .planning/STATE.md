@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-28T11:23:08.528Z"
+last_updated: "2026-10-28T12:11:29.759Z"
 last_activity: 2026-10-28 -- Phase 41.13 planning complete
 progress:
   total_phases: 27
   completed_phases: 15
   total_plans: 243
-  completed_plans: 239
+  completed_plans: 240
   percent: 56
 ---
 
@@ -661,6 +661,7 @@ Last activity: 2026-10-28 -- Phase 41.13 planning complete
 | Phase 41.13 P02 | ~1h (холодные cargo-сборки) | 2 tasks | 5 files |
 | Phase 41.13 P05 | 1h | 2 tasks | 4 files |
 | Phase 41.13 P03 | ~4h (cold cargo) | 2 tasks | 10 files |
+| Phase 41.13 P04 | ~2h | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1416,6 +1417,7 @@ Recent decisions affecting current work:
 - [Phase 41.13]: 41.13-02: JOIN USB-хоста в SELECT_PRINTERS без фильтра удаления (D-37) - подпись мягко удалённого хоста остаётся; bindings-phase6.ts сверен с Rust-DTO вручную, гейта нет
 - [Phase 41.13]: [41.13-05] Итоговое происхождение строки списка принтеров группы: usb > link (локальная ссылка из формы) > member; гейт check-group-printer-origin закрепляет порядок веток
 - [Phase 41.13]: 41.13-03: USB-хост при редактировании - поле DevicePatch.usb_host_device_id (Option<Option<i64>>), запись отдельной операцией после sync_printer_row_in_tx мимо exists-гарда
+- [Phase 41.13]: [41.13-04] Мутант авторизации devices_update: CreateRequest вместо ReadData из плана (ReadData у employee тоже нет - мутант был бы вакуумным)
 
 ### Pending Todos
 
@@ -1621,7 +1623,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-28T11:23:02.827Z
+Last session: 2026-10-28T12:11:20.802Z
 Stopped at: Completed 41.13-05-PLAN.md
 Resume file: None
 
