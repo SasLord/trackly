@@ -580,3 +580,120 @@ async fn printers_soft_delete_discover_duplicate_check_ignores_deleted() {
     .await
     .expect("printers_soft_delete_discover_duplicate_check_ignores_deleted exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// Тест 7 (Phase 41.13, PGR-04, D-08): имя и инв. № USB-хоста в DTO принтера
+// ---------------------------------------------------------------------------
+
+/// Фикстура расходящаяся: у скрытого принтера хост («Рабочая станция А», инв.
+/// «ИНВ-114» сеется здесь) есть, у живого — нет. Имя принтера («Принтер А»)
+/// отличается от имени хоста, поэтому JOIN не по той колонке даёт другую
+/// строку, а не ту же самую.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn printers_get_returns_usb_host_name_and_inventory_number() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let f = setup_alive().await;
+
+        // (1) id хоста скрытого принтера + инвентарный номер хосту.
+        let printer_id = f.hidden_printer_id;
+        let host_id: i64 = {
+            let readers = f.devices.readers.clone();
+            tokio::task::spawn_blocking(move || {
+                readers
+                    .acquire()
+                    .query_row(
+                        "SELECT usb_host_device_id FROM printers WHERE id = ?1",
+                        params![printer_id],
+                        |r| r.get(0),
+                    )
+                    .expect("usb_host_device_id скрытого принтера")
+            })
+            .await
+            .expect("spawn_blocking")
+        };
+        f.devices
+            .writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET inventory_number = 'ИНВ-114' WHERE id = ?1",
+                    params![host_id],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("seed host inventory number");
+
+        // (2) оба канала чтения несут имя и инв. № хоста.
+        let by_id = f.printers.get(f.hidden_printer_id).await.expect("get");
+        assert_eq!(by_id.usb_host_device_id, Some(host_id));
+        assert_eq!(by_id.usb_host_name.as_deref(), Some("Рабочая станция А"));
+        assert_eq!(by_id.usb_host_inventory_no.as_deref(), Some("ИНВ-114"));
+        let by_device = f
+            .printers
+            .get_by_device_id(f.hidden_device_id)
+            .await
+            .expect("get_by_device_id");
+        assert_eq!(
+            by_device.usb_host_name.as_deref(),
+            Some("Рабочая станция А")
+        );
+        assert_eq!(by_device.usb_host_inventory_no.as_deref(), Some("ИНВ-114"));
+
+        // (3) принтер без хоста: оба поля None.
+        let live = f.printers.get(f.live_printer_id).await.expect("get live");
+        assert_eq!(live.usb_host_device_id, None);
+        assert_eq!(live.usb_host_name, None);
+        assert_eq!(live.usb_host_inventory_no, None);
+
+        // (3б) хост без инвентарного номера: имя есть, номер None.
+        f.devices
+            .writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET inventory_number = NULL WHERE id = ?1",
+                    params![host_id],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("clear host inventory number");
+        let no_inv = f
+            .printers
+            .get(f.hidden_printer_id)
+            .await
+            .expect("get no inv");
+        assert_eq!(no_inv.usb_host_name.as_deref(), Some("Рабочая станция А"));
+        assert_eq!(no_inv.usb_host_inventory_no, None);
+        f.devices
+            .writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET inventory_number = 'ИНВ-114' WHERE id = ?1",
+                    params![host_id],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("restore host inventory number");
+
+        // (4) мягко удалённый хост: подпись остаётся (D-37).
+        let host = f.devices.get(host_id).await.expect("get host device");
+        f.devices
+            .delete_soft(host_id, host.version)
+            .await
+            .expect("soft-delete usb host device");
+        let after = f
+            .printers
+            .get(f.hidden_printer_id)
+            .await
+            .expect("get after host delete");
+        assert_eq!(after.usb_host_device_id, Some(host_id));
+        assert_eq!(after.usb_host_name.as_deref(), Some("Рабочая станция А"));
+        assert_eq!(after.usb_host_inventory_no.as_deref(), Some("ИНВ-114"));
+    })
+    .await
+    .expect("printers_get_returns_usb_host_name_and_inventory_number exceeded 30 s budget");
+}
