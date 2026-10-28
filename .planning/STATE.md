@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-28T12:11:29.759Z"
+last_updated: "2026-10-28T12:19:42.287Z"
 last_activity: 2026-10-28 -- Phase 41.13 planning complete
 progress:
   total_phases: 27
   completed_phases: 15
   total_plans: 243
-  completed_plans: 240
+  completed_plans: 241
   percent: 56
 ---
 
@@ -662,6 +662,7 @@ Last activity: 2026-10-28 -- Phase 41.13 planning complete
 | Phase 41.13 P05 | 1h | 2 tasks | 4 files |
 | Phase 41.13 P03 | ~4h (cold cargo) | 2 tasks | 10 files |
 | Phase 41.13 P04 | ~2h | 2 tasks | 2 files |
+| Phase 41.13 P06 | 1h | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1418,6 +1419,7 @@ Recent decisions affecting current work:
 - [Phase 41.13]: [41.13-05] Итоговое происхождение строки списка принтеров группы: usb > link (локальная ссылка из формы) > member; гейт check-group-printer-origin закрепляет порядок веток
 - [Phase 41.13]: 41.13-03: USB-хост при редактировании - поле DevicePatch.usb_host_device_id (Option<Option<i64>>), запись отдельной операцией после sync_printer_row_in_tx мимо exists-гарда
 - [Phase 41.13]: [41.13-04] Мутант авторизации devices_update: CreateRequest вместо ReadData из плана (ReadData у employee тоже нет - мутант был бы вакуумным)
+- [Phase 41.13]: 41.13-06: Dropdown USB-хоста = combobox + flat; заголовок «Все устройства» внутри sectionFor
 
 ### Pending Todos
 
@@ -1623,8 +1625,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-28T12:11:20.802Z
-Stopped at: Completed 41.13-05-PLAN.md
+Last session: 2026-10-28T12:19:42.274Z
+Stopped at: Completed 41.13-06-PLAN.md
 Resume file: None
 
 None
