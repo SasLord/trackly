@@ -15,6 +15,7 @@
   import ActFormModal from './ActFormModal.svelte';
   import ReturnModal from './ReturnModal.svelte';
   import PdfPreviewModal from './PdfPreviewModal.svelte';
+  import ActDeleteModal from './ActDeleteModal.svelte';
   import { acts } from './api';
   import type {
     ActDto,
@@ -51,6 +52,8 @@
   let returnEditParentAct = $state<ActDto | null>(null);
   let pdfModalOpen = $state(false);
   let pdfModalAct = $state<ActDto | null>(null);
+  let deleteTargetAct = $state<ActDto | null>(null);
+  let deleting = $state(false);
   let searchQuery = $state('');
   const pagination = $state<Pagination>({ offset: 0, limit: 50 });
 
@@ -322,16 +325,9 @@
     }
   }
 
+  // Вызывается ТОЛЬКО из confirmDelete, после подтверждения в ActDeleteModal.
   async function handleDelete(act: ActDto) {
     const isReturn = act.act_type === 'return';
-    const heading = isReturn
-      ? `Удалить акт возврата №${act.number}?`
-      : `Удалить акт №${act.number}?`;
-    const body = isReturn
-      ? 'Акт будет помечен как удалённый. Состояние и Расположение устройств вернутся к значениям на момент выдачи. Если parent был в Архиве — выйдет из архива. Устройства, выведенные этим возвратом из состава групп, вернутся в свои группы.'
-      : 'Акт будет помечен как удалённый. Все устройства из акта вернутся на склад в исходные Состояние и Расположение (на момент выдачи). Связанные возвраты также будут отменены. Устройства, выведенные этим актом из состава групп, вернутся в свои группы. Действие можно отменить только восстановлением из бэкапа БД.';
-    const confirmed = window.confirm(`${heading}\n\n${body}`);
-    if (!confirmed) return;
     try {
       const result = await acts.delete(act.id, act.version);
       // 40.1 exhaustive sweep (WR-06): soft-deleting an act undoes its
@@ -359,6 +355,27 @@
           ? String((e as { message: unknown }).message)
           : 'Не удалось удалить акт';
       pushToast('error', msg);
+    }
+  }
+
+  function requestDelete(act: ActDto) {
+    deleteTargetAct = act;
+  }
+
+  function cancelDelete() {
+    if (deleting) return;
+    deleteTargetAct = null;
+  }
+
+  async function confirmDelete() {
+    const act = deleteTargetAct;
+    if (act === null || deleting) return;
+    deleting = true;
+    try {
+      await handleDelete(act);
+    } finally {
+      deleting = false;
+      deleteTargetAct = null;
     }
   }
 </script>
@@ -398,7 +415,7 @@
           act={selectedAct}
           loading={detailLoading}
           onCreate={openCreate}
-          onDelete={handleDelete}
+          onDelete={requestDelete}
           onEdit={handleEdit}
           onReturn={handleReturn}
           onPrint={handlePrint}
@@ -450,6 +467,15 @@
     pdfModalAct = null;
   }}
 />
+
+{#if deleteTargetAct}
+  <ActDeleteModal
+    act={deleteTargetAct}
+    {deleting}
+    onCancel={cancelDelete}
+    onConfirm={confirmDelete}
+  />
+{/if}
 
 <style lang="scss">
   .acts-page {
