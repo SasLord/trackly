@@ -1071,6 +1071,135 @@ async fn card_dedup_usb_and_link_collapse_to_one_row() {
     assert_eq!(prop.ref_device_ids, vec![both, link_only, not_printer]);
 }
 
+/// Кладёт уже заведённое устройство в группу (членство, а не USB и не ссылка).
+async fn put_in_group(ctx: &AppCtx, device: i64, group: i64) {
+    exec(
+        ctx,
+        "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+         VALUES (?1, ?2, 1700000000)",
+        vec![int(device), int(group)],
+    )
+    .await;
+}
+
+fn origins(card: &GroupCardDto) -> Vec<(i64, &str, bool)> {
+    card.printers
+        .iter()
+        .map(|p| (p.device_id, p.origin.as_str(), p.has_explicit_link))
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn card_member_printer_is_listed_with_member_origin() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let parent = seed_group(&ctx, arm, "АРМ #7", 7, None, None).await;
+    let child = seed_group(&ctx, arm, "АРМ #8", 8, None, Some(parent)).await;
+    let stranger = seed_group(&ctx, arm, "АРМ #9", 9, None, None).await;
+    let direct = seed_printer(&ctx, "Принтер Б", "INV-M-1", None).await;
+    let nested = seed_printer(&ctx, "Принтер А", "INV-M-2", None).await;
+    let network = seed_printer(&ctx, "Принтер В", "INV-M-3", None).await;
+    exec(
+        &ctx,
+        "UPDATE printers SET ip_address = '192.0.2.10' WHERE device_id = ?1",
+        vec![int(network)],
+    )
+    .await;
+    let foreign = seed_printer(&ctx, "Принтер Г", "INV-M-4", None).await;
+    seed_printer(&ctx, "Принтер Д", "INV-M-5", None).await; // вне групп
+    let dead = seed_printer(&ctx, "Принтер Е", "INV-M-6", None).await;
+    let plain = seed_device(&ctx, "Монитор 1", "INV-M-7", "SN-M-7", None, Some(parent)).await;
+    put_in_group(&ctx, direct, parent).await;
+    put_in_group(&ctx, nested, child).await;
+    put_in_group(&ctx, network, parent).await;
+    put_in_group(&ctx, foreign, stranger).await;
+    put_in_group(&ctx, dead, parent).await;
+    exec(
+        &ctx,
+        "UPDATE devices SET deleted_at_utc = 1700000001 WHERE id = ?1",
+        vec![int(dead)],
+    )
+    .await;
+
+    // Корень видит своих и вложенных, по названию: А (вложенная), Б, В (с IP).
+    let card = ctx.groups.card(&admin(), parent).await.expect("card");
+    assert_eq!(
+        origins(&card),
+        vec![
+            (nested, "member", false),
+            (direct, "member", false),
+            (network, "member", false),
+        ]
+    );
+    assert!(card.printers.iter().all(|p| p.device_id != plain));
+    // Вложенная видит только своего; чужая группа — только своего.
+    let card = ctx.groups.card(&admin(), child).await.expect("card child");
+    assert_eq!(origins(&card), vec![(nested, "member", false)]);
+    let card = ctx
+        .groups
+        .card(&admin(), stranger)
+        .await
+        .expect("card other");
+    assert_eq!(origins(&card), vec![(foreign, "member", false)]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn card_member_usb_and_link_collapse_to_one_row_with_priority() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let link = arm_prop(&ctx, "Подключённые принтеры").await;
+    let g = arm_group(&ctx).await;
+    let host = seed_device(&ctx, "Ноутбук 1", "INV-Q-1", "SN-Q-1", None, Some(g)).await;
+    // Имена задают порядок строк: А, Б, В, Г.
+    let member_only = seed_printer(&ctx, "Принтер А", "INV-Q-2", None).await;
+    let member_usb = seed_printer(&ctx, "Принтер Б", "INV-Q-3", Some(host)).await;
+    let member_link = seed_printer(&ctx, "Принтер В", "INV-Q-4", None).await;
+    let member_all = seed_printer(&ctx, "Принтер Г", "INV-Q-5", Some(host)).await;
+    for d in [member_only, member_usb, member_link, member_all] {
+        put_in_group(&ctx, d, g).await;
+    }
+
+    let card = ctx
+        .groups
+        .set_values(
+            &admin(),
+            g,
+            1,
+            vec![refs(link.id, &[(member_link, false), (member_all, false)])],
+        )
+        .await
+        .expect("links");
+
+    // Одна строка на принтер; приоритет USB > ссылка > в составе.
+    assert_eq!(
+        origins(&card),
+        vec![
+            (member_only, "member", false),
+            (member_usb, "usb", false),
+            (member_link, "link", true),
+            (member_all, "usb", true),
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn card_member_rule_does_not_depend_on_group_type() {
+    let (ctx, _dir) = make_test_ctx().await;
+    // Встроенный тип workstation.
+    let arm_g = arm_group(&ctx).await;
+    let in_arm = seed_printer(&ctx, "Принтер А", "INV-T-1", None).await;
+    put_in_group(&ctx, in_arm, arm_g).await;
+    let card = ctx.groups.card(&admin(), arm_g).await.expect("card arm");
+    assert_eq!(origins(&card), vec![(in_arm, "member", false)]);
+
+    // Пользовательский тип без свойства device_refs: правило то же.
+    let (custom_type, _prop) = custom_type_with_property(&ctx, "Стойка", "Заметка", "text").await;
+    let rack = seed_group(&ctx, custom_type, "Стойка #1", 1, None, None).await;
+    let in_rack = seed_printer(&ctx, "Принтер Б", "INV-T-2", None).await;
+    put_in_group(&ctx, in_rack, rack).await;
+    let card = ctx.groups.card(&admin(), rack).await.expect("card rack");
+    assert_eq!(origins(&card), vec![(in_rack, "member", false)]);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn card_hidden_property_and_dead_refs_are_not_returned() {
     let (ctx, _dir) = make_test_ctx().await;

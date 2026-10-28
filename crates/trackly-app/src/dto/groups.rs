@@ -280,7 +280,8 @@ pub struct GroupPropertyValueDto {
     pub ref_device_ids: Vec<i64>,
 }
 
-/// Подключённый принтер: USB-производный (`usb`) или явная ссылка (`link`).
+/// Подключённый принтер: USB-производный (`usb`), явная ссылка (`link`) или состоит
+/// в группе (`member`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct GroupPrinterDto {
     #[specta(type = i32)]
@@ -288,9 +289,10 @@ pub struct GroupPrinterDto {
     pub name: String,
     pub inventory_number: Option<String>,
     pub serial_number: Option<String>,
-    /// `usb` | `link`. При совпадении источников побеждает `usb`.
+    /// `usb` | `link` | `member`. При совпадении источников побеждает `usb`, затем `link`,
+    /// затем `member`.
     pub origin: String,
-    /// Есть явная ссылка (её можно удалить, даже если принтер виден по USB).
+    /// Есть явная ссылка (её можно удалить, даже если принтер виден по USB или в составе).
     pub has_explicit_link: bool,
 }
 

@@ -1500,7 +1500,9 @@ fn build_card(
         });
     }
 
-    // Единый список принтеров: USB-производные + явные ссылки на принтеры, дедуп по device_id.
+    // Единый список принтеров: три источника, дедуп по device_id (PGR-01, PGR-02).
+    // Приоритет происхождения USB > ссылка > в составе задаёт ПОРЯДОК циклов: кто вставил
+    // в `seen` первым, тот и победил, поэтому цикл «member» обязан идти последним.
     let link_candidates: Vec<i64> = live_refs.iter().map(|r| r.device_id).collect();
     let link_printers = repo.live_printer_device_ids(conn, &link_candidates)?;
     let explicit: HashSet<i64> = live_refs
@@ -1531,6 +1533,18 @@ fn build_card(
                 serial_number: r.serial_number,
                 origin: "link".to_string(),
                 has_explicit_link: true,
+            });
+        }
+    }
+    for r in repo.member_printers_for_group(conn, id)? {
+        if seen.insert(r.device_id) {
+            printers.push(GroupPrinterDto {
+                device_id: r.device_id,
+                name: r.name,
+                inventory_number: r.inventory_number,
+                serial_number: r.serial_number,
+                origin: "member".to_string(),
+                has_explicit_link: explicit.contains(&r.device_id),
             });
         }
     }
