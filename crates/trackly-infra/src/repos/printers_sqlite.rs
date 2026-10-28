@@ -35,15 +35,22 @@ pub struct SqlitePrinterRepository;
 /// фильтруются: детальная карточка и восстановление не должны ломаться.
 /// `get_live` — отфильтрованный вариант `get` для путей, которые выходят
 /// в сеть (опрос SNMP по требованию, T-41.1-22-02).
+///
+/// Phase 41.13: `LEFT JOIN devices h` подтягивает имя и инвентарный номер
+/// USB-хоста. Фильтра по признаку удаления хоста НЕТ намеренно (D-37): строка
+/// `printers` переживает удаление устройства, подпись хоста остаётся.
 const SELECT_PRINTERS: &str = "
     SELECT p.id, p.device_id, p.ip_address, p.snmp_version, p.vendor,
            p.oid_profile_id, p.last_seen_utc, p.usb_host_device_id,
            d.name AS device_name, pfp.full_path AS device_place,
            d.place_id AS device_place_id,
            p.created_at_utc, p.updated_at_utc, p.version,
-           (p.community <> 'public') AS community_configured
+           (p.community <> 'public') AS community_configured,
+           h.name AS usb_host_name,
+           h.inventory_number AS usb_host_inventory_no
       FROM printers p
       LEFT JOIN devices d ON d.id = p.device_id
+      LEFT JOIN devices h ON h.id = p.usb_host_device_id
       LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
 ";
 
@@ -66,6 +73,8 @@ fn map_row_printer(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRow> {
         version: row.get(13)?,
         // SQLite returns the boolean predicate as 0/1; rusqlite maps it to bool.
         community_configured: row.get(14)?,
+        usb_host_name: row.get(15)?,
+        usb_host_inventory_no: row.get(16)?,
     })
 }
 

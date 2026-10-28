@@ -38,6 +38,11 @@ pub struct PrinterDto {
     pub device_place_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub usb_host_device_id: Option<i64>,
+    /// Название устройства-USB-хоста (D-08: показывать имя, а не id).
+    /// None, если хоста нет; для мягко удалённого хоста имя остаётся (D-37).
+    pub usb_host_name: Option<String>,
+    /// Инвентарный номер USB-хоста; None, если хоста нет или номера нет.
+    pub usb_host_inventory_no: Option<String>,
     /// Latest reading fields (denormalized for card display).
     /// Parsed from toner_levels JSON; None if no reading yet.
     pub toner_levels: Option<serde_json::Value>,
@@ -73,6 +78,8 @@ impl From<PrinterRow> for PrinterDto {
             device_place: r.device_place,
             device_place_id: r.device_place_id,
             usb_host_device_id: r.usb_host_device_id,
+            usb_host_name: r.usb_host_name,
+            usb_host_inventory_no: r.usb_host_inventory_no,
             // Reading fields populated by service (get_last_reading).
             toner_levels: None,
             page_count: None,

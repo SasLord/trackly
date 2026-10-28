@@ -23,6 +23,10 @@ export type PrinterDto = {
    * operation (Plan 16, OperationModal.svelte). */
   devicePlaceId: number | null;
   usbHostDeviceId: number | null;
+  /** Название USB-хоста (D-08); null, если хоста нет. Для мягко удалённого хоста имя остаётся. */
+  usbHostName: string | null;
+  /** Инвентарный номер USB-хоста; null, если хоста или номера нет. */
+  usbHostInventoryNo: string | null;
   /** Parsed toner levels: Object { label: number|null } or null if no reading. */
   tonerLevels: Record<string, number | null> | null;
   pageCount: number | null;

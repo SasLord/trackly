@@ -25,6 +25,12 @@ pub struct PrinterRow {
     pub last_seen_utc: Option<i64>,
     /// FK → devices(id) for the USB host workstation (PRN-04).
     pub usb_host_device_id: Option<i64>,
+    /// Joined from `devices` по `usb_host_device_id` (имя USB-хоста). Без
+    /// фильтра удаления: строка `printers` переживает удаление устройства, D-37.
+    pub usb_host_name: Option<String>,
+    /// Joined from `devices` по `usb_host_device_id` (инвентарный номер
+    /// USB-хоста). Без фильтра удаления, D-37.
+    pub usb_host_inventory_no: Option<String>,
     /// Joined from devices.name.
     pub device_name: Option<String>,
     /// Resolved current place path, joined from `place_full_paths` via
