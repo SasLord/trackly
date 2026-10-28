@@ -1,14 +1,18 @@
 <script lang="ts">
-  // Phase 41 Plan 22 (GRP-08, D-12): ЕДИНЫЙ список «Подключённых принтеров».
+  // Phase 41 Plan 22 (GRP-08, D-12), Phase 41.13 (PGR-01, PGR-02): ЕДИНЫЙ список
+  // «Подключённых принтеров».
   //
-  // Строки двух происхождений: выведенные из `printers.usb_host_device_id`
-  // (Badge «USB», вручную не правятся — меню ⋯ нет) и явные ссылки
-  // `device_refs` (Badge «Ссылка», меню «Убрать ссылку»). Принтер, который и
-  // USB-связан, и добавлен ссылкой, показывается ОДНОЙ строкой с Badge «USB»,
-  // но с меню «Убрать ссылку» — иначе явная ссылка стала бы невидимой и
-  // неудаляемой. Дедупликацию сервер уже сделал в карточке; здесь она
-  // повторяется лишь потому, что список ссылок — ЛОКАЛЬНОЕ состояние формы
-  // (добавленное до сохранения сервер ещё не видел).
+  // Строки трёх происхождений: выведенные из `printers.usb_host_device_id`
+  // (Badge «USB», вручную не правятся), явные ссылки `device_refs`
+  // (Badge «Ссылка», меню «Убрать ссылку») и принтеры, входящие в состав
+  // (Badge «В составе», меню нет: состав правится в разделе «Состав»).
+  // Принтер с несколькими происхождениями показывается ОДНОЙ строкой с ОДНОЙ
+  // пометкой по приоритету USB > ссылка > в составе. Принтер, который и
+  // USB-связан, и добавлен ссылкой, получает Badge «USB», но сохраняет меню
+  // «Убрать ссылку» — иначе явная ссылка стала бы невидимой и неудаляемой.
+  // Дедупликацию сервер уже сделал в карточке; здесь она повторяется лишь
+  // потому, что список ссылок — ЛОКАЛЬНОЕ состояние формы (добавленное до
+  // сохранения сервер ещё не видел).
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
@@ -32,7 +36,7 @@
 
   interface Props {
     id?: string;
-    /** Принтеры из card.printers как пришли с сервера (USB и ссылки). */
+    /** Принтеры из card.printers как пришли с сервера (USB, ссылки, члены). */
     printers: GroupPrinterDto[];
     /** Id явных ссылок из локального состояния формы — источник истины до сохранения. */
     linkedIds: number[];
@@ -58,12 +62,15 @@
     onRemoveLink,
   }: Props = $props();
 
+  type RowOrigin = 'usb' | 'link' | 'member';
+
   interface Row {
     device_id: number;
     name: string;
     inventory_number: string | null;
     serial_number: string | null;
-    usb: boolean;
+    origin: RowOrigin;
+    /** Есть явная ссылка — только она включает меню «Убрать ссылку». */
     link: boolean;
   }
 
@@ -72,22 +79,26 @@
     const out: Row[] = [];
     const seen = new Set<number>();
     for (const p of printers) {
-      if (p.origin !== 'usb' || seen.has(p.device_id)) continue;
+      if (p.origin === 'link' || seen.has(p.device_id)) continue;
       seen.add(p.device_id);
+      const hasLink = linked.has(p.device_id);
+      // Приоритет USB > ссылка > в составе: ссылка, добавленная в форме до
+      // сохранения, переключает «В составе» на «Ссылка», но не перекрывает USB.
+      const origin: RowOrigin = p.origin === 'usb' ? 'usb' : hasLink ? 'link' : 'member';
       out.push({
         device_id: p.device_id,
         name: p.name,
         inventory_number: p.inventory_number,
         serial_number: p.serial_number,
-        usb: true,
-        link: linked.has(p.device_id),
+        origin,
+        link: hasLink,
       });
     }
     for (const linkId of linkedIds) {
       if (seen.has(linkId)) continue;
       const info: LinkedPrinterInfo | undefined =
         linkedInfo.get(linkId) ??
-        printers.find((p) => p.device_id === linkId && p.origin !== 'usb');
+        printers.find((p) => p.device_id === linkId && p.origin === 'link');
       // Ссылка на не-принтер остаётся в значении свойства, но в список не
       // попадает (так же отдаёт сервер): без названия показывать нечего.
       if (!info) continue;
@@ -97,7 +108,7 @@
         name: info.name,
         inventory_number: info.inventory_number,
         serial_number: info.serial_number,
-        usb: false,
+        origin: 'link',
         link: true,
       });
     }
@@ -167,6 +178,14 @@
   function noMembers(): DeviceDto[] {
     return [];
   }
+
+  // Пустое состояние описывает реальное поведение; «ссылкой ниже» — только
+  // когда поле добавления действительно есть на экране.
+  const emptyBody = $derived(
+    canEdit && canLink
+      ? 'Принтер появится здесь, если он входит в состав, подключён по USB к устройству состава или добавлен ссылкой. Сетевой принтер добавьте ссылкой ниже.'
+      : 'Принтер появится здесь, если он входит в состав или подключён по USB к устройству состава.',
+  );
 </script>
 
 <div class="printers-list">
@@ -175,7 +194,7 @@
     framed={false}
     empty={rows.length === 0}
     emptyTitle="Принтеров нет"
-    emptyBody="USB-принтеры появятся здесь сами, как только будут привязаны к устройству состава. Сетевой принтер добавьте ссылкой ниже."
+    {emptyBody}
   >
     {#snippet head()}
       <th>Название</th>
@@ -195,10 +214,12 @@
           {/if}
         </td>
         <td class="cell">
-          {#if r.usb}
+          {#if r.origin === 'usb'}
             <Badge variant="accent">USB</Badge>
-          {:else}
+          {:else if r.origin === 'link'}
             <Badge>Ссылка</Badge>
+          {:else}
+            <Badge>В составе</Badge>
           {/if}
         </td>
         <td class="col-menu">

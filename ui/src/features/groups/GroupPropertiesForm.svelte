@@ -34,7 +34,6 @@
   const liveProps = $derived([...card.properties].sort((a, b) => a.sort_order - b.sort_order));
   const linkPropertyId = $derived(card.link_property_id);
   const hasLinkProperty = $derived(linkPropertyId !== null);
-  const usbPrinters = $derived(card.printers.filter((p) => p.origin === 'usb'));
 
   // --- Локальное состояние формы ---
   let texts = $state<Record<number, string>>({});
@@ -227,7 +226,7 @@
     liveProps.filter((p) => p.is_required && isScalar(p)).map((p) => `gpf-${p.property_id}`),
   );
 
-  const isEmptyForm = $derived(liveProps.length === 0 && usbPrinters.length === 0);
+  const isEmptyForm = $derived(liveProps.length === 0 && card.printers.length === 0);
 
   function labelOf(p: GroupPropertyValueDto): string {
     return p.is_required ? `${p.name} *` : p.name;
@@ -273,7 +272,7 @@
               id={fid}
               printers={p.property_id === linkPropertyId
                 ? card.printers
-                : card.printers.filter((x) => x.origin !== 'usb')}
+                : card.printers.filter((x) => x.origin === 'link')}
               linkedIds={refLists[p.property_id] ?? []}
               {linkedInfo}
               canEdit={canEdit && !saving}
@@ -316,8 +315,8 @@
       {/if}
     {/each}
 
-    <!-- У типа нет свойства-ссылки, но USB-принтеры выведены из данных. -->
-    {#if !hasLinkProperty && usbPrinters.length > 0}
+    <!-- У типа нет свойства-ссылки, но принтеры (USB, в составе) выведены из данных. -->
+    {#if !hasLinkProperty && card.printers.length > 0}
       <div class="readonly-printers">
         <span class="readonly-label">Подключённые принтеры</span>
         <GroupPrintersList
