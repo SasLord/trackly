@@ -117,6 +117,19 @@
     statusLabel,
   } from '$lib/stores/deviceStatuses.svelte';
   import { groups } from '$lib/api/groups';
+  import { printers } from '../printers/api';
+  import {
+    HOST_FIELD_HINT,
+    HOST_LIST_ERROR,
+    buildHostList,
+    effectiveQuery,
+    hostLabel,
+    hostSub,
+    isUsbHostFieldVisible,
+    sectionFor,
+    walkGroupSubtree,
+    type HostItem,
+  } from './usbHostPicker';
   import type {
     DeviceDto,
     DeviceNew,
@@ -260,6 +273,29 @@
   // {#key openInstanceCounter} in DeviceFormModal on every open.
   let ipAddress = $state('');
   let community = $state('public');
+  // Фаза 41.13 (PGR-03, D-05/D-07/D-10): USB-хост принтера. Поле доступно и при
+  // создании, и при редактировании. Здесь только чтение и выбор; отправка на
+  // сервер — отдельным шагом.
+  //  - usbHost: выбранный хост (null — не указан); значение остаётся в
+  //    состоянии, даже когда поле скрыто (смена типа, ввод IP), — UI-SPEC 4.6;
+  //  - hostQuery: текст в поле (controlled-input для Dropdown);
+  //  - usbHostTouched: менял ли пользователь значение (false после загрузки);
+  //  - printerLoaded/loadedPrinterIp: ответ printers.getByDeviceId (правка);
+  //  - sectionOne: устройства поддерева состава принтера (только правка).
+  let usbHost = $state<{ id: number; name: string; inventoryNo: string | null } | null>(null);
+  let hostQuery = $state('');
+  let usbHostTouched = $state(false);
+  let printerLoaded = $state(target === null || target.type_id !== PRINTER_TYPE_ID);
+  let loadedPrinterIp = $state<string | null>(null);
+  let sectionOne = $state<HostItem[]>([]);
+  let sectionOneTitle = $state('');
+  let hostResults = $state<HostItem[]>([]);
+  let hostSearching = $state(false);
+  let hostListError = $state<string | null>(null);
+  // Поколение запроса поиска: поздний ответ устаревшего запроса не должен
+  // затирать свежий. Намеренно не $state — это не отображаемое значение.
+  let hostSeq = 0;
+  const HOST_SEARCH_LIMIT = 20;
   let quantity = $state(1);
   let loading = $state(false);
   let submitting = $state(false);
@@ -353,6 +389,97 @@
   // действия пользователя (смена места или клик по чекбоксу); при создании
   // не требуется. Пишется только в обработчиках событий, не из $effect.
   let storageIntent = $state(false);
+
+  // Фаза 41.13: видимость поля хоста — единая функция модуля (UI-SPEC 4.1), а не
+  // условие, написанное в разметке вручную.
+  const showUsbHost = $derived(
+    isUsbHostFieldVisible({
+      typeIsPrinter: typeId === PRINTER_TYPE_ID,
+      isEdit,
+      readonly,
+      ipAddress,
+      printerLoaded,
+      loadedPrinterIp,
+    }),
+  );
+  const usbHostLabel = $derived(usbHost ? hostLabel(usbHost.name, usbHost.inventoryNo) : '');
+  const hostItems = $derived(
+    buildHostList({
+      query: hostQuery,
+      currentLabel: usbHostLabel,
+      sectionOne,
+      searchResults: hostResults,
+      selfId: target?.id ?? null,
+    }),
+  );
+  const hasSectionOne = $derived(
+    hostItems.some((h) => h.kind === 'device' && h.section === 'group'),
+  );
+
+  function noHostMembers(): HostItem[] {
+    return [];
+  }
+
+  /** Серверный поиск секции «Все устройства»: те же devices.list и FTS5, что в
+   *  пикере акта (название, инв. и серийный №), без фильтров по типу/статусу/
+   *  месту и без флагов якорей. Сбой — пустой список и текст ошибки под полем;
+   *  форму сохранять можно. */
+  async function searchHosts(raw: string): Promise<void> {
+    const seq = ++hostSeq;
+    const q = effectiveQuery(raw, usbHostLabel);
+    hostSearching = true;
+    try {
+      const found = await devices.list(
+        {
+          type_id: null,
+          place_id: null,
+          status_id: null,
+          state: null,
+          name_prefix: q === '' ? null : q,
+          include_deleted: false,
+          group_by_condition: false,
+        },
+        { offset: 0, limit: HOST_SEARCH_LIMIT },
+      );
+      if (seq !== hostSeq) return;
+      hostResults = found.items.slice(0, HOST_SEARCH_LIMIT).map(
+        (d): HostItem => ({
+          kind: 'device',
+          id: d.id,
+          name: d.name,
+          inventoryNo: d.inventory_no,
+          serialNo: d.serial_no,
+          section: 'all',
+        }),
+      );
+      hostListError = null;
+    } catch {
+      if (seq !== hostSeq) return;
+      hostResults = [];
+      hostListError = HOST_LIST_ERROR;
+    } finally {
+      if (seq === hostSeq) hostSearching = false;
+    }
+  }
+
+  function pickHost(item: HostItem): void {
+    if (item.kind === 'clear') {
+      usbHost = null;
+      hostQuery = '';
+    } else {
+      usbHost = { id: item.id, name: item.name, inventoryNo: item.inventoryNo };
+      hostQuery = hostLabel(item.name, item.inventoryNo);
+    }
+    usbHostTouched = true;
+  }
+
+  /** Уход фокуса за пределы поля без выбора возвращает строку текущего значения. */
+  function handleHostFocusOut(e: FocusEvent): void {
+    const wrap = e.currentTarget as HTMLElement;
+    const next = e.relatedTarget as Node | null;
+    if (next && wrap.contains(next)) return;
+    hostQuery = usbHostLabel;
+  }
 
   // Phase 40.2 Plan 13 (NUM-06/08): which of the 2 device/printer create
   // contexts NumberTemplateField/the D-01 save chain uses — reactive to
@@ -572,11 +699,49 @@
               }
             : null;
           membershipLoaded = true;
+          // Фаза 41.13 (D-06): первая секция выбора хоста — поддерево состава
+          // принтера, обход через groups.composition (рекурсивно по
+          // child_groups). Ошибка обхода — секция пуста, без сообщения.
+          if (row) {
+            sectionOneTitle = `В составе «${row.group_name}»`;
+            void walkGroupSubtree((id) => groups.composition(id), row.group_id, {
+              excludeDeviceId: target.id,
+            })
+              .then((items) => {
+                if (!cancelled) sectionOne = items;
+              })
+              .catch(() => {
+                if (!cancelled) sectionOne = [];
+              });
+          }
         })
         .catch(() => {
           if (cancelled) return;
           membership = null;
           membershipLoaded = true;
+        });
+    }
+    // Фаза 41.13 (D-07): текущий хост принтера для формы правки и просмотра.
+    // Имя и инв. № приходят в DTO готовыми. Ошибка — хост пуст, молча.
+    if (target !== null && target.type_id === PRINTER_TYPE_ID) {
+      printers
+        .getByDeviceId(target.id)
+        .then((p) => {
+          if (cancelled) return;
+          loadedPrinterIp = p.ipAddress;
+          if (p.usbHostDeviceId !== null) {
+            usbHost = {
+              id: p.usbHostDeviceId,
+              name: p.usbHostName ?? '',
+              inventoryNo: p.usbHostInventoryNo,
+            };
+            hostQuery = hostLabel(usbHost.name, usbHost.inventoryNo);
+          }
+          printerLoaded = true;
+        })
+        .catch(() => {
+          if (cancelled) return;
+          printerLoaded = true;
         });
     }
     return () => {
@@ -1157,32 +1322,72 @@
        otherwise, not merely hidden. Mirrors the SNMP section of the
        now-removed two-step printer-create modal (Phase 40.3 Plan 05,
        NUM-06/NUM-08, D-02). -->
-  {#if typeId === PRINTER_TYPE_ID && !isEdit}
+  {#if typeId === PRINTER_TYPE_ID && (!isEdit || showUsbHost)}
     <div class="snmp-section">
-      <p class="section-hint">
-        SNMP / Сеть — заполните, если принтер подключён по сети (IP). Оставьте пустым для
-        USB/локального принтера.
-      </p>
-      <div class="field">
-        <label class="label" for="f-printer-ip">IP-адрес</label>
-        <Input
-          id="f-printer-ip"
-          value={ipAddress}
-          placeholder="192.168.1.100 (необязательно)"
-          disabled={readonly}
-          oninput={(v) => (ipAddress = v)}
-        />
-      </div>
-      {#if ipAddress.trim()}
+      {#if !isEdit}
+        <p class="section-hint">
+          SNMP / Сеть — заполните, если принтер подключён по сети (IP). Оставьте пустым для
+          USB/локального принтера.
+        </p>
         <div class="field">
-          <label class="label" for="f-printer-community">SNMP community</label>
+          <label class="label" for="f-printer-ip">IP-адрес</label>
           <Input
-            id="f-printer-community"
-            value={community}
-            placeholder="public"
+            id="f-printer-ip"
+            value={ipAddress}
+            placeholder="192.168.1.100 (необязательно)"
             disabled={readonly}
-            oninput={(v) => (community = v)}
+            oninput={(v) => (ipAddress = v)}
           />
+        </div>
+        {#if ipAddress.trim()}
+          <div class="field">
+            <label class="label" for="f-printer-community">SNMP community</label>
+            <Input
+              id="f-printer-community"
+              value={community}
+              placeholder="public"
+              disabled={readonly}
+              oninput={(v) => (community = v)}
+            />
+          </div>
+        {/if}
+      {/if}
+      <!-- Фаза 41.13 (PGR-03): USB-хост. Собственный Dropdown (combobox + flat +
+           секции через getGroupSection), не нативный select и не обёртка Select. -->
+      {#if showUsbHost}
+        <div class="field">
+          <label class="label" for="f-printer-usb-host">Устройство-хост (USB)</label>
+          <div onfocusout={handleHostFocusOut} data-usb-host-touched={usbHostTouched}>
+            <Dropdown
+              variant="combobox"
+              flat={true}
+              id="f-printer-usb-host"
+              placeholder="Не указан"
+              value={hostQuery}
+              invalid={hostListError !== null}
+              disabled={readonly}
+              loading={hostSearching}
+              groups={hostItems}
+              getGroupId={(h: HostItem) => (h.kind === 'device' ? h.id : 'clear')}
+              getGroupName={(h: HostItem) => (h.kind === 'device' ? h.name : 'Не указан')}
+              getGroupSub={hostSub}
+              getGroupSection={(h: HostItem) => sectionFor(h, { hasSectionOne, sectionOneTitle })}
+              getGroupCount={() => 0}
+              isGroupExpandable={() => false}
+              isGroupSelected={(h: HostItem) => h.kind === 'device' && h.id === usbHost?.id}
+              onExpandGroup={noHostMembers}
+              getMemberId={(h: HostItem) => (h.kind === 'device' ? h.id : 'clear')}
+              getMemberName={(h: HostItem) => (h.kind === 'device' ? h.name : 'Не указан')}
+              onSearch={(q) => void searchHosts(q)}
+              onQueryInput={(v) => (hostQuery = v)}
+              onPickGroup={pickHost}
+              onPickMember={() => {}}
+            />
+          </div>
+          {#if hostListError !== null}
+            <p class="field-error" role="alert">{hostListError}</p>
+          {/if}
+          <p class="usb-host-hint">{HOST_FIELD_HINT}</p>
         </div>
       {/if}
     </div>
@@ -1288,6 +1493,13 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
     margin: 0;
+  }
+
+  // Фаза 41.13: подсказка под полем USB-хоста.
+  .usb-host-hint {
+    margin: var(--tr-space-2xs) 0 0;
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
   }
 
   // Plan 41-24 (D-19): подпись под заблокированным полем «Место».
