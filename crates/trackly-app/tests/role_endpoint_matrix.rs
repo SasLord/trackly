@@ -47,6 +47,10 @@
 //! request_printer_options gating) were added by later quick-tasks/plans
 //! without updating this header — see their inline `// Case N` comments below.
 //!
+//! Phase 41.13 Plan 04 adds Case 87 (запись USB-хоста принтера): Employee -> 403
+//! на devices_update / devices_create_single_with_number_check с хостом;
+//! Manager -> 400 с JSON-телом VALIDATION / usb_host_device_id (проверка тела).
+//!
 //! Plan 12-02 (T-12-01) adds Cases 31-32: closes a test-coverage gap on two
 //! transition endpoints that were already RBAC-gated in the service layer
 //! but never exercised by this matrix.
@@ -3198,6 +3202,170 @@ async fn role_endpoint_matrix_test() {
 
             // Self-check: device1 (the occupant) is unaffected by the rejected rename.
             assert_eq!(device1.inventory_no.as_deref(), Some("RBAC75-000001"));
+        }
+
+        // =====================================================================
+        // Case 87 (Phase 41.13 Plan 04, PGR-03, T-41.13-14/16): запись USB-хоста
+        // принтера доступна ровно тем, у кого MutateDevices. Employee -> 403 и на
+        // devices_update, и на devices_create_single_with_number_check с хостом;
+        // Manager получает JSON-ошибку валидации (code VALIDATION,
+        // details.field usb_host_device_id), а НЕ index.html: проверка ТЕЛА, не
+        // только статуса, потому что SPA-fallback прячет забытые маршруты.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+            let host = build_devices_create(
+                &ctx,
+                &manager_id,
+                DeviceNew {
+                    type_id: 1,
+                    name: "RBAC87 Рабочая станция А".to_string(),
+                    inventory_no: None,
+                    serial_no: None,
+                    model: None,
+                    specs: None,
+                    kit: None,
+                    state: None,
+                    place_id: None,
+                    status_id: 1,
+                },
+            )
+            .await
+            .expect("Case 87: create host")
+            .expect_created("Case 87: create host");
+            let printer = build_devices_create(
+                &ctx,
+                &manager_id,
+                DeviceNew {
+                    type_id: 2,
+                    name: "RBAC87 Принтер А".to_string(),
+                    inventory_no: None,
+                    serial_no: None,
+                    model: None,
+                    specs: None,
+                    kit: None,
+                    state: None,
+                    place_id: None,
+                    status_id: 1,
+                },
+            )
+            .await
+            .expect("Case 87: create printer")
+            .expect_created("Case 87: create printer");
+
+            // (1) Employee -> devices_update с хостом -> 403.
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": printer.id,
+                    "version": printer.version,
+                    "patch": { "usb_host_device_id": host.id }
+                }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 87: Employee → devices_update (usb_host_device_id) → expected 403, got {status}"
+            );
+
+            // (2) Employee -> создание с блоком принтера, где задан хост -> 403.
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_create_single_with_number_check",
+                json!({
+                    "device": {
+                        "type_id": 2,
+                        "name": "RBAC87 Принтер Б",
+                        "inventory_no": null,
+                        "serial_no": null,
+                        "model": null,
+                        "specs": null,
+                        "kit": null,
+                        "state": null,
+                        "place_id": null,
+                        "status_id": 1
+                    },
+                    "numberInput": {
+                        "value": "",
+                        "templateId": null,
+                        "confirmMismatch": false,
+                        "confirmScriptMix": false
+                    },
+                    "context": "printer_create",
+                    "printer": {
+                        "ipAddress": null,
+                        "community": null,
+                        "usbHostDeviceId": host.id
+                    }
+                }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 87: Employee → devices_create_single_with_number_check (printer.usbHostDeviceId) → expected 403, got {status}"
+            );
+
+            // (3) Manager -> несуществующий хост -> JSON-ошибка валидации.
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": printer.id,
+                    "version": printer.version,
+                    "patch": { "usb_host_device_id": 999999 }
+                }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 87: Manager → devices_update (usb_host_device_id) → expected not 401/403, got {status}"
+            );
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "Case 87: Manager → несуществующий хост → expected 400, got {status} ({body})"
+            );
+            assert!(
+                body.is_object(),
+                "Case 87: тело ответа обязано быть JSON-объектом, а не страницей SPA: {body}"
+            );
+            assert_eq!(body["code"], "VALIDATION", "Case 87: код ошибки: {body}");
+            assert_eq!(
+                body["details"]["field"], "usb_host_device_id",
+                "Case 87: поле ошибки: {body}"
+            );
+
+            // Контроль не-вакуумности: тот же маршрут с ЖИВЫМ хостом проходит (200,
+            // без кода ошибки), значит 400 выше дала именно проверка хоста.
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": printer.id,
+                    "version": printer.version,
+                    "patch": { "usb_host_device_id": host.id }
+                }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 87: Manager → devices_update с живым хостом → expected 200, got {status} ({body})"
+            );
+            assert!(
+                body.is_object() && body.get("code").is_none(),
+                "Case 87: успешный ответ — JSON-объект без кода ошибки: {body}"
+            );
         }
 
         ctx.shutdown.cancel();
