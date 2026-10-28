@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-28T09:33:11.852Z"
+last_updated: "2026-10-28T10:24:11.502Z"
 last_activity: 2026-10-28 -- Phase 41.13 planning complete
 progress:
   total_phases: 27
   completed_phases: 15
   total_plans: 243
-  completed_plans: 236
+  completed_plans: 237
   percent: 56
 ---
 
@@ -658,6 +658,7 @@ Last activity: 2026-10-28 -- Phase 41.13 planning complete
 | Phase 41.2 P13 | 4h | 2 tasks | 5 files |
 | Phase 41.2 P15 | 75min | 3 tasks | 6 files |
 | Phase 41.13 P01 | 180min | 2 tasks | 5 files |
+| Phase 41.13 P02 | ~1h (холодные cargo-сборки) | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1410,6 +1411,7 @@ Recent decisions affecting current work:
 - [Phase 41.2-13]: Act rollback order is groups -> snapshots -> membership -> effect cleanup; notices never turn delete_soft into an Err (D-09)
 - [Phase 41.2]: 41.2-15: act-rollback notices are not folded by group_id (would drop device names); exact duplicates are collapsed before the cap of five
 - [Phase 41.13]: 41.13-01: приоритет происхождения принтера в карточке группы USB > ссылка > в составе; задаётся порядком циклов слияния (member последним)
+- [Phase 41.13]: 41.13-02: JOIN USB-хоста в SELECT_PRINTERS без фильтра удаления (D-37) - подпись мягко удалённого хоста остаётся; bindings-phase6.ts сверен с Rust-DTO вручную, гейта нет
 
 ### Pending Todos
 
@@ -1615,8 +1617,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-28T09:33:11.509Z
-Stopped at: Completed 41.13-01-PLAN.md
+Last session: 2026-10-28T10:24:11.491Z
+Stopped at: Completed 41.13-02-PLAN.md
 Resume file: None
 
 None

@@ -192,7 +192,7 @@
 | 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
 | 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 7/7 | Complete    | 2026-10-21 |
 | 41.2. Группы × Акты и Места | v1.4 | 16/16 | Awaiting human UAT (41.2-HUMAN-UAT.md); verification gaps_found — IN-01 фазы 41 не закрыт, см. 41.2-VERIFICATION.md |  |
-| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 1/8 | In Progress|  |
+| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 2/8 | In Progress|  |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
 | 41.5. Переписка в заявке | v1.4 | 0/TBD | Not started | - |
@@ -1091,7 +1091,7 @@ Plans:
 устройстве.
 
 Plans:
-**Plans:** 1/8 plans executed
+**Plans:** 2/8 plans executed
 
 **Wave 1**
 
@@ -1099,7 +1099,7 @@ Plans:
 
 **Wave 2** *(blocked on 41.13-01)*
 
-- [ ] 41.13-02-PLAN.md — имя и инв. № USB-хоста в `PrinterRow` / `PrinterDto` / `bindings-phase6.ts` (PGR-04, данные)
+- [x] 41.13-02-PLAN.md — имя и инв. № USB-хоста в `PrinterRow` / `PrinterDto` / `bindings-phase6.ts` (PGR-04, данные)
 - [ ] 41.13-05-PLAN.md — пометки происхождения в `GroupPrintersList`, правка литералов `'usb'` в `GroupPropertiesForm`, гейт `check-group-printer-origin`
 
 **Wave 3** *(blocked on 41.13-02)*
