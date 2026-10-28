@@ -435,8 +435,14 @@
         {:else if printer.usbHostDeviceId}
           <div class="meta-row">
             <span class="meta-label">Подключение</span>
-            <span class="meta-value">Подключён по USB к: устройство #{printer.usbHostDeviceId}</span
-            >
+            <span class="meta-value">
+              {#if printer.usbHostName}
+                Подключён по USB к: {printer.usbHostName}{#if printer.usbHostInventoryNo}
+                  · инв. <span class="tr-mono">{printer.usbHostInventoryNo}</span>{/if}
+              {:else}
+                Подключён по USB
+              {/if}
+            </span>
           </div>
         {/if}
         {#if printer.vendor}
