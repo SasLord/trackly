@@ -121,6 +121,7 @@
   import {
     HOST_FIELD_HINT,
     HOST_LIST_ERROR,
+    HOST_REJECTED_ERROR,
     buildHostList,
     effectiveQuery,
     hostLabel,
@@ -471,6 +472,10 @@
       hostQuery = hostLabel(item.name, item.inventoryNo);
     }
     usbHostTouched = true;
+    if (fieldErrors['usb_host_device_id']) {
+      const { usb_host_device_id: _removed, ...rest } = fieldErrors;
+      fieldErrors = rest;
+    }
   }
 
   /** Уход фокуса за пределы поля без выбора возвращает строку текущего значения. */
@@ -506,7 +511,10 @@
     isEdit ||
       (inventoryNo.trim() !== '' && inventoryNoEditedByHand) ||
       serialNo.trim() !== '' ||
-      (typeId === PRINTER_TYPE_ID && ipAddress.trim() !== ''),
+      (typeId === PRINTER_TYPE_ID && ipAddress.trim() !== '') ||
+      // Фаза 41.13 (PGR-03): выбранный USB-хост нельзя размножить на N принтеров,
+      // а bulkCreate блок принтера нести не умеет — хост молча потерялся бы.
+      (typeId === PRINTER_TYPE_ID && usbHost !== null),
   );
 
   // Phase 40.3 Plan 07 (UAT-defect fix): edit mode's «Вставка» + ↑/↓ stay
@@ -907,10 +915,18 @@
     // Phase 40.3 Plan 05 (NUM-06/NUM-08/PLC-06): only Принтер-create with a
     // non-empty IP builds a printer block — «Устройство» and «Принтер без
     // IP» keep sending `null`, identical to pre-Plan-05 server defaults.
-    const printerBlock: PrinterCreateBlockDto | null =
-      typeId === PRINTER_TYPE_ID && ipAddress.trim() !== ''
-        ? { ipAddress: ipAddress.trim(), community: community.trim() || null }
-        : null;
+    // Фаза 41.13 (PGR-03, D-05/D-10): принтер без IP, но с выбранным USB-хостом
+    // несёт блок {ipAddress: null, community: null, usbHostDeviceId}. Хост уходит
+    // только при пустом IP; при непустом IP блок прежний, без хоста. Скрытие поля
+    // (ввод IP, смена типа) значение usbHost не сбрасывает — оно просто не уходит.
+    let printerBlock: PrinterCreateBlockDto | null = null;
+    if (typeId === PRINTER_TYPE_ID) {
+      if (ipAddress.trim() !== '') {
+        printerBlock = { ipAddress: ipAddress.trim(), community: community.trim() || null };
+      } else if (usbHost !== null) {
+        printerBlock = { ipAddress: null, community: null, usbHostDeviceId: usbHost.id };
+      }
+    }
 
     let outcome: DeviceSaveOutcome;
     try {
@@ -960,6 +976,12 @@
       place_id: placeId,
       status_id: parseInt(statusId, 10) || null,
     };
+    // Фаза 41.13 (PGR-03, D-07): три состояния хоста при правке. Ключа нет —
+    // хост не трогаем (пользователь поля не касался или оно скрыто); число —
+    // поставить/заменить; null — сбросить (выбран пункт «Не указан»).
+    if (usbHostTouched && typeId === PRINTER_TYPE_ID && showUsbHost) {
+      patch.usb_host_device_id = usbHost?.id ?? null;
+    }
 
     let outcome: DeviceSaveOutcome;
     try {
@@ -1048,7 +1070,11 @@
     } catch (e: unknown) {
       if (e && typeof e === 'object') {
         const err = e as { code?: string; message?: string; details?: { field?: string } };
-        if (err.code === 'VALIDATION' && err.details?.field) {
+        if (err.code === 'VALIDATION' && err.details?.field === 'usb_host_device_id') {
+          // Серверный текст не показываем: клиент подставляет фиксированный копирайт (T-41.13-23).
+          fieldErrors = { ...fieldErrors, usb_host_device_id: HOST_REJECTED_ERROR };
+          pushToast('error', HOST_REJECTED_ERROR);
+        } else if (err.code === 'VALIDATION' && err.details?.field) {
           fieldErrors = { ...fieldErrors, [err.details.field]: err.message ?? 'Ошибка' };
           pushToast('error', err.message ?? 'Ошибка валидации');
         } else if (err.code === 'OPTIMISTIC_LOCK_MISMATCH') {
@@ -1357,14 +1383,14 @@
       {#if showUsbHost}
         <div class="field">
           <label class="label" for="f-printer-usb-host">Устройство-хост (USB)</label>
-          <div onfocusout={handleHostFocusOut} data-usb-host-touched={usbHostTouched}>
+          <div onfocusout={handleHostFocusOut}>
             <Dropdown
               variant="combobox"
               flat={true}
               id="f-printer-usb-host"
               placeholder="Не указан"
               value={hostQuery}
-              invalid={hostListError !== null}
+              invalid={hostListError !== null || !!fieldErrors['usb_host_device_id']}
               disabled={readonly}
               loading={hostSearching}
               groups={hostItems}
@@ -1386,6 +1412,9 @@
           </div>
           {#if hostListError !== null}
             <p class="field-error" role="alert">{hostListError}</p>
+          {/if}
+          {#if fieldErrors['usb_host_device_id']}
+            <p class="field-error" role="alert">{fieldErrors['usb_host_device_id']}</p>
           {/if}
           <p class="usb-host-hint">{HOST_FIELD_HINT}</p>
         </div>
