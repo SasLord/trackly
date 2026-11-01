@@ -573,6 +573,8 @@ async fn reject_edit_after_manual_device_relocation() {
                     place_id: Some(Some(loc_c)),
                     status_id: None,
                     usb_host_device_id: None,
+                    printer_ip_address: None,
+                    printer_community: None,
                 },
             )
             .await

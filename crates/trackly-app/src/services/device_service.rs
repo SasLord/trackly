@@ -27,7 +27,7 @@ fn csv_safe(value: &str) -> String {
 }
 use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateContext, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
-use trackly_core::domain::printers::PrinterNew;
+use trackly_core::domain::printers::{normalize_printer_ip, PrinterNew};
 use trackly_core::ports::devices::DeviceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -585,12 +585,11 @@ impl DeviceService {
                     }
                     let (ip_address, community_raw) = match printer_override {
                         Some(block) => {
-                            let ip_address = block
-                                .ip_address
-                                .as_deref()
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                .map(str::to_string);
+                            // Phase 41.13 (D-13): один валидатор на все пути записи IP.
+                            let ip_address = match block.ip_address.as_deref() {
+                                Some(raw) => normalize_printer_ip(raw)?,
+                                None => None,
+                            };
                             let community_raw = if ip_address.is_some() {
                                 block
                                     .community
@@ -1050,6 +1049,21 @@ impl DeviceService {
         // патч не переносится. Читаем ДО `patch.into()`. Тип Option<Option<i64>> —
         // три случая: None = не трогать, Some(None) = сбросить, Some(Some(id)) = задать.
         let usb_host_patch: Option<Option<i64>> = patch.usb_host_device_id;
+        // Phase 41.13 Plan 09 (D-13): сеть принтера (IP, community) — тоже колонки
+        // `printers`. Читаем ДО `patch.into()`; IP нормализуется ДО открытия
+        // транзакции (ошибка уходит вызывающему, ничего не записано). Внутреннее
+        // None = «стереть»; пустая строка равна null. Хост (D-15) не читается.
+        let ip_patch: Option<Option<String>> = match patch.printer_ip_address.clone() {
+            None => None,
+            Some(None) => Some(None),
+            Some(Some(raw)) => Some(normalize_printer_ip(&raw)?),
+        };
+        let community_patch: Option<String> = patch
+            .printer_community
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
         let mut domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         if let Some(number) = resolved_number {
             // Outer `Some` = "field touched"; inner `None`/`Some(v)` decide
@@ -1114,6 +1128,34 @@ impl DeviceService {
 
                 let after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now, None)?;
+                // Phase 41.13 Plan 09 (D-13): запись сети принтера при РЕДАКТИРОВАНИИ —
+                // отдельная операция ПОСЛЕ sync_printer_row_in_tx и мимо его exists-гарда
+                // (на существующей строке тот молчит). Хост не читается и не трогается
+                // (D-15: IP и USB-хост независимы).
+                if ip_patch.is_some() || community_patch.is_some() {
+                    if after.type_id == Self::PRINTER_TYPE_ID {
+                        printer_repo.set_network_in_tx(
+                            &tx,
+                            id,
+                            ip_patch.as_ref().map(|v| v.as_deref()),
+                            community_patch.as_deref(),
+                            now,
+                        )?;
+                    } else {
+                        if matches!(ip_patch, Some(Some(_))) {
+                            return Err(AppError::Validation {
+                                field: "printer_ip_address".to_string(),
+                                message: "IP-адрес можно указать только у принтера.".to_string(),
+                            });
+                        }
+                        if community_patch.is_some() {
+                            return Err(AppError::Validation {
+                                field: "printer_community".to_string(),
+                                message: "Community можно указать только у принтера.".to_string(),
+                            });
+                        }
+                    }
+                }
                 // Phase 41.13 (D-07): запись хоста при РЕДАКТИРОВАНИИ — отдельная
                 // операция ПОСЛЕ sync_printer_row_in_tx (при одновременной смене типа
                 // на «Принтер» строка уже создана). sync_* её не заменяет: ветка

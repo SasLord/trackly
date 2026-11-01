@@ -66,6 +66,8 @@ fn type_patch(type_id: Option<i64>) -> DevicePatch {
         place_id: None,
         status_id: None,
         usb_host_device_id: None,
+        printer_ip_address: None,
+        printer_community: None,
     }
 }
 

@@ -251,6 +251,19 @@ pub struct DevicePatch {
     #[serde(default, with = "serde_with::rust::double_option")]
     #[specta(type = Option<Option<i32>>)]
     pub usb_host_device_id: Option<Option<i64>>,
+    /// Phase 41.13 Plan 09 (D-13): IP-адрес (или имя хоста) принтера. Колонка
+    /// принадлежит `printers`, в доменный патч не переносится; пишется
+    /// `DeviceService::update` отдельной операцией. Три состояния: ключа нет
+    /// (`None`) = не трогать; `null` или пустая строка = стереть;
+    /// строка = записать (после `normalize_printer_ip`). Независим от
+    /// `usb_host_device_id` (D-15).
+    #[serde(default, with = "serde_with::rust::double_option")]
+    pub printer_ip_address: Option<Option<String>>,
+    /// Phase 41.13 Plan 09 (D-13): community принтера. Пустое или
+    /// отсутствующее значение community НЕ меняет; стирание IP сбрасывает
+    /// community в `public` (правило сохранено с пути создания).
+    #[serde(default)]
+    pub printer_community: Option<String>,
 }
 
 impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
@@ -303,9 +316,9 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
         if let Some(v) = dto.status_id {
             p.status_id = Some(v);
         }
-        // `usb_host_device_id` is intentionally NOT set here — the column
-        // lives in `printers` and is written by the service separately
-        // (Phase 41.13 Plan 03).
+        // `usb_host_device_id`, `printer_ip_address` and `printer_community` are
+        // intentionally NOT set here — the columns live in `printers` and are
+        // written by the service separately (Phase 41.13 Plans 03 and 09).
         p
     }
 }

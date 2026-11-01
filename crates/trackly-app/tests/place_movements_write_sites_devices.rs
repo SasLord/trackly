@@ -149,6 +149,8 @@ async fn place_movements_manual_device() {
                 place_id: Some(Some(place_b)),
                 status_id: None,
                 usb_host_device_id: None,
+                printer_ip_address: None,
+                printer_community: None,
             },
         )
         .await
@@ -234,6 +236,8 @@ async fn place_movements_manual_device_status_only_noop() {
                 place_id: None,
                 status_id: Some(1),
                 usb_host_device_id: None,
+                printer_ip_address: None,
+                printer_community: None,
             },
         )
         .await
@@ -283,6 +287,8 @@ async fn place_movements_manual_device_first_assignment_noop() {
                 place_id: Some(Some(place_a)),
                 status_id: None,
                 usb_host_device_id: None,
+                printer_ip_address: None,
+                printer_community: None,
             },
         )
         .await

@@ -20,7 +20,7 @@ use std::sync::Arc;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 use trackly_core::auth::{authorize, Action, Identity};
-use trackly_core::domain::printers::{Pagination, PrinterFilter, PrinterNew};
+use trackly_core::domain::printers::{normalize_printer_ip, Pagination, PrinterFilter, PrinterNew};
 use trackly_core::error::AppError;
 use trackly_core::ports::printers::PrinterRepository;
 use trackly_core::ports::snmp::SnmpClient;
@@ -281,9 +281,15 @@ impl PrinterService {
         let printer_repo = self.printer_repo.clone();
         let audit_repo = self.audit_repo.clone();
 
+        // Phase 41.13 Plan 09 (D-13): тот же валидатор, что на путях устройства;
+        // ДО транзакции. Без него «адрес:порт» доходил бы до RealSnmpClient отсюда.
+        let ip_address = match payload.ip_address.as_deref() {
+            Some(raw) => normalize_printer_ip(raw)?,
+            None => None,
+        };
         let printer_new = PrinterNew {
             device_id: payload.device_id as i64,
-            ip_address: payload.ip_address.clone(),
+            ip_address,
             community_raw: payload
                 .community_update
                 .clone()
