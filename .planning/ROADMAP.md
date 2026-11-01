@@ -192,7 +192,7 @@
 | 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
 | 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 7/7 | Complete    | 2026-10-21 |
 | 41.2. Группы × Акты и Места | v1.4 | 16/16 | Awaiting human UAT (41.2-HUMAN-UAT.md); verification gaps_found — IN-01 фазы 41 не закрыт, см. 41.2-VERIFICATION.md |  |
-| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 12/15 | Живая UAT 19/19 пройдена (41.13-HUMAN-UAT.md); gap closure по F-1/F-2 идёт: 09, 10, 11, 12 выполнены; PGR-01/02/04 Complete, PGR-03 открыт | 2026-11-02 |
+| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 13/15 | Живая UAT 19/19 пройдена (41.13-HUMAN-UAT.md); gap closure по F-1/F-2 идёт: 09, 10, 11, 12, 13 выполнены; PGR-01/02/04 Complete, PGR-03 открыт | 2026-11-02 |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
 | 41.5. Переписка в заявке | v1.4 | 0/TBD | Not started | - |
@@ -1091,7 +1091,7 @@ Plans:
 устройстве.
 
 Plans:
-**Plans:** 12/15 plans executed
+**Plans:** 13/15 plans executed
 
 **Wave 1**
 
@@ -1142,7 +1142,7 @@ Plans:
 
 **Wave 12** *(blocked on 41.13-11, 41.13-12)*
 
-- [ ] 41.13-13-PLAN.md — F-2, интерфейс: подпись хоста под чипом «USB» в `GroupPrintersList`, правило F гейта `check-group-printer-origin` (D-14)
+- [x] 41.13-13-PLAN.md — F-2, интерфейс: подпись хоста под чипом «USB» в `GroupPrintersList`, правило F гейта `check-group-printer-origin` (D-14)
 
 **Wave 13** *(blocked on 41.13-09..13)*
 
