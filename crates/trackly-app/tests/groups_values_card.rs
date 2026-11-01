@@ -1182,6 +1182,136 @@ async fn card_member_usb_and_link_collapse_to_one_row_with_priority() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn card_usb_row_carries_host_label() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let g = arm_group(&ctx).await;
+    let host = seed_device(
+        &ctx,
+        "Системный блок #4",
+        "ИНВ-114",
+        "SN-H-1",
+        None,
+        Some(g),
+    )
+    .await;
+    let other = seed_device(
+        &ctx,
+        "Системный блок #4",
+        "ИНВ-115",
+        "SN-H-2",
+        None,
+        Some(g),
+    )
+    .await;
+    let a = seed_printer(&ctx, "Принтер А", "INV-L-1", Some(host)).await;
+    let b = seed_printer(&ctx, "Принтер Б", "INV-L-2", Some(other)).await;
+
+    let card = ctx.groups.card(&admin(), g).await.expect("card");
+    let row = |id: i64| card.printers.iter().find(|p| p.device_id == id).unwrap();
+    assert_eq!(row(a).origin, "usb");
+    assert_eq!(row(a).usb_host_name.as_deref(), Some("Системный блок #4"));
+    assert_eq!(row(a).usb_host_inventory_number.as_deref(), Some("ИНВ-114"));
+    // Одноимённый хост различим по инвентарному номеру.
+    assert_eq!(row(b).usb_host_name.as_deref(), Some("Системный блок #4"));
+    assert_eq!(row(b).usb_host_inventory_number.as_deref(), Some("ИНВ-115"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn card_link_and_member_rows_have_no_host_label() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let link = arm_prop(&ctx, "Подключённые принтеры").await;
+    let g = arm_group(&ctx).await;
+    // Хост принтеров стоит ВНЕ группы: подпись не должна его показывать.
+    let outside = seed_device(&ctx, "Системный блок #9", "ИНВ-119", "SN-O-1", None, None).await;
+    let member = seed_printer(&ctx, "Принтер А", "INV-N-1", Some(outside)).await;
+    let linked = seed_printer(&ctx, "Принтер Б", "INV-N-2", Some(outside)).await;
+    put_in_group(&ctx, member, g).await;
+
+    let card = ctx
+        .groups
+        .set_values(&admin(), g, 1, vec![refs(link.id, &[(linked, false)])])
+        .await
+        .expect("links");
+
+    assert_eq!(
+        origins(&card),
+        vec![(member, "member", false), (linked, "link", true)]
+    );
+    for p in &card.printers {
+        assert_eq!(p.usb_host_name, None, "{p:?}");
+        assert_eq!(p.usb_host_inventory_number, None, "{p:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn card_usb_plus_link_keeps_host_label() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let link = arm_prop(&ctx, "Подключённые принтеры").await;
+    let g = arm_group(&ctx).await;
+    let host = seed_device(
+        &ctx,
+        "Системный блок #4",
+        "ИНВ-114",
+        "SN-B-1",
+        None,
+        Some(g),
+    )
+    .await;
+    let both = seed_printer(&ctx, "Принтер А", "INV-B-2", Some(host)).await;
+
+    let card = ctx
+        .groups
+        .set_values(&admin(), g, 1, vec![refs(link.id, &[(both, false)])])
+        .await
+        .expect("links");
+
+    assert_eq!(origins(&card), vec![(both, "usb", true)]);
+    assert_eq!(
+        card.printers[0].usb_host_name.as_deref(),
+        Some("Системный блок #4")
+    );
+    assert_eq!(
+        card.printers[0].usb_host_inventory_number.as_deref(),
+        Some("ИНВ-114")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn card_deleted_host_drops_usb_origin_and_label() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let g = arm_group(&ctx).await;
+    let host = seed_device(
+        &ctx,
+        "Системный блок #4",
+        "ИНВ-114",
+        "SN-X-1",
+        None,
+        Some(g),
+    )
+    .await;
+    let printer = seed_printer(&ctx, "Принтер А", "INV-X-2", Some(host)).await;
+    // Принтер ещё и член группы: после удаления хоста строка остаётся (member).
+    put_in_group(&ctx, printer, g).await;
+    let card = ctx.groups.card(&admin(), g).await.expect("card before");
+    assert_eq!(origins(&card), vec![(printer, "usb", false)]);
+
+    exec(
+        &ctx,
+        "UPDATE devices SET deleted_at_utc = 1700000001 WHERE id = ?1",
+        vec![int(host)],
+    )
+    .await;
+
+    // Происхождение usb требует живого хоста в составе: оно и подпись пропадают вместе.
+    // Имя удалённого хоста остаётся только в ДЕТАЛИ принтера (D-37, закреплено тестом
+    // printers_soft_delete_visibility); карточка группы его не показывает.
+    let card = ctx.groups.card(&admin(), g).await.expect("card after");
+    assert_eq!(origins(&card), vec![(printer, "member", false)]);
+    assert_eq!(card.printers[0].usb_host_name, None);
+    assert_eq!(card.printers[0].usb_host_inventory_number, None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn card_member_rule_does_not_depend_on_group_type() {
     let (ctx, _dir) = make_test_ctx().await;
     // Встроенный тип workstation.

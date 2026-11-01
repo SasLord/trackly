@@ -811,6 +811,96 @@ fn usb_printers_come_from_composition_including_nested_group() {
 }
 
 #[test]
+fn usb_printers_carry_host_name_and_inventory() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let p_refs = insert_property(&conn, t, "Принтеры", "device_refs");
+    let root = make_group(&mut conn, &repo, t, "Корень", None);
+    let nested = make_group(&mut conn, &repo, t, "Вложенная", None);
+    set_parent(&mut conn, &repo, nested.id, Some(root.id)).unwrap();
+    // Хосты 1 и 2 одноимённые, различаются инвентарным номером; хост 3 без номера;
+    // хост 4 вне групп.
+    insert_device(&conn, 1, "Системный блок #4");
+    insert_device(&conn, 2, "Системный блок #4");
+    insert_device(&conn, 3, "Рабочая станция");
+    insert_device(&conn, 4, "Хост без группы");
+    conn.execute(
+        "UPDATE devices SET inventory_number = NULL WHERE id = 3",
+        params![],
+    )
+    .unwrap();
+    add_device(&mut conn, &repo, root.id, 1);
+    add_device(&mut conn, &repo, nested.id, 2);
+    add_device(&mut conn, &repo, root.id, 3);
+    for (id, name, host) in [
+        (11, "Принтер А", 1),
+        (12, "Принтер Б", 2),
+        (13, "Принтер В", 3),
+    ] {
+        insert_device(&conn, id, name);
+        insert_printer(&conn, id, Some(host));
+    }
+
+    let found = repo.usb_printers_for_group(&conn, root.id).unwrap();
+    assert_eq!(ids(&found), vec![11, 12, 13]);
+    // (1) Имя и номер принадлежат ХОСТУ, а не принтеру (имена различаются).
+    assert_eq!(found[0].usb_host_name.as_deref(), Some("Системный блок #4"));
+    assert_eq!(
+        found[0].usb_host_inventory_number.as_deref(),
+        Some("ИНВ-000001")
+    );
+    assert_ne!(found[0].usb_host_name, Some(found[0].name.clone()));
+    assert_ne!(
+        found[0].usb_host_inventory_number,
+        found[0].inventory_number
+    );
+    // (2) Одноимённые хосты различимы по инвентарному номеру.
+    assert_eq!(found[1].usb_host_name.as_deref(), Some("Системный блок #4"));
+    assert_eq!(
+        found[1].usb_host_inventory_number.as_deref(),
+        Some("ИНВ-000002")
+    );
+    // (3) Хост без номера: имя на месте, номера нет.
+    assert_eq!(found[2].usb_host_name.as_deref(), Some("Рабочая станция"));
+    assert_eq!(found[2].usb_host_inventory_number, None);
+    // Собственные поля принтера не подменены.
+    assert_eq!(found[2].name, "Принтер В");
+    assert_eq!(found[2].inventory_number.as_deref(), Some("ИНВ-000013"));
+
+    // (4) member и ref источники подписи не несут, даже если у принтера есть хост вне
+    // группы: подпись объясняет только связь, из-за которой строка попала в карточку.
+    insert_device(&conn, 14, "Принтер Г");
+    insert_printer(&conn, 14, Some(4));
+    add_device(&mut conn, &repo, root.id, 14);
+    let members = repo.member_printers_for_group(&conn, root.id).unwrap();
+    assert!(ids(&members).contains(&14));
+    assert!(
+        members
+            .iter()
+            .all(|r| r.usb_host_name.is_none() && r.usb_host_inventory_number.is_none()),
+        "{members:?}"
+    );
+    let tx = conn.transaction().unwrap();
+    repo.replace_property_values_in_tx(
+        &tx,
+        root.id,
+        p_refs,
+        &[ref_value(root.id, p_refs, 0, 11, true)],
+        NOW,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+    let refs = repo
+        .ref_devices_for_group(&conn, root.id, &[p_refs])
+        .unwrap();
+    assert_eq!(ids(&refs), vec![11]);
+    assert!(refs
+        .iter()
+        .all(|r| r.usb_host_name.is_none() && r.usb_host_inventory_number.is_none()));
+}
+
+#[test]
 fn member_printers_follow_membership_including_nested_group() {
     let (mut conn, _g) = test_db();
     let repo = SqliteGroupRepository;
