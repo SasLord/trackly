@@ -228,6 +228,48 @@ impl RequestTransitionOp {
     }
 }
 
+/// Нормализовать IP-адрес (или имя хоста) принтера, пришедший от клиента.
+///
+/// Единая функция для всех трёх путей записи адреса: создание устройства с
+/// блоком принтера, редактирование устройства и прямое создание принтера.
+///
+/// Правило намеренно мягкое. Отклоняется только то, что опасно или не работает:
+/// - строка с двоеточием. `RealSnmpClient` (`snmp/real.rs`) дописывает порт
+///   `:161` только если двоеточия в строке нет, иначе отдаёт строку сессии
+///   как есть; значит `адрес:порт` направил бы UDP-запрос на произвольный порт.
+///   Отсюда же следует, что IPv6 не поддерживался и раньше (любое двоеточие
+///   принимается за порт), так что отказ для него — не регресс, а закрепление
+///   существующего факта;
+/// - пробелы и управляющие символы внутри строки.
+///
+/// Всё остальное — и IPv4 в точечной записи, и имя хоста — пропускается как
+/// есть, без канонизации и без обращения к DNS: имена хостов сегодня работают
+/// (строка без двоеточия уходит в резолвер), и принтеры ими адресуют. Адреса
+/// вроде `0.0.0.0` или `127.x` тоже не отклоняются.
+///
+/// Края обрезаются; пустая строка (после обрезки) означает «нет адреса».
+pub fn normalize_printer_ip(raw: &str) -> Result<Option<String>, AppError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.contains(':') {
+        return Err(AppError::Validation {
+            field: "printer_ip_address".into(),
+            message: "Порт указывать нельзя: опрос принтера всегда идёт на стандартный порт. \
+                      Введите адрес или имя без двоеточия."
+                .into(),
+        });
+    }
+    if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(AppError::Validation {
+            field: "printer_ip_address".into(),
+            message: "Адрес не должен содержать пробелов и управляющих символов.".into(),
+        });
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,5 +335,60 @@ mod tests {
     fn transition_cancel_target_status_and_audit_action() {
         assert_eq!(RequestTransitionOp::Cancel.target_status(), "cancelled");
         assert_eq!(RequestTransitionOp::Cancel.audit_action(), "custom:cancel");
+    }
+
+    // Phase 41.13 (D-13): normalize_printer_ip.
+
+    fn ip_ok(raw: &str) -> Option<String> {
+        normalize_printer_ip(raw).expect("должно приниматься")
+    }
+
+    fn ip_err(raw: &str) -> (String, String) {
+        match normalize_printer_ip(raw) {
+            Err(AppError::Validation { field, message }) => (field, message),
+            other => panic!("ожидался отказ для {raw:?}, получено {other:?}"),
+        }
+    }
+
+    #[test]
+    fn printer_ip_accepts_ipv4_and_trims_edges() {
+        assert_eq!(ip_ok("192.0.2.50"), Some("192.0.2.50".to_string()));
+        assert_eq!(ip_ok(" 192.0.2.50 "), Some("192.0.2.50".to_string()));
+        assert_eq!(ip_ok("\t198.51.100.7\n"), Some("198.51.100.7".to_string()));
+    }
+
+    #[test]
+    fn printer_ip_accepts_host_names() {
+        // Имена хостов НЕ запрещены: сегодня они работают (уходят в резолвер).
+        assert_eq!(ip_ok("printer.local"), Some("printer.local".to_string()));
+        assert_eq!(ip_ok("printer-hall"), Some("printer-hall".to_string()));
+    }
+
+    #[test]
+    fn printer_ip_empty_and_blank_mean_none() {
+        assert_eq!(ip_ok(""), None);
+        assert_eq!(ip_ok("   "), None);
+        assert_eq!(ip_ok("\t\n"), None);
+    }
+
+    #[test]
+    fn printer_ip_rejects_port_and_ipv6() {
+        for raw in ["192.0.2.10:161", "printer.local:9999", "::1", "2001:db8::1"] {
+            let (field, message) = ip_err(raw);
+            assert_eq!(field, "printer_ip_address", "{raw}");
+            assert!(message.contains("Порт"), "{raw}: {message}");
+        }
+    }
+
+    #[test]
+    fn printer_ip_rejects_inner_whitespace_and_control() {
+        for raw in ["192.0.2. 1", "printer a", "192.0.2.\t1", "192.0.2.\n1"] {
+            let (field, message) = ip_err(raw);
+            assert_eq!(field, "printer_ip_address", "{raw:?}");
+            assert!(message.contains("пробел"), "{raw:?}: {message}");
+        }
+        let (field, message) = ip_err("192.0.2.\u{7}1");
+        assert_eq!(field, "printer_ip_address");
+        assert!(message.contains("пробел"));
     }
 }

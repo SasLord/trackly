@@ -305,6 +305,53 @@ impl SqlitePrinterRepository {
         Ok(())
     }
 
+    /// Записать сеть принтера (`ip_address`, `community`) отдельным UPDATE
+    /// (Phase 41.13, D-13). Как и [`Self::set_usb_host_in_tx`], идёт МИМО
+    /// exists-гарда `sync_printer_row_in_tx`: на существующей строке тот ничего
+    /// не пишет.
+    ///
+    /// - `ip`: `None` — адрес не менять; `Some(None)` — стереть (NULL);
+    ///   `Some(Some(s))` — записать.
+    /// - `community`: итог — `'public'`, если ПОЛУЧАЮЩИЙСЯ `ip_address` NULL
+    ///   (независимо от переданного значения); иначе переданное значение, если
+    ///   оно есть; иначе прежнее.
+    ///
+    /// Формат адреса не проверяется (это делает `normalize_printer_ip` в
+    /// сервисе). Колонку `usb_host_device_id` метод не читает и не пишет: IP и
+    /// USB-хост независимы (D-15). Значение community нигде не логируется.
+    /// Нет строки принтера — `NotFound`.
+    pub fn set_network_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        device_id: i64,
+        ip: Option<Option<&str>>,
+        community: Option<&str>,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        let ip_touched: i64 = i64::from(ip.is_some());
+        let ip_value: Option<&str> = ip.flatten();
+        let affected = tx
+            .execute(
+                "UPDATE printers SET \
+                 ip_address = CASE WHEN ?1 = 1 THEN ?2 ELSE ip_address END, \
+                 community = CASE \
+                   WHEN (CASE WHEN ?1 = 1 THEN ?2 ELSE ip_address END) IS NULL THEN 'public' \
+                   WHEN ?3 IS NOT NULL THEN ?3 \
+                   ELSE community END, \
+                 updated_at_utc = ?4, version = version + 1 \
+                 WHERE device_id = ?5",
+                params![ip_touched, ip_value, community, now_utc, device_id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "printer",
+                id: device_id,
+            });
+        }
+        Ok(())
+    }
+
     /// Проверить, существует ли строка `printers` для данного device_id.
     /// Гейт идемпотентности для конверсии типа устройства (quick 260820-rdj).
     pub fn exists_for_device_in_tx(
