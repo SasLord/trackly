@@ -267,13 +267,16 @@
   let specs = $state(target?.specs ?? '');
   let kit = $state(target?.kit ?? '');
   let stateField = $state(target?.state ?? '');
-  // Phase 40.3 Plan 05 (NUM-06/NUM-08/PLC-06): IP/SNMP block for the printer
-  // create-mode-only fields below (D-03 — never shown/used in edit mode or
-  // for typeId === DEVICE_TYPE_ID). No reset-effect needed — see the
-  // file-header comment: this component is fully remounted via
-  // {#key openInstanceCounter} in DeviceFormModal on every open.
+  // Блок «SNMP / Сеть» (IP и community) доступен и при ПРАВКЕ принтера (D-13).
+  // Это ОТМЕНЯЕТ решение D-03 фазы 40.3 («только создание»): при правке IP нельзя
+  // было ни изменить, ни стереть. IP и USB-хост независимы (D-15). DOM блока
+  // по-прежнему отсутствует вне типа «Принтер». Сброс не нужен: компонент
+  // полностью пересоздаётся через {#key openInstanceCounter} в DeviceFormModal.
+  // community при правке НЕ предзаполняется: сохранённое значение с сервера не
+  // приходит, а 'public' затёр бы настоящую (пустое поле ключ не отправляет).
   let ipAddress = $state('');
-  let community = $state('public');
+  let community = $state(target === null ? 'public' : '');
+  let communityConfigured = $state(false);
   // Фаза 41.13 (PGR-03, D-05/D-07/D-10): USB-хост принтера. Поле доступно и при
   // создании, и при редактировании. Здесь только чтение и выбор; отправка на
   // сервер — отдельным шагом.
@@ -398,9 +401,7 @@
       typeIsPrinter: typeId === PRINTER_TYPE_ID,
       isEdit,
       readonly,
-      ipAddress,
       printerLoaded,
-      loadedPrinterIp,
     }),
   );
   const usbHostLabel = $derived(usbHost ? hostLabel(usbHost.name, usbHost.inventoryNo) : '');
@@ -737,6 +738,10 @@
         .then((p) => {
           if (cancelled) return;
           loadedPrinterIp = p.ipAddress;
+          // D-13: предзаполнение IP сохранённым значением; community с сервера
+          // не приходит, только факт «задана».
+          ipAddress = p.ipAddress ?? '';
+          communityConfigured = p.communityConfigured;
           if (p.usbHostDeviceId !== null) {
             usbHost = {
               id: p.usbHostDeviceId,
@@ -912,20 +917,18 @@
       confirmScriptMix: confirms.scriptMix,
     };
 
-    // Phase 40.3 Plan 05 (NUM-06/NUM-08/PLC-06): only Принтер-create with a
-    // non-empty IP builds a printer block — «Устройство» and «Принтер без
-    // IP» keep sending `null`, identical to pre-Plan-05 server defaults.
-    // Фаза 41.13 (PGR-03, D-05/D-10): принтер без IP, но с выбранным USB-хостом
-    // несёт блок {ipAddress: null, community: null, usbHostDeviceId}. Хост уходит
-    // только при пустом IP; при непустом IP блок прежний, без хоста. Скрытие поля
-    // (ввод IP, смена типа) значение usbHost не сбрасывает — оно просто не уходит.
+    // Phase 40.3 Plan 05 (NUM-06/NUM-08/PLC-06): «Устройство» всегда шлёт
+    // `null`. Фаза 41.13 (PGR-03, D-15): IP и USB-хост независимы, поэтому
+    // блок принтера строится, если задан хотя бы один из двух, и несёт ОБА
+    // значения одним литералом; хост не зависит от IP. community уходит только
+    // вместе с непустым IP. Смена типа значение usbHost не сбрасывает.
     let printerBlock: PrinterCreateBlockDto | null = null;
-    if (typeId === PRINTER_TYPE_ID) {
-      if (ipAddress.trim() !== '') {
-        printerBlock = { ipAddress: ipAddress.trim(), community: community.trim() || null };
-      } else if (usbHost !== null) {
-        printerBlock = { ipAddress: null, community: null, usbHostDeviceId: usbHost.id };
-      }
+    if (typeId === PRINTER_TYPE_ID && (ipAddress.trim() !== '' || usbHost !== null)) {
+      printerBlock = {
+        ipAddress: ipAddress.trim() || null,
+        community: ipAddress.trim() !== '' ? community.trim() || null : null,
+        usbHostDeviceId: usbHost?.id ?? null,
+      };
     }
 
     let outcome: DeviceSaveOutcome;
@@ -981,6 +984,19 @@
     // поставить/заменить; null — сбросить (выбран пункт «Не указан»).
     if (usbHostTouched && typeId === PRINTER_TYPE_ID && showUsbHost) {
       patch.usb_host_device_id = usbHost?.id ?? null;
+    }
+    // D-13/D-15: ключи IP и community независимы от ключа хоста (патч может нести
+    // оба). IP уходит только при отличии от сохранённого (стёртый — null, а не
+    // пропуск), community — только если введена при непустом IP; правка названия
+    // без касания этих полей ключей не несёт.
+    if (typeId === PRINTER_TYPE_ID && printerLoaded && !readonly) {
+      const ipNow = ipAddress.trim();
+      if (ipNow !== (loadedPrinterIp ?? '').trim()) {
+        patch.printer_ip_address = ipNow === '' ? null : ipNow;
+      }
+      if (community.trim() !== '' && ipNow !== '') {
+        patch.printer_community = community.trim();
+      }
     }
 
     let outcome: DeviceSaveOutcome;
@@ -1344,39 +1360,50 @@
     {/if}
   </div>
 
-  <!-- 9b. Optional, create+Принтер ONLY (D-03): IP/SNMP block — DOM absent
-       otherwise, not merely hidden. Mirrors the SNMP section of the
-       now-removed two-step printer-create modal (Phase 40.3 Plan 05,
-       NUM-06/NUM-08, D-02). -->
-  {#if typeId === PRINTER_TYPE_ID && (!isEdit || showUsbHost)}
+  <!-- 9b. Блок принтера: IP/SNMP и USB-хост — DOM отсутствует вне типа «Принтер».
+       D-13: блок доступен и при правке (прежнее «только создание», D-03 фазы
+       40.3, отменено: IP нельзя было ни изменить, ни стереть); при правке он
+       ждёт ответа printers.getByDeviceId, чтобы не мигать пустым IP.
+       D-15: IP и USB-хост независимы, оба могут быть заданы одновременно. -->
+  {#if typeId === PRINTER_TYPE_ID && (!isEdit || printerLoaded)}
     <div class="snmp-section">
-      {#if !isEdit}
-        <p class="section-hint">
-          SNMP / Сеть — заполните, если принтер подключён по сети (IP). Оставьте пустым для
-          USB/локального принтера.
-        </p>
+      <p class="section-hint">
+        SNMP / Сеть — заполните, если принтер доступен по сети (IP). Принтер может быть подключён по
+        сети и по USB одновременно: IP и устройство-хост (USB) задаются независимо.
+      </p>
+      <div class="field" class:has-error={!!fieldErrors['printer_ip_address']}>
+        <label class="label" for="f-printer-ip">IP-адрес</label>
+        <Input
+          id="f-printer-ip"
+          value={ipAddress}
+          placeholder="192.168.1.100 (необязательно)"
+          invalid={!!fieldErrors['printer_ip_address']}
+          disabled={readonly}
+          oninput={(v) => {
+            ipAddress = v;
+            if (fieldErrors['printer_ip_address']) {
+              const { printer_ip_address: _removed, ...rest } = fieldErrors;
+              fieldErrors = rest;
+            }
+          }}
+        />
+        {#if fieldErrors['printer_ip_address']}
+          <p class="field-error" role="alert">{fieldErrors['printer_ip_address']}</p>
+        {/if}
+      </div>
+      {#if ipAddress.trim()}
         <div class="field">
-          <label class="label" for="f-printer-ip">IP-адрес</label>
+          <label class="label" for="f-printer-community">SNMP community</label>
           <Input
-            id="f-printer-ip"
-            value={ipAddress}
-            placeholder="192.168.1.100 (необязательно)"
+            id="f-printer-community"
+            value={community}
+            placeholder={isEdit && communityConfigured
+              ? 'Задана — оставьте пустым, чтобы не менять'
+              : 'public'}
             disabled={readonly}
-            oninput={(v) => (ipAddress = v)}
+            oninput={(v) => (community = v)}
           />
         </div>
-        {#if ipAddress.trim()}
-          <div class="field">
-            <label class="label" for="f-printer-community">SNMP community</label>
-            <Input
-              id="f-printer-community"
-              value={community}
-              placeholder="public"
-              disabled={readonly}
-              oninput={(v) => (community = v)}
-            />
-          </div>
-        {/if}
       {/if}
       <!-- Фаза 41.13 (PGR-03): USB-хост. Собственный Dropdown (combobox + flat +
            секции через getGroupSection), не нативный select и не обёртка Select. -->

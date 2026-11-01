@@ -432,7 +432,9 @@
               {printer.ipAddress}
             </span>
           </div>
-        {:else if printer.usbHostDeviceId}
+        {/if}
+        <!-- D-15: USB-хост и IP независимы — принтер бывает и сетевым, и USB-подключённым. -->
+        {#if printer.usbHostDeviceId}
           <div class="meta-row">
             <span class="meta-label">Подключение</span>
             <span class="meta-value">

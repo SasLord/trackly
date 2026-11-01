@@ -168,17 +168,21 @@ export function sectionFor(
   return ctx.hasSectionOne ? SECTION_ALL : undefined;
 }
 
-/** Видимость поля по таблице UI-SPEC 4.1. */
+/** Видимость поля по таблице UI-SPEC 4.1 (редакция 2026-11-01).
+ *
+ *  D-15: IP-адрес и USB-хост НЕЗАВИСИМЫ — принтер бывает подключён по USB и в то
+ *  же время быть сетевым. Поэтому видимость поля хоста не зависит от IP ни в
+ *  одной ветке: прежние условия «хост виден только при пустом IP» были ложной
+ *  посылкой «IP либо хост» и отменены. Не принтер — нет; просмотр и правка —
+ *  когда загружен ответ сервера (иначе поле мигнуло бы пустым); создание — всегда. */
 export function isUsbHostFieldVisible(ctx: {
   typeIsPrinter: boolean;
   isEdit: boolean;
   readonly: boolean;
-  ipAddress: string;
   printerLoaded: boolean;
-  loadedPrinterIp: string | null;
 }): boolean {
   if (!ctx.typeIsPrinter) return false;
   if (ctx.readonly) return ctx.printerLoaded;
-  if (!ctx.isEdit) return ctx.ipAddress.trim() === '';
-  return ctx.printerLoaded && (ctx.loadedPrinterIp ?? '').trim() === '';
+  if (!ctx.isEdit) return true;
+  return ctx.printerLoaded;
 }

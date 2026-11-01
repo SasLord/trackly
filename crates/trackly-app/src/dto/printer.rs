@@ -164,8 +164,10 @@ pub struct PrinterCreateDto {
 ///
 /// Phase 41.13 Plan 03 (D-01): `usb_host_device_id` is the explicit choice of
 /// the device the USB printer is plugged into. Absent key in an old request
-/// body deserialises to `None`. The server accepts a host together with an IP
-/// (the schema allows it); mutual exclusion is a form behaviour.
+/// body deserialises to `None`. Phase 41.13 D-15: the IP address and the USB
+/// host are independent — a printer can be USB-connected and networked at the
+/// same time — so the server accepts both together and the form sends both.
+/// There is no mutual exclusion anywhere, neither on the server nor in the form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PrinterCreateBlockDto {
