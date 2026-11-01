@@ -192,7 +192,7 @@
 | 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
 | 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 7/7 | Complete    | 2026-10-21 |
 | 41.2. Группы × Акты и Места | v1.4 | 16/16 | Awaiting human UAT (41.2-HUMAN-UAT.md); verification gaps_found — IN-01 фазы 41 не закрыт, см. 41.2-VERIFICATION.md |  |
-| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 8/8 | Живая UAT 19/19 пройдена (41.13-HUMAN-UAT.md); PGR-01/02/04 Complete, PGR-03 открыт находкой F-1 — принтер с IP хост получить не может | 2026-11-01 |
+| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 9/15 | Живая UAT 19/19 пройдена (41.13-HUMAN-UAT.md); gap closure по F-1/F-2 идёт: 09 выполнен; PGR-01/02/04 Complete, PGR-03 открыт | 2026-11-01 |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
 | 41.5. Переписка в заявке | v1.4 | 0/TBD | Not started | - |
@@ -1091,7 +1091,7 @@ Plans:
 устройстве.
 
 Plans:
-**Plans:** 7/15 plans executed (план 08 закрыт чекпоинтом, живая UAT пройдена; планы 09-14 — gap closure по её находкам)
+**Plans:** 9/15 plans executed
 
 **Wave 1**
 
@@ -1120,13 +1120,13 @@ Plans:
 
 **Wave 7** *(blocked on all)*
 
-- [ ] 41.13-08-PLAN.md — PGR-01..04 в REQUIREMENTS.md, пересмотр решения 6, граница волны (сплошной прогон ci-full), живой чек-лист пользователю (`checkpoint:human-action`)
+- [x] 41.13-08-PLAN.md — PGR-01..04 в REQUIREMENTS.md, пересмотр решения 6, граница волны (сплошной прогон ci-full), живой чек-лист пользователю (`checkpoint:human-action`)
 
 **Gap closure по живой UAT (2026-11-01, решения D-13 и D-14; cargo-фазы идут строго последовательно, по одной сборке)**
 
 **Wave 8** *(blocked on 41.13-08)*
 
-- [ ] 41.13-09-PLAN.md — F-1, сервер: `normalize_printer_ip`, `set_network_in_tx`, поля `DevicePatch.printer_ip_address` / `printer_community`, запись IP при правке мимо exists-гарда, мягкая валидация адреса (порт и пробелы отклоняются, имена хостов допустимы), IP и хост независимы на сервере (D-13, D-15)
+- [x] 41.13-09-PLAN.md — F-1, сервер: `normalize_printer_ip`, `set_network_in_tx`, поля `DevicePatch.printer_ip_address` / `printer_community`, запись IP при правке мимо exists-гарда, мягкая валидация адреса (порт и пробелы отклоняются, имена хостов допустимы), IP и хост независимы на сервере (D-13, D-15)
 
 **Wave 9** *(blocked on 41.13-09)*
 

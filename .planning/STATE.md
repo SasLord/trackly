@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-28T18:00:39.012Z"
-last_activity: 2026-10-28 -- 41.13-08 paused at human-action checkpoint (live UAT pending)
+last_updated: "2026-11-01T15:13:00.996Z"
+last_activity: 2026-11-01 -- 41.13-09 complete (server-side printer IP write)
 progress:
   total_phases: 27
   completed_phases: 15
-  total_plans: 243
-  completed_plans: 242
+  total_plans: 250
+  completed_plans: 244
   percent: 56
 ---
 
@@ -155,7 +155,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-10-28 -- Phase 41.13 planning complete
+Last activity: 2026-11-01 -- 41.13-09 complete (server-side printer IP write)
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -665,6 +665,7 @@ Last activity: 2026-10-28 -- Phase 41.13 planning complete
 | Phase 41.13 P06 | 1h | 2 tasks | 2 files |
 | Phase 41.13 P07 | 1h | 2 tasks | 4 files |
 | Phase 41.13 P08 | ~6h | 2 tasks | 3 files |
+| Phase 41.13 P09 | ~1h (холодные cargo-сборки) | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1424,6 +1425,7 @@ Recent decisions affecting current work:
 - [Phase 41.13]: 41.13-06: Dropdown USB-хоста = combobox + flat; заголовок «Все устройства» внутри sectionFor
 - [Phase 41.13]: 41.13-07: data-usb-host-touched убран (usbHostTouched читает submitEdit); ошибка usb_host_device_id - фиксированный текст в поле и тосте
 - [Phase 41.13]: 41.13-08: решение 6 пересмотрено (три источника, редактируемый USB-хост, приоритет USB > ссылка > в составе); PGR-01..04 остаются Pending до живой проверки; сплошной прогон 2124 passed/0 failed; чеклист 19 пунктов UNVERIFIED передан пользователю
+- [Phase 41.13]: 41.13-09: IP принтера при правке пишется отдельной операцией set_network_in_tx мимо exists-гарда; normalize_printer_ip на трёх путях (порт и пробелы отклоняются, имена хостов проходят); IP и USB-хост независимы (D-13, D-15); принтеры на нестандартном SNMP-порту завести нельзя - принято
 
 ### Pending Todos
 
@@ -1629,8 +1631,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-28T18:00:35.862Z
-Stopped at: 41.13-08 — задачи 1-2 выполнены, пауза на checkpoint:human-action (задача 3, живая проверка 19 пунктов, UNVERIFIED); план НЕ закрыт, PGR-01..04 Pending
+Last session: 2026-11-01T15:13:00.984Z
+Stopped at: Completed 41.13-09-PLAN.md
 Resume file: None
 
 None
