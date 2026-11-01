@@ -18,8 +18,9 @@
 //   (B) submitEdit: usb_host_device_id попадает в patch ТОЛЬКО внутри блока, чьё
 //       условие содержит usbHostTouched, PRINTER_TYPE_ID и showUsbHost (иначе правка
 //       без касания поля затирает хост);
-//   (C) submitSingleCreate: usbHostDeviceId есть и стоит в ветке, условие которой
-//       упоминает usbHost (хост уходит только при пустом IP);
+//   (C) submitSingleCreate (D-15, IP и хост независимы): usbHostDeviceId лежит в том же
+//       литерале блока принтера, что и ipAddress:, условие блока упоминает И ipAddress,
+//       И usbHost, а выражение после usbHostDeviceId: НЕ упоминает ipAddress;
 //   (D) quantityDisabled содержит `usbHost !== null` (хост блокирует «Количество»);
 //   (E) поле хоста не обёрнуто условием, принудительно требующим !isEdit (оно
 //       доступно при правке), и обёрнуто условием с showUsbHost;
@@ -29,6 +30,28 @@
 //   (H) usbHostPicker.ts: SECTION_ALL = 'Все устройства', sectionFor возвращает его
 //       ТОЛЬКО при hasSectionOne (порядок ветвей важен), isUsbHostFieldVisible
 //       экспортирован; DeviceFormBody вызывает isUsbHostFieldVisible( в showUsbHost.
+// Поправка D-13/D-15 (2026-11-01: «принтер может быть связан по USB и в это же время быть
+// сетевым»):
+//   (B2) submitEdit: охрана присваивания usb_host_device_id не упоминает ipAddress и
+//       loadedPrinterIp (ключ хоста не зависит от IP; иначе хост молча перестал бы уходить
+//       у принтера с IP);
+//   (E+) ни одно условие вокруг поля хоста не упоминает ipAddress / loadedPrinterIp;
+//   (I) usbHostPicker.ts: в сигнатуре и теле isUsbHostFieldVisible нет ipAddress,
+//       loadedPrinterIp, hasSavedHost; вызов в форме не передаёт ipAddress и loadedPrinterIp;
+//   (J) поля f-printer-ip и f-printer-community не под условием, требующим !isEdit, и
+//       блок ограничен типом «Принтер» (DOM отсутствует вне него);
+//   (K) onMount: в обработчике getByDeviceId.then есть ipAddress = ...p.ipAddress
+//       (предзаполнение IP при правке);
+//   (L) submitEdit: printer_ip_address присваивается внутри блока с PRINTER_TYPE_ID и
+//       printerLoaded и внутри блока со сравнением с loadedPrinterIp, значением с null
+//       (стёртый IP уходит как null);
+//   (M) community инициализируется не голым 'public' (зависит от target) и
+//       printer_community уходит только в блоке с непустой community и непустым IP;
+//   (N) в сыром тексте формы есть D-13 и D-15 и нет «create+Принтер ONLY» (отмена D-03
+//       фазы 40.3 записана у кода);
+//   (O) в разметке нет подсказки «Оставьте пустым для USB» (ложная посылка);
+//   (P) PrinterDetail: строка хоста — самостоятельный {#if printer.usbHostDeviceId}, а не
+//       {:else if} после строки IP.
 // Файл или функцию не разобрать — нарушение, не молчаливый PASS; отсутствие файла —
 // красный, не SKIP.
 //
@@ -103,6 +126,18 @@ function enclosingHeaders(code, pos) {
     while (j >= 0 && !';{}'.includes(code[j])) j--;
     return code.slice(j + 1, open);
   });
+}
+
+/** Тело самого внутреннего блока `{ ... }`, содержащего позицию pos. */
+function innermostBlock(code, pos) {
+  const stack = [];
+  for (let i = 0; i < pos; i++) {
+    const c = code[i];
+    if (c === '{') stack.push(i);
+    else if (c === '}') stack.pop();
+  }
+  if (stack.length === 0) return null;
+  return extractBalanced(code, stack[stack.length - 1], '{', '}');
 }
 
 /** Тег <Name ...> до закрывающего `>` на нулевой глубине фигурных скобок. */
@@ -223,6 +258,13 @@ function scanForm(raw, violations) {
           );
         }
       }
+      for (const cond of conds) {
+        if (/\b(ipAddress|loadedPrinterIp|hasSavedHost)\b/.test(cond)) {
+          violations.push(
+            `(E) ${FORM}: поле хоста обёрнуто условием «${cond}», которое смотрит на IP. IP и хост независимы (D-15): поле хоста не прячется из-за IP.`,
+          );
+        }
+      }
       if (conds.length === 0 || !/\bshowUsbHost\b/.test(conds[conds.length - 1])) {
         violations.push(
           `(E) ${FORM}: ближайшее условие вокруг поля хоста не содержит showUsbHost: видимость решает isUsbHostFieldVisible.`,
@@ -259,6 +301,14 @@ function scanForm(raw, violations) {
           /\bPRINTER_TYPE_ID\b/.test(hd) &&
           /\bshowUsbHost\b/.test(hd),
       );
+      const ipGuarded = headers.some(
+        (hd) => /\bif\b/.test(hd) && /\b(ipAddress|loadedPrinterIp|hasSavedHost)\b/.test(hd),
+      );
+      if (ipGuarded) {
+        violations.push(
+          `(B2) ${FORM}: охрана присваивания usb_host_device_id в submitEdit смотрит на IP. Ключ хоста не зависит от IP (D-15): иначе хост молча перестанет уходить у принтера с IP.`,
+        );
+      }
       if (!guarded) {
         violations.push(
           `(B) ${FORM}: usb_host_device_id в submitEdit вне блока с условием usbHostTouched && PRINTER_TYPE_ID && showUsbHost: правка без касания поля затрёт хост.`,
@@ -282,9 +332,25 @@ function scanForm(raw, violations) {
     }
     for (const h of hits) {
       const headers = enclosingHeaders(create.body, h.index);
-      if (!headers.some((hd) => /\bif\b/.test(hd) && /\busbHost\b/.test(hd))) {
+      if (
+        !headers.some(
+          (hd) => /\bif\b/.test(hd) && /\busbHost\b/.test(hd) && /\bipAddress\b/.test(hd),
+        )
+      ) {
         violations.push(
-          `(C) ${FORM}: usbHostDeviceId в submitSingleCreate не в ветке, условие которой упоминает usbHost: хост должен уходить только при пустом IP.`,
+          `(C) ${FORM}: условие блока принтера в submitSingleCreate обязано упоминать и ipAddress, и usbHost: блок строится, если задан хотя бы один из двух (D-15).`,
+        );
+      }
+      const literal = innermostBlock(create.body, h.index) ?? '';
+      if (!/\bipAddress\s*:/.test(literal)) {
+        violations.push(
+          `(C) ${FORM}: usbHostDeviceId в submitSingleCreate не в одном литерале с ipAddress: при создании блок должен нести оба значения (D-15).`,
+        );
+      }
+      const val = /\busbHostDeviceId\s*:\s*([^,}]*)/.exec(literal);
+      if (val && /\bipAddress\b/.test(val[1])) {
+        violations.push(
+          `(C) ${FORM}: значение usbHostDeviceId в submitSingleCreate зависит от ipAddress. IP и хост независимы (D-15): хост не пропадает из-за IP.`,
         );
       }
     }
@@ -315,6 +381,130 @@ function scanForm(raw, violations) {
       `(H) ${FORM}: showUsbHost не строится вызовом isUsbHostFieldVisible(: условие видимости не пишется в разметке вручную.`,
     );
   }
+
+  // (I, часть формы): вызов не передаёт IP.
+  const callAt = sc.indexOf('isUsbHostFieldVisible(');
+  if (callAt !== -1) {
+    const callArgs = extractBalanced(sc, callAt + 'isUsbHostFieldVisible'.length, '(', ')') ?? '';
+    if (/\b(ipAddress|loadedPrinterIp|hasSavedHost)\b/.test(callArgs)) {
+      violations.push(
+        `(I) ${FORM}: вызов isUsbHostFieldVisible передаёт IP. Видимость хоста не зависит от IP (D-15).`,
+      );
+    }
+  }
+
+  // (J): блок IP/community доступен при правке и ограничен типом «Принтер».
+  for (const id of ['f-printer-ip', 'f-printer-community']) {
+    const hit = new RegExp(`\\bid="${id}"`).exec(code);
+    if (!hit) {
+      violations.push(`(J) ${FORM}: нет поля id="${id}".`);
+      continue;
+    }
+    const tag = openingTagAt(code, hit.index);
+    if (!tag) {
+      violations.push(`(J) ${FORM}: не удалось разобрать тег поля ${id}.`);
+      continue;
+    }
+    const conds = enclosingIfConditions(code, tag.start);
+    for (const cond of conds) {
+      if (forcesNotEdit(cond)) {
+        violations.push(
+          `(J) ${FORM}: поле ${id} обёрнуто условием «${cond}», которое требует !isEdit. Блок IP/community обязан быть доступен при правке (D-13).`,
+        );
+      }
+    }
+    if (!conds.some((c) => /\bPRINTER_TYPE_ID\b/.test(c))) {
+      violations.push(
+        `(J) ${FORM}: поле ${id} не ограничено типом «Принтер»: DOM обязан отсутствовать вне него.`,
+      );
+    }
+  }
+
+  // (K): предзаполнение IP при правке.
+  const thenM = /\.getByDeviceId\([^)]*\)\s*\.then\(\(?(\w+)\)?\s*=>\s*\{/.exec(sc);
+  if (!thenM) {
+    violations.push(`(K) ${FORM}: не найден обработчик printers.getByDeviceId(...).then.`);
+  } else {
+    const thenBody = extractBalanced(sc, thenM.index + thenM[0].length - 1, '{', '}') ?? '';
+    if (!new RegExp(`\\bipAddress\\s*=[^;]*\\b${thenM[1]}\\.ipAddress\\b`).test(thenBody)) {
+      violations.push(
+        `(K) ${FORM}: в обработчике getByDeviceId нет предзаполнения ipAddress из ${thenM[1]}.ipAddress: при правке поле IP осталось бы пустым.`,
+      );
+    }
+  }
+
+  // (L), (M): ключи IP и community в submitEdit, начальное значение community.
+  if (edit) {
+    const ipHits = [...edit.body.matchAll(/\bprinter_ip_address\b/g)];
+    if (ipHits.length === 0) {
+      violations.push(
+        `(L) ${FORM}: в submitEdit нет printer_ip_address: IP нельзя изменить при правке.`,
+      );
+    }
+    for (const h of ipHits) {
+      const headers = enclosingHeaders(edit.body, h.index).filter((hd) => /\bif\b/.test(hd));
+      if (!headers.some((hd) => /\bPRINTER_TYPE_ID\b/.test(hd) && /\bprinterLoaded\b/.test(hd))) {
+        violations.push(
+          `(L) ${FORM}: printer_ip_address в submitEdit вне блока с PRINTER_TYPE_ID и printerLoaded: до ответа сервера пустой IP стёр бы сохранённый.`,
+        );
+      }
+      if (!headers.some((hd) => /\bloadedPrinterIp\b/.test(hd))) {
+        violations.push(
+          `(L) ${FORM}: printer_ip_address в submitEdit вне блока со сравнением с loadedPrinterIp: правка названия пересылала бы IP.`,
+        );
+      }
+      const stmt = edit.body.slice(h.index, edit.body.indexOf(';', h.index));
+      if (!/\bnull\b/.test(stmt)) {
+        violations.push(
+          `(L) ${FORM}: присваивание printer_ip_address без null: стёртый IP не отправится как null.`,
+        );
+      }
+    }
+    const cHits = [...edit.body.matchAll(/\bprinter_community\b/g)];
+    if (cHits.length === 0) {
+      violations.push(`(M) ${FORM}: в submitEdit нет printer_community.`);
+    }
+    for (const h of cHits) {
+      const headers = enclosingHeaders(edit.body, h.index).filter((hd) => /\bif\b/.test(hd));
+      if (
+        !headers.some(
+          (hd) => /\bcommunity\.trim\(\)\s*!==\s*''/.test(hd) && /\bipNow\s*!==\s*''/.test(hd),
+        )
+      ) {
+        violations.push(
+          `(M) ${FORM}: printer_community в submitEdit вне блока «community непуста И IP непуст»: пустая community затёрла бы настоящую.`,
+        );
+      }
+    }
+  }
+  const comm = /\blet\s+community\s*=\s*\$state\(/.exec(sc);
+  if (!comm) {
+    violations.push(`(M) ${FORM}: не найдено объявление community.`);
+  } else {
+    const init = (extractBalanced(sc, comm.index + comm[0].length - 1, '(', ')') ?? '').trim();
+    if (init === "'public'" || !/\b(target|isEdit)\b/.test(init)) {
+      violations.push(
+        `(M) ${FORM}: community инициализируется «${init}»: при правке 'public' затёр бы настоящую community, начальное значение обязано зависеть от target.`,
+      );
+    }
+  }
+
+  // (N): отмена D-03 фазы 40.3 записана у кода (сырой текст, с комментариями).
+  if (!/\bD-13\b/.test(raw) || !/\bD-15\b/.test(raw)) {
+    violations.push(`(N) ${FORM}: в комментариях нет D-13 и D-15.`);
+  }
+  if (/create\+Принтер ONLY/.test(raw)) {
+    violations.push(
+      `(N) ${FORM}: вернулось «create+Принтер ONLY»: решение D-03 фазы 40.3 отменено D-13.`,
+    );
+  }
+
+  // (O): подсказка блока SNMP без ложной посылки.
+  if (/Оставьте\s+пустым\s+для\s+USB/.test(code)) {
+    violations.push(
+      `(O) ${FORM}: в разметке подсказка «Оставьте пустым для USB…»: IP и USB-хост независимы (D-15).`,
+    );
+  }
 }
 
 function scanDetail(raw, violations) {
@@ -328,6 +518,14 @@ function scanDetail(raw, violations) {
     violations.push(
       `(G) ${DETAIL}: usbHostDeviceId печатается в тексте разметки: нужно имя хоста.`,
     );
+  }
+  if (/\{:else if\s+printer\.usbHostDeviceId\s*\}/.test(code)) {
+    violations.push(
+      `(P) ${DETAIL}: строка хоста стала веткой {:else if} после строки IP. IP и хост независимы (D-15): принтер с обоими значениями не покажет хост.`,
+    );
+  }
+  if (!/\{#if\s+printer\.usbHostDeviceId\s*\}/.test(code)) {
+    violations.push(`(P) ${DETAIL}: нет самостоятельного {#if printer.usbHostDeviceId}.`);
   }
   if (!/\{[^{}]*\bprinter\.usbHostName\b[^{}]*\}/.test(code)) {
     violations.push(
@@ -343,6 +541,19 @@ function scanPicker(raw, violations) {
   }
   if (!/\bexport\s+function\s+isUsbHostFieldVisible\s*\(/.test(code)) {
     violations.push(`(H) ${PICKER}: isUsbHostFieldVisible не экспортирована.`);
+  }
+  const vis = /\bexport\s+function\s+isUsbHostFieldVisible\s*\(/.exec(code);
+  const visBody = functionBody(code, 'isUsbHostFieldVisible');
+  if (vis && visBody) {
+    const text = code.slice(vis.index, visBody.start + visBody.body.length + 1);
+    const bad = /\b(ipAddress|loadedPrinterIp|hasSavedHost)\b/.exec(text);
+    if (bad) {
+      violations.push(
+        `(I) ${PICKER}: в сигнатуре или теле isUsbHostFieldVisible есть «${bad[1]}». Видимость хоста не зависит от IP ни в одной ветке (D-15).`,
+      );
+    }
+  } else if (vis) {
+    violations.push(`(I) ${PICKER}: не удалось разобрать isUsbHostFieldVisible.`);
   }
   const sf = functionBody(code, 'sectionFor');
   if (!sf) {
@@ -413,6 +624,11 @@ function runSelfTest() {
   const form = (from, to, label) => ({ ...real, form: mutate(real.form, from, to, label) });
   const detail = (from, to, label) => ({ ...real, detail: mutate(real.detail, from, to, label) });
   const picker = (from, to, label) => ({ ...real, picker: mutate(real.picker, from, to, label) });
+  /** Несколько последовательных замен в picker: каждая со счётом ровно одного вхождения. */
+  const picker2 = (steps) => ({
+    ...real,
+    picker: steps.reduce((acc, [from, to, label]) => mutate(acc, from, to, label), real.picker),
+  });
 
   const TOUCH_COND = 'if (usbHostTouched && typeId === PRINTER_TYPE_ID && showUsbHost) {';
   const TOUCH_BLOCK = `${TOUCH_COND}\n      patch.usb_host_device_id = usbHost?.id ?? null;\n    }`;
@@ -473,15 +689,15 @@ function runSelfTest() {
       },
       {
         name: '(8) usbHostDeviceId убран из блока принтера',
-        files: form(', usbHostDeviceId: usbHost.id', '', 'no-create-host'),
+        files: form('usbHostDeviceId: usbHost?.id ?? null,', '', 'no-create-host'),
         rules: ['C'],
       },
       {
-        name: '(9) ПЕРЕСТАНОВКА: хост перенесён в ветку с IP',
+        name: '(9) ЛОЖНАЯ ПОСЫЛКА ВЕРНУЛАСЬ: хост при создании только при пустом IP',
         files: form(
-          'printerBlock = { ipAddress: ipAddress.trim(), community: community.trim() || null };',
-          'printerBlock = { ipAddress: ipAddress.trim(), community: community.trim() || null, usbHostDeviceId: usbHost?.id ?? null };',
-          'host-in-ip-branch',
+          'usbHostDeviceId: usbHost?.id ?? null,',
+          "usbHostDeviceId: ipAddress.trim() === '' ? (usbHost?.id ?? null) : null,",
+          'host-only-without-ip',
         ),
         rules: ['C'],
       },
@@ -595,6 +811,179 @@ function runSelfTest() {
         ),
         rules: ['F'],
       },
+      {
+        name: '(23) внешнее условие блока принтера требует !isEdit',
+        files: form(
+          '{#if typeId === PRINTER_TYPE_ID && (!isEdit || printerLoaded)}',
+          '{#if typeId === PRINTER_TYPE_ID && !isEdit}',
+          'outer-not-edit',
+        ),
+        rules: ['J'],
+      },
+      {
+        name: '(24) ВОЗВРАТ УСЛОВИЯ ПО IP В ВЕТКУ СОЗДАНИЯ isUsbHostFieldVisible',
+        files: picker2([
+          ['  isEdit: boolean;\n', '  isEdit: boolean;\n  ipAddress: string;\n', 'param-ip'],
+          [
+            'if (!ctx.isEdit) return true;',
+            "if (!ctx.isEdit) return ctx.ipAddress.trim() === '';",
+            'create-ip',
+          ],
+        ]),
+        rules: ['I'],
+      },
+      {
+        name: '(24b) ВОЗВРАТ УСЛОВИЯ ПО loadedPrinterIp В ВЕТКУ ПРАВКИ isUsbHostFieldVisible',
+        files: picker2([
+          [
+            '  isEdit: boolean;\n',
+            '  isEdit: boolean;\n  loadedPrinterIp: string | null;\n',
+            'param-lpi',
+          ],
+          [
+            '\n  return ctx.printerLoaded;\n}',
+            "\n  return ctx.printerLoaded && (ctx.loadedPrinterIp ?? '').trim() === '';\n}",
+            'edit-ip',
+          ],
+        ]),
+        rules: ['I'],
+      },
+      {
+        name: '(24c) поле хоста в разметке снова обёрнуто условием по IP',
+        files: form(
+          '{#if showUsbHost}',
+          "{#if showUsbHost && ipAddress.trim() === ''}",
+          'host-ip-wrap',
+        ),
+        rules: ['E'],
+      },
+      {
+        name: '(24d) форма снова передаёт ipAddress в isUsbHostFieldVisible',
+        files: form(
+          '      readonly,\n      printerLoaded,\n    }),',
+          '      readonly,\n      ipAddress,\n      printerLoaded,\n    }),',
+          'call-ip',
+        ),
+        rules: ['I'],
+      },
+      {
+        name: '(25) предзаполнение IP убрано',
+        files: form("ipAddress = p.ipAddress ?? '';", "ipAddress = '';", 'no-prefill'),
+        rules: ['K'],
+      },
+      {
+        name: '(26) ПЕРЕСТАНОВКА: присваивание IP вынесено из блока сравнения с сохранённым',
+        files: form(
+          "if (ipNow !== (loadedPrinterIp ?? '').trim()) {\n        patch.printer_ip_address = ipNow === '' ? null : ipNow;\n      }",
+          "patch.printer_ip_address = ipNow === '' ? null : ipNow;\n      if (ipNow !== (loadedPrinterIp ?? '').trim()) {\n      }",
+          'swap-ip-assign',
+        ),
+        rules: ['L'],
+      },
+      {
+        name: '(26b) ПЕРЕСТАНОВКА: присваивание IP добавлено ПЕРЕД охраняющим блоком',
+        files: form(
+          'if (typeId === PRINTER_TYPE_ID && printerLoaded && !readonly) {',
+          "patch.printer_ip_address = ipAddress.trim() === '' ? null : ipAddress.trim();\n    if (typeId === PRINTER_TYPE_ID && printerLoaded && !readonly) {",
+          'ip-before-guard',
+        ),
+        rules: ['L'],
+      },
+      {
+        name: '(27) из охраны убрана проверка printerLoaded',
+        files: form(
+          'if (typeId === PRINTER_TYPE_ID && printerLoaded && !readonly) {',
+          'if (typeId === PRINTER_TYPE_ID && !readonly) {',
+          'no-loaded',
+        ),
+        rules: ['L'],
+      },
+      {
+        name: '(28) сравнение с сохранённым IP заменено на true',
+        files: form("if (ipNow !== (loadedPrinterIp ?? '').trim()) {", 'if (true) {', 'no-compare'),
+        rules: ['L'],
+      },
+      {
+        name: '(29) присваивание IP без null-ветки',
+        files: form(
+          "patch.printer_ip_address = ipNow === '' ? null : ipNow;",
+          'patch.printer_ip_address = ipNow;',
+          'no-null',
+        ),
+        rules: ['L'],
+      },
+      {
+        name: "(30) начальное значение community снова голое 'public'",
+        files: form(
+          "$state(target === null ? 'public' : '')",
+          "$state('public')",
+          'community-public',
+        ),
+        rules: ['M'],
+      },
+      {
+        name: '(30b) printer_community уходит и при пустой community',
+        files: form(
+          "if (community.trim() !== '' && ipNow !== '') {",
+          "if (ipNow !== '') {",
+          'community-empty',
+        ),
+        rules: ['M'],
+      },
+      {
+        name: '(30c) printer_community уходит и при пустом IP',
+        files: form(
+          "if (community.trim() !== '' && ipNow !== '') {",
+          "if (community.trim() !== '') {",
+          'community-no-ip',
+        ),
+        rules: ['M'],
+      },
+      {
+        name: '(31) вернулось «create+Принтер ONLY» в комментарии',
+        files: form(
+          'let hostSeq = 0;',
+          'let hostSeq = 0;\n  // Optional, create+Принтер ONLY (D-03)',
+          'create-only',
+        ),
+        rules: ['N'],
+      },
+      {
+        name: '(32) вернулась подсказка «Оставьте пустым для USB/локального принтера»',
+        files: form(
+          '<div class="snmp-section">',
+          '<div class="snmp-section">\n      <p>Оставьте пустым для\n USB/локального принтера.</p>',
+          'old-hint',
+        ),
+        rules: ['O'],
+      },
+      {
+        name: '(33) блок принтера при создании строится только по IP (хост без IP теряется)',
+        files: form(
+          "if (typeId === PRINTER_TYPE_ID && (ipAddress.trim() !== '' || usbHost !== null)) {",
+          "if (typeId === PRINTER_TYPE_ID && ipAddress.trim() !== '') {",
+          'create-ip-only',
+        ),
+        rules: ['C'],
+      },
+      {
+        name: '(35) строка хоста в детали снова ветка {:else if} после строки IP',
+        files: detail(
+          '        {/if}\n        <!-- D-15: USB-хост и IP независимы — принтер бывает и сетевым, и USB-подключённым. -->\n        {#if printer.usbHostDeviceId}',
+          '        {:else if printer.usbHostDeviceId}',
+          'detail-else-if',
+        ),
+        rules: ['P'],
+      },
+      {
+        name: '(36) к охране ключа хоста в submitEdit приписано условие по IP',
+        files: form(
+          TOUCH_COND,
+          "if (usbHostTouched && typeId === PRINTER_TYPE_ID && showUsbHost && ipAddress.trim() === '') {",
+          'edit-host-ip-guard',
+        ),
+        rules: ['B2'],
+      },
     ];
   } catch (e) {
     console.error(`${TAG} [selftest] FAIL — ${e.message}`);
@@ -622,7 +1011,7 @@ function runSelfTest() {
       form: mutate(
         real.form,
         'let hostSeq = 0;',
-        'let hostSeq = 0;\n  // раньше был member_of_group_id и variant="select"\n  /* member_of_group_id */',
+        'let hostSeq = 0;\n  // раньше был member_of_group_id и variant="select"\n  /* member_of_group_id */\n  // ipAddress, loadedPrinterIp, printer_ip_address, Оставьте пустым для USB',
         'comment-ok',
       ),
       detail: mutate(
@@ -631,7 +1020,19 @@ function runSelfTest() {
         '<span class="meta-label">Подключение</span><!-- было: устройство #{printer.usbHostDeviceId} -->',
         'comment-ok-detail',
       ),
+      picker: mutate(
+        real.picker,
+        'export function isUsbHostFieldVisible(',
+        '// раньше: ipAddress, loadedPrinterIp, hasSavedHost\nexport function isUsbHostFieldVisible(',
+        'comment-ok-picker',
+      ),
     };
+    commented.form = mutate(
+      commented.form,
+      '<div class="snmp-section">',
+      '<div class="snmp-section">\n      <!-- было: Оставьте пустым для USB/локального принтера -->',
+      'comment-ok-html',
+    );
     const v = [];
     scanAll(commented, v);
     const ok = v.length === 0;
