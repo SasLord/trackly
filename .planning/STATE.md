@@ -4,12 +4,12 @@ milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
 last_updated: "2026-11-01T19:24:25.744Z"
-last_activity: 2026-11-02 -- 41.13-13 complete (USB host label under USB badge in group card, gate rule F, 34 mutants)
+last_activity: 2026-11-02 -- 41.13-15 complete (D-32 network printer ban lifted everywhere at once: server, tests, client, texts, briefing; Rust guard + gate rule H)
 progress:
   total_phases: 27
   completed_phases: 15
   total_plans: 250
-  completed_plans: 248
+  completed_plans: 249
   percent: 56
 ---
 
@@ -1426,6 +1426,7 @@ Recent decisions affecting current work:
 - [Phase 41.13]: 41.13-07: data-usb-host-touched убран (usbHostTouched читает submitEdit); ошибка usb_host_device_id - фиксированный текст в поле и тосте
 - [Phase 41.13]: 41.13-08: решение 6 пересмотрено (три источника, редактируемый USB-хост, приоритет USB > ссылка > в составе); PGR-01..04 остаются Pending до живой проверки; сплошной прогон 2124 passed/0 failed; чеклист 19 пунктов UNVERIFIED передан пользователю
 - [Phase 41.13]: 41.13-09: IP принтера при правке пишется отдельной операцией set_network_in_tx мимо exists-гарда; normalize_printer_ip на трёх путях (порт и пробелы отклоняются, имена хостов проходят); IP и USB-хост независимы (D-13, D-15); принтеры на нестандартном SNMP-порту завести нельзя - принято
+- [Phase 41.13]: 41.13-15: запрет D-32 «сетевой принтер не может входить в группу» снят везде сразу (D-16): add_devices без проверки, isNetworkPrinter/isUsb/groupActionsEnabled удалены целиком, перевёрнутые тесты доказаны красным до правки; возврат красят Rust-страж group_network_printer_ban_guard и правило [H] check-device-row-menu; решение 6 сохранено с пометкой (до 2026-11-01)
 
 ### Pending Todos
 
@@ -1632,7 +1633,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-01T19:24:25.733Z
-Stopped at: Completed 41.13-13-PLAN.md
+Stopped at: Completed 41.13-15-PLAN.md
 Resume file: None
 
 None
