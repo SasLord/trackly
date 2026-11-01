@@ -1521,6 +1521,8 @@ fn build_card(
                 serial_number: r.serial_number,
                 origin: "usb".to_string(),
                 has_explicit_link: explicit.contains(&r.device_id),
+                usb_host_name: r.usb_host_name,
+                usb_host_inventory_number: r.usb_host_inventory_number,
             });
         }
     }
@@ -1533,6 +1535,8 @@ fn build_card(
                 serial_number: r.serial_number,
                 origin: "link".to_string(),
                 has_explicit_link: true,
+                usb_host_name: None,
+                usb_host_inventory_number: None,
             });
         }
     }
@@ -1545,6 +1549,8 @@ fn build_card(
                 serial_number: r.serial_number,
                 origin: "member".to_string(),
                 has_explicit_link: explicit.contains(&r.device_id),
+                usb_host_name: None,
+                usb_host_inventory_number: None,
             });
         }
     }

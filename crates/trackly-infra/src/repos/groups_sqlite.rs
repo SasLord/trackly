@@ -526,6 +526,21 @@ fn printer_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRefR
         name: row.get(1)?,
         inventory_number: row.get(2)?,
         serial_number: row.get(3)?,
+        usb_host_name: None,
+        usb_host_inventory_number: None,
+    })
+}
+
+/// Строка usb-принтера: колонки 0..3 как у `printer_ref_from_row`, плюс имя (4) и
+/// инвентарный номер (5) USB-хоста.
+fn usb_printer_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRefRow> {
+    Ok(PrinterRefRow {
+        device_id: row.get(0)?,
+        name: row.get(1)?,
+        inventory_number: row.get(2)?,
+        serial_number: row.get(3)?,
+        usb_host_name: row.get(4)?,
+        usb_host_inventory_number: row.get(5)?,
     })
 }
 
@@ -647,6 +662,8 @@ impl SqliteGroupRepository {
     /// Принтеры, USB-привязанные к устройствам состава группы (включая вложенные
     /// группы): производные, ручной записи нет (GRP-08, D-12). Только живые
     /// устройства — и принтер, и хост. Дедупликацию с явными ссылками делает сервис.
+    /// Строка несёт также имя и инвентарный номер хоста (D-14): у принтера ровно один
+    /// хост, поэтому JOIN строки не размножает.
     pub fn usb_printers_for_group(
         &self,
         conn: &Connection,
@@ -654,9 +671,11 @@ impl SqliteGroupRepository {
     ) -> Result<Vec<PrinterRefRow>, AppError> {
         let sql = [
             SUBTREE_CTE,
-            " SELECT d.id, d.name, d.inventory_number, d.serial_number
+            " SELECT d.id, d.name, d.inventory_number, d.serial_number,
+                     uh.name, uh.inventory_number
               FROM printers p
               JOIN devices d ON d.id = p.device_id AND d.deleted_at_utc IS NULL
+              JOIN devices uh ON uh.id = p.usb_host_device_id
               WHERE p.usb_host_device_id IN (
                 SELECT gd.device_id FROM group_devices gd
                 JOIN sub ON gd.group_id = sub.id
@@ -667,7 +686,7 @@ impl SqliteGroupRepository {
         .concat();
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt
-            .query_map(rusqlite::params![group_id], printer_ref_from_row)
+            .query_map(rusqlite::params![group_id], usb_printer_ref_from_row)
             .map_err(map_rusqlite)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(map_rusqlite)?;

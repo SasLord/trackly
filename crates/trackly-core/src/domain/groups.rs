@@ -234,6 +234,11 @@ pub struct PrinterRefRow {
     pub name: String,
     pub inventory_number: Option<String>,
     pub serial_number: Option<String>,
+    /// Имя USB-хоста принтера. Заполняется только запросом usb-принтеров
+    /// (`usb_printers_for_group`); у остальных источников `None`.
+    pub usb_host_name: Option<String>,
+    /// Инвентарный номер USB-хоста. Заполняется только запросом usb-принтеров.
+    pub usb_host_inventory_number: Option<String>,
 }
 
 /// Строка прямого устройства в составе группы (D-05): столбцы таблицы «Содержимое места».
