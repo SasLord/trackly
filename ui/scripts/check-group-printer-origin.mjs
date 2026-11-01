@@ -33,6 +33,18 @@
 //       нет; оба содержат «входит в состав»; фразы «появятся здесь сами» нет нигде;
 //   (E) GroupPrintersList: единственный <ActionMenu> стоит под `{#if canEdit && r.link}`
 //       (меню «Убрать ссылку» — только у строк с явной ссылкой).
+//   (F) GroupPrintersList, подпись хоста под бейджем «USB» (Фаза 41.13, D-14):
+//       (F1) скрипт: оба поля хоста читаются из строки сервера только через
+//       `usbHost` (`const usbHost = p.origin === 'usb' ? p : null;`), во втором
+//       цикле (ссылки из формы) hostName и hostInventoryNumber равны null;
+//       (F2) разметка: `{r.hostName}` стоит внутри `{#if r.origin === 'usb'}` и ПОСЛЕ
+//       </Badge> с текстом «USB» (порядок: подпись под бейджем, не над ним);
+//       (F3) подпись — ТЕКСТ элемента, а не только значение атрибута title;
+//       (F4) в ячейке «Связь» нет вывода device_id, в файле нет {@html};
+//       (F5) инв. № хоста: `инв.` и `<span class="tr-mono">{r.hostInventoryNumber}</span>`;
+//       (F6) подпись под `{#if r.hostName}`: нет имени — нет подписи, без заглушки;
+//       (F7) стиль .host: только var(--tr-text-secondary) и var(--tr-font-size-caption),
+//       без hex и новых custom properties, есть перенос (overflow-wrap).
 // Файл или блок не разобрать — нарушение, не молчаливый PASS; отсутствие файла —
 // красный, не SKIP.
 //
@@ -161,6 +173,10 @@ function scanList(raw, violations) {
     violations.push(`(B) ${LIST_FILE}: нет объявления \`type RowOrigin = …;\`.`);
   }
   let rest = script;
+  // Единственное разрешённое место сравнения кроме origin: охрана полей хоста (F1).
+  const hostGuardStmt =
+    /\bconst\s+usbHost\s*=\s*\w+\.origin === 'usb'\s*\?\s*\w+\s*:\s*null\s*;/.exec(script);
+  if (hostGuardStmt) rest = rest.replace(hostGuardStmt[0], '');
   if (originStmt) rest = rest.replace(originStmt[0], '');
   if (typeStmt) rest = rest.replace(typeStmt[0], '');
   if (USB_COMPARE_RE.test(rest)) {
@@ -219,6 +235,130 @@ function scanList(raw, violations) {
           violations.push(`(D) ${LIST_FILE}: вариант пустого состояния без «входит в состав».`);
         }
       }
+    }
+  }
+
+  scanHostLabel(raw, violations, script, markup, code);
+}
+
+/** Условия `{#if}`-блоков, охватывающих позицию pos в разметке (ветка else даёт null). */
+function enclosingConds(markup, pos) {
+  const stack = [];
+  const re = /\{(#if|:else if|:else|\/if)\b([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(markup)) !== null && m.index < pos) {
+    if (m[1] === '#if') stack.push(m[2].trim());
+    else if (m[1] === ':else if') stack[stack.length - 1] = m[2].trim();
+    else if (m[1] === ':else') stack[stack.length - 1] = null;
+    else stack.pop();
+  }
+  return stack;
+}
+
+/** Правило (F): подпись хоста под бейджем USB. Вызывается из scanList. */
+function scanHostLabel(raw, violations, script, markup, code) {
+  // (F1) источник полей.
+  const ns = norm(script);
+  if (!/const usbHost = (\w+)\.origin === 'usb' \? \1 : null;/.test(ns)) {
+    violations.push(
+      `(F1) ${LIST_FILE}: нет \`const usbHost = p.origin === 'usb' ? p : null;\`: поля хоста читаются только у USB-строк, иначе подпись приклеится к ссылке и составу.`,
+    );
+  }
+  for (const field of ['usb_host_name', 'usb_host_inventory_number']) {
+    const all = [...script.matchAll(new RegExp(`\\b${field}\\b`, 'g'))].length;
+    const guarded = [...script.matchAll(new RegExp(`\\busbHost\\?\\.${field}\\b`, 'g'))].length;
+    if (all !== 1 || guarded !== 1) {
+      violations.push(
+        `(F1) ${LIST_FILE}: ${field} читается ${all} раз(а), из них через usbHost? — ${guarded}; нужно ровно одно чтение и только через usbHost?.`,
+      );
+    }
+  }
+  for (const [key, want] of [
+    ['hostName', 'usbHost?.usb_host_name ?? null'],
+    ['hostInventoryNumber', 'usbHost?.usb_host_inventory_number ?? null'],
+  ]) {
+    const vals = [...ns.matchAll(new RegExp(`\\b${key}: ([^,;]+),`, 'g'))].map((m) => m[1].trim());
+    if (vals.length !== 2 || vals[0] !== want || vals[1] !== 'null') {
+      violations.push(
+        `(F1) ${LIST_FILE}: присваивания ${key} «${vals.join('» и «')}»; ожидается «${want}» для строк сервера и «null» для ссылок из формы.`,
+      );
+    }
+  }
+
+  // (F3) подпись — текст, а не только title: убираем значения атрибутов title.
+  const noTitle = markup.replace(/\btitle\s*=\s*(\{[^}]*\}|"[^"]*")/g, 'title=""');
+  const textAt = noTitle.indexOf('{r.hostName}');
+  if (textAt < 0) {
+    violations.push(
+      `(F3) ${LIST_FILE}: {r.hostName} не выводится текстом элемента (только в title или нигде): подпись должна читаться без наведения мыши.`,
+    );
+  } else {
+    // (F2) внутри usb-ветки и после бейджа.
+    const conds = enclosingConds(noTitle, textAt);
+    if (!conds.some((c) => c !== null && /^r\.origin === 'usb'$/.test(c))) {
+      violations.push(
+        `(F2) ${LIST_FILE}: подпись хоста не лежит внутри \`{#if r.origin === 'usb'}\`: у «Ссылка» и «В составе» подписи быть не должно.`,
+      );
+    }
+    // (F6) охрана по имени.
+    if (!conds.some((c) => c !== null && /^r\.hostName$/.test(c))) {
+      violations.push(
+        `(F6) ${LIST_FILE}: подпись хоста не под \`{#if r.hostName}\`: без имени подписи быть не должно, заглушка с id недопустима.`,
+      );
+    }
+    const badge = /<Badge\b[^>]*>\s*USB\s*<\/Badge>/.exec(noTitle);
+    if (!badge || badge.index + badge[0].length > textAt) {
+      violations.push(
+        `(F2) ${LIST_FILE}: подпись хоста стоит не после <Badge>USB</Badge>: она вторая строка ПОД бейджем.`,
+      );
+    }
+  }
+
+  // (F4) нет device_id в ячейке «Связь» и нет {@html}.
+  const cellStart = markup.indexOf("{#if r.origin === 'usb'}");
+  const cellEnd = cellStart < 0 ? -1 : markup.indexOf('</td>', cellStart);
+  if (cellStart < 0 || cellEnd < 0) {
+    violations.push(`(F4) ${LIST_FILE}: ячейка «Связь» (usb-ветка до </td>) не найдена.`);
+  } else if (/device_id/.test(markup.slice(cellStart, cellEnd))) {
+    violations.push(
+      `(F4) ${LIST_FILE}: в ячейке «Связь» выводится device_id: сырой id хоста на экран не попадает.`,
+    );
+  }
+  if (/\{@html\b/.test(code)) {
+    violations.push(`(F4) ${LIST_FILE}: {@html} в файле: имя хоста вводят пользователи (XSS).`);
+  }
+
+  // (F5) инв. № хоста.
+  if (
+    !/инв\.\s*<span class="tr-mono">\{r\.hostInventoryNumber\}<\/span>/.test(
+      markup.replace(/\s+/g, ' '),
+    )
+  ) {
+    violations.push(
+      `(F5) ${LIST_FILE}: нет \`инв. <span class="tr-mono">{r.hostInventoryNumber}</span>\`: формат «Имя · инв. N» с моноширинным номером.`,
+    );
+  }
+
+  // (F7) стиль .host.
+  const styleM = /<style\b[^>]*>([\s\S]*?)<\/style>/.exec(code);
+  const hostRule = styleM ? /\.host\s*\{([^}]*)\}/.exec(styleM[1]) : null;
+  if (!hostRule) {
+    violations.push(`(F7) ${LIST_FILE}: нет стилевого правила .host.`);
+  } else {
+    const body = hostRule[1];
+    if (!/color:\s*var\(--tr-text-secondary\)/.test(body)) {
+      violations.push(`(F7) ${LIST_FILE}: .host без color: var(--tr-text-secondary).`);
+    }
+    if (!/font-size:\s*var\(--tr-font-size-caption\)/.test(body)) {
+      violations.push(`(F7) ${LIST_FILE}: .host без font-size: var(--tr-font-size-caption).`);
+    }
+    if (/#[0-9a-fA-F]{3,8}\b/.test(body) || /^\s*--[\w-]+\s*:/m.test(body)) {
+      violations.push(`(F7) ${LIST_FILE}: в .host hex-цвет или новая custom property.`);
+    }
+    if (!/overflow-wrap:\s*(anywhere|break-word)/.test(body)) {
+      violations.push(
+        `(F7) ${LIST_FILE}: у .host нет overflow-wrap: длинное название хоста обрежется, а не перенесётся.`,
+      );
     }
   }
 }
@@ -317,6 +457,13 @@ function runSelfTest() {
     rules,
   });
 
+  // Блок подписи хоста целиком (для мутантов-перемещений).
+  const HOST_BLOCK = `{#if r.hostName}
+              <span class="host" title={hostLabel(r)}
+                >{r.hostName}{#if r.hostInventoryNumber}
+                  · инв. <span class="tr-mono">{r.hostInventoryNumber}</span>{/if}</span
+              >
+            {/if}`;
   let mutants;
   try {
     mutants = [
@@ -400,6 +547,100 @@ function runSelfTest() {
         "{#if !hasLinkProperty && card.printers.some((p) => p.origin === 'usb')}",
         ['C'],
       ),
+      // --- Правило F: подпись хоста под бейджем USB (D-14) ---
+      {
+        name: '(20) подпись хоста перенесена в ветку «В составе» (под не-USB бейдж)',
+        files: {
+          ...real,
+          list: mutate(
+            mutate(real.list, HOST_BLOCK, '', '(20) вырезать блок'),
+            '<Badge>В составе</Badge>',
+            `<Badge>В составе</Badge>\n${HOST_BLOCK}`,
+            '(20) вставить в else',
+          ),
+        },
+        rules: ['F2'],
+      },
+      L(
+        '(21) условие r.origin === usb вокруг подписи убрано',
+        "{#if r.origin === 'usb'}",
+        '{#if true}',
+        ['F2'],
+      ),
+      L(
+        '(22) {r.hostName} оставлено только в title',
+        `title={hostLabel(r)}
+                >{r.hostName}{#if`,
+        `title={r.hostName}
+                >{#if`,
+        ['F3'],
+      ),
+      {
+        name: '(23) ПЕРЕСТАНОВКА: подпись стоит ПЕРЕД бейджем USB (внутри usb-ветки)',
+        files: {
+          ...real,
+          list: mutate(
+            mutate(real.list, HOST_BLOCK, '', '(23) вырезать блок'),
+            '<Badge variant="accent">USB</Badge>',
+            `${HOST_BLOCK}\n<Badge variant="accent">USB</Badge>`,
+            '(23) вставить выше Badge',
+          ),
+        },
+        rules: ['F2'],
+      },
+      L(
+        '(24) строка сервера читает p.name вместо usb_host_name',
+        'hostName: usbHost?.usb_host_name ?? null,',
+        'hostName: p.name,',
+        ['F1'],
+      ),
+      L(
+        '(25) охрана usbHost снята: поля читаются у любой строки',
+        "const usbHost = p.origin === 'usb' ? p : null;",
+        'const usbHost = p;',
+        ['F1'],
+      ),
+      L(
+        '(26) в ячейке выведен {r.device_id}',
+        '<Badge>В составе</Badge>',
+        '<Badge>В составе</Badge>{r.device_id}',
+        ['F4'],
+      ),
+      L('(27) {@html r.hostName}', '>{r.hostName}{#if', '>{@html r.hostName}{r.hostName}{#if', [
+        'F4',
+      ]),
+      L(
+        '(28a) инв. № хоста без tr-mono',
+        '<span class="tr-mono">{r.hostInventoryNumber}</span>',
+        '<span>{r.hostInventoryNumber}</span>',
+        ['F5'],
+      ),
+      L('(28b) инв. № хоста без слова «инв.»', '· инв. <span', '· <span', ['F5']),
+      L(
+        '(29) подпись без охраны {#if r.hostName} (заглушка при пустом имени)',
+        '{#if r.hostName}',
+        '{#if true}',
+        ['F6'],
+      ),
+      L(
+        '(30) ссылка из формы получает hostName',
+        'hostName: null,\n        hostInventoryNumber: null,\n        link: true,',
+        'hostName: info.name,\n        hostInventoryNumber: null,\n        link: true,',
+        ['F1'],
+      ),
+      L(
+        '(31) .host с hex-цветом вместо токена',
+        'color: var(--tr-text-secondary);',
+        'color: #586074;',
+        ['F7'],
+      ),
+      L('(32) у .host нет переноса', 'overflow-wrap: anywhere;', '', ['F7']),
+      L(
+        '(33) .host с размером в px вместо токена',
+        'font-size: var(--tr-font-size-caption);\n    color',
+        'font-size: 12px;\n    color',
+        ['F7'],
+      ),
       {
         // WR-01 (ревью 41.12): `/*` внутри строчного комментария не открывает блок;
         // блочно-первая вычистка стирала бы нарушение между `templates/*.html` и
@@ -461,7 +702,7 @@ function runSelfTest() {
       list: mutate(
         real.list,
         '  type RowOrigin =',
-        "  // раньше было p.origin !== 'usb' и «появятся здесь сами»\n  type RowOrigin =",
+        "  // раньше было p.origin !== 'usb', {@html x}, {r.device_id}, hostName: p.name, usb_host_name и «появятся здесь сами»\n  type RowOrigin =",
         'comment-ok-list',
       ),
       form: mutate(
