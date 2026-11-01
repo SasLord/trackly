@@ -51,6 +51,11 @@
 //! на devices_update / devices_create_single_with_number_check с хостом;
 //! Manager -> 400 с JSON-телом VALIDATION / usb_host_device_id (проверка тела).
 //!
+//! Phase 41.13 Plan 10 adds Case 88 (запись IP принтера через devices_update):
+//! Employee -> 403; Manager -> 400 на адрес с портом (JSON-тело VALIDATION /
+//! printer_ip_address); допустимый IP записан в БД (проверка состояния), null его
+//! стирает; принтеру с заданным хостом IP записывается, хост остаётся (D-15).
+//!
 //! Plan 12-02 (T-12-01) adds Cases 31-32: closes a test-coverage gap on two
 //! transition endpoints that were already RBAC-gated in the service layer
 //! but never exercised by this matrix.
@@ -3365,6 +3370,236 @@ async fn role_endpoint_matrix_test() {
             assert!(
                 body.is_object() && body.get("code").is_none(),
                 "Case 87: успешный ответ — JSON-объект без кода ошибки: {body}"
+            );
+        }
+
+        // =====================================================================
+        // Case 88 (Phase 41.13 Plan 10, PGR-03, D-13/D-15): запись IP принтера
+        // через devices_update. (1) Employee -> 403 (MutateDevices); (2) Manager,
+        // адрес с портом -> 400 с JSON-телом VALIDATION / printer_ip_address;
+        // (3) Manager, допустимый IP -> 200 и IP ДЕЙСТВИТЕЛЬНО записан в БД (код
+        // 200 при молча проигнорированном неизвестном ключе записи не доказывает),
+        // затем null стирает; (4) Manager, принтер с заданным хостом -> 200, IP
+        // записан И хост остался (сервер не отказывает и не сбрасывает хост).
+        // Тело проверяется по полям DeviceDto, а не только по коду: SPA-fallback
+        // отдаёт index.html, а помощник post_with_cookie_json превращает
+        // нераспарсенное тело в `{}`.
+        // =====================================================================
+        {
+            async fn case88_row(ctx: &AppCtx, device_id: i64) -> (Option<String>, Option<i64>) {
+                let readers = ctx.devices.readers.clone();
+                tokio::task::spawn_blocking(move || {
+                    let conn = readers.acquire();
+                    conn.query_row(
+                        "SELECT ip_address, usb_host_device_id FROM printers WHERE device_id = ?1",
+                        [device_id],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .expect("Case 88: printers row")
+                })
+                .await
+                .expect("Case 88: spawn_blocking")
+            }
+
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+            let new_device = |name: &str, type_id: i64| DeviceNew {
+                type_id,
+                name: name.to_string(),
+                inventory_no: None,
+                serial_no: None,
+                model: None,
+                specs: None,
+                kit: None,
+                state: None,
+                place_id: None,
+                status_id: 1,
+            };
+            let host = build_devices_create(
+                &ctx,
+                &manager_id,
+                new_device("RBAC88 Рабочая станция А", 1),
+            )
+            .await
+            .expect("Case 88: create host")
+            .expect_created("Case 88: create host");
+            let printer = build_devices_create(
+                &ctx,
+                &manager_id,
+                new_device("RBAC88 Принтер А", 2),
+            )
+            .await
+            .expect("Case 88: create printer")
+            .expect_created("Case 88: create printer");
+            assert_eq!(
+                case88_row(&ctx, printer.id).await,
+                (None, None),
+                "Case 88: ПРЕДУСЛОВИЕ: у нового принтера нет ни IP, ни хоста"
+            );
+
+            // (1) Employee -> devices_update с printer_ip_address -> 403.
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": printer.id,
+                    "version": printer.version,
+                    "patch": { "printer_ip_address": "192.0.2.80" }
+                }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 88: Employee → devices_update (printer_ip_address) → expected 403, got {status}"
+            );
+            assert_eq!(
+                case88_row(&ctx, printer.id).await.0,
+                None,
+                "Case 88: отказ роли ничего не записал"
+            );
+
+            // (2) Manager, адрес с портом -> 400, JSON-тело VALIDATION.
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": printer.id,
+                    "version": printer.version,
+                    "patch": { "printer_ip_address": "192.0.2.80:161" }
+                }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "Case 88: Manager → адрес с портом → expected 400, got {status} ({body})"
+            );
+            assert!(
+                body.is_object(),
+                "Case 88: тело ответа обязано быть JSON-объектом: {body}"
+            );
+            assert_eq!(body["code"], "VALIDATION", "Case 88: код ошибки: {body}");
+            assert_eq!(
+                body["details"]["field"], "printer_ip_address",
+                "Case 88: поле ошибки: {body}"
+            );
+            assert_eq!(
+                case88_row(&ctx, printer.id).await.0,
+                None,
+                "Case 88: отклонённый адрес ничего не записал"
+            );
+
+            // (3) Manager, допустимый IP -> 200, тело DeviceDto, состояние БД.
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": printer.id,
+                    "version": printer.version,
+                    "patch": { "printer_ip_address": "192.0.2.81" }
+                }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 88: Manager → допустимый IP → expected 200, got {status} ({body})"
+            );
+            assert!(
+                body.is_object() && body.get("code").is_none(),
+                "Case 88: успешный ответ — JSON-объект без кода ошибки: {body}"
+            );
+            assert_eq!(body["outcome"], "created", "Case 88: тело SaveOutcome: {body}");
+            assert_eq!(body["id"], printer.id, "Case 88: тело — DeviceDto принтера: {body}");
+            assert_eq!(
+                case88_row(&ctx, printer.id).await.0.as_deref(),
+                Some("192.0.2.81"),
+                "Case 88: IP обязан быть ЗАПИСАН в БД (а не только принят с кодом 200)"
+            );
+            let next_version = body["version"]
+                .as_i64()
+                .expect("Case 88: в теле ответа есть version");
+
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": printer.id,
+                    "version": next_version,
+                    "patch": { "printer_ip_address": null }
+                }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 88: Manager → стирание IP → expected 200, got {status} ({body})"
+            );
+            assert_eq!(body["id"], printer.id, "Case 88: тело — DeviceDto принтера: {body}");
+            assert_eq!(
+                case88_row(&ctx, printer.id).await.0,
+                None,
+                "Case 88: null обязан стереть IP"
+            );
+
+            // (4) Принтер с заданным хостом: IP записывается, хост остаётся.
+            let with_host = ctx
+                .devices
+                .create_single_with_number_check_with_printer(
+                    new_device("RBAC88 Принтер Б", 2),
+                    trackly_app::dto::number_template::NumberFieldInput {
+                        value: String::new(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
+                    TemplateContextDto::PrinterCreate,
+                    Some(trackly_app::dto::printer::PrinterCreateBlockDto {
+                        ip_address: None,
+                        community: None,
+                        usb_host_device_id: Some(host.id),
+                    }),
+                )
+                .await
+                .expect("Case 88: create printer with host")
+                .expect_created("Case 88: create printer with host");
+            assert_eq!(
+                case88_row(&ctx, with_host.id).await,
+                (None, Some(host.id)),
+                "Case 88: ПРЕДУСЛОВИЕ: хост принтера непуст, прочитан из БД ДО запроса"
+            );
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/devices_update",
+                json!({
+                    "id": with_host.id,
+                    "version": with_host.version,
+                    "patch": { "printer_ip_address": "192.0.2.82" }
+                }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 88: Manager → IP принтеру с хостом → expected 200, got {status} ({body})"
+            );
+            assert!(
+                body.is_object() && body.get("code").is_none(),
+                "Case 88: успешный ответ — JSON-объект без кода ошибки: {body}"
+            );
+            assert_eq!(body["id"], with_host.id, "Case 88: тело — DeviceDto принтера: {body}");
+            assert_eq!(
+                case88_row(&ctx, with_host.id).await,
+                (Some("192.0.2.82".to_string()), Some(host.id)),
+                "Case 88: IP записан И хост остался прежним (D-15)"
             );
         }
 
