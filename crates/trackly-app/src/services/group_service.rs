@@ -928,25 +928,6 @@ fn source_device_error(message: String) -> AppError {
     }
 }
 
-/// Сетевой принтер (D-32): у принтера задан IP. USB-принтер (`ip_address IS NULL`)
-/// в группу входить может.
-fn is_network_printer_in_tx(
-    tx: &rusqlite::Transaction<'_>,
-    device_id: i64,
-) -> Result<bool, AppError> {
-    let n: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM printers WHERE device_id = ?1 AND ip_address IS NOT NULL",
-            rusqlite::params![device_id],
-            |r| r.get(0),
-        )
-        .map_err(map_rusqlite)?;
-    Ok(n > 0)
-}
-
-const NETWORK_PRINTER_MESSAGE: &str =
-    "Сетевой принтер не может входить в группу: его используют несколько рабочих мест.";
-
 fn push_unique_place(out: &mut Vec<i64>, id: i64) {
     if !out.contains(&id) {
         out.push(id);
@@ -1008,8 +989,8 @@ impl GroupService {
                             device.name, existing.name
                         )));
                     }
-                    // Серверные отказы бессмысленных действий (D-05, D-32): скрытые пункты
-                    // UI — только UX. Порядок: статус, затем сетевой принтер.
+                    // Серверные отказы бессмысленных действий (D-05): скрытые пункты
+                    // UI — только UX.
                     if device.status_code == STATUS_CODE_WRITTEN_OFF {
                         return Err(device_ids_error(format!(
                             "Устройство «{}» со статусом «Списано» в группу не добавляется.",
@@ -1025,9 +1006,6 @@ impl GroupService {
                             "Устройство «{}» со статусом «На списание» в группу не добавляется.",
                             device.name
                         )));
-                    }
-                    if is_network_printer_in_tx(&tx, *device_id)? {
-                        return Err(device_ids_error(NETWORK_PRINTER_MESSAGE.to_string()));
                     }
                     deps.groups
                         .add_device_in_tx(&tx, group_id, *device_id, now)?;

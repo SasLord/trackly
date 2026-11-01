@@ -894,25 +894,71 @@ async fn anchor_create_from_device_rejections_leave_no_group() {
     assert!(groups_with_other > groups_before);
     assert_eq!(status_code_of(&ctx, to_write_off).await, "на_списание");
 
-    // Контраст D-32: USB-принтер в УЖЕ существующую группу входит, сетевой — нет.
+    // D-16: сетевой принтер входит в УЖЕ существующую группу как любой (запрет D-32 снят,
+    // «есть IP» не значит «общий»). USB-принтер входит по-прежнему.
     let target = plain_group(&ctx, "container", "АРМ #33").await;
     ctx.groups
         .add_devices(&admin(), target, vec![usb])
         .await
         .expect("USB-принтер вступает в группу");
     assert_eq!(member_rows(&ctx, usb).await, 1);
+    ctx.groups
+        .add_devices(&admin(), target, vec![net])
+        .await
+        .expect("D-16: сетевой принтер вступает в группу как любой");
+    assert_eq!(member_rows(&ctx, net).await, 1);
+}
+
+// ---- Test 4b: сетевой принтер - обычный член (D-16) ---------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn add_devices_accepts_network_printer_like_any_member() {
+    let (ctx, _dir) = make_test_ctx().await;
+
+    // (а) контейнер: входит, состав растёт на единицу, повтор даёт прежнюю ошибку.
+    let container = plain_group(&ctx, "container", "АРМ #50").await;
+    let net = seed_printer(&ctx, "Сетевой принтер Б", "INV-N-1", Some("192.0.2.20")).await;
+    let rows_before = count_all(&ctx, "group_devices").await;
+    ctx.groups
+        .add_devices(&admin(), container, vec![net])
+        .await
+        .expect("D-16: сетевой принтер входит в контейнер");
+    assert_eq!(member_rows(&ctx, net).await, 1);
+    assert_eq!(count_all(&ctx, "group_devices").await, rows_before + 1);
     let msg = validation(
         ctx.groups
-            .add_devices(&admin(), target, vec![net])
+            .add_devices(
+                &admin(),
+                plain_group(&ctx, "container", "АРМ #51").await,
+                vec![net],
+            )
             .await
-            .expect_err("сетевой"),
+            .expect_err("уже в группе"),
         "device_ids",
     );
-    assert!(
-        msg.contains("Сетевой принтер не может входить в группу"),
-        "{msg}"
-    );
-    assert_eq!(member_rows(&ctx, net).await, 0);
+    assert!(msg.contains("уже входит в группу"), "{msg}");
+    assert_eq!(member_rows(&ctx, net).await, 1, "прочие отказы целы");
+
+    // (в) карточка группы: строка принтера есть, происхождение member, явной ссылки нет.
+    let card = ctx.groups.card(&admin(), container).await.expect("card");
+    let row = card
+        .printers
+        .iter()
+        .find(|p| p.device_id == net)
+        .expect("сетевой принтер-член виден в карточке");
+    assert_eq!(row.origin, "member");
+    assert!(!row.has_explicit_link);
+
+    // (б) группа-разбор: входит, происхождение пишется как у любого члена.
+    let teardown = plain_group(&ctx, "teardown", "Разбор #50").await;
+    let net2 = seed_printer(&ctx, "Сетевой принтер В", "INV-N-2", Some("192.0.2.21")).await;
+    assert_eq!(origin_of(&ctx, net2).await, None, "до разбора пусто");
+    ctx.groups
+        .add_devices(&admin(), teardown, vec![net2])
+        .await
+        .expect("D-16: сетевой принтер входит в разбор");
+    assert_eq!(member_rows(&ctx, net2).await, 1);
+    assert_eq!(origin_of(&ctx, net2).await, Some(teardown));
 }
 
 // ---- Test 5: откат -----------------------------------------------------------
