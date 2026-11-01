@@ -497,8 +497,7 @@
     "input": {
       "statusCode": "в_работе",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": true
   },
@@ -508,8 +507,7 @@
     "input": {
       "statusCode": "на_складе",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": true
   },
@@ -519,8 +517,7 @@
     "input": {
       "statusCode": "в_ремонте",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": true
   },
@@ -530,19 +527,17 @@
     "input": {
       "statusCode": "на_ремонте",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": true
   },
   {
-    "name": "isGroupActionAllowed: USB-принтер (не сетевой) в работе",
+    "name": "isGroupActionAllowed: принтер, в том числе сетевой, в работе (вид устройства не влияет, D-16)",
     "fn": "isGroupActionAllowed",
     "input": {
       "statusCode": "в_работе",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": true
   },
@@ -552,8 +547,7 @@
     "input": {
       "statusCode": "в_работе",
       "isMember": true,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": false
   },
@@ -563,19 +557,7 @@
     "input": {
       "statusCode": "в_работе",
       "isMember": false,
-      "isAnchor": true,
-      "isNetworkPrinter": false
-    },
-    "expected": false
-  },
-  {
-    "name": "isGroupActionAllowed: сетевой принтер",
-    "fn": "isGroupActionAllowed",
-    "input": {
-      "statusCode": "на_складе",
-      "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": true
+      "isAnchor": true
     },
     "expected": false
   },
@@ -585,8 +567,7 @@
     "input": {
       "statusCode": "списано",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": false
   },
@@ -596,8 +577,7 @@
     "input": {
       "statusCode": "на_списание",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": false
   },
@@ -607,8 +587,7 @@
     "input": {
       "statusCode": "списано",
       "isMember": true,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": false
   },
@@ -618,8 +597,7 @@
     "input": {
       "statusCode": "На списание",
       "isMember": false,
-      "isAnchor": false,
-      "isNetworkPrinter": false
+      "isAnchor": false
     },
     "expected": true
   },

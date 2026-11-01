@@ -64,6 +64,20 @@
 //        пустоте, иначе [F0]). Счёт F1 учитывает td-click: isRowOverlayEvent(
 //        не меньше, чем привязок contextmenu + dblclick + td-click.
 //
+//    [H] запрет D-32 «сетевой принтер не может входить в группу» СНЯТ (D-16, фаза
+//        41.13, план 15) и не возвращается ни через `isNetworkPrinter`, ни через
+//        привязку групповых пунктов к IP принтера. Над src без комментариев:
+//          H1: во всём src нет идентификатора isNetworkPrinter;
+//          H2: PrinterListRow.svelte не содержит groupActionsEnabled и isUsb;
+//          H3: DeviceRowMenu.svelte не содержит groupActionsEnabled (мёртвый флаг
+//              стал бы запасным путём возврата запрета);
+//          H4: в открывающем теге <DeviceRowMenu ...> файла PrinterListRow.svelte
+//              нет ipAddress и usbHostDeviceId;
+//          H5: выражение groupActionsVisible в DeviceRowMenu.svelte не сравнивает
+//              тип устройства (PRINTER_DEVICE_TYPE_ID, type_id).
+//        Недоступный файл или потерянный маркер выражения - нарушение, не SKIP.
+//        Серверная сторона охраняется Rust-стражем group_network_printer_ban_guard.
+//
 //    [D] вторая реализация меню не возвращается (план 41.1-17, D-21): файла
 //        src/features/devices/DeviceContextMenu.svelte нет; идентификатор
 //        DeviceContextMenu не встречается в src вне комментариев; классы
@@ -99,6 +113,7 @@ const TAG = '[check-device-row-menu]';
 
 const MODULE_FILE = 'src/features/devices/deviceRowMenu.ts';
 const MENU_FILE = 'src/features/devices/DeviceRowMenu.svelte';
+const PRINTER_ROW_FILE = 'src/features/printers/PrinterListRow.svelte';
 const FIXTURE = path.join(__dirname, 'fixtures/device-row-menu/cases.json');
 const MIN_CASES = 28;
 // Сколько .svelte/.ts обязан увидеть структурный проход: меньше — гейт слеп.
@@ -818,6 +833,91 @@ export function checkLegacyMenu(files) {
   return violations;
 }
 
+/** [H] Возврат запрета D-32 (сетевой принтер не входит в группу): клиентская сторона. */
+export function checkBanReturn(files) {
+  const violations = [];
+  const bad = (file, msg) => violations.push({ code: 'H', file, msg });
+
+  // H1: идентификатор isNetworkPrinter во всём src.
+  for (const [rel, src] of files) {
+    const clean = stripComments(src);
+    const m = /\bisNetworkPrinter\b/.exec(clean);
+    if (m) {
+      bad(
+        rel,
+        `H1 строка ${lineOf(clean, m.index)}: isNetworkPrinter вернулся - запрет D-32 снят решением D-16`,
+      );
+    }
+  }
+
+  // H2, H4: строка списка принтеров.
+  const rowSrc = files.get(PRINTER_ROW_FILE);
+  if (rowSrc === undefined) {
+    bad(PRINTER_ROW_FILE, 'H2 файл строки принтеров не найден: правило [H] было бы слепым');
+  } else {
+    const clean = stripComments(rowSrc);
+    for (const word of ['groupActionsEnabled', 'isUsb']) {
+      const m = new RegExp(`\\b${word}\\b`).exec(clean);
+      if (m) {
+        bad(
+          PRINTER_ROW_FILE,
+          `H2 строка ${lineOf(clean, m.index)}: ${word} - групповые пункты принтера не зависят от IP (D-16)`,
+        );
+      }
+    }
+    const tagRe = /<DeviceRowMenu\b/g;
+    let t;
+    let tags = 0;
+    while ((t = tagRe.exec(clean)) !== null) {
+      tags++;
+      const end = findTagEnd(clean, t.index);
+      if (end === -1) {
+        bad(PRINTER_ROW_FILE, `H4 строка ${lineOf(clean, t.index)}: тег <DeviceRowMenu не закрыт`);
+        continue;
+      }
+      const tag = clean.slice(t.index, end + 1);
+      const m = /\b(ipAddress|usbHostDeviceId)\b/.exec(tag);
+      if (m) {
+        bad(
+          PRINTER_ROW_FILE,
+          `H4 строка ${lineOf(clean, t.index)}: в привязках <DeviceRowMenu использован ${m[1]} - меню не зависит от IP и USB-хоста (D-15, D-16)`,
+        );
+      }
+    }
+    if (tags === 0) bad(PRINTER_ROW_FILE, 'H4 в файле нет <DeviceRowMenu: правило было бы слепым');
+  }
+
+  // H3, H5: само меню.
+  const menuSrc = files.get(MENU_FILE);
+  if (menuSrc === undefined) {
+    bad(MENU_FILE, 'H3 файл меню не найден: правило [H] было бы слепым');
+  } else {
+    const clean = stripComments(menuSrc);
+    const m = /\bgroupActionsEnabled\b/.exec(clean);
+    if (m) {
+      bad(
+        MENU_FILE,
+        `H3 строка ${lineOf(clean, m.index)}: groupActionsEnabled вернулся - мёртвый флаг стал бы запасным путём возврата запрета`,
+      );
+    }
+    const at = clean.indexOf('groupActionsVisible:');
+    const next = at === -1 ? -1 : clean.indexOf('quickActions:', at);
+    if (at === -1 || next === -1) {
+      bad(MENU_FILE, 'H5 не найдено выражение groupActionsVisible: правило было бы слепым');
+    } else {
+      const expr = clean.slice(at, next);
+      const k = /PRINTER_DEVICE_TYPE_ID|\btype_id\b|\bprinter\b/i.exec(expr);
+      if (k) {
+        bad(
+          MENU_FILE,
+          `H5 строка ${lineOf(clean, at + k.index)}: в groupActionsVisible сравнивается вид устройства (${k[0]}) - групповые пункты положены любому принтеру (D-16)`,
+        );
+      }
+    }
+  }
+  return violations;
+}
+
 /** Все структурные правила по карте «относительный путь -> исходник». */
 export function scanStructural(files, opts = {}) {
   const mandatory = opts.mandatory ?? MANDATORY_ROW_FILES;
@@ -865,6 +965,7 @@ export function scanStructural(files, opts = {}) {
   else for (const v of checkModuleFile(moduleSrc)) add({ ...v, file: MODULE_FILE });
   for (const v of checkLiterals(files)) add(v);
   for (const v of checkLegacyMenu(files)) add(v);
+  for (const v of checkBanReturn(files)) add(v);
 
   // [F]: ROW_FILES + каждый .svelte с <DeviceRowMenu (обход, не ручной список).
   const rowSet = new Set(rowFiles);
@@ -960,18 +1061,13 @@ const SOURCE_MUTANTS = [
   },
   {
     name: 'не учитывать isAnchor',
-    from: 'input.isMember || input.isAnchor || input.isNetworkPrinter',
-    to: 'input.isMember || input.isNetworkPrinter',
+    from: 'input.isMember || input.isAnchor',
+    to: 'input.isMember',
   },
   {
     name: 'не учитывать isMember',
-    from: 'input.isMember || input.isAnchor || input.isNetworkPrinter',
-    to: 'input.isAnchor || input.isNetworkPrinter',
-  },
-  {
-    name: 'не учитывать isNetworkPrinter',
-    from: 'input.isMember || input.isAnchor || input.isNetworkPrinter',
-    to: 'input.isMember || input.isAnchor',
+    from: 'input.isMember || input.isAnchor',
+    to: 'input.isAnchor',
   },
   { name: 'не блокировать на_списание', from: "['списано', 'на_списание']", to: "['списано']" },
   { name: 'не блокировать списано', from: "['списано', 'на_списание']", to: "['на_списание']" },
@@ -1085,6 +1181,16 @@ const CLEAN_ROW = `<script lang="ts">
 </TableRow>
 `;
 
+// Строка списка принтеров для правила [H]: меню подключено без привязки к IP.
+const CLEAN_PRINTER_ROW = `<script lang="ts">
+  // раньше: const isUsb = $derived(!printer.ipAddress); isNetworkPrinter groupActionsEnabled
+  const ipText = $derived(printer.ipAddress ? printer.ipAddress : printer.usbHostDeviceId ? 'USB' : null);
+</script>
+<tr>
+  <td>{ipText}<DeviceRowMenu bind:this={menuRef} device={null} deviceId={printer.deviceId} trigger="none" {onPoll} /></td>
+</tr>
+`;
+
 const ROW_PATH = 'src/features/devices/DeviceListRow.svelte';
 
 function fixtureMap(extra = {}) {
@@ -1092,6 +1198,7 @@ function fixtureMap(extra = {}) {
     [MENU_FILE, CLEAN_MENU],
     [MODULE_FILE, CLEAN_MODULE],
     [ROW_PATH, CLEAN_ROW],
+    [PRINTER_ROW_FILE, CLEAN_PRINTER_ROW],
   ]);
   for (const [k, v] of Object.entries(extra)) {
     if (v === null) m.delete(k);
@@ -1456,6 +1563,122 @@ function structuralMutants() {
       }),
       expect: ['F1', 'F2'],
     },
+    // ---- [H] запрет D-32 не возвращается (D-16) ---------------------------------
+    {
+      name: '[H1] isNetworkPrinter возвращён в модуль',
+      files: fixtureMap({
+        [MODULE_FILE]: mutate(
+          CLEAN_MODULE,
+          'return t.filter',
+          'if (input.isMember || input.isNetworkPrinter) return [];\n  return t.filter',
+          'H1mod',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H1',
+    },
+    {
+      name: '[H2] PrinterListRow получил groupActionsEnabled от IP',
+      files: fixtureMap({
+        [PRINTER_ROW_FILE]: mutate(
+          CLEAN_PRINTER_ROW,
+          'trigger="none"',
+          'trigger="none" groupActionsEnabled={!printer.ipAddress}',
+          'H2attr',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H2',
+    },
+    {
+      name: '[H2] PrinterListRow вернул const isUsb',
+      files: fixtureMap({
+        [PRINTER_ROW_FILE]: mutate(
+          CLEAN_PRINTER_ROW,
+          '</script>',
+          'const isUsb = $derived(!printer.ipAddress);\n</script>',
+          'H2isUsb',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H2',
+    },
+    {
+      name: '[H3] DeviceRowMenu вернул проп groupActionsEnabled',
+      files: fixtureMap({
+        [MENU_FILE]: menu(
+          'const sections',
+          'let { groupActionsEnabled = true } = $props();\n  const sections',
+          'H3prop',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H3',
+    },
+    {
+      name: '[H1] DeviceRowMenu вызывает isGroupActionAllowed с isNetworkPrinter: false',
+      files: fixtureMap({
+        [MENU_FILE]: menu(
+          'groupActionsVisible: true,',
+          'groupActionsVisible: isGroupActionAllowed({ isNetworkPrinter: false }),',
+          'H1menu',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H1',
+    },
+    {
+      name: '[H4] привязка меню принтера к IP через другой проп (не groupActionsEnabled)',
+      files: fixtureMap({
+        [PRINTER_ROW_FILE]: mutate(
+          CLEAN_PRINTER_ROW,
+          '{onPoll} />',
+          '{onPoll} hideGroups={!!printer.usbHostDeviceId} />',
+          'H4other',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H4',
+      absent: ['F1', 'F2', 'F3'],
+    },
+    {
+      name: '[H5] МУТАНТ-ПЕРЕСТАНОВКА: групповой пункт привязан к виду устройства',
+      files: fixtureMap({
+        [MENU_FILE]: menu(
+          'groupActionsVisible: true,',
+          'groupActionsVisible: dev !== null && isGroupActionAllowed({}) && dev.type_id !== 2,',
+          'H5type',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H5',
+    },
+    {
+      name: '[H5] групповой пункт привязан к PRINTER_DEVICE_TYPE_ID',
+      files: fixtureMap({
+        [MENU_FILE]: menu(
+          'groupActionsVisible: true,',
+          'groupActionsVisible: dev?.type_id !== PRINTER_DEVICE_TYPE_ID,',
+          'H5const',
+        ),
+      }),
+      expect: ['H'],
+      expectMsg: 'H5',
+    },
+    {
+      name: '[H] файл строки принтеров потерян - не SKIP, а нарушение',
+      files: fixtureMap({ [PRINTER_ROW_FILE]: null }),
+      expect: ['H'],
+      expectMsg: 'H2',
+    },
+    {
+      name: '[H] маркер groupActionsVisible потерян - правило H5 не слепнет молча',
+      files: fixtureMap({
+        [MENU_FILE]: menu('groupActionsVisible: true,', 'visible: true,', 'H5marker'),
+      }),
+      expect: ['H'],
+      expectMsg: 'H5',
+    },
   ];
 }
 
@@ -1504,6 +1727,12 @@ async function selftest(cases) {
         process.exit(1);
       }
     }
+    if (m.expectMsg && !r.violations.some((v) => v.code === 'H' && v.msg.includes(m.expectMsg))) {
+      console.error(
+        `${TAG} SELFTEST FAIL — «${m.name}»: нарушение [H] есть, но не ${m.expectMsg} (доказано не то правило)`,
+      );
+      process.exit(1);
+    }
     for (const code of m.absent ?? []) {
       if (codes.has(code)) {
         console.error(
@@ -1512,6 +1741,25 @@ async function selftest(cases) {
         process.exit(1);
       }
     }
+  }
+  // 3a. Зелёный контроль [H]: слова запрета внутри комментариев не краснят (CLEAN_PRINTER_ROW
+  // уже несёт их в комментарии), а ipText от IP зависит и остаётся допустимым.
+  const commentOnly = scanStructural(
+    fixtureMap({
+      [MENU_FILE]: mutate(
+        CLEAN_MENU,
+        'const sections',
+        '// isNetworkPrinter groupActionsEnabled PRINTER_DEVICE_TYPE_ID type_id\n  const sections',
+        'Hcomment',
+      ),
+    }),
+    SELFTEST_OPTS,
+  );
+  if (commentOnly.violations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — слова запрета в комментарии краснят [H]:\n  - ${commentOnly.violations.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
   }
   // 4. Допустимые формы охраны остаются зелёными (охрана с дополнительным операндом).
   // CLEAN_ROW уже содержит handleDblClick с `|| closest(...)` — он прошёл выше.

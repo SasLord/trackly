@@ -49,7 +49,6 @@ export interface GroupActionInput {
   statusCode: string;
   isMember: boolean;
   isAnchor: boolean;
-  isNetworkPrinter: boolean;
 }
 
 /** type_id типа «Устройство»: тот же, что DevicesPage передаёт в фильтр списка. */
@@ -98,7 +97,7 @@ export function buildMenuSections(input: MenuInput): MenuItemSpec[][] {
  * Решение по `code` статуса, а не по подписи и не по числовому id (D-02).
  */
 export function isGroupActionAllowed(input: GroupActionInput): boolean {
-  if (input.isMember || input.isAnchor || input.isNetworkPrinter) return false;
+  if (input.isMember || input.isAnchor) return false;
   return !BLOCKED_STATUS_CODES.includes(input.statusCode);
 }
 

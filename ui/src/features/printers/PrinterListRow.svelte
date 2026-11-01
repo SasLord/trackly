@@ -68,13 +68,6 @@
     printer.tonerLevels ? (Object.entries(printer.tonerLevels)[0] ?? null) : null,
   );
 
-  // USB-принтер: тот же признак, что и у подписи «USB» в ipText. Сетевой принтер
-  // используют несколько рабочих мест, членом одного АРМ он быть не может
-  // (D-32), поэтому групповые пункты меню ему не показываются. Сервер отказывает
-  // и сам (add_devices); здесь только зеркало, правило сборки пунктов живёт в
-  // deviceRowMenu.ts, а не в этом файле.
-  const isUsb = $derived(!printer.ipAddress && !!printer.usbHostDeviceId);
-
   // Меню строки (фаза 41.1, план 18; D-24, D-25, D-26). Своей кнопки действий у
   // принтера нет (раздел master-detail, клик по строке = выбор), поэтому меню
   // открывается правым кликом и с клавиатуры, двойной клик открывает просмотр.
@@ -156,7 +149,6 @@
       device={null}
       deviceId={printer.deviceId}
       trigger="none"
-      groupActionsEnabled={isUsb}
       {onPoll}
       {onEdit}
       {onChanged}

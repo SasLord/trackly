@@ -70,8 +70,6 @@
     device: DeviceDto | null;
     deviceId?: number;
     trigger?: 'button' | 'none';
-    /** false для сетевого принтера: групповые пункты не показываются. */
-    groupActionsEnabled?: boolean;
     /** Пункт «Опросить сейчас» (принтеры). Не передан — пункта нет. */
     onPoll?: () => void;
     onEdit: (_d: DeviceDto) => void;
@@ -85,7 +83,6 @@
     device,
     deviceId,
     trigger = 'button',
-    groupActionsEnabled = true,
     onPoll,
     onEdit,
     onChanged,
@@ -118,12 +115,10 @@
       hasPrint: onPrintAcceptance !== undefined,
       groupActionsVisible:
         dev !== null &&
-        groupActionsEnabled &&
         isGroupActionAllowed({
           statusCode: dev.status_code,
           isMember: dev.group_id != null,
           isAnchor: dev.anchor_group_id != null,
-          isNetworkPrinter: false,
         }),
       quickActions: dev === null ? [] : quickActionsForDevice(typesCache.items ?? [], dev.type_id),
     }),
