@@ -4,12 +4,12 @@ milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
 last_updated: "2026-11-01T19:24:25.744Z"
-last_activity: 2026-11-02 -- 41.13-11 complete (USB host label data in group card rows)
+last_activity: 2026-11-02 -- 41.13-12 complete (printer form: IP and USB host independent, SNMP block on edit, gate 41 mutants)
 progress:
   total_phases: 27
   completed_phases: 15
   total_plans: 250
-  completed_plans: 246
+  completed_plans: 247
   percent: 56
 ---
 
@@ -1632,7 +1632,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-01T19:24:25.733Z
-Stopped at: Completed 41.13-11-PLAN.md
+Stopped at: Completed 41.13-12-PLAN.md
 Resume file: None
 
 None
