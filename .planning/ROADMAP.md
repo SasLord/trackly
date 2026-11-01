@@ -192,7 +192,7 @@
 | 41.11. Долг фазы 41.1 *(после 41.1)* | v1.4 | 12/12 | Complete   | 2026-10-19 |
 | 41.12. Находки аудита v1.4 *(после 41.11)* | v1.4 | 7/7 | Complete    | 2026-10-21 |
 | 41.2. Группы × Акты и Места | v1.4 | 16/16 | Awaiting human UAT (41.2-HUMAN-UAT.md); verification gaps_found — IN-01 фазы 41 не закрыт, см. 41.2-VERIFICATION.md |  |
-| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 10/15 | Живая UAT 19/19 пройдена (41.13-HUMAN-UAT.md); gap closure по F-1/F-2 идёт: 09, 10 выполнены; PGR-01/02/04 Complete, PGR-03 открыт | 2026-11-02 |
+| 41.13. Принтеры: подключение к АРМ *(после 41.2)* | v1.4 | 11/15 | Живая UAT 19/19 пройдена (41.13-HUMAN-UAT.md); gap closure по F-1/F-2 идёт: 09, 10, 11 выполнены; PGR-01/02/04 Complete, PGR-03 открыт | 2026-11-02 |
 | 41.3. Вложения | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 0/TBD | Not started | - |
 | 41.5. Переписка в заявке | v1.4 | 0/TBD | Not started | - |
@@ -1091,7 +1091,7 @@ Plans:
 устройстве.
 
 Plans:
-**Plans:** 10/15 plans executed
+**Plans:** 11/15 plans executed
 
 **Wave 1**
 
@@ -1134,7 +1134,7 @@ Plans:
 
 **Wave 10** *(blocked on 41.13-10)*
 
-- [ ] 41.13-11-PLAN.md — F-2, сервер: имя и инв. № USB-хоста в `PrinterRefRow` / `GroupPrinterDto`, JOIN в `usb_printers_for_group`, тесты и 5 мутантов (D-14)
+- [x] 41.13-11-PLAN.md — F-2, сервер: имя и инв. № USB-хоста в `PrinterRefRow` / `GroupPrinterDto`, JOIN в `usb_printers_for_group`, тесты и 5 мутантов (D-14)
 
 **Wave 11** *(blocked on 41.13-09, 41.13-11)*
 
