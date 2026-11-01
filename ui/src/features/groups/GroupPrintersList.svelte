@@ -10,6 +10,9 @@
   // пометкой по приоритету USB > ссылка > в составе. Принтер, который и
   // USB-связан, и добавлен ссылкой, получает Badge «USB», но сохраняет меню
   // «Убрать ссылку» — иначе явная ссылка стала бы невидимой и неудаляемой.
+  // Под Badge «USB» второй строкой стоит подпись, с каким устройством связь
+  // (Phase 41.13, D-14): «Имя» или «Имя · инв. N». У «Ссылка» и «В составе»
+  // подписи нет. Сырой id хоста на экран не выводится; нет имени — нет подписи.
   // Дедупликацию сервер уже сделал в карточке; здесь она повторяется лишь
   // потому, что список ссылок — ЛОКАЛЬНОЕ состояние формы (добавленное до
   // сохранения сервер ещё не видел).
@@ -70,6 +73,9 @@
     inventory_number: string | null;
     serial_number: string | null;
     origin: RowOrigin;
+    /** Имя и инв. № USB-хоста; только у строк origin = usb, иначе null. */
+    hostName: string | null;
+    hostInventoryNumber: string | null;
     /** Есть явная ссылка — только она включает меню «Убрать ссылку». */
     link: boolean;
   }
@@ -85,12 +91,17 @@
       // Приоритет USB > ссылка > в составе: ссылка, добавленная в форме до
       // сохранения, переключает «В составе» на «Ссылка», но не перекрывает USB.
       const origin: RowOrigin = p.origin === 'usb' ? 'usb' : hasLink ? 'link' : 'member';
+      // Подпись хоста читается только у USB-строк: у ссылки и состава сервер её
+      // не присылает, а принтер с хостом вне группы не должен её получить.
+      const usbHost = p.origin === 'usb' ? p : null;
       out.push({
         device_id: p.device_id,
         name: p.name,
         inventory_number: p.inventory_number,
         serial_number: p.serial_number,
         origin,
+        hostName: usbHost?.usb_host_name ?? null,
+        hostInventoryNumber: usbHost?.usb_host_inventory_number ?? null,
         link: hasLink,
       });
     }
@@ -109,6 +120,8 @@
         inventory_number: info.inventory_number,
         serial_number: info.serial_number,
         origin: 'link',
+        hostName: null,
+        hostInventoryNumber: null,
         link: true,
       });
     }
@@ -179,6 +192,13 @@
     return [];
   }
 
+  // Полный текст подписи для title: дубль видимого текста для длинных названий.
+  function hostLabel(r: Row): string {
+    return r.hostInventoryNumber
+      ? `${r.hostName} · инв. ${r.hostInventoryNumber}`
+      : (r.hostName ?? '');
+  }
+
   // Пустое состояние описывает реальное поведение; «ссылкой ниже» — только
   // когда поле добавления действительно есть на экране.
   const emptyBody = $derived(
@@ -216,6 +236,12 @@
         <td class="cell">
           {#if r.origin === 'usb'}
             <Badge variant="accent">USB</Badge>
+            {#if r.hostName}
+              <span class="host" title={hostLabel(r)}
+                >{r.hostName}{#if r.hostInventoryNumber}
+                  · инв. <span class="tr-mono">{r.hostInventoryNumber}</span>{/if}</span
+              >
+            {/if}
           {:else if r.origin === 'link'}
             <Badge>Ссылка</Badge>
           {:else}
@@ -276,6 +302,18 @@
 
   .line {
     display: block;
+  }
+
+  // Вторая строка ячейки «Связь»: td.cell отдаёт nowrap и центрирование, а
+  // длинное название хоста обязано переноситься и читаться слева.
+  .host {
+    display: block;
+    margin-top: var(--tr-space-2xs);
+    font-size: var(--tr-font-size-caption);
+    color: var(--tr-text-secondary);
+    white-space: normal;
+    text-align: left;
+    overflow-wrap: anywhere;
   }
 
   .col-menu {
