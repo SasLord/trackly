@@ -146,7 +146,8 @@ export function scanSource(files, violations) {
         }
         const ifIdx = body.lastIndexOf('if', iNeeds);
         const braceOpen = body.indexOf('{', iNeeds);
-        const branch = ifIdx === -1 || braceOpen === -1 ? null : extractBalanced(body, braceOpen, '{', '}');
+        const branch =
+          ifIdx === -1 || braceOpen === -1 ? null : extractBalanced(body, braceOpen, '{', '}');
         if (branch === null) {
           violations.push(`(A) ${PAGE}: не удалось выделить ветку needs_group_restore.`);
         } else if (/pushToast\(|notifyPlaceContentChanged\(|\brefresh\(/.test(branch)) {
@@ -162,7 +163,9 @@ export function scanSource(files, violations) {
       violations.push(`(B) ${PAGE}: нет вызова acts.delete( — антивакуум.`);
     }
     if (!calls.some((a) => topLevelArgCount(a) >= 3)) {
-      violations.push(`(B) ${PAGE}: ни один acts.delete( не передаёт третий аргумент (выбор по группам).`);
+      violations.push(
+        `(B) ${PAGE}: ни один acts.delete( не передаёт третий аргумент (выбор по группам).`,
+      );
     }
     if (calls.some((a) => topLevelArgCount(a) < 3)) {
       violations.push(
@@ -176,7 +179,9 @@ export function scanSource(files, violations) {
     } else {
       const cond = enclosingIfCondition(markup, tag.index);
       if (cond === null || !cond.includes('restorePrompt')) {
-        violations.push(`(B) ${PAGE}: <GroupRestoreChoicePopup обязан стоять внутри {#if restorePrompt}.`);
+        violations.push(
+          `(B) ${PAGE}: <GroupRestoreChoicePopup обязан стоять внутри {#if restorePrompt}.`,
+        );
       }
       const dm = /<ActDeleteModal\b/.exec(markup);
       if (dm !== null) {
@@ -184,7 +189,9 @@ export function scanSource(files, violations) {
         const end = rest.search(/\/>|<\/ActDeleteModal>/);
         const spanEnd = end === -1 ? markup.length : dm.index + end;
         if (tag.index > dm.index && tag.index < spanEnd) {
-          violations.push(`(B) ${PAGE}: попап вложен в <ActDeleteModal — модалка над модалкой запрещена.`);
+          violations.push(
+            `(B) ${PAGE}: попап вложен в <ActDeleteModal — модалка над модалкой запрещена.`,
+          );
         }
       }
     }
@@ -193,18 +200,23 @@ export function scanSource(files, violations) {
   const popup = s[POPUP];
   if (popup !== undefined) {
     if (/\bacts\.delete\s*\(/.test(popup)) {
-      violations.push(`(C) ${POPUP}: попап вызывает acts.delete( — он обязан быть презентационным.`);
+      violations.push(
+        `(C) ${POPUP}: попап вызывает acts.delete( — он обязан быть презентационным.`,
+      );
     }
     if (/from\s*['"][^'"]*\bapi\b[^'"]*['"]/.test(popup)) {
       violations.push(`(C) ${POPUP}: импорт из api — попап обязан быть презентационным.`);
     }
     if (!popup.includes('initialFocus=".modal-footer .btn-secondary"')) {
-      violations.push(`(C) ${POPUP}: нет initialFocus=".modal-footer .btn-secondary" — фокус не на «Отмена».`);
+      violations.push(
+        `(C) ${POPUP}: нет initialFocus=".modal-footer .btn-secondary" — фокус не на «Отмена».`,
+      );
     }
     const flat = popup.replace(/\s+/g, ' ');
     for (const phrase of [PHRASE_RESTORE, PHRASE_KEEP]) {
       const n = countOf(flat, phrase);
-      if (n !== 1) violations.push(`(C) ${POPUP}: фраза «${phrase}» встречается ${n} раз, нужно ровно 1.`);
+      if (n !== 1)
+        violations.push(`(C) ${POPUP}: фраза «${phrase}» встречается ${n} раз, нужно ровно 1.`);
     }
     for (const label of ['Отмена', 'Удалить акт']) {
       if (!new RegExp(`>\\s*${label}\\s*<`).test(popup)) {
@@ -334,7 +346,10 @@ function runSelfTest() {
       },
       {
         name: '(7) попап смонтирован под чужим {#if}',
-        files: withFile(PAGE, mutate(pg, '{#if restorePrompt}', '{#if deleteTargetAct}', 'foreign if')),
+        files: withFile(
+          PAGE,
+          mutate(pg, '{#if restorePrompt}', '{#if deleteTargetAct}', 'foreign if'),
+        ),
         rule: 'B',
       },
       {
@@ -380,7 +395,9 @@ function runSelfTest() {
     console.error(`${TAG} [selftest] FAIL — ${failed} проверок не совпали.`);
     return false;
   }
-  console.error(`${TAG} [selftest] PASS — реальные исходники чисты, мутантов поймано: ${mutants.length}.`);
+  console.error(
+    `${TAG} [selftest] PASS — реальные исходники чисты, мутантов поймано: ${mutants.length}.`,
+  );
   return true;
 }
 

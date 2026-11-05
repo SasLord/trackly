@@ -19,6 +19,7 @@ import type {
   ActsCountsDto,
   ActUpdateDto,
   ActUpdateReturnDto,
+  GroupRestoreChoiceDto,
   Pagination,
 } from '../../bindings';
 
@@ -54,8 +55,13 @@ export const acts = {
    * Phase 41.2 (D-09): the result also carries `notices` — non-fatal messages
    * delivered together with a SUCCESSFUL deletion.
    */
-  delete: (id: number, version: number) =>
-    apiCall<ActDeleteResultDto>('acts_delete', { id, version }),
+  /** D-42: `groupChoices` уходит только когда непуст (первый вызов идёт без выбора;
+   *  сервер при конфликте ничего не удаляет и возвращает `needs_group_restore`). */
+  delete: (id: number, version: number, groupChoices?: GroupRestoreChoiceDto[]) =>
+    apiCall<ActDeleteResultDto>(
+      'acts_delete',
+      groupChoices && groupChoices.length > 0 ? { id, version, groupChoices } : { id, version },
+    ),
 
   counts: () => apiCall<ActsCountsDto>('acts_counts'),
 

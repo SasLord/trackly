@@ -16,6 +16,7 @@
   import ReturnModal from './ReturnModal.svelte';
   import PdfPreviewModal from './PdfPreviewModal.svelte';
   import ActDeleteModal from './ActDeleteModal.svelte';
+  import GroupRestoreChoicePopup from './GroupRestoreChoicePopup.svelte';
   import { acts } from './api';
   import type {
     ActDto,
@@ -23,6 +24,8 @@
     ActNoticeDto,
     ActListResponse,
     ActsCountsDto,
+    GroupRestoreChoiceDto,
+    GroupRestoreConflictDto,
     Pagination,
   } from '../../bindings';
 
@@ -54,6 +57,8 @@
   let pdfModalAct = $state<ActDto | null>(null);
   let deleteTargetAct = $state<ActDto | null>(null);
   let deleting = $state(false);
+  // D-42: конфликт «группа перенесена после акта» — попап выбора вместо ActDeleteModal.
+  let restorePrompt = $state<{ act: ActDto; groups: GroupRestoreConflictDto[] } | null>(null);
   let searchQuery = $state('');
   const pagination = $state<Pagination>({ offset: 0, limit: 50 });
 
@@ -326,10 +331,17 @@
   }
 
   // Вызывается ТОЛЬКО из confirmDelete, после подтверждения в ActDeleteModal.
-  async function handleDelete(act: ActDto) {
+  async function handleDelete(act: ActDto, choices?: GroupRestoreChoiceDto[]) {
     const isReturn = act.act_type === 'return';
     try {
-      const result = await acts.delete(act.id, act.version);
+      const result = await acts.delete(act.id, act.version, choices);
+      // D-42: сервер ничего не удалил и просит выбор по группам. Никаких тостов,
+      // notify и refresh; ActDeleteModal закрывается, поверх ничего не накладывается.
+      if (result.needs_group_restore) {
+        restorePrompt = { act, groups: result.needs_group_restore.groups };
+        deleteTargetAct = null;
+        return;
+      }
       // 40.1 exhaustive sweep (WR-06): soft-deleting an act undoes its
       // device mutations (devices move back to their pre-act place) just as
       // surely as create/edit/return move them forward — server returns the
@@ -376,6 +388,23 @@
     } finally {
       deleting = false;
       deleteTargetAct = null;
+    }
+  }
+
+  function cancelRestorePrompt() {
+    if (deleting) return;
+    restorePrompt = null;
+  }
+
+  async function confirmRestorePrompt(choices: GroupRestoreChoiceDto[]) {
+    const prompt = restorePrompt;
+    if (prompt === null || deleting) return;
+    deleting = true;
+    restorePrompt = null;
+    try {
+      await handleDelete(prompt.act, choices);
+    } finally {
+      deleting = false;
     }
   }
 </script>
@@ -474,6 +503,15 @@
     {deleting}
     onCancel={cancelDelete}
     onConfirm={confirmDelete}
+  />
+{/if}
+
+{#if restorePrompt}
+  <GroupRestoreChoicePopup
+    groups={restorePrompt.groups}
+    loading={deleting}
+    onConfirm={confirmRestorePrompt}
+    onClose={cancelRestorePrompt}
   />
 {/if}
 
