@@ -25,7 +25,7 @@
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import { parseAppError, type AppError } from '$lib/api/errors';
   import type { GroupCardDto, MovementEntryDto } from '../../bindings';
 
   interface Props {
@@ -46,6 +46,8 @@
     onOpenDevice?: (_deviceId: number) => void;
     /** Карточка/состав/свойства изменились — страница обновляет дерево. */
     onChanged?: () => void;
+    /** Группа исчезла (NOT_FOUND при перечитывании) — страница сбрасывает выбор. */
+    onGone?: (_groupId: number) => void;
   }
 
   const {
@@ -60,6 +62,7 @@
     onRenameRequest,
     onOpenDevice,
     onChanged,
+    onGone,
   }: Props = $props();
 
   const BEHAVIOR_LABEL: Record<string, string> = {
@@ -84,6 +87,10 @@
       card = next;
     } catch (e) {
       if (seq !== cardSeq) return;
+      if (parseAppError(e).code === 'NOT_FOUND') {
+        onGone?.(groupId);
+        return;
+      }
       pushToast(
         'error',
         (e as Partial<AppError> | undefined)?.message ?? 'Не удалось загрузить группу.',

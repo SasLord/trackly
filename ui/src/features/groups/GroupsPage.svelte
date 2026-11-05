@@ -287,6 +287,14 @@
     }
   }
 
+  /** Выбранная группа исчезла (NOT_FOUND в панели): сбросить выбор и обновить дерево. */
+  function handleGroupGone(id: number): void {
+    if (selected && selected.kind === 'group' && selected.id === id) {
+      handleSelect(null);
+    }
+    refreshTree();
+  }
+
   function handleDeleted(): void {
     const gone = deleteTarget;
     deleteTarget = null;
@@ -367,6 +375,7 @@
               onRenameRequest={renameGroup}
               onOpenDevice={openDevice}
               onChanged={refreshTree}
+              onGone={handleGroupGone}
             />
           {/key}
         {:else}

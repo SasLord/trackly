@@ -32,7 +32,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { ensureLoaded, statusTone } from '$lib/stores/deviceStatuses.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import { parseAppError, type AppError } from '$lib/api/errors';
   import type {
     GroupAddDevicesResultDto,
     DeviceDto,
@@ -106,8 +106,13 @@
       if (seq !== loadSeq) return;
       comp = data;
       childComp = fresh;
-    } catch {
+    } catch (e) {
       if (seq === loadSeq) {
+        if (parseAppError(e).code === 'NOT_FOUND') {
+          // Группа исчезла (удалена здесь или во второй сессии): тишина, GroupPanel
+          // получит NOT_FOUND в loadCard и сообщит странице через onGone.
+          return;
+        }
         pushToast('error', 'Не удалось загрузить группы. Проверьте подключение и повторите.');
       }
     } finally {

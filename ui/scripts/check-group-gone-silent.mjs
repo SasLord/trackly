@@ -84,7 +84,9 @@ function checkCatch(catchBody, where) {
   const nf = catchBody.indexOf("'NOT_FOUND'");
   const toast = catchBody.indexOf('pushToast(');
   if (nf === -1) {
-    out.push(`${where}: в catch нет проверки кода 'NOT_FOUND' — исчезнувшая группа даст error-тост.`);
+    out.push(
+      `${where}: в catch нет проверки кода 'NOT_FOUND' — исчезнувшая группа даст error-тост.`,
+    );
     return { problems: out, branch: null };
   }
   if (toast === -1) {
@@ -92,9 +94,7 @@ function checkCatch(catchBody, where) {
     return { problems: out, branch: null };
   }
   if (nf > toast) {
-    out.push(
-      `${where}: проверка 'NOT_FOUND' стоит НИЖЕ pushToast( — тост уходит раньше проверки.`,
-    );
+    out.push(`${where}: проверка 'NOT_FOUND' стоит НИЖЕ pushToast( — тост уходит раньше проверки.`);
   }
   const braceOpen = catchBody.indexOf('{', nf);
   const branch = braceOpen === -1 ? null : extractBalanced(catchBody, braceOpen, '{', '}');
@@ -180,7 +180,9 @@ function scanPage(raw, violations) {
     const parenOpen = code.indexOf('(', e.index);
     const eb = extractBalanced(code, parenOpen, '(', ')') ?? '';
     if (new RegExp(`\\b${name}\\s*\\(`).test(eb)) {
-      violations.push(`(C) ${F}: ${name} вызывается из $effect — риск effect_update_depth_exceeded.`);
+      violations.push(
+        `(C) ${F}: ${name} вызывается из $effect — риск effect_update_depth_exceeded.`,
+      );
     }
   }
 }
@@ -212,7 +214,8 @@ function mutate(source, from, to, label) {
 
 const PANEL_NF_BLOCK =
   "      if (parseAppError(e).code === 'NOT_FOUND') {\n        onGone?.(groupId);\n        return;\n      }\n";
-const PANEL_TOAST_TAIL = "        (e as Partial<AppError> | undefined)?.message ?? 'Не удалось загрузить группу.',\n      );\n";
+const PANEL_TOAST_TAIL =
+  "        (e as Partial<AppError> | undefined)?.message ?? 'Не удалось загрузить группу.',\n      );\n";
 
 function runSelfTest() {
   let s;
