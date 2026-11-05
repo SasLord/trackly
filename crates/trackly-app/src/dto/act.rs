@@ -355,6 +355,54 @@ pub struct GroupReleaseWarningDto {
     pub items: Vec<GroupReleaseItemDto>,
 }
 
+/// Выбор менеджера для частично возвращаемой контейнерной группы (Phase 41.2, D-45, UD-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupSplitChoiceDto {
+    /// Возвращаемые члены выходят из группы, группа остаётся на месте.
+    Release,
+    /// Невозвращаемые члены выходят из группы, группа с возвращаемыми переезжает.
+    MoveGroup,
+}
+
+impl From<GroupSplitChoiceDto> for crate::services::group_act_plan::GroupSplitChoice {
+    fn from(v: GroupSplitChoiceDto) -> Self {
+        match v {
+            GroupSplitChoiceDto::Release => Self::Release,
+            GroupSplitChoiceDto::MoveGroup => Self::MoveGroup,
+        }
+    }
+}
+
+/// Одна частично возвращаемая контейнерная группа (вопрос перед возвратом).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ReturnGroupSplitItemDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    pub group_name: String,
+    pub returned_names: Vec<String>,
+    pub kept_names: Vec<String>,
+    pub target_place_name: Option<String>,
+    pub places_match: bool,
+    pub parent_group_name: Option<String>,
+}
+
+/// Целиком возвращаемая группа с разными местами возврата (D-46): форме нужна встроенная ошибка.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ReturnGroupPlaceConflictDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    pub group_name: String,
+    pub device_names: Vec<String>,
+}
+
+/// Ответ предварительного вопроса о разбиении групп при возврате (пусто = вопрос не нужен).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ReturnGroupSplitWarningDto {
+    pub items: Vec<ReturnGroupSplitItemDto>,
+    pub place_conflicts: Vec<ReturnGroupPlaceConflictDto>,
+}
+
 /// A non-fatal notice delivered together with a SUCCESSFUL act deletion
 /// (Phase 41.2, D-09). `group_id` lets the UI offer an "open group" link.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]

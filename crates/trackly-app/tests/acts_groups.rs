@@ -21,7 +21,7 @@ use rusqlite::types::Value;
 use trackly_app::context::AppCtx;
 use trackly_app::dto::act::{
     ActCreateDto, ActItemNewDto, ActNumberEditInput, ActReturnDto, ActReturnItemDto,
-    ActSaveOutcome, ActUpdateDto, ActUpdateItemDto, ActUpdateReturnDto,
+    ActSaveOutcome, ActUpdateDto, ActUpdateItemDto, ActUpdateReturnDto, GroupSplitChoiceDto,
 };
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
 use trackly_app::dto::number_template::NumberFieldInput;
@@ -3032,6 +3032,329 @@ async fn undo_after_an_edit_that_removed_one_position_restores_it_into_the_group
         assert_eq!(group_members(&ctx, arm.group).await, 3);
         assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
         assert_act_clean(&ctx, act).await;
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// UD-2 (план 41.2-24): выбор разбиения и предварительный вопрос при возврате
+// ---------------------------------------------------------------------------
+
+fn return_payload(
+    ids: &[i64],
+    places: &[Option<i64>],
+    bulk: Option<i64>,
+    apply_to_all: bool,
+) -> ActReturnDto {
+    ActReturnDto {
+        bulk_condition: None,
+        bulk_place_id: bulk,
+        apply_to_all,
+        items: ids
+            .iter()
+            .zip(places)
+            .map(|(&id, &p)| {
+                let mut item = return_item(id);
+                item.place_id_override = p;
+                item
+            })
+            .collect(),
+        giver_name: None,
+        receiver_name: None,
+        handover_date_utc: None,
+    }
+}
+
+async fn return_with(
+    ctx: &AppCtx,
+    parent: i64,
+    payload: ActReturnDto,
+    split: GroupSplitChoiceDto,
+) -> Result<i64, AppError> {
+    ctx.acts
+        .do_return_with_split(&admin(), parent, payload, split)
+        .await
+        .map(|a| a.id)
+}
+
+/// «АРМ #3» из четырёх устройств на `a`, выдана целиком в `b`.
+async fn four_member_fixture(ctx: &AppCtx, a: i64, b: i64, number: &str) -> (Arm, i64) {
+    let mut arm = seed_arm(ctx, a).await;
+    arm.devices
+        .push(seed_device(ctx, dev("Колонки #1", Some(a), Some(arm.group))).await);
+    let handover = create_ok(ctx, dto(number, &arm.devices, Some(b), false)).await;
+    (arm, handover)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_split_preview_partial_lists_group_names_and_target() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-1").await;
+        let ids = &arm.devices[..2];
+        let w = ctx
+            .acts
+            .return_group_split_preview(
+                handover,
+                &return_payload(ids, &[None, None], Some(a), true),
+            )
+            .await
+            .expect("preview");
+        assert!(w.place_conflicts.is_empty());
+        assert_eq!(w.items.len(), 1);
+        let it = &w.items[0];
+        assert_eq!(it.group_id, arm.group);
+        assert_eq!(it.group_name, "АРМ #3");
+        assert_eq!(it.returned_names.len(), 2);
+        assert_eq!(it.kept_names.len(), 2);
+        assert!(it.returned_names.contains(&"Системный блок #4".to_string()));
+        assert!(it.kept_names.contains(&"Колонки #1".to_string()));
+        assert!(it.places_match);
+        assert!(it
+            .target_place_name
+            .as_deref()
+            .is_some_and(|n| n.contains("Склад А")));
+        // чтение: ничего не записано
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(group_members(&ctx, arm.group).await, 4);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_split_preview_whole_and_anchor_need_no_question() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-2").await;
+        let ids = arm.devices.clone();
+        let places = vec![None; ids.len()];
+        let w = ctx
+            .acts
+            .return_group_split_preview(handover, &return_payload(&ids, &places, Some(a), true))
+            .await
+            .expect("preview whole");
+        assert!(w.items.is_empty() && w.place_conflicts.is_empty(), "{w:?}");
+
+        let f = seed_anchor_group(&ctx, a).await;
+        let h2 = create_ok(&ctx, dto("S-2b", &[f.anchor], Some(b), false)).await;
+        let w = ctx
+            .acts
+            .return_group_split_preview(h2, &return_payload(&[f.anchor], &[None], Some(a), true))
+            .await
+            .expect("preview anchor");
+        assert!(w.items.is_empty() && w.place_conflicts.is_empty(), "{w:?}");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_split_preview_different_places() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        // целиком, разные места -> place_conflicts, preview не падает
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-3").await;
+        let places = [Some(a), Some(a), Some(c), Some(c)];
+        let w = ctx
+            .acts
+            .return_group_split_preview(
+                handover,
+                &return_payload(&arm.devices, &places, None, false),
+            )
+            .await
+            .expect("preview conflict");
+        assert!(w.items.is_empty());
+        assert_eq!(w.place_conflicts.len(), 1);
+        assert_eq!(w.place_conflicts[0].group_name, "АРМ #3");
+        assert_eq!(w.place_conflicts[0].device_names.len(), 4);
+
+        // частично, разные места -> places_match = false
+        let w = ctx
+            .acts
+            .return_group_split_preview(
+                handover,
+                &return_payload(&arm.devices[..2], &[Some(a), Some(c)], None, false),
+            )
+            .await
+            .expect("preview partial");
+        assert_eq!(w.items.len(), 1);
+        assert!(!w.items[0].places_match);
+        assert!(w.place_conflicts.is_empty());
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_partial_release_choice_keeps_group_in_place() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-4").await;
+        let ids = arm.devices[..2].to_vec();
+        let ret = return_ok(&ctx, handover, &ids, Some(a)).await;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        assert_eq!(effects(&ctx, ret, "release").await, 2);
+        assert_eq!(effects(&ctx, ret, "move").await, 0);
+        for d in &ids {
+            assert_eq!(member_rows(&ctx, *d).await, 0);
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+        }
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_partial_move_group_choice_moves_group_and_frees_the_rest() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-5").await;
+        let (returned, kept) = (arm.devices[..2].to_vec(), arm.devices[2..].to_vec());
+        let ret = return_with(
+            &ctx,
+            handover,
+            return_payload(&returned, &[None, None], Some(a), true),
+            GroupSplitChoiceDto::MoveGroup,
+        )
+        .await
+        .expect("move group");
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        for d in &returned {
+            assert_eq!(member_rows(&ctx, *d).await, 1);
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+        }
+        for d in &kept {
+            assert_eq!(member_rows(&ctx, *d).await, 0, "вне группы");
+            assert_eq!(device_place(&ctx, *d).await, Some(b), "на старом месте");
+        }
+        assert_eq!(effects(&ctx, ret, "release").await, 2);
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_partial_move_group_undo_restores_everything() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-6").await;
+        let (returned, kept) = (arm.devices[..2].to_vec(), arm.devices[2..].to_vec());
+        let ret = return_with(
+            &ctx,
+            handover,
+            return_payload(&returned, &[None, None], Some(a), true),
+            GroupSplitChoiceDto::MoveGroup,
+        )
+        .await
+        .expect("move group");
+        assert_eq!(
+            group_place(&ctx, arm.group).await,
+            Some(a),
+            "до отката группа переехала"
+        );
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        undo_act(&ctx, ret).await;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(group_members(&ctx, arm.group).await, 4);
+        for d in &kept {
+            assert_eq!(member_rows(&ctx, *d).await, 1, "снова в группе");
+            assert_eq!(device_place(&ctx, *d).await, Some(b));
+        }
+        for d in &returned {
+            assert_eq!(member_rows(&ctx, *d).await, 1);
+            assert_eq!(device_place(&ctx, *d).await, Some(b), "на месте выдачи");
+        }
+        assert_act_clean(&ctx, ret).await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_whole_group_with_different_places_is_rejected_by_split_service() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-7").await;
+        let counters_before = counters(&ctx).await;
+        let acts_before = scalar_i64(&ctx, "SELECT COUNT(*) FROM acts", vec![]).await;
+        let err = return_with(
+            &ctx,
+            handover,
+            return_payload(
+                &arm.devices,
+                &[Some(a), Some(a), Some(c), Some(c)],
+                None,
+                false,
+            ),
+            GroupSplitChoiceDto::MoveGroup,
+        )
+        .await
+        .expect_err("разные места");
+        match &err {
+            AppError::Validation { field, message } => {
+                assert_eq!(field, "place_id");
+                assert!(message.contains("АРМ #3"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(group_members(&ctx, arm.group).await, 4);
+        assert_eq!(counters(&ctx).await, counters_before);
+        assert_eq!(
+            scalar_i64(&ctx, "SELECT COUNT(*) FROM acts", vec![]).await,
+            acts_before
+        );
+        // контроль: одинаковые места проходят
+        return_with(
+            &ctx,
+            handover,
+            return_payload(&arm.devices, &[Some(a); 4], None, false),
+            GroupSplitChoiceDto::MoveGroup,
+        )
+        .await
+        .expect("одинаковые места");
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_partial_different_places_move_group_rejected_release_still_works() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "S-8").await;
+        let ids = arm.devices[..2].to_vec();
+        let payload = || return_payload(&ids, &[Some(a), Some(c)], None, false);
+        let err = return_with(&ctx, handover, payload(), GroupSplitChoiceDto::MoveGroup)
+            .await
+            .expect_err("MoveGroup при разных местах");
+        assert!(matches!(&err, AppError::Validation { .. }), "{err:?}");
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(group_members(&ctx, arm.group).await, 4);
+
+        return_with(&ctx, handover, payload(), GroupSplitChoiceDto::Release)
+            .await
+            .expect("Release работает");
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        assert_eq!(device_place(&ctx, ids[0]).await, Some(a));
+        assert_eq!(device_place(&ctx, ids[1]).await, Some(c));
     })
     .await;
 }

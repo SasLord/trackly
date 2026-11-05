@@ -138,7 +138,7 @@ fn body_of(src: &str, signature: &str) -> String {
 
 const SIG_CREATE: &str = "pub async fn create(";
 const SIG_UPDATE: &str = "pub async fn update(";
-const SIG_DO_RETURN: &str = "pub async fn do_return(";
+const SIG_DO_RETURN: &str = "pub async fn do_return_with_split(";
 const SIG_UPDATE_RETURN: &str = "pub async fn update_return(";
 const SIG_UNDO: &str = "fn undo_device_mutations_for_act(";
 
@@ -636,7 +636,10 @@ fn plan_order_guard_selftest_identifier_boundary() {
 #[test]
 fn plan_order_guard_selftest_missing_or_renamed_anchor_is_an_error() {
     // Переименованная функция и пропавший якорь — ошибка, а не пропуск.
-    let renamed = SRC.replace("pub async fn do_return(", "pub async fn do_return_x(");
+    let renamed = SRC.replace(
+        "pub async fn do_return_with_split(",
+        "pub async fn do_return_with_split_x(",
+    );
     assert!(has(&defects(&renamed), "(cnt)"));
     let lost = disable_first(SRC, SIG_UPDATE_RETURN, "prior_release_effect_id_in_tx(");
     assert!(has(&defects(&lost), "(cnt)"));

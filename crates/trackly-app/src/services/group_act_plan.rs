@@ -255,22 +255,6 @@ impl ActGroupPlan {
             Some(c) => Err(places_mismatch_error(&c.group_name)),
         }
     }
-
-    /// Строки предупреждения о разбиении: (группа, возвращаемые, остающиеся).
-    /// Потребитель (подтверждение выбора) появится в плане 41.2-24.
-    #[allow(dead_code)]
-    pub(crate) fn split_items(&self) -> Vec<(String, Vec<String>, Vec<String>)> {
-        self.splits
-            .iter()
-            .map(|s| {
-                (
-                    s.group_name.clone(),
-                    s.returned_device_names.clone(),
-                    s.kept_device_names.clone(),
-                )
-            })
-            .collect()
-    }
 }
 
 fn places_mismatch_error(group_name: &str) -> AppError {

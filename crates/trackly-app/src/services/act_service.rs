@@ -46,7 +46,8 @@ use crate::dto::act::{
     ActItemDto, ActListResponse, ActNoticeDto, ActReturnDto, ActReturnItemDto, ActSaveOutcome,
     ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupReleaseItemDto, GroupReleaseWarningDto,
     GroupRestoreChoiceDto, GroupRestoreConflictDto, GroupRestoreDeviceDto, GroupRestoreWarningDto,
-    Pagination,
+    GroupSplitChoiceDto, Pagination, ReturnGroupPlaceConflictDto, ReturnGroupSplitItemDto,
+    ReturnGroupSplitWarningDto,
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
 use crate::dto::printer::WsEvent;
@@ -54,10 +55,10 @@ use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
 use crate::services::act_kit::kit_for_item_in_tx;
 use crate::services::group_act_plan::{
-    apply_plan_in_tx, apply_return_plan_in_tx, forget_moved_details_in_tx, plan_for_return_in_tx,
-    plan_in_tx, prior_release_effect_id_in_tx, release_effect_for_removed_in_tx,
-    restore_released_members_in_tx, revert_detach_effect_in_tx, revert_group_moves_in_tx,
-    revert_move_effect_in_tx, units_of_group_in_tx, GroupSplitChoice,
+    self, apply_plan_in_tx, apply_return_plan_in_tx, forget_moved_details_in_tx,
+    plan_for_return_in_tx, plan_in_tx, prior_release_effect_id_in_tx,
+    release_effect_for_removed_in_tx, restore_released_members_in_tx, revert_detach_effect_in_tx,
+    revert_group_moves_in_tx, revert_move_effect_in_tx, units_of_group_in_tx, GroupSplitChoice,
 };
 use crate::services::group_membership::{
     anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, RestoreOutcome,
@@ -1815,13 +1816,104 @@ impl ActService {
         Ok(())
     }
 
+    /// Возврат с прежним поведением разбиения групп: частично возвращаемая контейнерная
+    /// группа остаётся на месте, возвращаемые члены выходят из неё (`Release`).
     pub async fn do_return(
         &self,
         caller: &Identity,
         act_id: i64,
         payload: ActReturnDto,
     ) -> Result<ActDto, AppError> {
+        self.do_return_with_split(caller, act_id, payload, GroupSplitChoiceDto::Release)
+            .await
+    }
+
+    /// Предварительный вопрос UD-2 (D-45): какие контейнерные группы возврат разобьёт и какие
+    /// целиком возвращаемые группы имеют разные места. Только чтение; план считается теми же
+    /// функциями, что в `do_return`, клиентский список групп сервер не определяет.
+    pub async fn return_group_split_preview(
+        &self,
+        act_id: i64,
+        payload: &ActReturnDto,
+    ) -> Result<ReturnGroupSplitWarningDto, AppError> {
+        Self::validate_return(payload)?;
+        let readers = self.readers.clone();
+        let acts_repo = self.acts_repo.clone();
+        let places_repo = self.places_repo.clone();
+        let items = payload.items.clone();
+        let apply_to_all = payload.apply_to_all;
+        let bulk_place_id = payload.bulk_place_id;
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let parent = acts_repo.get(&conn, act_id)?;
+            if parent.deleted_at_utc.is_some() {
+                return Err(AppError::NotFound {
+                    entity: "act",
+                    id: act_id,
+                });
+            }
+            if parent.act_type != ActType::Handover {
+                return Err(AppError::Validation {
+                    field: "act_id".into(),
+                    message: "Возврат можно оформить только по handover-акту".into(),
+                });
+            }
+            let (returned_ids, return_places) =
+                returned_devices_and_places(&items, apply_to_all, bulk_place_id);
+            let snapshot = group_act_plan::load_snapshot(&conn, &SqliteGroupRepository)?;
+            let plan = group_act_plan::plan_for_return(&snapshot, &returned_ids, &return_places);
+
+            let mut ids: Vec<i64> = Vec::new();
+            for s in &plan.splits {
+                ids.extend(s.returned_device_ids.iter().copied());
+                ids.extend(s.kept_device_ids.iter().copied());
+            }
+            for c in &plan.place_conflicts {
+                ids.extend(c.device_ids.iter().copied());
+            }
+            let names = device_names_for_preview(&conn, &ids)?;
+            let name_of = |id: &i64| names.get(id).cloned().unwrap_or_default();
+
+            let mut out = ReturnGroupSplitWarningDto::default();
+            for s in &plan.splits {
+                let target_place_name = match s.target_place_id {
+                    Some(pid) => Some(places_repo.full_path(&conn, pid)?),
+                    None => None,
+                };
+                out.items.push(ReturnGroupSplitItemDto {
+                    group_id: s.group_id,
+                    group_name: s.group_name.clone(),
+                    returned_names: s.returned_device_ids.iter().map(name_of).collect(),
+                    kept_names: s.kept_device_ids.iter().map(name_of).collect(),
+                    target_place_name,
+                    places_match: s.places_match,
+                    parent_group_name: s.parent_name.clone(),
+                });
+            }
+            for c in &plan.place_conflicts {
+                out.place_conflicts.push(ReturnGroupPlaceConflictDto {
+                    group_id: c.group_id,
+                    group_name: c.group_name.clone(),
+                    device_names: c.device_ids.iter().map(name_of).collect(),
+                });
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("return_group_split_preview join: {e}"),
+        })?
+    }
+
+    pub async fn do_return_with_split(
+        &self,
+        caller: &Identity,
+        act_id: i64,
+        payload: ActReturnDto,
+        split: GroupSplitChoiceDto,
+    ) -> Result<ActDto, AppError> {
         Self::validate_return(&payload)?;
+        let split: GroupSplitChoice = split.into();
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -2053,7 +2145,7 @@ impl ActService {
                     return_act_id,
                     &group_plan,
                     &return_places,
-                    GroupSplitChoice::Release,
+                    split,
                     &returned_ids,
                     user_id_opt,
                     now,
@@ -4727,6 +4819,28 @@ fn returned_devices_and_places(
         }
     }
     (ids, places)
+}
+
+/// Имена устройств для предварительного вопроса (живые устройства, читающее соединение).
+fn device_names_for_preview(
+    conn: &rusqlite::Connection,
+    ids: &[i64],
+) -> Result<HashMap<i64, String>, AppError> {
+    let mut out = HashMap::new();
+    for chunk in ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("SELECT id, name FROM devices WHERE id IN ({placeholders})");
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter().copied()), |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        out.extend(rows);
+    }
+    Ok(out)
 }
 
 fn effective_device_ids(item: &ActReturnItemDto) -> Vec<i64> {

@@ -2506,7 +2506,7 @@ const ACT_SERVICE_SRC_PHASE_412: &str = include_str!("../src/services/act_servic
 const ACT_DIRECT_PATH_SIGS: [&str; 4] = [
     "pub async fn create(",
     "pub async fn update(",
-    "pub async fn do_return(",
+    "pub async fn do_return_with_split(",
     "pub async fn update_return(",
 ];
 
@@ -2808,7 +2808,7 @@ fn write_site_gate_act_release_is_move_aware() {
     assert!(!release_unconditional_sites(&act_join(&mutated)).is_empty());
 
     // Мутант 3: на возврате условие `!group_placed && !is_anchor` заменено на `true`.
-    let if_line = act_first_release_if_line(&lines, "pub async fn do_return(");
+    let if_line = act_first_release_if_line(&lines, "pub async fn do_return_with_split(");
     let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
     let indent = " ".repeat(act_line_indent(lines[if_line]));
     mutated[if_line] = format!("{indent}if true {{");
