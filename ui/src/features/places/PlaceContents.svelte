@@ -211,10 +211,29 @@
     openGroup(row);
   }
 
-  // «(6 устройств)» is assembled on the client (UI-SPEC §11.2): the server sends
-  // no glued label, only member_count.
-  function deviceCountLabel(n: number): string {
+  // D-43: how many members of a group belong to the active tab. «Все» is the
+  // whole composition, «Устройства» the non-printers, «Принтеры» the printers.
+  function groupCountOnTab(row: PlaceContentDto, tab: ContentTab): number {
+    const all = row.member_count ?? 0;
+    const printers = row.printer_member_count ?? 0;
+    if (tab === 'all') return all;
+    if (tab === 'device') return all - printers;
+    if (tab === 'printer') return printers;
+    return 0;
+  }
+
+  // «(6 устройств)» / «(2 принтера)» is assembled on the client (UI-SPEC §11.2):
+  // the server sends no glued label, only the counts.
+  function groupCountLabel(row: PlaceContentDto, tab: ContentTab): string {
+    const n = groupCountOnTab(row, tab);
+    if (tab === 'printer') return `(${n} ${pluralizeRu(n, ['принтер', 'принтера', 'принтеров'])})`;
     return `(${n} ${pluralizeRu(n, ['устройство', 'устройства', 'устройств'])})`;
+  }
+
+  // D-43: an expanded group lists only the members of the active tab's kind.
+  function membersOnTab(members: PlaceContentDto[], tab: ContentTab): PlaceContentDto[] {
+    if (tab === 'all') return members;
+    return members.filter((m) => m.kind === tab);
   }
 
   // UAT gap 7: the keyboard-activatable entry point (role="button"/tabindex=0,
@@ -344,14 +363,16 @@
     },
   ]);
 
-  // D-21 / R-08: a group row stands on «Все» and on «Устройства» (only when it
-  // has non-printer members — a printers-only group never had its devices on
-  // that tab). No fifth tab; ContentTab is unchanged.
+  // D-43: a group row stands on «Все»; on «Устройства» / «Принтеры» only when it
+  // has members of that kind; never on «Картриджи». No fifth tab.
   const filteredRows = $derived(
     (rows ?? []).filter((r) => {
       if (activeTab === 'all') return true;
       if (r.kind === 'group') {
-        return activeTab === 'device' && (r.member_count ?? 0) - (r.printer_member_count ?? 0) > 0;
+        if (activeTab === 'device' || activeTab === 'printer') {
+          return groupCountOnTab(r, activeTab) > 0;
+        }
+        return false;
       }
       return r.kind === activeTab;
     }),
@@ -366,20 +387,6 @@
   const isTabFilteredEmpty = $derived(
     !loading && !loadError && (rows?.length ?? 0) > 0 && filteredRows.length === 0,
   );
-
-  // R-09: the one place where a physical tab counter and the row count may
-  // legitimately disagree — name the checkbox instead of looking like data loss.
-  const emptyTabHint = $derived.by(() => {
-    if (expandGroups || !isTabFilteredEmpty) return null;
-    const groupRows = (rows ?? []).filter((r) => r.kind === 'group');
-    if (activeTab === 'printer' && groupRows.some((r) => (r.printer_member_count ?? 0) > 0)) {
-      return 'Принтеры этого места входят в группы — включите «Разворачивать группы», чтобы увидеть их.';
-    }
-    if (activeTab === 'device' && groupRows.length > 0) {
-      return 'Устройства этого места входят в группы — включите «Разворачивать группы», чтобы увидеть их.';
-    }
-    return null;
-  });
 
   // UAT gap 7 (2026-08-25): «Тип» is redundant once the tab already filters to
   // a single kind — only shown on the «Все» tab. Base columns (Название, Инв.
@@ -599,7 +606,7 @@
         ? onlyHere
           ? 'Содержимое вложенных мест скрыто — выключите «Только здесь», чтобы увидеть его.'
           : 'Здесь и во вложенных местах ничего не размещено.'
-        : (emptyTabHint ?? 'Переключите вкладку, чтобы увидеть остальное содержимое.')}
+        : 'Переключите вкладку, чтобы увидеть остальное содержимое.'}
     >
       {#snippet head()}
         {#if showKindColumn}<th>Тип</th>{/if}
@@ -626,7 +633,7 @@
               <button type="button" class="group-name-link" onclick={() => openGroup(row)}
                 >{row.name}</button
               >
-              <span class="group-count">{deviceCountLabel(row.member_count ?? 0)}</span>
+              <span class="group-count">{groupCountLabel(row, activeTab)}</span>
             </td>
             <td class="cell cell-static"><span class="tr-mono">—</span></td>
             {#if !onlyHere}
@@ -636,6 +643,7 @@
           </TableRow>
           {#if expandedGroupIds.has(row.id)}
             {@const members = membersByGroup[row.id]}
+            {@const visibleMembers = members === undefined ? [] : membersOnTab(members, activeTab)}
             {#if members === undefined}
               <tr class="children-loading-row">
                 <td colspan={columnCount} class="children-loading">Загрузка…</td>
@@ -645,8 +653,8 @@
                 <td colspan={columnCount} class="children-loading">Состав пуст</td>
               </tr>
             {:else}
-              {#each members as member, i (`${member.kind}-${member.id}`)}
-                <TableRow class="place-content-row" indent last={i === members.length - 1}>
+              {#each visibleMembers as member, i (`${member.kind}-${member.id}`)}
+                <TableRow class="place-content-row" indent last={i === visibleMembers.length - 1}>
                   {@render rowCells(member)}
                 </TableRow>
               {/each}

@@ -417,7 +417,7 @@ function scanTabs(raw, violations) {
       `(I) ${F}: функция membersOnTab не объявлена или не сравнивает kind члена с вкладкой вне 'all'.`,
     );
   }
-  if (!/\{@const\s+visibleMembers\s*=\s*membersOnTab\s*\(/.test(branch)) {
+  if (!/\{@const\s+visibleMembers\s*=[^}]*\bmembersOnTab\s*\(/.test(branch)) {
     violations.push(`(I) ${F}: в раскрытии нет \`{@const visibleMembers = membersOnTab(…)}\`.`);
   }
   if (!/\{#each\s+visibleMembers\s+as\s+member\b/.test(branch)) {
@@ -426,9 +426,7 @@ function scanTabs(raw, violations) {
     );
   }
   if (!/last=\{\s*i\s*===\s*visibleMembers\.length\s*-\s*1\s*\}/.test(branch)) {
-    violations.push(
-      `(I) ${F}: last строки состава считается не по visibleMembers.length.`,
-    );
+    violations.push(`(I) ${F}: last строки состава считается не по visibleMembers.length.`);
   }
 
   // (I4) недостижимая подсказка удалена.
@@ -993,6 +991,84 @@ function runSelfTest() {
           ),
         },
         rules: ['D'],
+      },
+      {
+        name: '(15) filteredRows: группа снова только на «Устройства» (вкладка «Принтеры» отсекает)',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            "        if (activeTab === 'device' || activeTab === 'printer') {\n          return groupCountOnTab(r, activeTab) > 0;\n        }\n        return false;\n",
+            "        return activeTab === 'device' && (r.member_count ?? 0) - (r.printer_member_count ?? 0) > 0;\n",
+            'old-filter',
+          ),
+        },
+        rules: ['I'],
+      },
+      {
+        name: '(15б) подпись группы снова считает весь member_count',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            '{groupCountLabel(row, activeTab)}',
+            '{deviceCountLabel(row.member_count ?? 0)}',
+            'old-label',
+          ),
+        },
+        rules: ['I'],
+      },
+      {
+        name: '(15в) раскрытие перебирает сырой members вместо visibleMembers',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            '{#each visibleMembers as member,',
+            '{#each members as member,',
+            'each-raw-members',
+          ),
+        },
+        rules: ['I'],
+      },
+      {
+        name: '(15г) last считается по members.length',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            'last={i === visibleMembers.length - 1}',
+            'last={i === members.length - 1}',
+            'last-raw-length',
+          ),
+        },
+        rules: ['I'],
+      },
+      {
+        name: '(15д) membersOnTab не фильтрует по kind',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            'return members.filter((m) => m.kind === tab);',
+            'return members;',
+            'members-unfiltered',
+          ),
+        },
+        rules: ['I'],
+      },
+      {
+        name: '(15е) вернулся текст «входят в группы» (недостижимая подсказка)',
+        src: {
+          page,
+          contents: mutate(
+            contents,
+            "        : 'Переключите вкладку, чтобы увидеть остальное содержимое.'}",
+            "        : 'Принтеры этого места входят в группы — включите «Разворачивать группы».'}",
+            'old-hint',
+          ),
+        },
+        rules: ['I'],
       },
     ];
   } catch (e) {
