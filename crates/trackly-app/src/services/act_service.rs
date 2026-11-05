@@ -57,7 +57,7 @@ use crate::services::group_act_plan::{
     apply_plan_in_tx, apply_return_plan_in_tx, forget_moved_details_in_tx, plan_for_return_in_tx,
     plan_in_tx, prior_release_effect_id_in_tx, release_effect_for_removed_in_tx,
     restore_released_members_in_tx, revert_detach_effect_in_tx, revert_group_moves_in_tx,
-    revert_move_effect_in_tx, units_of_group_in_tx,
+    revert_move_effect_in_tx, units_of_group_in_tx, GroupSplitChoice,
 };
 use crate::services::group_membership::{
     anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, RestoreOutcome,
@@ -1934,7 +1934,9 @@ impl ActService {
                     payload.apply_to_all,
                     resolved_bulk_place_id,
                 );
-                let group_plan = plan_for_return_in_tx(&tx, &returned_ids)?;
+                let group_plan = plan_for_return_in_tx(&tx, &returned_ids, &return_places)?;
+                // D-46: целиком возвращаемая группа возвращается в одно место (до любой записи).
+                group_plan.ensure_places_match()?;
 
                 // 4. Next sub_number (Phase 40.5, D-04/D-05/D-17): наименьший
                 //    свободный среди живых возвратов родителя, пропускающий
@@ -2051,6 +2053,7 @@ impl ActService {
                     return_act_id,
                     &group_plan,
                     &return_places,
+                    GroupSplitChoice::Release,
                     &returned_ids,
                     user_id_opt,
                     now,
@@ -2996,13 +2999,15 @@ impl ActService {
                         (*id, location)
                     })
                     .collect();
-                let added_plan = plan_for_return_in_tx(&tx, &added)?;
+                let added_plan = plan_for_return_in_tx(&tx, &added, &added_places)?;
+                added_plan.ensure_places_match()?;
                 let applied_added = apply_return_plan_in_tx(
                     &tx,
                     &group_deps,
                     payload.id,
                     &added_plan,
                     &added_places,
+                    GroupSplitChoice::Release,
                     &added,
                     user_id_opt,
                     now,
@@ -3155,13 +3160,15 @@ impl ActService {
                         retained_places.insert(dev_id, location);
                     }
                 }
-                let retained_plan = plan_for_return_in_tx(&tx, &moving_anchors)?;
+                let retained_plan = plan_for_return_in_tx(&tx, &moving_anchors, &retained_places)?;
+                retained_plan.ensure_places_match()?;
                 let applied_retained = apply_return_plan_in_tx(
                     &tx,
                     &group_deps,
                     payload.id,
                     &retained_plan,
                     &retained_places,
+                    GroupSplitChoice::Release,
                     &moving_anchors,
                     user_id_opt,
                     now,

@@ -1388,6 +1388,10 @@ async fn s5_return_releases() {
     let y = seed_device(&ctx, 1, "Монитор 2", "INV-S5-Y", Some(place_c), None).await;
     let act = handover_act(&ctx, "S5-1", &[x, y], place_b).await;
     join_group(&ctx, x, g).await;
+    // D-44: группа, возвращённая целиком, переезжает, а не освобождает членов. Чтобы проверить
+    // след release, в группе остаётся невозвращаемый член.
+    let keep = seed_device(&ctx, 1, "Монитор 3", "INV-S5-K", Some(place_c), None).await;
+    join_group(&ctx, keep, g).await;
     assert_eq!(device_place(&ctx, x).await, Some(place_b));
 
     let ret = return_act(&ctx, &act, &[x, y], "Хорошее", place_d).await;
@@ -1416,6 +1420,9 @@ async fn s6_update_return_added_releases() {
     let act = handover_act(&ctx, "S6A-1", &[d1, d2], place_b).await;
     let ret = return_act(&ctx, &act, &[d1], "Хорошее", place_d).await;
     join_group(&ctx, d2, g).await; // d2 ещё не возвращён, стоит на Складе Б
+                                   // D-44: чтобы остался след release (а не перенос группы), в группе есть ещё один член.
+    let keep = seed_device(&ctx, 1, "Монитор 3", "INV-S6A-K", Some(place_c), None).await;
+    join_group(&ctx, keep, g).await;
     assert_eq!(device_place(&ctx, d2).await, Some(place_b));
 
     let _ = update_return_act(&ctx, &act, &ret, &[d1, d2], "Хорошее", place_d).await;

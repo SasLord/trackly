@@ -148,6 +148,10 @@ pub(crate) struct GroupMove {
     pub detach: Option<GroupDetach>,
     pub subtree_group_ids: Vec<i64>,
     pub subtree_device_ids: Vec<i64>,
+    /// Место назначения, зафиксированное планировщиком возврата для КОНТЕЙНЕРА (D-44):
+    /// общее место возврата его возвращаемых членов. `None` у якорных групп (цель берётся
+    /// по месту возврата якоря) и у контейнера, чьи члены возвращаются без места.
+    pub target_place_id: Option<i64>,
 }
 
 /// Устройство акта, выносимое из состава группы.
@@ -160,11 +164,66 @@ pub(crate) struct DeviceRelease {
     pub group_name: String,
 }
 
+/// Выбор менеджера для частично возвращаемой контейнерной группы (D-45).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GroupSplitChoice {
+    /// Возвращаемые члены выходят из группы, группа остаётся на месте (прежнее поведение).
+    Release,
+    /// Невозвращаемые прямые члены выходят из группы и остаются на месте, группа с
+    /// возвращаемыми переезжает на место возврата.
+    MoveGroup,
+}
+
+/// Вложенная непокрытая группа, которую надо отцепить при `GroupSplitChoice::MoveGroup`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SplitChild {
+    pub group_id: i64,
+    pub name: String,
+    pub version: i64,
+}
+
+/// Контейнерная группа, у которой возвращена только часть состава (D-45).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GroupSplit {
+    pub group_id: i64,
+    pub group_name: String,
+    pub group_version: i64,
+    pub returned_device_ids: Vec<i64>,
+    pub kept_device_ids: Vec<i64>,
+    /// Имена заполняет `plan_for_return_in_tx` (чистый планировщик оставляет пустые).
+    pub returned_device_names: Vec<String>,
+    pub kept_device_names: Vec<String>,
+    /// Общее место возврата возвращаемых прямых членов; `None`, если места не заданы
+    /// или не совпали.
+    pub target_place_id: Option<i64>,
+    /// Места возвращаемых прямых членов совпали (все `None` тоже совпадение).
+    pub places_match: bool,
+    pub parent_group_id: Option<i64>,
+    pub parent_name: Option<String>,
+    pub from_place_id: Option<i64>,
+    /// Глубина группы (корень = 0): `MoveGroup` применяет самые глубокие первыми.
+    pub depth: usize,
+    /// Непокрытые дочерние группы, которые `MoveGroup` отцепит и оставит на месте.
+    pub uncovered_children: Vec<SplitChild>,
+}
+
+/// Целиком возвращаемая контейнерная группа с разными местами возврата членов (D-46).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GroupPlaceConflict {
+    pub group_id: i64,
+    pub group_name: String,
+    pub device_ids: Vec<i64>,
+}
+
 /// Итог планирования: что переезжает целиком и что выносится из состава.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ActGroupPlan {
     pub moves: Vec<GroupMove>,
     pub releases: Vec<DeviceRelease>,
+    /// Только у плана возврата: частично возвращаемые контейнеры (D-45).
+    pub splits: Vec<GroupSplit>,
+    /// Только у плана возврата: целиком возвращаемые контейнеры с разными местами (D-46).
+    pub place_conflicts: Vec<GroupPlaceConflict>,
 }
 
 impl ActGroupPlan {
@@ -187,6 +246,39 @@ impl ActGroupPlan {
             }
         }
         out
+    }
+
+    /// D-46: целиком возвращаемая группа обязана возвращаться в одно место.
+    pub(crate) fn ensure_places_match(&self) -> Result<(), AppError> {
+        match self.place_conflicts.first() {
+            None => Ok(()),
+            Some(c) => Err(places_mismatch_error(&c.group_name)),
+        }
+    }
+
+    /// Строки предупреждения о разбиении: (группа, возвращаемые, остающиеся).
+    /// Потребитель (подтверждение выбора) появится в плане 41.2-24.
+    #[allow(dead_code)]
+    pub(crate) fn split_items(&self) -> Vec<(String, Vec<String>, Vec<String>)> {
+        self.splits
+            .iter()
+            .map(|s| {
+                (
+                    s.group_name.clone(),
+                    s.returned_device_names.clone(),
+                    s.kept_device_names.clone(),
+                )
+            })
+            .collect()
+    }
+}
+
+fn places_mismatch_error(group_name: &str) -> AppError {
+    AppError::Validation {
+        field: "place_id".to_string(),
+        message: format!(
+            "Группа «{group_name}» возвращается целиком: места возврата всех её устройств должны совпадать."
+        ),
     }
 }
 
@@ -278,6 +370,7 @@ pub(crate) fn plan(snapshot: &ActGroupSnapshot, act_device_ids: &[i64]) -> ActGr
             detach,
             subtree_group_ids,
             subtree_device_ids,
+            target_place_id: None,
         });
     }
 
@@ -307,35 +400,50 @@ pub(crate) fn plan(snapshot: &ActGroupSnapshot, act_device_ids: &[i64]) -> ActGr
         });
     }
 
-    ActGroupPlan { moves, releases }
+    ActGroupPlan {
+        moves,
+        releases,
+        ..Default::default()
+    }
 }
 
 /// Что делать с группами, если в возврат попали устройства `returned_device_ids`.
 ///
-/// Отличие от `plan`: при возврате переезжают ТОЛЬКО якорные группы, чей якорь возвращается
-/// (якорь никогда не выводится из своей группы, D-13). Контейнер не переезжает: его
-/// возвращаемые члены освобождаются поодиночке, как и до фазы 41.2. Покрытая якорная группа
-/// внутри контейнера становится самостоятельным корнем перемещения с отцеплением от родителя
-/// (A9/OQ-1). Подтверждение для возврата не требуется: `requires_confirmation` не вызывается.
+/// Покрытие считается так же, как у `plan` (якорная группа покрыта якорем, контейнер — когда
+/// возвращены все его прямые члены и покрыты все дочерние). Корень перемещения — покрытая
+/// группа без покрытого предка.
+///
+/// * Якорная группа едет к месту возврата якоря (цель считает `apply_return_plan_in_tx`).
+/// * Целиком покрытый контейнер (D-44) едет как есть без подтверждения: цель — общее место
+///   возврата его возвращаемых членов (все `None` — группа остаётся на месте). Разные места
+///   (в том числе `None` против `Some`) — не split и не «место наименьшего id», а запись в
+///   `place_conflicts` (D-46): вызывающий отклоняет возврат через `ensure_places_match`.
+/// * Частично возвращаемый контейнер (D-45) не освобождается молча: он описан в `splits`,
+///   применение зависит от `GroupSplitChoice`.
+/// * Прочие возвращаемые члены групп (части якорных групп) — в `releases`, как раньше.
+///   Покрытая вложенная группа при непокрытом родителе — корень с отцеплением (A9/OQ-1).
 pub(crate) fn plan_for_return(
     snapshot: &ActGroupSnapshot,
     returned_device_ids: &[i64],
+    return_places: &HashMap<i64, Option<i64>>,
 ) -> ActGroupPlan {
     let returned: HashSet<i64> = returned_device_ids.iter().copied().collect();
-    let covered_anchor_groups: HashSet<i64> = snapshot
+    let mut memo: HashMap<i64, bool> = HashMap::new();
+    let covered_ids: HashSet<i64> = snapshot
         .groups
         .iter()
-        .filter(|g| g.anchor_device_id.is_some_and(|a| returned.contains(&a)))
+        .filter(|g| covered(snapshot, g.id, &returned, &mut memo, 0))
         .map(|g| g.id)
         .collect();
 
     let mut moves: Vec<GroupMove> = Vec::new();
-    let mut moved_devices: HashSet<i64> = HashSet::new();
+    let mut place_conflicts: Vec<GroupPlaceConflict> = Vec::new();
+    let mut riding_devices: HashSet<i64> = HashSet::new();
     for g in &snapshot.groups {
-        if !covered_anchor_groups.contains(&g.id) {
+        if !covered_ids.contains(&g.id) {
             continue;
         }
-        // Корень перемещения: ни один предок не является покрытой якорной группой.
+        // Корень перемещения: ни один предок не является покрытой группой.
         let mut seen: HashSet<i64> = HashSet::new();
         let mut cur = g.parent_group_id;
         let mut under_covered = false;
@@ -343,7 +451,7 @@ pub(crate) fn plan_for_return(
             if !seen.insert(p) {
                 break;
             }
-            if covered_anchor_groups.contains(&p) {
+            if covered_ids.contains(&p) {
                 under_covered = true;
                 break;
             }
@@ -366,7 +474,30 @@ pub(crate) fn plan_for_return(
             .collect();
         subtree_device_ids.sort_unstable();
         subtree_device_ids.dedup();
-        moved_devices.extend(subtree_device_ids.iter().copied());
+        riding_devices.extend(subtree_device_ids.iter().copied());
+
+        let mut target_place_id = None;
+        if g.anchor_device_id.is_none() {
+            // Контейнер: места возврата всех возвращаемых устройств поддерева.
+            let devs: Vec<i64> = subtree_device_ids
+                .iter()
+                .copied()
+                .filter(|d| returned.contains(d))
+                .collect();
+            let places: HashSet<Option<i64>> = devs
+                .iter()
+                .map(|d| return_places.get(d).copied().flatten())
+                .collect();
+            if places.len() > 1 {
+                place_conflicts.push(GroupPlaceConflict {
+                    group_id: g.id,
+                    group_name: g.name.clone(),
+                    device_ids: devs,
+                });
+                continue;
+            }
+            target_place_id = places.into_iter().next().flatten();
+        }
         moves.push(GroupMove {
             root_group_id: g.id,
             anchor_device_id: g.anchor_device_id,
@@ -376,7 +507,94 @@ pub(crate) fn plan_for_return(
             detach,
             subtree_group_ids,
             subtree_device_ids,
+            target_place_id,
         });
+    }
+
+    // Частично возвращаемые контейнеры (не покрытые, вне переезжающих поддеревьев).
+    let mut splits: Vec<GroupSplit> = Vec::new();
+    let mut split_devices: HashSet<i64> = HashSet::new();
+    for g in &snapshot.groups {
+        if g.anchor_device_id.is_some() || covered_ids.contains(&g.id) {
+            continue;
+        }
+        let returned_direct: Vec<i64> = snapshot
+            .direct_of(g.id)
+            .iter()
+            .copied()
+            .filter(|d| {
+                returned.contains(d) && !snapshot.anchors.contains(d) && !riding_devices.contains(d)
+            })
+            .collect();
+        if returned_direct.is_empty() {
+            continue;
+        }
+        let kept: Vec<i64> = snapshot
+            .direct_of(g.id)
+            .iter()
+            .copied()
+            .filter(|d| !returned_direct.contains(d))
+            .collect();
+        let places: HashSet<Option<i64>> = returned_direct
+            .iter()
+            .map(|d| return_places.get(d).copied().flatten())
+            .collect();
+        let places_match = places.len() == 1;
+        let target = if places_match {
+            places.into_iter().next().flatten()
+        } else {
+            None
+        };
+        let parent = g
+            .parent_group_id
+            .and_then(|p| snapshot.group(p).map(|row| (p, row)));
+        let mut depth = 0usize;
+        let mut seen: HashSet<i64> = HashSet::new();
+        let mut cur = g.parent_group_id;
+        while let Some(p) = cur {
+            if !seen.insert(p) || snapshot.group(p).is_none() {
+                break;
+            }
+            depth += 1;
+            cur = snapshot.group(p).and_then(|row| row.parent_group_id);
+        }
+        split_devices.extend(returned_direct.iter().copied());
+        splits.push(GroupSplit {
+            group_id: g.id,
+            group_name: g.name.clone(),
+            group_version: g.version,
+            returned_device_ids: returned_direct,
+            kept_device_ids: kept,
+            returned_device_names: Vec::new(),
+            kept_device_names: Vec::new(),
+            target_place_id: target,
+            places_match,
+            parent_group_id: parent.map(|(p, _)| p),
+            parent_name: parent.map(|(_, row)| row.name.clone()),
+            from_place_id: g.place_id,
+            depth,
+            uncovered_children: Vec::new(),
+        });
+    }
+    // Непокрытые дочерние группы, которые MoveGroup отцепит. Ребёнок со своим переезжающим
+    // разбиением отцепится сам при своём переносе.
+    let moving_splits: HashSet<i64> = splits
+        .iter()
+        .filter(|s| s.target_place_id.is_some())
+        .map(|s| s.group_id)
+        .collect();
+    for s in &mut splits {
+        s.uncovered_children = snapshot
+            .children_of(s.group_id)
+            .iter()
+            .filter(|c| !covered_ids.contains(c) && !moving_splits.contains(c))
+            .filter_map(|c| snapshot.group(*c))
+            .map(|row| SplitChild {
+                group_id: row.id,
+                name: row.name.clone(),
+                version: row.version,
+            })
+            .collect();
     }
 
     let mut returned_sorted: Vec<i64> = returned.iter().copied().collect();
@@ -386,7 +604,10 @@ pub(crate) fn plan_for_return(
         let Some(group_id) = snapshot.group_of_device.get(&device_id).copied() else {
             continue;
         };
-        if moved_devices.contains(&device_id) || snapshot.anchors.contains(&device_id) {
+        if riding_devices.contains(&device_id)
+            || split_devices.contains(&device_id)
+            || snapshot.anchors.contains(&device_id)
+        {
             continue;
         }
         let group_name = snapshot
@@ -400,7 +621,12 @@ pub(crate) fn plan_for_return(
             group_name,
         });
     }
-    ActGroupPlan { moves, releases }
+    ActGroupPlan {
+        moves,
+        releases,
+        splits,
+        place_conflicts,
+    }
 }
 
 /// Плоский список позиций, который «разворачивает» группу в акт: прямые устройства,
@@ -498,24 +724,70 @@ pub(crate) fn plan_in_tx(
     Ok(result)
 }
 
-/// План групп для возврата внутри транзакции writer'а: загрузка снимка + `plan_for_return`.
-/// Клиентский список не определяет, какие группы переезжают (T-41.2-13).
+/// Имена устройств по id одним запросом (json_each).
+fn device_names_in_tx(tx: &Transaction<'_>, ids: &[i64]) -> Result<HashMap<i64, String>, AppError> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let ids_json = serde_json::to_string(ids).map_err(|e| AppError::Internal {
+        source_chain: format!("group_act_plan: ids json: {e}"),
+    })?;
+    let mut stmt = tx
+        .prepare("SELECT id, name FROM devices WHERE id IN (SELECT value FROM json_each(?1))")
+        .map_err(map_rusqlite)?;
+    let names = stmt
+        .query_map(rusqlite::params![ids_json], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })
+        .map_err(map_rusqlite)?
+        .collect::<rusqlite::Result<HashMap<_, _>>>()
+        .map_err(map_rusqlite)?;
+    Ok(names)
+}
+
+/// План групп для возврата внутри транзакции writer'а: загрузка снимка + `plan_for_return`
+/// и имена устройств разбиений и выносов. Клиентский список не определяет, какие группы
+/// переезжают (T-41.2-13).
 pub(crate) fn plan_for_return_in_tx(
     tx: &Transaction<'_>,
     returned_device_ids: &[i64],
+    return_places: &HashMap<i64, Option<i64>>,
 ) -> Result<ActGroupPlan, AppError> {
     let snapshot = load_snapshot(tx, &SqliteGroupRepository)?;
-    Ok(plan_for_return(&snapshot, returned_device_ids))
+    let mut result = plan_for_return(&snapshot, returned_device_ids, return_places);
+    let mut ids: Vec<i64> = result.releases.iter().map(|r| r.device_id).collect();
+    for s in &result.splits {
+        ids.extend(s.returned_device_ids.iter().copied());
+        ids.extend(s.kept_device_ids.iter().copied());
+    }
+    if ids.is_empty() {
+        return Ok(result);
+    }
+    let names = device_names_in_tx(tx, &ids)?;
+    let name_of = |id: &i64| names.get(id).cloned().unwrap_or_default();
+    for r in &mut result.releases {
+        r.device_name = name_of(&r.device_id);
+    }
+    for s in &mut result.splits {
+        s.returned_device_names = s.returned_device_ids.iter().map(name_of).collect();
+        s.kept_device_names = s.kept_device_ids.iter().map(name_of).collect();
+    }
+    Ok(result)
 }
 
-/// Применить план возврата: якорные группы едут к месту возврата своего якоря, прочие
-/// возвращаемые члены групп освобождаются (с эффектом `release` возвратного акта).
+/// Применить план возврата: якорные группы едут к месту возврата своего якоря, покрытые
+/// контейнеры — к общему месту возврата членов (D-44), прочие возвращаемые члены групп
+/// освобождаются (с эффектом `release` возвратного акта); частично возвращаемый контейнер
+/// обрабатывается по `choice` (D-45).
 ///
 /// `return_places` — место возврата каждого возвращаемого устройства из позиций акта.
-/// Якорь без места возврата не двигает группу (место якоря = место группы, D-13 фазы 41.1):
-/// такая группа остаётся на месте, её устройства попадают в `stationary_device_ids`.
-/// Перенос идёт отдельным вызовом `apply_plan_in_tx` на каждую группу, потому что у
-/// каждой группы своё место назначения.
+/// Якорь без места возврата (и контейнер без общего места) не двигает группу: она остаётся
+/// на месте, её устройства попадают в `stationary_device_ids`. Перенос идёт отдельным вызовом
+/// `apply_plan_in_tx` на каждую группу, потому что у каждой своё место назначения.
+///
+/// `MoveGroup` при `places_match = false` отклоняется до любой записи (D-46). Порядок:
+/// самые глубокие разбиения первыми; невозвращаемые прямые члены выходят из группы ДО
+/// переноса (иначе группа унесла бы их с собой).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_return_plan_in_tx(
     tx: &Transaction<'_>,
@@ -523,15 +795,41 @@ pub(crate) fn apply_return_plan_in_tx(
     act_id: i64,
     plan: &ActGroupPlan,
     return_places: &HashMap<i64, Option<i64>>,
+    choice: GroupSplitChoice,
     item_device_ids: &[i64],
     user_id: Option<i64>,
     now: i64,
 ) -> Result<AppliedGroupPlan, AppError> {
+    plan.ensure_places_match()?;
+    if choice == GroupSplitChoice::MoveGroup {
+        if let Some(s) = plan.splits.iter().find(|s| !s.places_match) {
+            return Err(places_mismatch_error(&s.group_name));
+        }
+    }
+    // Разбиения, которые реально переезжают: их покрытые дочерние переезды едут вместе.
+    let moving_splits: HashSet<i64> = if choice == GroupSplitChoice::MoveGroup {
+        plan.splits
+            .iter()
+            .filter(|s| s.target_place_id.is_some())
+            .map(|s| s.group_id)
+            .collect()
+    } else {
+        HashSet::new()
+    };
+
     let mut total = AppliedGroupPlan::default();
     for mv in &plan.moves {
-        let target = mv
-            .anchor_device_id
-            .and_then(|anchor| return_places.get(&anchor).copied().flatten());
+        if mv
+            .detach
+            .as_ref()
+            .is_some_and(|d| moving_splits.contains(&d.parent_group_id))
+        {
+            continue; // едет с группой-разбиением
+        }
+        let target = match mv.anchor_device_id {
+            Some(anchor) => return_places.get(&anchor).copied().flatten(),
+            None => mv.target_place_id,
+        };
         let Some(target) = target else {
             total
                 .stationary_device_ids
@@ -540,7 +838,7 @@ pub(crate) fn apply_return_plan_in_tx(
         };
         let single = ActGroupPlan {
             moves: vec![mv.clone()],
-            releases: Vec::new(),
+            ..Default::default()
         };
         let part = apply_plan_in_tx(
             tx,
@@ -554,10 +852,50 @@ pub(crate) fn apply_return_plan_in_tx(
         )?;
         absorb_applied(&mut total, part);
     }
-    if !plan.releases.is_empty() {
+
+    let mut releases = plan.releases.clone();
+    match choice {
+        GroupSplitChoice::Release => {
+            for s in &plan.splits {
+                for (i, d) in s.returned_device_ids.iter().enumerate() {
+                    releases.push(DeviceRelease {
+                        device_id: *d,
+                        device_name: s.returned_device_names.get(i).cloned().unwrap_or_default(),
+                        group_id: s.group_id,
+                        group_name: s.group_name.clone(),
+                    });
+                }
+            }
+        }
+        GroupSplitChoice::MoveGroup => {
+            let mut ordered: Vec<&GroupSplit> = plan.splits.iter().collect();
+            ordered.sort_by(|a, b| b.depth.cmp(&a.depth).then(a.group_id.cmp(&b.group_id)));
+            for s in ordered {
+                let Some(target) = s.target_place_id else {
+                    total
+                        .stationary_device_ids
+                        .extend(s.returned_device_ids.iter().copied());
+                    continue;
+                };
+                let part = apply_split_move_in_tx(
+                    tx,
+                    deps,
+                    act_id,
+                    plan,
+                    s,
+                    target,
+                    item_device_ids,
+                    user_id,
+                    now,
+                )?;
+                absorb_applied(&mut total, part);
+            }
+        }
+    }
+    if !releases.is_empty() {
         let only_releases = ActGroupPlan {
-            moves: Vec::new(),
-            releases: plan.releases.clone(),
+            releases,
+            ..Default::default()
         };
         let part = apply_plan_in_tx(
             tx,
@@ -574,6 +912,110 @@ pub(crate) fn apply_return_plan_in_tx(
     total.touched_place_ids.sort_unstable();
     total.touched_group_ids.sort_unstable();
     Ok(total)
+}
+
+/// `MoveGroup` для одного разбиения: kept-члены выходят (эффект `release`), непокрытые
+/// дочерние и сама группа отцепляются (эффект `detach`), затем группа с возвращаемыми
+/// членами и покрытыми дочерними переезжает на `target`.
+#[allow(clippy::too_many_arguments)]
+fn apply_split_move_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    plan: &ActGroupPlan,
+    split: &GroupSplit,
+    target: i64,
+    item_device_ids: &[i64],
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<AppliedGroupPlan, AppError> {
+    let mut touched_groups: Vec<i64> = vec![split.group_id];
+    for d in &split.kept_device_ids {
+        release_device_in_tx(
+            tx,
+            &deps.groups,
+            &deps.audit,
+            *d,
+            Some(act_id),
+            user_id,
+            now,
+        )?;
+    }
+    for child in &split.uncovered_children {
+        let mut effect = effect_new(
+            act_id,
+            ActGroupEffectKind::Detach,
+            child.group_id,
+            &child.name,
+            now,
+        );
+        effect.from_parent_group_id = Some(split.group_id);
+        deps.groups.insert_act_group_effect_in_tx(tx, &effect)?;
+        deps.groups
+            .set_parent_in_tx(tx, child.group_id, child.version, None, now)?;
+        touched_groups.push(child.group_id);
+    }
+    if let Some(parent) = split.parent_group_id {
+        let mut effect = effect_new(
+            act_id,
+            ActGroupEffectKind::Detach,
+            split.group_id,
+            &split.group_name,
+            now,
+        );
+        effect.from_parent_group_id = Some(parent);
+        deps.groups.insert_act_group_effect_in_tx(tx, &effect)?;
+        deps.groups
+            .set_parent_in_tx(tx, split.group_id, split.group_version, None, now)?;
+        touched_groups.push(parent);
+    }
+
+    // Покрытые дочерние переезды едут вместе с группой.
+    let mut device_ids: Vec<i64> = split.returned_device_ids.clone();
+    let mut group_ids: Vec<i64> = vec![split.group_id];
+    for mv in &plan.moves {
+        if mv
+            .detach
+            .as_ref()
+            .is_some_and(|d| d.parent_group_id == split.group_id)
+        {
+            device_ids.extend(mv.subtree_device_ids.iter().copied());
+            group_ids.extend(mv.subtree_group_ids.iter().copied());
+        }
+    }
+    device_ids.sort_unstable();
+    device_ids.dedup();
+    group_ids.sort_unstable();
+    group_ids.dedup();
+    let synthetic = GroupMove {
+        root_group_id: split.group_id,
+        anchor_device_id: None,
+        root_name: split.group_name.clone(),
+        root_version: split.group_version,
+        from_place_id: split.from_place_id,
+        detach: None,
+        subtree_group_ids: group_ids,
+        subtree_device_ids: device_ids,
+        target_place_id: Some(target),
+    };
+    let single = ActGroupPlan {
+        moves: vec![synthetic],
+        ..Default::default()
+    };
+    let mut applied = apply_plan_in_tx(
+        tx,
+        deps,
+        act_id,
+        &single,
+        Some(target),
+        item_device_ids,
+        user_id,
+        now,
+    )?;
+    for g in touched_groups {
+        push_unique(&mut applied.touched_group_ids, g);
+    }
+    Ok(applied)
 }
 
 fn absorb_applied(total: &mut AppliedGroupPlan, part: AppliedGroupPlan) {
@@ -1336,7 +1778,7 @@ mod tests {
 
     #[test]
     fn return_of_nested_anchor_moves_only_the_anchor_group_with_detach() {
-        let p = plan_for_return(&nested_anchor_fixture(), &[30]);
+        let p = plan_for_return(&nested_anchor_fixture(), &[30], &places(&[(30, Some(9))]));
         assert_eq!(p.moves.len(), 1);
         assert_eq!(p.moves[0].root_group_id, 3);
         assert_eq!(p.moves[0].subtree_device_ids, vec![30, 31]);
@@ -1350,57 +1792,207 @@ mod tests {
         assert!(p.releases.is_empty());
     }
 
-    /// Расходящаяся пара: тот же набор устройств, `plan` двигает контейнер, возврат — освобождает.
+    fn places(pairs: &[(i64, Option<i64>)]) -> HashMap<i64, Option<i64>> {
+        pairs.iter().copied().collect()
+    }
+
+    /// D-44: целиком возвращаемый контейнер едет к общему месту возврата, а не рассыпается.
     #[test]
-    fn return_of_whole_container_releases_members_while_plan_moves_the_container() {
+    fn return_of_whole_container_moves_it_to_the_common_return_place() {
         let snap = container_fixture();
-        let by_plan = plan(&snap, &[10, 11, 12]);
-        let by_return = plan_for_return(&snap, &[10, 11, 12]);
-        assert_eq!(by_plan.moves.len(), 1);
-        assert!(
-            by_return.moves.is_empty(),
-            "контейнер при возврате не переезжает"
+        let by_return = plan_for_return(
+            &snap,
+            &[10, 11, 12],
+            &places(&[(10, Some(9)), (11, Some(9)), (12, Some(9))]),
         );
-        assert_eq!(
-            by_return
-                .releases
-                .iter()
-                .map(|r| r.device_id)
-                .collect::<Vec<_>>(),
-            vec![10, 11, 12]
+        assert_eq!(by_return.moves.len(), 1);
+        assert_eq!(by_return.moves[0].root_group_id, 1);
+        assert_eq!(by_return.moves[0].anchor_device_id, None);
+        assert_eq!(by_return.moves[0].target_place_id, Some(9));
+        assert_eq!(by_return.moves[0].subtree_device_ids, vec![10, 11, 12]);
+        assert!(by_return.releases.is_empty());
+        assert!(by_return.splits.is_empty());
+        assert!(by_return.place_conflicts.is_empty());
+        assert!(by_return.ensure_places_match().is_ok());
+    }
+
+    #[test]
+    fn return_of_whole_container_without_places_keeps_the_group_in_place() {
+        let by_return = plan_for_return(
+            &container_fixture(),
+            &[10, 11, 12],
+            &places(&[(10, None), (11, None), (12, None)]),
         );
-        assert_ne!(by_plan, by_return);
+        assert_eq!(by_return.moves.len(), 1);
+        assert_eq!(by_return.moves[0].target_place_id, None);
+        assert!(by_return.ensure_places_match().is_ok());
+    }
+
+    /// D-46: разные места (включая None против Some) — конфликт, а не «место наименьшего id».
+    #[test]
+    fn return_of_whole_container_with_different_places_is_a_conflict() {
+        for map in [
+            places(&[(10, Some(9)), (11, Some(9)), (12, Some(8))]),
+            places(&[(10, Some(9)), (11, Some(9)), (12, None)]),
+        ] {
+            let p = plan_for_return(&container_fixture(), &[10, 11, 12], &map);
+            assert!(p.moves.is_empty() && p.splits.is_empty() && p.releases.is_empty());
+            assert_eq!(
+                p.place_conflicts,
+                vec![GroupPlaceConflict {
+                    group_id: 1,
+                    group_name: "АРМ #3".to_string(),
+                    device_ids: vec![10, 11, 12],
+                }]
+            );
+            match p.ensure_places_match() {
+                Err(AppError::Validation { field, message }) => {
+                    assert_eq!(field, "place_id");
+                    assert_eq!(
+                        message,
+                        "Группа «АРМ #3» возвращается целиком: места возврата всех её устройств должны совпадать."
+                    );
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    /// Расходящаяся пара: тот же снимок, весь состав -> move, минус одно устройство -> split.
+    #[test]
+    fn return_of_container_minus_one_member_is_a_split_not_a_move() {
+        let snap = container_fixture();
+        let map = places(&[(10, Some(9)), (11, Some(9)), (12, Some(9))]);
+        let full = plan_for_return(&snap, &[10, 11, 12], &map);
+        let part = plan_for_return(&snap, &[10, 11], &map);
+        assert_eq!((full.moves.len(), full.splits.len()), (1, 0));
+        assert!(part.moves.is_empty() && part.releases.is_empty());
+        assert_eq!(part.splits.len(), 1);
+        let s = &part.splits[0];
+        assert_eq!(s.group_id, 1);
+        assert_eq!(s.returned_device_ids, vec![10, 11]);
+        assert_eq!(s.kept_device_ids, vec![12]);
+        assert_eq!(s.target_place_id, Some(9));
+        assert!(s.places_match);
+        assert_eq!(s.from_place_id, Some(5));
+        assert_ne!(full, part);
+    }
+
+    #[test]
+    fn split_with_different_places_has_no_target_and_does_not_match() {
+        let p = plan_for_return(
+            &container_fixture(),
+            &[10, 11],
+            &places(&[(10, Some(9)), (11, Some(8))]),
+        );
+        assert_eq!(p.splits.len(), 1);
+        assert_eq!(p.splits[0].target_place_id, None);
+        assert!(!p.splits[0].places_match);
+        assert!(p.releases.is_empty());
+        assert!(p.ensure_places_match().is_ok(), "для split это не конфликт");
+    }
+
+    #[test]
+    fn split_without_places_matches_with_no_target() {
+        let p = plan_for_return(
+            &container_fixture(),
+            &[10, 11],
+            &places(&[(10, None), (11, None)]),
+        );
+        assert_eq!(p.splits[0].target_place_id, None);
+        assert!(p.splits[0].places_match);
     }
 
     #[test]
     fn return_of_anchor_with_parts_keeps_parts_out_of_releases() {
-        let p = plan_for_return(&nested_anchor_fixture(), &[30, 31]);
+        let p = plan_for_return(
+            &nested_anchor_fixture(),
+            &[30, 31],
+            &places(&[(30, Some(9)), (31, Some(9))]),
+        );
         assert_eq!(p.moves.len(), 1);
         assert!(p.releases.is_empty(), "детали едут с группой");
     }
 
     #[test]
     fn return_of_part_without_anchor_releases_the_part_only() {
-        let p = plan_for_return(&nested_anchor_fixture(), &[31]);
+        let p = plan_for_return(&nested_anchor_fixture(), &[31], &places(&[(31, Some(9))]));
         assert!(p.moves.is_empty());
         assert_eq!(p.releases.len(), 1);
         assert_eq!(p.releases[0].device_id, 31);
     }
 
+    /// Контейнер 1 покрыт: прямые 10, 11 возвращены и вложенная якорная группа 3 (якорь 30).
     #[test]
-    fn return_of_container_members_and_nested_anchor_splits_into_move_and_releases() {
-        let p = plan_for_return(&nested_anchor_fixture(), &[10, 11, 30]);
+    fn return_of_container_members_and_nested_anchor_moves_the_whole_container() {
+        let p = plan_for_return(
+            &nested_anchor_fixture(),
+            &[10, 11, 30],
+            &places(&[(10, Some(9)), (11, Some(9)), (30, Some(9))]),
+        );
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].root_group_id, 1);
+        assert_eq!(p.moves[0].target_place_id, Some(9));
+        assert!(p.releases.is_empty() && p.splits.is_empty());
+    }
+
+    /// Контейнер 1 не покрыт (член 12 остаётся): вложенная якорная группа уезжает сама с
+    /// отцеплением, прямые возвращаемые члены описаны разбиением.
+    #[test]
+    fn nested_anchor_under_partially_returned_container_moves_and_container_splits() {
+        let snap = ActGroupSnapshot::new(
+            vec![
+                grp(1, None, "АРМ #3", Some(5), None),
+                grp(3, Some(1), "Системный блок #4", Some(5), Some(30)),
+            ],
+            vec![(10, 1), (11, 1), (12, 1), (30, 3), (31, 3)],
+        );
+        let p = plan_for_return(
+            &snap,
+            &[10, 11, 30],
+            &places(&[(10, Some(9)), (11, Some(9)), (30, Some(7))]),
+        );
         assert_eq!(p.moves.len(), 1);
         assert_eq!(p.moves[0].root_group_id, 3);
-        assert_eq!(
-            p.releases.iter().map(|r| r.device_id).collect::<Vec<_>>(),
-            vec![10, 11]
+        assert!(p.moves[0].detach.is_some());
+        assert_eq!(p.splits.len(), 1);
+        assert_eq!(p.splits[0].returned_device_ids, vec![10, 11]);
+        assert_eq!(p.splits[0].kept_device_ids, vec![12]);
+        assert!(p.releases.is_empty());
+    }
+
+    /// Вложенная непокрытая группа не мешает покрытому корню: корень едет целиком.
+    #[test]
+    fn covered_nested_container_travels_with_its_covered_parent() {
+        let snap = ActGroupSnapshot::new(
+            vec![
+                grp(1, None, "АРМ #3", Some(5), None),
+                grp(2, Some(1), "Монитор #2", Some(5), None),
+            ],
+            vec![(10, 1), (20, 2), (21, 2)],
+        );
+        let p = plan_for_return(
+            &snap,
+            &[10, 20, 21],
+            &places(&[(10, Some(9)), (20, Some(9)), (21, Some(9))]),
+        );
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].root_group_id, 1);
+        assert_eq!(p.moves[0].subtree_group_ids, vec![1, 2]);
+        // Вложенная покрыта, родитель нет: сама корень move с отцеплением.
+        let q = plan_for_return(&snap, &[20, 21], &places(&[(20, Some(9)), (21, Some(9))]));
+        assert_eq!(q.moves.len(), 1);
+        assert_eq!(q.moves[0].root_group_id, 2);
+        assert!(q.moves[0].detach.is_some());
+        assert!(
+            q.splits.is_empty(),
+            "у родителя нет возвращаемых прямых членов"
         );
     }
 
     #[test]
     fn return_ignores_devices_outside_groups() {
-        let p = plan_for_return(&nested_anchor_fixture(), &[99]);
+        let p = plan_for_return(&nested_anchor_fixture(), &[99], &HashMap::new());
         assert!(p.moves.is_empty() && p.releases.is_empty());
     }
 
@@ -1886,6 +2478,207 @@ mod apply_tests {
         );
         assert_eq!(restored.touched_group_ids, vec![2]);
         assert_eq!(reverted.touched_group_ids, vec![1]);
+    }
+
+    fn return_plan(
+        tx: &Transaction<'_>,
+        ids: &[i64],
+        pairs: &[(i64, Option<i64>)],
+    ) -> (ActGroupPlan, HashMap<i64, Option<i64>>) {
+        let map: HashMap<i64, Option<i64>> = pairs.iter().copied().collect();
+        (plan_for_return_in_tx(tx, ids, &map).expect("plan"), map)
+    }
+
+    /// Возврат 2 из 3 членов контейнера, выбор «Release»: прежнее поведение, группа на месте.
+    #[test]
+    fn return_split_with_release_choice_keeps_the_group_in_place() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let (p, map) = return_plan(&tx, &[1, 2], &[(1, Some(2)), (2, Some(2))]);
+        assert_eq!(p.splits.len(), 1);
+        assert_eq!(
+            p.splits[0].returned_device_names,
+            vec!["Монитор #2", "Принтер #1"]
+        );
+        apply_return_plan_in_tx(
+            &tx,
+            &deps(),
+            ACT,
+            &p,
+            &map,
+            GroupSplitChoice::Release,
+            &[1, 2],
+            None,
+            NOW,
+        )
+        .expect("apply");
+        tx.commit().unwrap();
+        assert_eq!(group_place(&conn, 1), Some(1));
+        assert_eq!(member_of(&conn, 1), None);
+        assert_eq!(member_of(&conn, 2), None);
+        assert_eq!(member_of(&conn, 3), Some(1));
+        assert_eq!(
+            scalar(
+                &conn,
+                "SELECT COUNT(*) FROM act_group_effects WHERE kind = 'release'"
+            ),
+            2
+        );
+    }
+
+    /// MoveGroup: невозвращаемый член выходит и остаётся на месте, группа с возвращаемыми
+    /// переезжает; откат акта возвращает группу и kept-члена.
+    #[test]
+    fn return_split_with_move_group_choice_moves_the_group_and_is_revertible() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let (p, map) = return_plan(&tx, &[1, 2], &[(1, Some(2)), (2, Some(2))]);
+        let applied = apply_return_plan_in_tx(
+            &tx,
+            &deps(),
+            ACT,
+            &p,
+            &map,
+            GroupSplitChoice::MoveGroup,
+            &[1, 2],
+            None,
+            NOW,
+        )
+        .expect("apply");
+        assert_eq!(applied.moved_device_ids, HashSet::from([1, 2]));
+        assert_eq!(group_place(&tx, 1), Some(2));
+        assert_eq!(member_of(&tx, 3), None, "kept вышел из группы");
+        assert_eq!(device_place(&tx, 3), Some(1), "kept остался на месте");
+        assert_eq!(member_of(&tx, 1), Some(1));
+        assert_eq!(member_of(&tx, 2), Some(1));
+        assert_eq!(device_place(&tx, 1), Some(2));
+
+        let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
+        assert!(reverted.notices.is_empty(), "{:?}", reverted.notices);
+        let restored =
+            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW)
+                .expect("restore");
+        assert!(restored.notices.is_empty(), "{:?}", restored.notices);
+        tx.commit().unwrap();
+        assert_eq!(group_place(&conn, 1), Some(1));
+        assert_eq!(member_of(&conn, 3), Some(1), "kept вернулся в группу");
+        assert_eq!(device_place(&conn, 1), Some(1));
+    }
+
+    /// MoveGroup при разных местах возвращаемых: валидационная ошибка, записей нет.
+    #[test]
+    fn return_split_with_move_group_and_different_places_is_rejected_without_writes() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let (p, map) = return_plan(&tx, &[1, 2], &[(1, Some(2)), (2, Some(3))]);
+        assert!(!p.splits[0].places_match);
+        let err = apply_return_plan_in_tx(
+            &tx,
+            &deps(),
+            ACT,
+            &p,
+            &map,
+            GroupSplitChoice::MoveGroup,
+            &[1, 2],
+            None,
+            NOW,
+        )
+        .expect_err("места не совпали");
+        assert!(matches!(&err, AppError::Validation { field, .. } if field == "place_id"));
+        assert_eq!(member_of(&tx, 3), Some(1));
+        assert_eq!(scalar(&tx, "SELECT COUNT(*) FROM act_group_effects"), 0);
+        // Release доступен всегда.
+        apply_return_plan_in_tx(
+            &tx,
+            &deps(),
+            ACT,
+            &p,
+            &map,
+            GroupSplitChoice::Release,
+            &[1, 2],
+            None,
+            NOW,
+        )
+        .expect("release");
+        assert_eq!(member_of(&tx, 1), None);
+    }
+
+    /// Целиком возвращаемый контейнер с разными местами: ensure_places_match отклоняет, apply тоже.
+    #[test]
+    fn whole_container_with_different_places_is_rejected_by_apply_too() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let (p, map) = return_plan(&tx, &[1, 2, 3], &[(1, Some(2)), (2, Some(2)), (3, None)]);
+        assert!(p.ensure_places_match().is_err());
+        let err = apply_return_plan_in_tx(
+            &tx,
+            &deps(),
+            ACT,
+            &p,
+            &map,
+            GroupSplitChoice::Release,
+            &[1, 2, 3],
+            None,
+            NOW,
+        )
+        .expect_err("конфликт");
+        assert!(matches!(err, AppError::Validation { .. }));
+        assert_eq!(group_place(&tx, 1), Some(1));
+        assert_eq!(scalar(&tx, "SELECT COUNT(*) FROM act_group_effects"), 0);
+    }
+
+    /// Вложенность: контейнер 7 (мышь 6 + якорная группа 8, не возвращена) — MoveGroup
+    /// отцепляет непокрытую дочернюю группу, она остаётся на месте.
+    #[test]
+    fn move_group_detaches_uncovered_children_and_leaves_them_in_place() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let (p, map) = return_plan(&tx, &[6], &[(6, Some(2))]);
+        assert_eq!(p.splits.len(), 1);
+        assert_eq!(p.splits[0].uncovered_children.len(), 1);
+        apply_return_plan_in_tx(
+            &tx,
+            &deps(),
+            ACT,
+            &p,
+            &map,
+            GroupSplitChoice::MoveGroup,
+            &[6],
+            None,
+            NOW,
+        )
+        .expect("apply");
+        assert_eq!(group_place(&tx, 7), Some(2));
+        assert_eq!(device_place(&tx, 6), Some(2));
+        assert_eq!(group_parent(&tx, 8), None, "дочерняя отцеплена");
+        assert_eq!(group_place(&tx, 8), Some(1), "и осталась на месте");
+        assert_eq!(device_place(&tx, 30), Some(1));
+        assert_eq!(
+            scalar(
+                &tx,
+                "SELECT COUNT(*) FROM act_group_effects WHERE kind = 'detach' AND group_id = 8 AND from_parent_group_id = 7"
+            ),
+            1
+        );
+        let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
+        assert!(reverted.notices.is_empty(), "{:?}", reverted.notices);
+        assert_eq!(group_place(&tx, 7), Some(1));
+        assert_eq!(group_parent(&tx, 8), Some(7), "вложенность восстановлена");
     }
 
     /// (d) Группу переместили после акта: уведомление, группа не двигается.

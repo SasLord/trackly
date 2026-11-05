@@ -1795,10 +1795,10 @@ async fn return_anchor_without_a_return_place_keeps_group_and_anchor_together() 
     .await;
 }
 
-// (r3) тот же набор, что у выдачи контейнера: возврат всех трёх членов освобождает их по одному,
-// контейнер не переезжает. Расхождение с (r1): там якорная группа едет, здесь контейнер стоит.
+// (r3) D-44: возврат всех членов контейнера переносит ГРУППУ на место возврата с составом;
+// эффект move на акт возврата, release нет; удаление возврата возвращает её на место выдачи.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn return_whole_container_releases_members_and_does_not_move_the_group() {
+async fn return_whole_container_moves_the_group_with_all_members() {
     timed(async {
         let (ctx, _dir) = make_test_ctx().await;
         let a = seed_place(&ctx, "Склад А").await;
@@ -1813,18 +1813,87 @@ async fn return_whole_container_releases_members_and_does_not_move_the_group() {
 
         let ret = return_ok(&ctx, handover, &arm.devices, Some(a)).await;
 
-        assert_eq!(effects(&ctx, ret, "release").await, 3);
-        assert_eq!(effects(&ctx, ret, "move").await, 0);
-        assert_eq!(group_members(&ctx, arm.group).await, 0);
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
+        assert_eq!(effects(&ctx, ret, "release").await, 0);
+        assert_eq!(group_members(&ctx, arm.group).await, 3, "состав цел");
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        for d in &arm.devices {
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+            assert!(movement_rows_of_act(&ctx, ret, *d).await > 0);
+        }
+
+        let act = ctx.acts.get(ret).await.expect("get return");
+        ctx.acts
+            .delete_soft(ret, act.version)
+            .await
+            .expect("delete_soft of the return");
         assert_eq!(
             group_place(&ctx, arm.group).await,
             Some(b),
-            "контейнер не переехал"
+            "удаление возврата возвращает группу на место выдачи"
         );
+        assert_eq!(group_members(&ctx, arm.group).await, 3);
+    })
+    .await;
+}
+
+// (r3b) D-46: целиком возвращаемая группа с РАЗНЫМИ местами возврата отклоняется до записи;
+// те же места у всех позиций (контроль) проходят.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_whole_container_with_different_places_is_rejected_without_writes() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let arm = seed_arm(&ctx, a).await;
+        let handover = create_ok(&ctx, dto("R-3b", &arm.devices, Some(b), false)).await;
+        let counters_before = counters(&ctx).await;
+
+        let items = |places: [i64; 3]| -> Vec<ActReturnItemDto> {
+            arm.devices
+                .iter()
+                .zip(places)
+                .map(|(&id, p)| {
+                    let mut item = return_item(id);
+                    item.place_id_override = Some(p);
+                    item
+                })
+                .collect()
+        };
+        let payload = |items: Vec<ActReturnItemDto>| ActReturnDto {
+            bulk_condition: None,
+            bulk_place_id: None,
+            apply_to_all: false,
+            items,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+        };
+        let err = ctx
+            .acts
+            .do_return(&admin(), handover, payload(items([a, a, c])))
+            .await
+            .expect_err("разные места");
+        assert!(
+            matches!(&err, AppError::Validation { field, .. } if field == "place_id"),
+            "{err:?}"
+        );
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(group_members(&ctx, arm.group).await, 3);
+        assert_eq!(counters(&ctx).await, counters_before);
         for d in &arm.devices {
-            assert_eq!(device_place(&ctx, *d).await, Some(a));
-            assert_eq!(movement_rows_of_act(&ctx, ret, *d).await, 1);
+            assert_eq!(device_place(&ctx, *d).await, Some(b));
         }
+
+        let ret = ctx
+            .acts
+            .do_return(&admin(), handover, payload(items([a, a, a])))
+            .await
+            .expect("одинаковые места проходят")
+            .id;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
     })
     .await;
 }
