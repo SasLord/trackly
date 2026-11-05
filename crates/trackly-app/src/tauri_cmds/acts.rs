@@ -14,7 +14,8 @@
 use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDeleteResultDto, ActDto, ActFilter, ActListResponse, ActReturnDto,
-    ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
+    ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupRestoreChoiceDto,
+    Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::tauri_cmds::users::resolve_tauri_identity;
@@ -82,9 +83,12 @@ pub async fn build_acts_delete(
     caller: &Identity,
     id: i64,
     version: i64,
+    group_choices: Vec<GroupRestoreChoiceDto>,
 ) -> Result<ActDeleteResultDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.delete_soft(id, version).await
+    ctx.acts
+        .delete_soft_with_choices(id, version, &group_choices)
+        .await
 }
 
 /// Мутация (ACT-02): требует `caller` с правом `MutateActs`.
@@ -220,9 +224,17 @@ pub async fn acts_delete(
     state: tauri::State<'_, AppCtx>,
     id: i32,
     version: i32,
+    group_choices: Option<Vec<GroupRestoreChoiceDto>>,
 ) -> Result<ActDeleteResultDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_acts_delete(state.inner(), &caller, id as i64, version as i64).await
+    build_acts_delete(
+        state.inner(),
+        &caller,
+        id as i64,
+        version as i64,
+        group_choices.unwrap_or_default(),
+    )
+    .await
 }
 
 #[tauri::command]

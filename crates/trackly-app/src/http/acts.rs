@@ -14,7 +14,8 @@ use tower_sessions::Session;
 use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDeleteResultDto, ActDto, ActFilter, ActListResponse, ActReturnDto,
-    ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
+    ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupRestoreChoiceDto,
+    Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::error_axum::AppErrorResponse;
@@ -57,6 +58,9 @@ pub struct CreatePayload {
 pub struct DeletePayload {
     pub id: i64,
     pub version: i64,
+    /// D-42: выбор по группам при конфликте «группа перенесена после акта».
+    #[serde(default)]
+    pub group_choices: Vec<GroupRestoreChoiceDto>,
 }
 
 #[derive(serde::Deserialize)]
@@ -186,7 +190,7 @@ pub async fn handler_delete(
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_delete(&ctx, &identity, p.id, p.version)
+        build_acts_delete(&ctx, &identity, p.id, p.version, p.group_choices)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
