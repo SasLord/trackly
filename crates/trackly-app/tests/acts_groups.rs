@@ -2641,7 +2641,11 @@ async fn undo_cascade_handover_with_return_collects_conflicts_across_acts() {
         assert_eq!(warning.groups[0].group_id, f.arm.group);
         assert_eq!(act_version(&ctx, f.act).await, handover_version);
         assert_eq!(act_version(&ctx, ret).await, return_version);
-        assert_eq!(device_place(&ctx, f.released).await, Some(d), "ничего не откатилось");
+        assert_eq!(
+            device_place(&ctx, f.released).await,
+            Some(d),
+            "ничего не откатилось"
+        );
 
         let done = undo_act_with(&ctx, f.act, &[choice(f.arm.group, true)]).await;
 

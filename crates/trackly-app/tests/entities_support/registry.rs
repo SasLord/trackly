@@ -202,6 +202,7 @@ pub const REGISTRY: &[Entry] = &[
     ex(GMEMB, "release_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "release_if_locked_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "restore_membership_in_tx", TX_PRIMITIVE_REASON),
+    ex(GMEMB, "restore_membership_with_policy_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "anchor_restore_conflict_in_tx", TX_PRIMITIVE_REASON),
     // ---- group_type_service ------------------------------------------------
     ro(GTYPE, "plural_groups"),
@@ -239,7 +240,13 @@ pub const REGISTRY: &[Entry] = &[
     ro(ACT, "list"),
     ro(ACT, "counts"),
     ro(ACT, "suggest_person"),
-    b(ACT, "delete_soft"),
+    // Тонкая обёртка над `delete_soft_with_choices` (D-42): сама не пишет и не рассылает.
+    ex(
+        ACT,
+        "delete_soft",
+        "делегирует в delete_soft_with_choices с пустым списком выборов; запись и рассылка живут там",
+    ),
+    b(ACT, "delete_soft_with_choices"),
     ro(ACT, "render_pdf"),
     ro(ACT, "render_acceptance_pdf"),
     ro(ACT, "format_ru_date"),

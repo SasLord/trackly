@@ -12,7 +12,9 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::SqliteGroupRepository;
 
-use crate::services::group_place::{apply_group_place_to_device_in_tx, GroupMoveCause, GroupMoveDeps};
+use crate::services::group_place::{
+    apply_group_place_to_device_in_tx, GroupMoveCause, GroupMoveDeps,
+};
 
 /// Режим следа при освобождении устройства на restore-путях акта (Phase 41.2).
 ///
@@ -749,7 +751,9 @@ mod tests {
         assert_eq!(member_of(&conn, 1), Some(1));
         assert_eq!(audit_rows(&conn, "custom:group_member_restored", 1), 1);
         let place: i64 = conn
-            .query_row("SELECT place_id FROM devices WHERE id = 1", [], |r| r.get(0))
+            .query_row("SELECT place_id FROM devices WHERE id = 1", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(place, 1);
         assert_eq!(movement_rows(&conn, 1, "group"), 1);

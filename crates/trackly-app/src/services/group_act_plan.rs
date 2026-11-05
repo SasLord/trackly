@@ -1092,9 +1092,7 @@ pub(crate) fn restore_released_members_in_tx(
                     push_unique(&mut out.touched_place_ids, prev);
                 }
             }
-            Ok(RestoreResult::KeptOut) => {
-                push_unique(&mut out.touched_group_ids, effect.group_id)
-            }
+            Ok(RestoreResult::KeptOut) => push_unique(&mut out.touched_group_ids, effect.group_id),
             Ok(RestoreResult::Conflict(conflict)) => out.conflicts.push(conflict),
             Ok(RestoreResult::Skipped(notice)) => {
                 if let Some(g) = notice.group_id {
@@ -1871,7 +1869,8 @@ mod apply_tests {
         tx.execute("UPDATE devices SET place_id = 1 WHERE id = 4", [])
             .unwrap();
         let restored =
-            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW).expect("restore");
+            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW)
+                .expect("restore");
         assert!(restored.notices.is_empty(), "{:?}", restored.notices);
         tx.commit().unwrap();
 
@@ -1987,7 +1986,8 @@ mod apply_tests {
         )
         .unwrap();
         let restored =
-            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW).expect("restore");
+            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW)
+                .expect("restore");
         tx.commit().unwrap();
         assert_eq!(restored.notices.len(), 1);
         assert_eq!(

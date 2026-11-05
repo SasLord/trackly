@@ -3888,7 +3888,12 @@ impl ActService {
         self.broadcast_act_number_space_changed();
         // D-03/D-04 (41.7): the event carries the very list the caller gets back.
         let place_ids = touched.clone();
-        self.broadcast_entities("delete_soft", place_ids, Vec::new(), touched_group_ids);
+        self.broadcast_entities(
+            "delete_soft_with_choices",
+            place_ids,
+            Vec::new(),
+            touched_group_ids,
+        );
         // Phase 41.2 (D-09): the deletion succeeded; whatever the rollback could not
         // give back is reported, never turned into an error.
         Ok(ActDeleteResultDto {
@@ -4573,6 +4578,7 @@ fn extend_unique(into: &mut Vec<i64>, more: Vec<i64>) {
 /// overwrites the row — using the snapshot's own place_id for both sides
 /// would be a no-op (same CR-01 reasoning as `update`/`update_return`'s
 /// removed-device branches: the snapshot IS what `restored.place_id` becomes).
+#[allow(clippy::too_many_arguments)]
 fn undo_device_mutations_for_act(
     tx: &rusqlite::Transaction<'_>,
     deps: &GroupMoveDeps,

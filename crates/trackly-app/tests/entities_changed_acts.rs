@@ -333,7 +333,7 @@ async fn scenario_update_return() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn scenario_delete_soft() {
+async fn scenario_delete_soft_with_choices() {
     tokio::time::timeout(BUDGET, async {
         let (ctx, _dir) = make_test_ctx().await;
         let act_place = seed_place(&ctx, "Кабинет A").await;
@@ -346,12 +346,12 @@ async fn scenario_delete_soft() {
         // Откат акта возвращает устройство с места акта на прежнее.
         let touched = ctx
             .acts
-            .delete_soft(act.id, act.version)
+            .delete_soft_with_choices(act.id, act.version, &[])
             .await
             .expect("delete_soft")
             .changed_place_ids;
 
-        let (places, devices, groups) = assert_one_entities(&mut rx, "delete_soft");
+        let (places, devices, groups) = assert_one_entities(&mut rx, "delete_soft_with_choices");
         assert!(!touched.is_empty(), "откат вернул затронутые места");
         assert_eq!(
             sorted(places.clone()),
@@ -363,7 +363,7 @@ async fn scenario_delete_soft() {
         assert!(devices.is_empty() && groups.is_empty());
     })
     .await
-    .expect("scenario_delete_soft вышел за бюджет");
+    .expect("scenario_delete_soft_with_choices вышел за бюджет");
 }
 
 // ---------------------------------------------------------------------------
@@ -476,12 +476,12 @@ async fn group_ids_delete_soft_names_the_group_that_goes_back() {
 
         let touched = ctx
             .acts
-            .delete_soft(act.id, act.version)
+            .delete_soft_with_choices(act.id, act.version, &[])
             .await
             .expect("delete_soft")
             .changed_place_ids;
 
-        let (places, dev_ids, groups) = assert_one_entities(&mut rx, "delete_soft");
+        let (places, dev_ids, groups) = assert_one_entities(&mut rx, "delete_soft_with_choices");
         assert_eq!(
             sorted(groups),
             vec![group],
