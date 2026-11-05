@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-11-01T19:24:25.744Z"
-last_activity: 2026-11-05 -- 41.13-14 complete, PHASE 41.13 CLOSED (D-03 reversal recorded, targeted boundary regression 13/13 green, repeat live UAT 20/20 by user, PGR-01..04 all Complete)
+last_updated: "2026-11-05T18:08:35.669Z"
+last_activity: 2026-11-05 -- Phase 41.2 execution started
 progress:
   total_phases: 27
-  completed_phases: 16
-  total_plans: 250
-  completed_plans: 250
+  completed_phases: 15
+  total_plans: 264
+  completed_plans: 251
   percent: 56
 ---
 
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.13 — printers-usb-host (вставлена после 41.2)
+**Current focus:** Phase 41.2 — groups-acts-places
 
 ## Current Position
 
-Phase: 41.13 (printers-usb-host) — ЗАКРЫТА 2026-11-05
-Plan: 15 of 15
-Status: Complete. Первая живая UAT 19/19 (2026-11-01) дала находки F-1 (принтер с непустым IP не
+Phase: 41.2 (groups-acts-places) — EXECUTING
+Plan: 1 of 30
+Status: Executing Phase 41.2
 мог получить USB-хост) и F-2 (нет имени хоста под чипом USB). Доработка планами 09-13 и 15:
 правка IP при редактировании (D-13), независимость IP и USB-хоста (D-15, по прямому замечанию
 пользователя «принтер может быть связан по USB и в это же время быть сетевым»), подпись хоста в
@@ -165,7 +165,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-05 - Completed quick task 261105-s6s: INT-26 printers_admit double printers-row insert
+Last activity: 2026-11-05 -- Phase 41.2 execution started
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1643,7 +1643,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-01T19:24:25.733Z
+Last session: 2026-11-05T18:08:35.658Z
 Stopped at: Completed 41.13-15-PLAN.md
 Resume file: None
 
