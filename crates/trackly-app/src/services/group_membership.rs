@@ -542,12 +542,12 @@ mod tests {
     }
 
     #[test]
-    fn restore_none_some_skips_when_group_has_no_place_and_device_has_one() {
+    fn restore_none_some_restores_when_group_has_no_place() {
         let (mut conn, _g) = fresh_db();
         seed(&conn);
         let out = with_tx!(conn, tx, { restore(&tx, 1, 4, Some(1)) });
-        assert!(matches!(out, RestoreOutcome::Skipped(_)), "{out:?}");
-        assert_eq!(member_of(&conn, 1), None);
+        assert_eq!(out, RestoreOutcome::Restored);
+        assert_eq!(member_of(&conn, 1), Some(4));
     }
 
     #[test]

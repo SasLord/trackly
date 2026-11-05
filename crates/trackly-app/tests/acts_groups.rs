@@ -2512,6 +2512,37 @@ async fn undo_four_refusals_pass_with_a_notice_naming_item_group_and_reason() {
     .await;
 }
 
+// D-40: группа без места не запирает места членов; откат возвращает вынесенных молча.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_group_without_place_returns_released_members_silently() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let group = seed_group(&ctx, "АРМ #3", None, None).await;
+        let mut ids = Vec::new();
+        for name in ["Монитор #1", "Монитор #2", "Монитор #3"] {
+            ids.push(seed_device(&ctx, dev(name, Some(a), Some(group))).await);
+        }
+        let (d1, d2) = (ids[0], ids[1]);
+        let act = create_ok(&ctx, dto("D-40", &[d1, d2], Some(b), true)).await;
+        assert_eq!(group_place(&ctx, group).await, None, "группа без места");
+        assert_eq!(device_place(&ctx, d1).await, Some(b));
+        assert_eq!(member_rows(&ctx, d1).await, 0);
+        assert_eq!(member_rows(&ctx, d2).await, 0);
+
+        let result = undo_act(&ctx, act).await;
+
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        for d in [d1, d2] {
+            assert_eq!(member_rows(&ctx, d).await, 1, "вернулся в группу");
+            assert_eq!(device_place(&ctx, d).await, Some(a));
+        }
+        assert_act_clean(&ctx, act).await;
+    })
+    .await;
+}
+
 // (d4) целая группа перенесена актом, затем перемещена после акта: удаление проходит, группа
 // остаётся там, куда её переместили, устройства акта на исходных местах, вне этой группы.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
