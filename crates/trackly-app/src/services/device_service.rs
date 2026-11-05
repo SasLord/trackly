@@ -723,7 +723,23 @@ impl DeviceService {
     /// `create_single_with_number_check` for the interactive equivalent
     /// Plan 13 will wire the real single-device create FORM to.
     pub async fn create(&self, new: DeviceNew) -> Result<DeviceSaveOutcome, AppError> {
-        let outcome = self.create_without_broadcast(new).await?;
+        self.create_with_printer_block(new, None).await
+    }
+
+    /// `create()` + необязательный блок сети принтера (IP / community / USB-хост),
+    /// который `sync_printer_row_in_tx` пишет в ТОЙ ЖЕ транзакции, что и устройство.
+    ///
+    /// Quick 261105-s6s (INT-26): единственный вызывающий с `Some` — SNMP-приёмка
+    /// `build_printers_admit`. Раньше она создавала устройство через `create()` и
+    /// следом вставляла строку `printers` второй раз (`create_from_device`) — падение
+    /// на `printers.device_id UNIQUE` и принтер без IP. Блок у не-принтера —
+    /// `Validation` (как T-40.3-09 в `create_single_with_number_check_with_printer`).
+    pub async fn create_with_printer_block(
+        &self,
+        new: DeviceNew,
+        printer: Option<PrinterCreateBlockDto>,
+    ) -> Result<DeviceSaveOutcome, AppError> {
+        let outcome = self.create_without_broadcast(new, printer).await?;
         if let DeviceSaveOutcome::Created(ref dto) = outcome {
             // Unconditional: sent regardless of the inventory number (trap P4).
             let place_ids: Vec<i64> = dto.place_id.into_iter().collect();
@@ -748,8 +764,15 @@ impl DeviceService {
     async fn create_without_broadcast(
         &self,
         new: DeviceNew,
+        printer: Option<PrinterCreateBlockDto>,
     ) -> Result<DeviceSaveOutcome, AppError> {
         Self::validate_new(&new)?;
+        if printer.is_some() && new.type_id != Self::PRINTER_TYPE_ID {
+            return Err(AppError::Validation {
+                field: "printer".to_string(),
+                message: "IP/SNMP можно указать только при создании принтера.".to_string(),
+            });
+        }
 
         let trimmed = new.inventory_no.as_deref().map(|v| v.trim().to_string());
         if let Some(t) = trimmed.as_deref().filter(|s| !s.is_empty()) {
@@ -758,7 +781,7 @@ impl DeviceService {
         let mut new = new;
         new.inventory_no = trimmed.filter(|s| !s.is_empty());
 
-        let dto = self.insert_new_and_get(new, None, None).await?;
+        let dto = self.insert_new_and_get(new, None, printer).await?;
         Ok(DeviceSaveOutcome::Created(Box::new(dto)))
     }
 
@@ -1844,7 +1867,7 @@ impl DeviceService {
             // Insert via service.create_without_broadcast (audit_log;
             // place_id already resolved above) — broadcast is batched ONCE
             // after the loop (T-40.4-03), not per row.
-            match self.create_without_broadcast(new_device).await {
+            match self.create_without_broadcast(new_device, None).await {
                 Ok(DeviceSaveOutcome::Created(dto)) => {
                     report.inserted += 1;
                     created_ids.push(dto.id);

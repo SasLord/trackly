@@ -9,7 +9,7 @@ use crate::context::AppCtx;
 use crate::dto::device::DeviceNew;
 use crate::dto::printer::{
     CompatibleModelAggregateDto, DiscoveredPrinterDto, Pagination, PrinterCompatibleAggregatesDto,
-    PrinterCreateDto, PrinterDto, PrinterFilter, PrinterListResponse,
+    PrinterCreateBlockDto, PrinterCreateDto, PrinterDto, PrinterFilter, PrinterListResponse,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -82,8 +82,11 @@ pub async fn build_printers_discover(
 /// Для каждого выбранного IP:
 ///   1. Проверяет дубликат по IP в таблице printers — пропускает если уже есть.
 ///   2. Probe через SNMP для получения sys_name/model (если probe не ответил — заводит минимальный принтер).
-///   3. Создаёт device (type_id=2, status_id=1) через DeviceService.
-///   4. Создаёт строку printers через PrinterService.create_from_device.
+///   3. Создаёт device (type_id=2, status_id=1) через DeviceService ВМЕСТЕ со
+///      строкой printers (IP + community) — одна транзакция, `sync_printer_row_in_tx`.
+///
+/// Quick 261105-s6s (INT-26): отдельного шага `create_from_device` больше нет —
+/// он вставлял строку printers второй раз и падал на `device_id UNIQUE`.
 pub async fn build_printers_admit(
     ctx: &AppCtx,
     caller: &Identity,
@@ -153,23 +156,30 @@ pub async fn build_printers_admit(
         // panicking in production code.
         let device_outcome = ctx
             .devices
-            .create(DeviceNew {
-                type_id: 2,
-                name: device_name,
-                inventory_no: None,
-                serial_no: None,
-                model: probe_result
-                    .as_ref()
-                    .map(|p| p.sys_descr.chars().take(120).collect()),
-                specs: None,
-                kit: None,
-                state: None,
-                // SNMP discovery/admit has no place source at this call site
-                // (no PlacePicker-selected payload — device is auto-created from
-                // an IP probe); place stays unassigned, D-07 (place optional).
-                place_id: None,
-                status_id: 1,
-            })
+            .create_with_printer_block(
+                DeviceNew {
+                    type_id: 2,
+                    name: device_name,
+                    inventory_no: None,
+                    serial_no: None,
+                    model: probe_result
+                        .as_ref()
+                        .map(|p| p.sys_descr.chars().take(120).collect()),
+                    specs: None,
+                    kit: None,
+                    state: None,
+                    // SNMP discovery/admit has no place source at this call site
+                    // (no PlacePicker-selected payload — device is auto-created from
+                    // an IP probe); place stays unassigned, D-07 (place optional).
+                    place_id: None,
+                    status_id: 1,
+                },
+                Some(PrinterCreateBlockDto {
+                    ip_address: Some(ip.clone()),
+                    community: Some(community.clone()),
+                    usb_host_device_id: None,
+                }),
+            )
             .await?;
         let device = match device_outcome {
             crate::dto::device::DeviceSaveOutcome::Created(dto) => *dto,
@@ -182,21 +192,8 @@ pub async fn build_printers_admit(
             }
         };
 
-        // --- Create printer record linked to the new device ---
-        let printer_dto = ctx
-            .printers
-            .create_from_device(
-                PrinterCreateDto {
-                    device_id: device.id as i32,
-                    ip_address: Some(ip.clone()),
-                    community_update: Some(community.clone()),
-                    snmp_version: "v2c".to_string(),
-                    oid_profile_id: None,
-                    usb_host_device_id: None,
-                },
-                caller,
-            )
-            .await?;
+        // --- Строка printers уже создана в транзакции устройства (INT-26) ---
+        let printer_dto = ctx.printers.get_by_device_id(device.id).await?;
 
         results.push(printer_dto);
     }
