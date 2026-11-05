@@ -12,6 +12,8 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::SqliteGroupRepository;
 
+use crate::services::group_place::{apply_group_place_to_device_in_tx, GroupMoveCause, GroupMoveDeps};
+
 /// Режим следа при освобождении устройства на restore-путях акта (Phase 41.2).
 ///
 /// `Skip` — обычный restore: вывод на restore-пути НЕ есть исходное членство, повторный
@@ -118,7 +120,8 @@ fn release_inner(
                     group_id: group.id,
                     group_label: group.name.clone(),
                     device_id: Some(device_id),
-                    from_place_id: None,
+                    // D-42: место группы на момент акта (для выбора при конфликте).
+                    from_place_id: group.place_id,
                     to_place_id: None,
                     from_parent_group_id: None,
                     created_at_utc: now,
@@ -190,11 +193,44 @@ pub(crate) struct GroupNotice {
     pub group_id: Option<i64>,
 }
 
-/// Итог возврата устройства в группу при откате акта.
+/// Политика при конфликте «группа перенесена после акта» (D-42).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlaceConflictPolicy {
+    /// Прежнее поведение (правка акта, правка возврата): пропуск с уведомлением.
+    Skip,
+    /// Откат акта без выбора пользователя: конфликт сообщается наверх, записей нет.
+    Ask,
+    /// Выбор «вернуть в группу»: устройство в группе и на месте группы.
+    Restore,
+    /// Выбор «оставить вне группы на прежнем месте».
+    KeepOut,
+}
+
+/// Конфликт: группа жива и стоит на месте `group_place_id`, а устройство восстановлено
+/// на `device_place_id`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RestoreOutcome {
+pub(crate) struct GroupRestoreConflict {
+    pub device_id: i64,
+    pub device_name: String,
+    pub group_id: i64,
+    pub group_label: String,
+    pub group_place_id: i64,
+    pub device_place_id: Option<i64>,
+}
+
+/// Итог возврата устройства в группу с учётом политики.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RestoreResult {
     Restored,
+    /// Возвращено в группу и перенесено на её место (выбор «вернуть»).
+    RestoredToGroupPlace {
+        previous_place: Option<i64>,
+        group_place: i64,
+    },
     Skipped(GroupNotice),
+    Conflict(GroupRestoreConflict),
+    /// Выбор «оставить вне группы»: ничего не записано.
+    KeptOut,
 }
 
 /// Вернуть устройство в группу, из которой его вынес акт (откат, Phase 41.2, D-08).
@@ -203,16 +239,14 @@ pub(crate) enum RestoreOutcome {
 /// на котором устройство оказалось после восстановления. Правила проверяются по порядку:
 /// (a) группы нет или она мягко удалена; (b) устройство уже состоит в другой живой группе;
 /// (c) правило относится только к группе С местом: место группы не равно `restored_place_id`
-/// (включая устройство без места) — пропуск. Группа без места участников не запирает
-/// (`locked_group_for_device_in_tx`, `g.place_id IS NOT NULL`, D-21 фазы 41), поэтому
-/// устройство со своим местом возвращается в неё молча (D-40 фазы 41.2); (d) иначе
-/// устройство добавлено в группу.
-/// Нарушение правила — не ошибка: откат проходит, менеджер получает уведомление.
+/// (включая устройство без места) — конфликт, разрешаемый политикой (D-42). Группа без
+/// места участников не запирает (D-21 фазы 41), устройство возвращается молча (D-40);
+/// (d) иначе устройство добавлено в группу.
+/// Нарушение правил (a), (b) — не ошибка: откат проходит, менеджер получает уведомление.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn restore_membership_in_tx(
+pub(crate) fn restore_membership_with_policy_in_tx(
     tx: &Transaction<'_>,
-    groups: &SqliteGroupRepository,
-    audit: &SqliteAuditLogRepository,
+    deps: &GroupMoveDeps,
     device_id: i64,
     group_id: i64,
     group_label: &str,
@@ -221,9 +255,11 @@ pub(crate) fn restore_membership_in_tx(
     act_id: i64,
     user_id: Option<i64>,
     now: i64,
-) -> Result<RestoreOutcome, AppError> {
+    policy: PlaceConflictPolicy,
+) -> Result<RestoreResult, AppError> {
+    let groups = &deps.groups;
     let skipped = |reason: &str, group_id: Option<i64>| {
-        RestoreOutcome::Skipped(GroupNotice {
+        RestoreResult::Skipped(GroupNotice {
             message: format!("«{device_name}» не вернулся в «{group_label}»: {reason}"),
             group_id,
         })
@@ -236,21 +272,38 @@ pub(crate) fn restore_membership_in_tx(
     if let Some(other) = groups.group_of_device_in_tx(tx, device_id)? {
         if other.id == group.id {
             // Уже в этой группе (вернули руками после акта): возвращать нечего.
-            return Ok(RestoreOutcome::Restored);
+            return Ok(RestoreResult::Restored);
         }
         return Ok(skipped(
             &format!("устройство уже входит в «{}».", other.name),
             Some(other.id),
         ));
     }
+    let mut move_to: Option<i64> = None;
     if let Some(group_place) = group.place_id {
         if restored_place_id != Some(group_place) {
-            return Ok(skipped("группа теперь в другом месте.", Some(group.id)));
+            match policy {
+                PlaceConflictPolicy::Skip => {
+                    return Ok(skipped("группа теперь в другом месте.", Some(group.id)));
+                }
+                PlaceConflictPolicy::Ask => {
+                    return Ok(RestoreResult::Conflict(GroupRestoreConflict {
+                        device_id,
+                        device_name: device_name.to_string(),
+                        group_id: group.id,
+                        group_label: group_label.to_string(),
+                        group_place_id: group_place,
+                        device_place_id: restored_place_id,
+                    }));
+                }
+                PlaceConflictPolicy::KeepOut => return Ok(RestoreResult::KeptOut),
+                PlaceConflictPolicy::Restore => move_to = Some(group_place),
+            }
         }
     }
     groups.add_device_in_tx(tx, group.id, device_id, now)?;
     let payload = serde_json::json!({ "group_id": group.id, "act_id": act_id });
-    audit.insert(
+    deps.audit.insert(
         tx,
         AuditEntry {
             entity_type: "device",
@@ -263,7 +316,67 @@ pub(crate) fn restore_membership_in_tx(
             created_at_utc: now,
         },
     )?;
-    Ok(RestoreOutcome::Restored)
+    if let Some(group_place) = move_to {
+        let change = apply_group_place_to_device_in_tx(
+            tx,
+            deps,
+            device_id,
+            group_place,
+            None,
+            Some(device_name),
+            group.id,
+            user_id,
+            now,
+            GroupMoveCause::GROUP,
+        )?;
+        return Ok(RestoreResult::RestoredToGroupPlace {
+            previous_place: change.previous_place,
+            group_place,
+        });
+    }
+    Ok(RestoreResult::Restored)
+}
+
+/// Итог возврата устройства в группу при откате акта (политика `Skip`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RestoreOutcome {
+    Restored,
+    Skipped(GroupNotice),
+}
+
+/// Тонкая обёртка над [`restore_membership_with_policy_in_tx`] с политикой `Skip`:
+/// пути правки акта и правки возврата конфликт не спрашивают (D-42).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn restore_membership_in_tx(
+    tx: &Transaction<'_>,
+    _groups: &SqliteGroupRepository,
+    _audit: &SqliteAuditLogRepository,
+    device_id: i64,
+    group_id: i64,
+    group_label: &str,
+    device_name: &str,
+    restored_place_id: Option<i64>,
+    act_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<RestoreOutcome, AppError> {
+    let deps = GroupMoveDeps::new();
+    match restore_membership_with_policy_in_tx(
+        tx,
+        &deps,
+        device_id,
+        group_id,
+        group_label,
+        device_name,
+        restored_place_id,
+        act_id,
+        user_id,
+        now,
+        PlaceConflictPolicy::Skip,
+    )? {
+        RestoreResult::Skipped(n) => Ok(RestoreOutcome::Skipped(n)),
+        _ => Ok(RestoreOutcome::Restored),
+    }
 }
 
 /// Конфликт восстановления снимка для устройства якорной группы (Phase 41.2, D-09, D-13).
@@ -560,6 +673,139 @@ mod tests {
         let out = with_tx!(conn, tx, { restore(&tx, 1, 4, None) });
         assert_eq!(out, RestoreOutcome::Restored);
         assert_eq!(member_of(&conn, 1), Some(4));
+    }
+
+    fn restore_with(
+        tx: &Transaction<'_>,
+        device_id: i64,
+        group_id: i64,
+        place: Option<i64>,
+        policy: PlaceConflictPolicy,
+    ) -> RestoreResult {
+        restore_membership_with_policy_in_tx(
+            tx,
+            &GroupMoveDeps::new(),
+            device_id,
+            group_id,
+            "АРМ #3",
+            "Монитор #2",
+            place,
+            7,
+            None,
+            NOW,
+            policy,
+        )
+        .expect("restore")
+    }
+
+    fn movement_rows(conn: &Connection, device_id: i64, source: &str) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM place_movements WHERE entity_id = ?1 AND entity_type = 'device' \
+             AND source = ?2 AND act_id IS NULL",
+            rusqlite::params![device_id, source],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn ask_policy_reports_conflict_and_writes_nothing() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 1, 1, Some(2), PlaceConflictPolicy::Ask)
+        });
+        assert_eq!(
+            out,
+            RestoreResult::Conflict(GroupRestoreConflict {
+                device_id: 1,
+                device_name: "Монитор #2".to_string(),
+                group_id: 1,
+                group_label: "АРМ #3".to_string(),
+                group_place_id: 1,
+                device_place_id: Some(2),
+            })
+        );
+        assert_eq!(member_of(&conn, 1), None);
+        assert_eq!(audit_rows(&conn, "custom:group_member_restored", 1), 0);
+    }
+
+    #[test]
+    fn restore_policy_returns_device_into_group_on_group_place() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        conn.execute("UPDATE devices SET place_id = 2 WHERE id = 1", [])
+            .unwrap();
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 1, 1, Some(2), PlaceConflictPolicy::Restore)
+        });
+        assert_eq!(
+            out,
+            RestoreResult::RestoredToGroupPlace {
+                previous_place: Some(2),
+                group_place: 1
+            }
+        );
+        assert_eq!(member_of(&conn, 1), Some(1));
+        assert_eq!(audit_rows(&conn, "custom:group_member_restored", 1), 1);
+        let place: i64 = conn
+            .query_row("SELECT place_id FROM devices WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(place, 1);
+        assert_eq!(movement_rows(&conn, 1, "group"), 1);
+    }
+
+    #[test]
+    fn keep_out_policy_writes_nothing() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 1, 1, Some(2), PlaceConflictPolicy::KeepOut)
+        });
+        assert_eq!(out, RestoreResult::KeptOut);
+        assert_eq!(member_of(&conn, 1), None);
+        assert_eq!(audit_rows(&conn, "custom:group_member_restored", 1), 0);
+    }
+
+    #[test]
+    fn ask_policy_keeps_other_rules_and_placeless_group_is_no_conflict() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        // Группа без места при Ask: молча в группу (D-40).
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 1, 4, Some(1), PlaceConflictPolicy::Ask)
+        });
+        assert_eq!(out, RestoreResult::Restored);
+        // (a) группа удалена.
+        conn.execute("UPDATE groups SET deleted_at_utc = ?1 WHERE id = 1", [NOW])
+            .unwrap();
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 2, 1, Some(2), PlaceConflictPolicy::Ask)
+        });
+        assert!(matches!(out, RestoreResult::Skipped(_)), "{out:?}");
+        // (b) уже в другой группе.
+        add_member(&conn, 3, 2);
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 3, 4, Some(2), PlaceConflictPolicy::Ask)
+        });
+        assert!(matches!(out, RestoreResult::Skipped(_)), "{out:?}");
+    }
+
+    #[test]
+    fn skip_policy_keeps_old_text() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 1, 1, Some(2), PlaceConflictPolicy::Skip)
+        });
+        assert_eq!(
+            out,
+            RestoreResult::Skipped(GroupNotice {
+                message: "«Монитор #2» не вернулся в «АРМ #3»: группа теперь в другом месте."
+                    .to_string(),
+                group_id: Some(1),
+            })
+        );
     }
 
     /// Расходящаяся пара на ОДНОМ устройстве: путь вперёд пишет след, restore со Skip — нет,

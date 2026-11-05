@@ -37,7 +37,8 @@ use trackly_infra::repos::SqliteGroupRepository;
 
 use crate::services::act_service::device_snapshot_json;
 use crate::services::group_membership::{
-    release_device_in_tx, restore_membership_in_tx, GroupNotice, ReleaseEffect, RestoreOutcome,
+    release_device_in_tx, restore_membership_with_policy_in_tx, GroupNotice, GroupRestoreConflict,
+    PlaceConflictPolicy, ReleaseEffect, RestoreResult,
 };
 use crate::services::group_place::{propagate_group_place_in_tx, GroupMoveCause, GroupMoveDeps};
 
@@ -610,6 +611,8 @@ pub(crate) struct AppliedGroupPlan {
 #[derive(Debug, Default)]
 pub(crate) struct GroupRevertOutcome {
     pub notices: Vec<GroupNotice>,
+    /// Конфликты «группа перенесена после акта», по которым нет выбора пользователя (D-42).
+    pub conflicts: Vec<GroupRestoreConflict>,
     pub touched_place_ids: Vec<i64>,
     pub touched_group_ids: Vec<i64>,
 }
@@ -843,6 +846,7 @@ pub(crate) fn revert_group_moves_in_tx(
 
 fn absorb(out: &mut GroupRevertOutcome, other: GroupRevertOutcome) {
     out.notices.extend(other.notices);
+    out.conflicts.extend(other.conflicts);
     for place in other.touched_place_ids {
         push_unique(&mut out.touched_place_ids, place);
     }
@@ -1025,9 +1029,13 @@ pub(crate) fn forget_moved_details_in_tx(
 /// восстановления снимков устройств: место читается текущее. Нарушение любого из четырёх
 /// правил `restore_membership_in_tx` и ошибка записи превращаются в уведомление, ничего не падает.
 /// Удаление самих следов — `delete_act_group_effects_in_tx` у вызывающего, после обеих функций.
+///
+/// `choices` (D-42): group_id -> «вернуть в группу на её место» (true) / «оставить вне
+/// группы» (false). Конфликт по группе без выбора копится в `conflicts`, записей не делает.
 pub(crate) fn restore_released_members_in_tx(
     tx: &Transaction<'_>,
     deps: &GroupMoveDeps,
+    choices: &HashMap<i64, bool>,
     act_id: i64,
     user_id: Option<i64>,
     now: i64,
@@ -1052,11 +1060,15 @@ pub(crate) fn restore_released_members_in_tx(
         let Some((device_name, place)) = device else {
             continue;
         };
+        let policy = match choices.get(&effect.group_id) {
+            Some(true) => PlaceConflictPolicy::Restore,
+            Some(false) => PlaceConflictPolicy::KeepOut,
+            None => PlaceConflictPolicy::Ask,
+        };
         let result = guarded(tx, || {
-            restore_membership_in_tx(
+            restore_membership_with_policy_in_tx(
                 tx,
-                &deps.groups,
-                &deps.audit,
+                deps,
                 device_id,
                 effect.group_id,
                 &effect.group_label,
@@ -1065,13 +1077,26 @@ pub(crate) fn restore_released_members_in_tx(
                 act_id,
                 user_id,
                 now,
+                policy,
             )
         });
         match result {
-            Ok(RestoreOutcome::Restored) => {
+            Ok(RestoreResult::Restored) => push_unique(&mut out.touched_group_ids, effect.group_id),
+            Ok(RestoreResult::RestoredToGroupPlace {
+                previous_place,
+                group_place,
+            }) => {
+                push_unique(&mut out.touched_group_ids, effect.group_id);
+                push_unique(&mut out.touched_place_ids, group_place);
+                if let Some(prev) = previous_place {
+                    push_unique(&mut out.touched_place_ids, prev);
+                }
+            }
+            Ok(RestoreResult::KeptOut) => {
                 push_unique(&mut out.touched_group_ids, effect.group_id)
             }
-            Ok(RestoreOutcome::Skipped(notice)) => {
+            Ok(RestoreResult::Conflict(conflict)) => out.conflicts.push(conflict),
+            Ok(RestoreResult::Skipped(notice)) => {
                 if let Some(g) = notice.group_id {
                     push_unique(&mut out.touched_group_ids, g);
                 }
@@ -1846,7 +1871,7 @@ mod apply_tests {
         tx.execute("UPDATE devices SET place_id = 1 WHERE id = 4", [])
             .unwrap();
         let restored =
-            restore_released_members_in_tx(&tx, &deps(), ACT, None, NOW).expect("restore");
+            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW).expect("restore");
         assert!(restored.notices.is_empty(), "{:?}", restored.notices);
         tx.commit().unwrap();
 
@@ -1962,7 +1987,7 @@ mod apply_tests {
         )
         .unwrap();
         let restored =
-            restore_released_members_in_tx(&tx, &deps(), ACT, None, NOW).expect("restore");
+            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW).expect("restore");
         tx.commit().unwrap();
         assert_eq!(restored.notices.len(), 1);
         assert_eq!(
