@@ -1,0 +1,1312 @@
+[
+  {
+    "name": "const SUBTREE_CAP = 50 (потолок обхода поддерева)",
+    "fn": "const",
+    "input": { "name": "SUBTREE_CAP" },
+    "expected": 50
+  },
+  {
+    "name": "const SECTION_ALL = «Все устройства» (заголовок второй секции)",
+    "fn": "const",
+    "input": { "name": "SECTION_ALL" },
+    "expected": "Все устройства"
+  },
+
+  {
+    "name": "hostLabel: инв. № null -> только имя (PGR-04: имя, не сырой id)",
+    "fn": "hostLabel",
+    "input": { "name": "Системный блок #4", "inventoryNo": null },
+    "expected": "Системный блок #4"
+  },
+  {
+    "name": "hostLabel: инв. № undefined -> только имя",
+    "fn": "hostLabel",
+    "input": { "name": "Системный блок #4", "inventoryNo": "__undefined__" },
+    "expected": "Системный блок #4"
+  },
+  {
+    "name": "hostLabel: инв. № пустая строка -> только имя",
+    "fn": "hostLabel",
+    "input": { "name": "Системный блок #4", "inventoryNo": "" },
+    "expected": "Системный блок #4"
+  },
+  {
+    "name": "hostLabel: инв. № из одних пробелов -> только имя (нужен .trim())",
+    "fn": "hostLabel",
+    "input": { "name": "Системный блок #4", "inventoryNo": "   " },
+    "expected": "Системный блок #4"
+  },
+  {
+    "name": "hostLabel: инв. № есть -> «Имя · инв. 114» (порядок и разделитель)",
+    "fn": "hostLabel",
+    "input": { "name": "Системный блок #4", "inventoryNo": "114" },
+    "expected": "Системный блок #4 · инв. 114"
+  },
+  {
+    "name": "hostLabel: инв. № с пробелами по краям обрезается",
+    "fn": "hostLabel",
+    "input": { "name": "Системный блок #4", "inventoryNo": " 114 " },
+    "expected": "Системный блок #4 · инв. 114"
+  },
+  {
+    "name": "hostLabel: другое имя — подпись строится из аргумента, а не из константы",
+    "fn": "hostLabel",
+    "input": { "name": "Рабочая станция А", "inventoryNo": "7" },
+    "expected": "Рабочая станция А · инв. 7"
+  },
+
+  {
+    "name": "hostSub: пункт «Не указан» (kind=clear) -> подстроки нет",
+    "fn": "hostSub",
+    "input": { "kind": "clear" },
+    "expected": "__undefined__"
+  },
+  {
+    "name": "hostSub: ни инв., ни SN -> подстроки нет (не пустая строка)",
+    "fn": "hostSub",
+    "input": {
+      "kind": "device",
+      "id": 10,
+      "name": "Монитор 19",
+      "inventoryNo": null,
+      "serialNo": null,
+      "section": "group"
+    },
+    "expected": "__undefined__"
+  },
+  {
+    "name": "hostSub: только инв. -> «инв. 114»",
+    "fn": "hostSub",
+    "input": {
+      "kind": "device",
+      "id": 10,
+      "name": "Рабочая станция А",
+      "inventoryNo": "114",
+      "serialNo": null,
+      "section": "group"
+    },
+    "expected": "инв. 114"
+  },
+  {
+    "name": "hostSub: только SN -> «SN AB123»",
+    "fn": "hostSub",
+    "input": {
+      "kind": "device",
+      "id": 10,
+      "name": "Рабочая станция А",
+      "inventoryNo": null,
+      "serialNo": "AB123",
+      "section": "group"
+    },
+    "expected": "SN AB123"
+  },
+  {
+    "name": "hostSub: инв. и SN -> «инв. 114 · SN AB123» (порядок склейки)",
+    "fn": "hostSub",
+    "input": {
+      "kind": "device",
+      "id": 10,
+      "name": "Рабочая станция А",
+      "inventoryNo": "114",
+      "serialNo": "AB123",
+      "section": "group"
+    },
+    "expected": "инв. 114 · SN AB123"
+  },
+  {
+    "name": "hostSub: инв. пустая строка -> только SN (пустое не даёт части)",
+    "fn": "hostSub",
+    "input": {
+      "kind": "device",
+      "id": 10,
+      "name": "Рабочая станция А",
+      "inventoryNo": "",
+      "serialNo": "AB123",
+      "section": "group"
+    },
+    "expected": "SN AB123"
+  },
+
+  {
+    "name": "effectiveQuery: пустой запрос -> пусто",
+    "fn": "effectiveQuery",
+    "input": { "raw": "", "currentLabel": "Системный блок #4 · инв. 114" },
+    "expected": ""
+  },
+  {
+    "name": "effectiveQuery: запрос из пробелов -> пусто",
+    "fn": "effectiveQuery",
+    "input": { "raw": "   ", "currentLabel": "Системный блок #4 · инв. 114" },
+    "expected": ""
+  },
+  {
+    "name": "effectiveQuery: запрос равен строке значения -> пусто (открытие панели не ищет подпись)",
+    "fn": "effectiveQuery",
+    "input": {
+      "raw": "Системный блок #4 · инв. 114",
+      "currentLabel": "Системный блок #4 · инв. 114"
+    },
+    "expected": ""
+  },
+  {
+    "name": "effectiveQuery: равенство считается после .trim() у ОБОИХ аргументов",
+    "fn": "effectiveQuery",
+    "input": {
+      "raw": "  Системный блок #4 · инв. 114  ",
+      "currentLabel": "Системный блок #4 · инв. 114 "
+    },
+    "expected": ""
+  },
+  {
+    "name": "effectiveQuery: обычный запрос проходит как есть",
+    "fn": "effectiveQuery",
+    "input": { "raw": "Сист", "currentLabel": "Системный блок #4 · инв. 114" },
+    "expected": "Сист"
+  },
+  {
+    "name": "effectiveQuery: обычный запрос обрезается",
+    "fn": "effectiveQuery",
+    "input": { "raw": "  Сист  ", "currentLabel": "Системный блок #4 · инв. 114" },
+    "expected": "Сист"
+  },
+  {
+    "name": "effectiveQuery: значения нет (пустая подпись) — запрос всё равно живой",
+    "fn": "effectiveQuery",
+    "input": { "raw": "AB123", "currentLabel": "" },
+    "expected": "AB123"
+  },
+
+  {
+    "name": "filterSectionOne: пустой запрос возвращает ВСЁ",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 12,
+          "name": "Монитор 19",
+          "inventoryNo": null,
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": ""
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 11,
+        "name": "Системный блок #4",
+        "inventoryNo": "220",
+        "serialNo": null,
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 12,
+        "name": "Монитор 19",
+        "inventoryNo": null,
+        "serialNo": null,
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: пустой запрос сохраняет пункт «Не указан» в списке",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        { "kind": "clear" },
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        }
+      ],
+      "query": ""
+    },
+    "expected": [
+      { "kind": "clear" },
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: запрос из пробелов считается пустым (нужен .trim())",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        { "kind": "clear" },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": "   "
+    },
+    "expected": [
+      { "kind": "clear" },
+      {
+        "kind": "device",
+        "id": 11,
+        "name": "Системный блок #4",
+        "inventoryNo": "220",
+        "serialNo": null,
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: непустой запрос выбрасывает пункт «Не указан»",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        { "kind": "clear" },
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": "Систем"
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 11,
+        "name": "Системный блок #4",
+        "inventoryNo": "220",
+        "serialNo": null,
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: находит ТОЛЬКО по инвентарному № (в имени и SN запроса нет)",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": "114"
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: находит ТОЛЬКО по серийному №, подстрокой в середине (не startsWith)",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": "b12"
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: находит ТОЛЬКО по имени, запрос В ВЕРХНЕМ регистре (нужен toLowerCase у запроса)",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": "РАБОЧАЯ"
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: находит ТОЛЬКО по имени у устройства с null-полями",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 12,
+          "name": "Монитор 19",
+          "inventoryNo": null,
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": "19"
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 12,
+        "name": "Монитор 19",
+        "inventoryNo": null,
+        "serialNo": null,
+        "section": "group"
+      }
+    ]
+  },
+  {
+    "name": "filterSectionOne: ничего не найдено — null-поля не ломают фильтр",
+    "fn": "filterSectionOne",
+    "input": {
+      "items": [
+        {
+          "kind": "device",
+          "id": 12,
+          "name": "Монитор 19",
+          "inventoryNo": null,
+          "serialNo": null,
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "query": "такого нет"
+    },
+    "expected": []
+  },
+
+  {
+    "name": "buildHostList: пустой запрос — «Не указан», затем вся секция 1, затем секция 2 без дублей (D-06)",
+    "fn": "buildHostList",
+    "input": {
+      "query": "",
+      "currentLabel": "",
+      "sectionOne": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "searchResults": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "all"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "all"
+        },
+        {
+          "kind": "device",
+          "id": 13,
+          "name": "Ноутбук Б",
+          "inventoryNo": "330",
+          "serialNo": "CD456",
+          "section": "all"
+        }
+      ],
+      "selfId": null
+    },
+    "expected": [
+      { "kind": "clear" },
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 11,
+        "name": "Системный блок #4",
+        "inventoryNo": "220",
+        "serialNo": null,
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      }
+    ]
+  },
+  {
+    "name": "buildHostList: дедупликация считается по ПОЛНОЙ секции 1, а не по отфильтрованной (id 11 отфильтрован запросом и всё равно не всплывает в секции 2)",
+    "fn": "buildHostList",
+    "input": {
+      "query": "рабочая",
+      "currentLabel": "",
+      "sectionOne": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "searchResults": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "all"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "all"
+        },
+        {
+          "kind": "device",
+          "id": 13,
+          "name": "Ноутбук Б",
+          "inventoryNo": "330",
+          "serialNo": "CD456",
+          "section": "all"
+        }
+      ],
+      "selfId": null
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      }
+    ]
+  },
+  {
+    "name": "buildHostList: само редактируемое устройство (selfId) выброшено из секции 2",
+    "fn": "buildHostList",
+    "input": {
+      "query": "",
+      "currentLabel": "",
+      "sectionOne": [],
+      "searchResults": [
+        {
+          "kind": "device",
+          "id": 13,
+          "name": "Ноутбук Б",
+          "inventoryNo": "330",
+          "serialNo": "CD456",
+          "section": "all"
+        },
+        {
+          "kind": "device",
+          "id": 20,
+          "name": "Принтер Х",
+          "inventoryNo": null,
+          "serialNo": null,
+          "section": "all"
+        }
+      ],
+      "selfId": 20
+    },
+    "expected": [
+      { "kind": "clear" },
+      {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      }
+    ]
+  },
+  {
+    "name": "buildHostList: запрос равен строке значения — список как при пустом запросе (есть «Не указан», секция 1 не отфильтрована)",
+    "fn": "buildHostList",
+    "input": {
+      "query": "Системный блок #4 · инв. 220",
+      "currentLabel": "Системный блок #4 · инв. 220",
+      "sectionOne": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "searchResults": [
+        {
+          "kind": "device",
+          "id": 13,
+          "name": "Ноутбук Б",
+          "inventoryNo": "330",
+          "serialNo": "CD456",
+          "section": "all"
+        }
+      ],
+      "selfId": null
+    },
+    "expected": [
+      { "kind": "clear" },
+      {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 11,
+        "name": "Системный блок #4",
+        "inventoryNo": "220",
+        "serialNo": null,
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      }
+    ]
+  },
+  {
+    "name": "buildHostList: при непустом запросе «Не указан» НЕ добавляется, секция 1 пуста после фильтра",
+    "fn": "buildHostList",
+    "input": {
+      "query": "Ноутбук",
+      "currentLabel": "",
+      "sectionOne": [
+        {
+          "kind": "device",
+          "id": 10,
+          "name": "Рабочая станция А",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        }
+      ],
+      "searchResults": [
+        {
+          "kind": "device",
+          "id": 13,
+          "name": "Ноутбук Б",
+          "inventoryNo": "330",
+          "serialNo": "CD456",
+          "section": "all"
+        }
+      ],
+      "selfId": null
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      }
+    ]
+  },
+  {
+    "name": "buildHostList: секция группы строго раньше секции «все» (D-06)",
+    "fn": "buildHostList",
+    "input": {
+      "query": "",
+      "currentLabel": "",
+      "sectionOne": [
+        {
+          "kind": "device",
+          "id": 11,
+          "name": "Системный блок #4",
+          "inventoryNo": "220",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "searchResults": [
+        {
+          "kind": "device",
+          "id": 13,
+          "name": "Ноутбук Б",
+          "inventoryNo": "330",
+          "serialNo": "CD456",
+          "section": "all"
+        }
+      ],
+      "selfId": null
+    },
+    "expected": [
+      { "kind": "clear" },
+      {
+        "kind": "device",
+        "id": 11,
+        "name": "Системный блок #4",
+        "inventoryNo": "220",
+        "serialNo": null,
+        "section": "group"
+      },
+      {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      }
+    ]
+  },
+  {
+    "name": "buildHostList: нечего показать — остаётся один «Не указан»",
+    "fn": "buildHostList",
+    "input": {
+      "query": "",
+      "currentLabel": "",
+      "sectionOne": [],
+      "searchResults": [],
+      "selfId": null
+    },
+    "expected": [{ "kind": "clear" }]
+  },
+
+  {
+    "name": "sectionFor: «Не указан» заголовка не получает (секция 1 есть)",
+    "fn": "sectionFor",
+    "input": {
+      "item": { "kind": "clear" },
+      "ctx": { "hasSectionOne": true, "sectionOneTitle": "В составе «АРМ-1»" }
+    },
+    "expected": "__undefined__"
+  },
+  {
+    "name": "sectionFor: «Не указан» заголовка не получает (секции 1 нет)",
+    "fn": "sectionFor",
+    "input": {
+      "item": { "kind": "clear" },
+      "ctx": { "hasSectionOne": false, "sectionOneTitle": "В составе «АРМ-1»" }
+    },
+    "expected": "__undefined__"
+  },
+  {
+    "name": "sectionFor: устройство секции группы -> заголовок секции 1 (секция 1 есть)",
+    "fn": "sectionFor",
+    "input": {
+      "item": {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      },
+      "ctx": { "hasSectionOne": true, "sectionOneTitle": "В составе «АРМ-1»" }
+    },
+    "expected": "В составе «АРМ-1»"
+  },
+  {
+    "name": "sectionFor: устройство секции группы -> заголовок секции 1 БЕЗ оглядки на hasSectionOne (порядок ветвей)",
+    "fn": "sectionFor",
+    "input": {
+      "item": {
+        "kind": "device",
+        "id": 10,
+        "name": "Рабочая станция А",
+        "inventoryNo": "114",
+        "serialNo": "AB123",
+        "section": "group"
+      },
+      "ctx": { "hasSectionOne": false, "sectionOneTitle": "В составе «АРМ-1»" }
+    },
+    "expected": "В составе «АРМ-1»"
+  },
+  {
+    "name": "sectionFor: устройство секции «все» при наличии секции 1 -> «Все устройства»",
+    "fn": "sectionFor",
+    "input": {
+      "item": {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      },
+      "ctx": { "hasSectionOne": true, "sectionOneTitle": "В составе «АРМ-1»" }
+    },
+    "expected": "Все устройства"
+  },
+  {
+    "name": "sectionFor: устройство секции «все» без секции 1 -> заголовка нет (единственная секция не подписывается)",
+    "fn": "sectionFor",
+    "input": {
+      "item": {
+        "kind": "device",
+        "id": 13,
+        "name": "Ноутбук Б",
+        "inventoryNo": "330",
+        "serialNo": "CD456",
+        "section": "all"
+      },
+      "ctx": { "hasSectionOne": false, "sectionOneTitle": "В составе «АРМ-1»" }
+    },
+    "expected": "__undefined__"
+  },
+
+  {
+    "name": "isUsbHostFieldVisible: не принтер, просмотр, правка, ответ загружен -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": true, "readonly": true, "printerLoaded": true },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: не принтер, просмотр, правка, ответа нет -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": true, "readonly": true, "printerLoaded": false },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: не принтер, просмотр, создание, ответ загружен -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": false, "readonly": true, "printerLoaded": true },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: не принтер, просмотр, создание, ответа нет -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": false, "readonly": true, "printerLoaded": false },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: не принтер, ввод, правка, ответ загружен -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": true, "readonly": false, "printerLoaded": true },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: не принтер, ввод, правка, ответа нет -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": true, "readonly": false, "printerLoaded": false },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: не принтер, ввод, создание, ответ загружен -> false (создание не включает поле у не-принтера)",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": false, "readonly": false, "printerLoaded": true },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: не принтер, ввод, создание, ответа нет -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": false, "isEdit": false, "readonly": false, "printerLoaded": false },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, просмотр, правка, ответ загружен -> true",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": true, "readonly": true, "printerLoaded": true },
+    "expected": true
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, просмотр, правка, ответа нет -> false (поле не мигает пустым)",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": true, "readonly": true, "printerLoaded": false },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, просмотр, создание, ответ загружен -> true",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": false, "readonly": true, "printerLoaded": true },
+    "expected": true
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, просмотр, создание, ответа нет -> false (просмотр решается ДО создания: порядок ветвей)",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": false, "readonly": true, "printerLoaded": false },
+    "expected": false
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, ввод, создание, ответ загружен -> true",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": false, "readonly": false, "printerLoaded": true },
+    "expected": true
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, ввод, создание, ответа нет -> true (при создании поле есть всегда, PGR-03)",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": false, "readonly": false, "printerLoaded": false },
+    "expected": true
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, ввод, правка, ответ загружен -> true (PGR-03: поле доступно и при правке)",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": true, "readonly": false, "printerLoaded": true },
+    "expected": true
+  },
+  {
+    "name": "isUsbHostFieldVisible: принтер, ввод, правка, ответа нет -> false",
+    "fn": "isUsbHostFieldVisible",
+    "input": { "typeIsPrinter": true, "isEdit": true, "readonly": false, "printerLoaded": false },
+    "expected": false
+  },
+
+  {
+    "name": "walkGroupSubtree: обход в ширину, якорь входит в результат, поля отображены, дубль между узлами не повторяется",
+    "fn": "walkGroupSubtree",
+    "input": {
+      "root": 1,
+      "graph": {
+        "1": {
+          "devices": [
+            {
+              "device_id": 101,
+              "name": "Системный блок #4",
+              "inventory_number": "114",
+              "serial_number": "AB123"
+            }
+          ],
+          "child_groups": [2, 3]
+        },
+        "2": {
+          "devices": [
+            {
+              "device_id": 102,
+              "name": "Монитор 19",
+              "inventory_number": null,
+              "serial_number": null
+            }
+          ],
+          "child_groups": [4]
+        },
+        "3": {
+          "devices": [
+            {
+              "device_id": 101,
+              "name": "Системный блок #4",
+              "inventory_number": "114",
+              "serial_number": "AB123"
+            },
+            {
+              "device_id": 103,
+              "name": "Клавиатура К",
+              "inventory_number": null,
+              "serial_number": "CD456"
+            }
+          ],
+          "child_groups": []
+        },
+        "4": {
+          "devices": [
+            {
+              "device_id": 104,
+              "name": "Ноутбук Б",
+              "inventory_number": "330",
+              "serial_number": null
+            }
+          ],
+          "child_groups": []
+        }
+      },
+      "reject": [],
+      "excludeDeviceId": null
+    },
+    "expected": {
+      "items": [
+        {
+          "kind": "device",
+          "id": 101,
+          "name": "Системный блок #4",
+          "inventoryNo": "114",
+          "serialNo": "AB123",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 102,
+          "name": "Монитор 19",
+          "inventoryNo": null,
+          "serialNo": null,
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 103,
+          "name": "Клавиатура К",
+          "inventoryNo": null,
+          "serialNo": "CD456",
+          "section": "group"
+        },
+        {
+          "kind": "device",
+          "id": 104,
+          "name": "Ноутбук Б",
+          "inventoryNo": "330",
+          "serialNo": null,
+          "section": "group"
+        }
+      ],
+      "fetched": [1, 2, 3, 4]
+    }
+  },
+  {
+    "name": "walkGroupSubtree: excludeDeviceId выбрасывает устройство из середины поддерева",
+    "fn": "walkGroupSubtree",
+    "input": {
+      "root": 1,
+      "graph": {
+        "1": {
+          "devices": [
+            {
+              "device_id": 101,
+              "name": "Системный блок #4",
+              "inventory_number": "114",
+              "serial_number": "AB123"
+            }
+          ],
+          "child_groups": [2]
+        },
+        "2": {
+          "devices": [
+            {
+              "device_id": 102,
+              "name": "Монитор 19",
+              "inventory_number": null,
+              "serial_number": null
+            },
+            {
+              "device_id": 103,
+              "name": "Клавиатура К",
+              "inventory_number": null,
+              "serial_number": "CD456"
+            }
+          ],
+          "child_groups": []
+        }
+      },
+      "reject": [],
+      "excludeDeviceId": 103
+    },
+    "expected": { "ids": [101, 102], "fetched": [1, 2] }
+  },
+  {
+    "name": "walkGroupSubtree: excludeDeviceId выбрасывает сам редактируемый принтер из прямых членов якоря",
+    "fn": "walkGroupSubtree",
+    "input": {
+      "root": 1,
+      "graph": {
+        "1": {
+          "devices": [
+            {
+              "device_id": 101,
+              "name": "Системный блок #4",
+              "inventory_number": "114",
+              "serial_number": "AB123"
+            },
+            {
+              "device_id": 20,
+              "name": "Принтер Х",
+              "inventory_number": null,
+              "serial_number": null
+            }
+          ],
+          "child_groups": []
+        }
+      },
+      "reject": [],
+      "excludeDeviceId": 20
+    },
+    "expected": { "ids": [101], "fetched": [1] }
+  },
+  {
+    "name": "walkGroupSubtree: ошибка ОДНОГО узла молча пропускает его, остальные продолжаются",
+    "fn": "walkGroupSubtree",
+    "input": {
+      "root": 1,
+      "graph": {
+        "1": {
+          "devices": [
+            {
+              "device_id": 101,
+              "name": "Системный блок #4",
+              "inventory_number": "114",
+              "serial_number": "AB123"
+            }
+          ],
+          "child_groups": [2, 3]
+        },
+        "2": {
+          "devices": [
+            {
+              "device_id": 102,
+              "name": "Монитор 19",
+              "inventory_number": null,
+              "serial_number": null
+            }
+          ],
+          "child_groups": [4]
+        },
+        "3": {
+          "devices": [
+            {
+              "device_id": 103,
+              "name": "Клавиатура К",
+              "inventory_number": null,
+              "serial_number": "CD456"
+            }
+          ],
+          "child_groups": []
+        },
+        "4": {
+          "devices": [
+            {
+              "device_id": 104,
+              "name": "Ноутбук Б",
+              "inventory_number": "330",
+              "serial_number": null
+            }
+          ],
+          "child_groups": []
+        }
+      },
+      "reject": [2],
+      "excludeDeviceId": null
+    },
+    "expected": { "ids": [101, 103], "fetched": [1, 2, 3] }
+  },
+  {
+    "name": "walkGroupSubtree: цикл в дереве не приводит к повторной загрузке узла (посещённые помечены, якорь — заранее)",
+    "fn": "walkGroupSubtree",
+    "input": {
+      "root": 1,
+      "graph": {
+        "1": {
+          "devices": [
+            {
+              "device_id": 101,
+              "name": "Системный блок #4",
+              "inventory_number": "114",
+              "serial_number": "AB123"
+            }
+          ],
+          "child_groups": [2]
+        },
+        "2": {
+          "devices": [
+            {
+              "device_id": 102,
+              "name": "Монитор 19",
+              "inventory_number": null,
+              "serial_number": null
+            }
+          ],
+          "child_groups": [1, 2]
+        }
+      },
+      "reject": [],
+      "excludeDeviceId": null
+    },
+    "expected": { "ids": [101, 102], "fetched": [1, 2] }
+  },
+  {
+    "name": "walkGroupSubtree: пустой якорь — ни одного пункта, но узел загружен",
+    "fn": "walkGroupSubtree",
+    "input": {
+      "root": 1,
+      "graph": { "1": { "devices": [], "child_groups": [] } },
+      "reject": [],
+      "excludeDeviceId": null
+    },
+    "expected": { "ids": [], "fetched": [1] }
+  },
+  {
+    "name": "walkGroupSubtree: потолок SUBTREE_CAP — 60 детей, загружено ровно 50 узлов (якорь + 49)",
+    "fn": "walkGroupSubtree",
+    "input": {
+      "root": 1,
+      "fan": { "children": 60 },
+      "reject": [],
+      "excludeDeviceId": null
+    },
+    "expected": { "count": 50, "fetchedCount": 50 }
+  }
+]
