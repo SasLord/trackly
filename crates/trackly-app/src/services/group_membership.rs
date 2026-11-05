@@ -202,10 +202,11 @@ pub(crate) enum RestoreOutcome {
 /// Вызывается ПОСЛЕ восстановления снимка устройства: `restored_place_id` — место,
 /// на котором устройство оказалось после восстановления. Правила проверяются по порядку:
 /// (a) группы нет или она мягко удалена; (b) устройство уже состоит в другой живой группе;
-/// (c) место группы не равно `restored_place_id` — сравниваются `Option<i64>` ЦЕЛИКОМ,
-/// включая `Some` против `None` и `None` против `Some` (иначе устройство вернулось бы в
-/// группу с местом группы и без собственного места и нарушило бы «член живёт в месте
-/// группы», D-13/D-14 фазы 41.1); (d) иначе устройство добавлено в группу.
+/// (c) правило относится только к группе С местом: место группы не равно `restored_place_id`
+/// (включая устройство без места) — пропуск. Группа без места участников не запирает
+/// (`locked_group_for_device_in_tx`, `g.place_id IS NOT NULL`, D-21 фазы 41), поэтому
+/// устройство со своим местом возвращается в неё молча (D-40 фазы 41.2); (d) иначе
+/// устройство добавлено в группу.
 /// Нарушение правила — не ошибка: откат проходит, менеджер получает уведомление.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn restore_membership_in_tx(
@@ -242,8 +243,10 @@ pub(crate) fn restore_membership_in_tx(
             Some(other.id),
         ));
     }
-    if group.place_id != restored_place_id {
-        return Ok(skipped("группа теперь в другом месте.", Some(group.id)));
+    if let Some(group_place) = group.place_id {
+        if restored_place_id != Some(group_place) {
+            return Ok(skipped("группа теперь в другом месте.", Some(group.id)));
+        }
     }
     groups.add_device_in_tx(tx, group.id, device_id, now)?;
     let payload = serde_json::json!({ "group_id": group.id, "act_id": act_id });
