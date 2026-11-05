@@ -48,6 +48,13 @@
 //   (H) Второго уровня раскрытия нет: строки состава и общий сниппет rowCells не
 //       содержат шеврона; сниппет rowCells объявлен и используется не меньше двух
 //       раз (обычные строки и строки состава), а ветка группы рисует состав через него.
+//   (I) Строка группы и раскрытие по вкладке (D-43): filteredRows различает вкладки
+//       'device' и 'printer' для группы через groupCountOnTab(; groupCountOnTab
+//       считает по member_count и printer_member_count; подпись группы — groupCountLabel(
+//       (не deviceCountLabel(row.member_count) целиком) с формами «принтер» и «устройство»;
+//       раскрытие перебирает visibleMembers = membersOnTab(...), last считается по её
+//       длине, membersOnTab сравнивает kind с вкладкой вне 'all'; emptyTabHint не
+//       содержит «входят в группы» (ветки недостижимы).
 // Файл не читается или не разобрать — нарушение с понятным сообщением, не SKIP.
 //
 // Self-test (`--selftest`): чистые РЕАЛЬНЫЕ исходники проходят; затем мутанты по
@@ -352,6 +359,86 @@ function scanContents(raw, violations) {
   }
 }
 
+/** (I) строка группы, подпись и раскрытие по вкладке (D-43). */
+function scanTabs(raw, violations) {
+  const code = stripComments(raw);
+  const F = CONTENTS_FILE;
+
+  // (I1) filteredRows различает обе вкладки для группы.
+  const fAt = code.search(/\bconst\s+filteredRows\s*=\s*\$derived\(/);
+  const fExpr = fAt === -1 ? null : extractBalanced(code, code.indexOf('(', fAt), '(', ')');
+  if (fExpr === null) {
+    violations.push(`(I) ${F}: не найден const filteredRows = $derived(…).`);
+  } else {
+    if (
+      !/activeTab\s*===\s*'device'/.test(fExpr) ||
+      !/activeTab\s*===\s*'printer'/.test(fExpr) ||
+      !/\bgroupCountOnTab\s*\(/.test(fExpr)
+    ) {
+      violations.push(
+        `(I) ${F}: filteredRows не различает вкладки 'device' и 'printer' для строки группы через groupCountOnTab( (D-43: группа видна на «Принтеры», если в ней есть принтеры).`,
+      );
+    }
+  }
+  const countFn = functionBody(code, 'groupCountOnTab');
+  if (
+    countFn === null ||
+    !/\bprinter_member_count\b/.test(countFn) ||
+    !/\bmember_count\b/.test(countFn) ||
+    !/'device'/.test(countFn) ||
+    !/'printer'/.test(countFn)
+  ) {
+    violations.push(
+      `(I) ${F}: нет функции groupCountOnTab, считающей по member_count/printer_member_count для 'device' и 'printer'.`,
+    );
+  }
+
+  // (I2) подпись зависит от вкладки.
+  const branch = ifBranch(code, "{#if row.kind === 'group'}") ?? '';
+  if (/deviceCountLabel\s*\(\s*row\.member_count/.test(branch)) {
+    violations.push(
+      `(I) ${F}: подпись группы снова считает весь member_count (deviceCountLabel(row.member_count…)) — на вкладках она обязана считать свой вид (D-43).`,
+    );
+  }
+  if (!/\bgroupCountLabel\s*\(/.test(branch)) {
+    violations.push(`(I) ${F}: в ветке строки группы нет вызова groupCountLabel(.`);
+  }
+  const labelFn = functionBody(code, 'groupCountLabel');
+  if (labelFn === null || !/'принтер'/.test(labelFn) || !/'устройство'/.test(labelFn)) {
+    violations.push(
+      `(I) ${F}: функция groupCountLabel не объявлена или не содержит оба склонения («принтер» и «устройство»).`,
+    );
+  }
+
+  // (I3) раскрытие фильтрует состав по вкладке.
+  const membersFn = functionBody(code, 'membersOnTab');
+  if (membersFn === null || !/\.kind\s*===\s*tab\b/.test(membersFn) || !/'all'/.test(membersFn)) {
+    violations.push(
+      `(I) ${F}: функция membersOnTab не объявлена или не сравнивает kind члена с вкладкой вне 'all'.`,
+    );
+  }
+  if (!/\{@const\s+visibleMembers\s*=\s*membersOnTab\s*\(/.test(branch)) {
+    violations.push(`(I) ${F}: в раскрытии нет \`{@const visibleMembers = membersOnTab(…)}\`.`);
+  }
+  if (!/\{#each\s+visibleMembers\s+as\s+member\b/.test(branch)) {
+    violations.push(
+      `(I) ${F}: раскрытие группы перебирает не visibleMembers — в составе окажутся члены чужой вкладки (D-43).`,
+    );
+  }
+  if (!/last=\{\s*i\s*===\s*visibleMembers\.length\s*-\s*1\s*\}/.test(branch)) {
+    violations.push(
+      `(I) ${F}: last строки состава считается не по visibleMembers.length.`,
+    );
+  }
+
+  // (I4) недостижимая подсказка удалена.
+  if (code.includes('входят в группы')) {
+    violations.push(
+      `(I) ${F}: в файле остался текст «входят в группы» — подсказка emptyTabHint недостижима по D-43.`,
+    );
+  }
+}
+
 /** Текст без тегов `<RowChevron … />` (граница — первый `/>`; `=>` его не содержит). */
 function stripChevronTags(text) {
   let out = '';
@@ -527,6 +614,7 @@ function scanSource({ page, contents }, violations) {
   if (contents !== null) {
     scanContents(contents, violations);
     scanExpansion(contents, violations);
+    scanTabs(contents, violations);
   }
 }
 
