@@ -18,9 +18,10 @@
 //! (V042) remains the final DB-level backstop against the resulting small
 //! TOCTOU window (T-40.2-14).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use trackly_core::auth::Identity;
 use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
@@ -44,6 +45,7 @@ use crate::dto::act::{
     act_dto_from_row, format_act_number, ActCreateDto, ActDeleteResultDto, ActDto, ActFilter,
     ActItemDto, ActListResponse, ActNoticeDto, ActReturnDto, ActReturnItemDto, ActSaveOutcome,
     ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupReleaseItemDto, GroupReleaseWarningDto,
+    GroupRestoreChoiceDto, GroupRestoreConflictDto, GroupRestoreDeviceDto, GroupRestoreWarningDto,
     Pagination,
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
@@ -58,7 +60,7 @@ use crate::services::group_act_plan::{
     revert_move_effect_in_tx, units_of_group_in_tx,
 };
 use crate::services::group_membership::{
-    anchor_restore_conflict_in_tx, GroupNotice, RestoreOutcome,
+    anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, RestoreOutcome,
 };
 use crate::services::group_place::GroupMoveDeps;
 use crate::services::number_template_service::{
@@ -3676,6 +3678,20 @@ impl ActService {
     /// devices back to a prior place just as surely as `create`/`update`/
     /// `do_return`/`update_return` move them forward.
     pub async fn delete_soft(&self, id: i64, version: i64) -> Result<ActDeleteResultDto, AppError> {
+        self.delete_soft_with_choices(id, version, &[]).await
+    }
+
+    /// D-42: удаление с выбором по группам, перенесённым после акта. Весь каскад идёт в
+    /// одной транзакции writer'а; если остались конфликты без выбора, транзакция НЕ
+    /// коммитится (rollback при drop), события не шлются, ответ несёт `needs_group_restore`.
+    pub async fn delete_soft_with_choices(
+        &self,
+        id: i64,
+        version: i64,
+        choices: &[GroupRestoreChoiceDto],
+    ) -> Result<ActDeleteResultDto, AppError> {
+        let choice_map: HashMap<i64, bool> =
+            choices.iter().map(|c| (c.group_id, c.restore)).collect();
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -3683,10 +3699,12 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = None;
 
-        let (touched, touched_group_ids, notices) = self
+        let run = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let choices = &choice_map;
+                let mut conflicts: Vec<GroupRestoreConflict> = Vec::new();
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
                 // Phase 41.2 (D-09): группы, затронутые откатом, и уведомления о том,
                 // что обратить не удалось. Уведомление НЕ делает удаление ошибкой.
@@ -3722,10 +3740,12 @@ impl ActService {
                                 &group_deps,
                                 &devices_repo,
                                 &audit_repo,
+                                choices,
                                 ret.id,
                                 user_id_opt,
                                 now,
                             )?;
+                            conflicts.extend(undone.conflicts);
                             touched_place_ids.extend(undone.touched_place_ids);
                             extend_unique(&mut touched_group_ids, undone.touched_group_ids);
                             notices.extend(undone.notices);
@@ -3764,10 +3784,12 @@ impl ActService {
                             &group_deps,
                             &devices_repo,
                             &audit_repo,
+                            choices,
                             id,
                             user_id_opt,
                             now,
                         )?;
+                        conflicts.extend(undone.conflicts);
                         touched_place_ids.extend(undone.touched_place_ids);
                         extend_unique(&mut touched_group_ids, undone.touched_group_ids);
                         notices.extend(undone.notices);
@@ -3796,10 +3818,12 @@ impl ActService {
                             &group_deps,
                             &devices_repo,
                             &audit_repo,
+                            choices,
                             id,
                             user_id_opt,
                             now,
                         )?;
+                        conflicts.extend(undone.conflicts);
                         touched_place_ids.extend(undone.touched_place_ids);
                         extend_unique(&mut touched_group_ids, undone.touched_group_ids);
                         notices.extend(undone.notices);
@@ -3835,14 +3859,30 @@ impl ActService {
                     }
                 }
 
+                if !conflicts.is_empty() {
+                    // D-42: выбора по этим группам нет — НИЧЕГО не коммитим; транзакция
+                    // откатывается при drop. Имена мест читаем до выхода.
+                    let warning = build_group_restore_warning(&tx, &conflicts)?;
+                    return Ok(DeleteRun::NeedsChoice(warning));
+                }
                 tx.commit().map_err(map_rusqlite)?;
-                Ok((
+                Ok(DeleteRun::Done(
                     dedupe_place_ids(touched_place_ids),
                     touched_group_ids,
                     notices,
                 ))
             })
             .await?;
+        let (touched, touched_group_ids, notices) = match run {
+            DeleteRun::NeedsChoice(warning) => {
+                return Ok(ActDeleteResultDto {
+                    changed_place_ids: Vec::new(),
+                    notices: Vec::new(),
+                    needs_group_restore: Some(warning),
+                });
+            }
+            DeleteRun::Done(a, b, c) => (a, b, c),
+        };
         // BE-CR-04 (D-14): deleting an act frees its number; deleting a
         // return changes its siblings' displayed numbers.
         self.broadcast_act_number_space_changed();
@@ -3860,6 +3900,7 @@ impl ActService {
                     group_id: n.group_id,
                 })
                 .collect(),
+            needs_group_restore: None,
         })
     }
 
@@ -4452,9 +4493,52 @@ mod compute_return_suffix_tests {
 /// обратить не удалось (D-09). Уведомление не делает удаление ошибкой.
 #[derive(Default)]
 struct UndoOutcome {
+    /// Конфликты «группа перенесена после акта» без выбора пользователя (D-42).
+    conflicts: Vec<GroupRestoreConflict>,
     touched_place_ids: Vec<Option<i64>>,
     touched_group_ids: Vec<i64>,
     notices: Vec<GroupNotice>,
+}
+
+/// Итог прогона удаления акта в транзакции writer'а (D-42).
+enum DeleteRun {
+    Done(Vec<i64>, Vec<i64>, Vec<GroupNotice>),
+    NeedsChoice(GroupRestoreWarningDto),
+}
+
+/// Собрать предупреждение по конфликтам, сгруппировав их по группе (порядок появления).
+fn build_group_restore_warning(
+    tx: &rusqlite::Transaction<'_>,
+    conflicts: &[GroupRestoreConflict],
+) -> Result<GroupRestoreWarningDto, AppError> {
+    let place_name = |id: i64| -> Result<String, AppError> {
+        Ok(tx
+            .query_row("SELECT name FROM places WHERE id = ?1", [id], |r| r.get(0))
+            .optional()
+            .map_err(map_rusqlite)?
+            .unwrap_or_default())
+    };
+    let mut groups: Vec<GroupRestoreConflictDto> = Vec::new();
+    for c in conflicts {
+        let device = GroupRestoreDeviceDto {
+            name: c.device_name.clone(),
+            previous_place_name: match c.device_place_id {
+                Some(p) => Some(place_name(p)?),
+                None => None,
+            },
+        };
+        if let Some(g) = groups.iter_mut().find(|g| g.group_id == c.group_id) {
+            g.devices.push(device);
+        } else {
+            groups.push(GroupRestoreConflictDto {
+                group_id: c.group_id,
+                group_name: c.group_label.clone(),
+                group_place_name: place_name(c.group_place_id)?,
+                devices: vec![device],
+            });
+        }
+    }
+    Ok(GroupRestoreWarningDto { groups })
 }
 
 /// Дополнить список id без повторов (порядок первого появления).
@@ -4494,6 +4578,7 @@ fn undo_device_mutations_for_act(
     deps: &GroupMoveDeps,
     devices_repo: &SqliteDeviceRepository,
     audit_repo: &SqliteAuditLogRepository,
+    choices: &HashMap<i64, bool>,
     act_id: i64,
     user_id_opt: Option<i64>,
     now: i64,
@@ -4581,7 +4666,8 @@ fn undo_device_mutations_for_act(
     }
 
     // (3) Членство возвращается ПОСЛЕ снимков: место читается уже восстановленное.
-    let members = restore_released_members_in_tx(tx, deps, act_id, user_id_opt, now)?;
+    let members = restore_released_members_in_tx(tx, deps, choices, act_id, user_id_opt, now)?;
+    out.conflicts.extend(members.conflicts);
     out.touched_place_ids
         .extend(members.touched_place_ids.into_iter().map(Some));
     extend_unique(&mut out.touched_group_ids, members.touched_group_ids);

@@ -370,6 +370,43 @@ pub struct ActDeleteResultDto {
     #[specta(type = Vec<i32>)]
     pub changed_place_ids: Vec<i64>,
     pub notices: Vec<ActNoticeDto>,
+    /// D-42: при `Some` удаление НЕ выполнено (транзакция откатена) — нужен выбор
+    /// по перечисленным группам; повторный вызов с `choices` его выполнит.
+    #[serde(default)]
+    pub needs_group_restore: Option<GroupRestoreWarningDto>,
+}
+
+/// Выбор пользователя по одной группе (D-42): `restore = true` — вернуть устройства в
+/// группу на её новое место, `false` — оставить вне группы на прежнем месте.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupRestoreChoiceDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    pub restore: bool,
+}
+
+/// Устройство, по которому возник конфликт (D-42).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupRestoreDeviceDto {
+    pub name: String,
+    /// Место, где устройство окажется, если оставить его вне группы.
+    pub previous_place_name: Option<String>,
+}
+
+/// Конфликтная группа: что группа перенесена после акта (D-42).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupRestoreConflictDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    pub group_name: String,
+    pub group_place_name: String,
+    pub devices: Vec<GroupRestoreDeviceDto>,
+}
+
+/// Предупреждение «нужен выбор по группам» (D-42).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupRestoreWarningDto {
+    pub groups: Vec<GroupRestoreConflictDto>,
 }
 
 impl ActSaveOutcome {

@@ -2205,6 +2205,23 @@ async fn undo_act(ctx: &AppCtx, act: i64) -> trackly_app::dto::act::ActDeleteRes
         .expect("delete_soft проходит при любом уведомлении")
 }
 
+/// Удалить акт с выбором по группам (D-42).
+async fn undo_act_with(
+    ctx: &AppCtx,
+    act: i64,
+    choices: &[trackly_app::dto::act::GroupRestoreChoiceDto],
+) -> trackly_app::dto::act::ActDeleteResultDto {
+    let version = act_version(ctx, act).await;
+    ctx.acts
+        .delete_soft_with_choices(act, version, choices)
+        .await
+        .expect("delete_soft_with_choices")
+}
+
+fn choice(group_id: i64, restore: bool) -> trackly_app::dto::act::GroupRestoreChoiceDto {
+    trackly_app::dto::act::GroupRestoreChoiceDto { group_id, restore }
+}
+
 /// После отката акта: ни строки журнала мест с его `act_id`, ни следов в `act_group_effects`.
 async fn assert_act_clean(ctx: &AppCtx, act: i64) {
     assert_eq!(
@@ -2406,7 +2423,7 @@ async fn partial_act(ctx: &AppCtx, number: &str) -> PartialAct {
     }
 }
 
-// (d3) четыре фикстуры отказа D-09: откат всегда проходит, а невернувшееся называется в
+// (d3) три фикстуры отказа D-09 (четвёртый отказ — перенос группы — теперь выбор, D-42): откат всегда проходит, а невернувшееся называется в
 // уведомлении (имя позиции, имя группы, причина).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn undo_four_refusals_pass_with_a_notice_naming_item_group_and_reason() {
@@ -2463,38 +2480,6 @@ async fn undo_four_refusals_pass_with_a_notice_naming_item_group_and_reason() {
             );
             assert_act_clean(&ctx, f.act).await;
         }
-        // (iii) «АРМ #3» перенесена в другое место после акта.
-        {
-            let (ctx, _dir) = make_test_ctx().await;
-            let f = partial_act(&ctx, "D-3III").await;
-            let c = seed_place(&ctx, "Склад В").await;
-            let version = group_version(&ctx, f.arm.group).await;
-            ctx.groups
-                .move_group(&admin(), f.arm.group, version, c)
-                .await
-                .expect("move group after the act");
-
-            let result = undo_act(&ctx, f.act).await;
-
-            // Фикстура не вакуумна: место группы не равно месту восстановленного устройства.
-            assert_ne!(
-                group_place(&ctx, f.arm.group).await,
-                device_place(&ctx, f.released).await
-            );
-            assert_eq!(group_place(&ctx, f.arm.group).await, Some(c));
-            assert_eq!(device_place(&ctx, f.released).await, Some(f.a));
-            assert_eq!(result.notices.len(), 1, "{:?}", notice_texts(&result));
-            let text = &result.notices[0].message;
-            assert!(text.contains("Монитор #2"), "имя устройства: {text}");
-            assert!(text.contains("АРМ #3"), "имя группы: {text}");
-            assert!(
-                text.contains("группа теперь в другом месте"),
-                "причина: {text}"
-            );
-            assert_eq!(result.notices[0].group_id, Some(f.arm.group));
-            assert_eq!(member_rows(&ctx, f.released).await, 0, "вне группы");
-            assert_act_clean(&ctx, f.act).await;
-        }
         // (iv) контроль: ничего не менялось -> уведомлений нет, членство возвращено.
         {
             let (ctx, _dir) = make_test_ctx().await;
@@ -2508,6 +2493,163 @@ async fn undo_four_refusals_pass_with_a_notice_naming_item_group_and_reason() {
             assert_ne!(f.b, f.a);
             assert_act_clean(&ctx, f.act).await;
         }
+    })
+    .await;
+}
+
+/// Фикстура D-42: «АРМ #3» перенесена в «Склад В» после акта.
+async fn moved_group_fixture(ctx: &AppCtx, number: &str) -> (PartialAct, i64) {
+    let f = partial_act(ctx, number).await;
+    let c = seed_place(ctx, "Склад В").await;
+    let version = group_version(ctx, f.arm.group).await;
+    ctx.groups
+        .move_group(&admin(), f.arm.group, version, c)
+        .await
+        .expect("move group after the act");
+    (f, c)
+}
+
+// D-42 (iii-a): без выбора удаление ничего не меняет и просит выбор по группе.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_moved_group_without_choice_asks_and_changes_nothing() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let (f, c) = moved_group_fixture(&ctx, "D-3III").await;
+        let version_before = act_version(&ctx, f.act).await;
+        let audit_undo_before = scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'custom:undo'",
+            vec![],
+        )
+        .await;
+        let effects_before = scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM act_group_effects WHERE act_id = ?1",
+            vec![int(f.act)],
+        )
+        .await;
+        assert!(effects_before > 0);
+
+        let result = undo_act(&ctx, f.act).await;
+
+        let warning = result.needs_group_restore.expect("нужен выбор");
+        assert!(result.changed_place_ids.is_empty());
+        assert!(result.notices.is_empty());
+        assert_eq!(warning.groups.len(), 1);
+        let g = &warning.groups[0];
+        assert_eq!(g.group_id, f.arm.group);
+        assert_eq!(g.group_name, "АРМ #3");
+        assert_eq!(g.group_place_name, "Склад В");
+        assert_eq!(g.devices.len(), 1);
+        assert_eq!(g.devices[0].name, "Монитор #2");
+        // Rollback доказан: акт жив, версия прежняя, состояние как до вызова.
+        assert_eq!(act_version(&ctx, f.act).await, version_before);
+        assert_eq!(group_place(&ctx, f.arm.group).await, Some(c));
+        assert_eq!(device_place(&ctx, f.released).await, Some(f.b));
+        assert_eq!(member_rows(&ctx, f.released).await, 0);
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'custom:undo'",
+                vec![]
+            )
+            .await,
+            audit_undo_before
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM act_group_effects WHERE act_id = ?1",
+                vec![int(f.act)]
+            )
+            .await,
+            effects_before
+        );
+    })
+    .await;
+}
+
+// D-42 (iii-b): «вернуть» — устройство в группе на новом месте группы.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_moved_group_restore_choice_returns_device_into_group_on_new_place() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let (f, c) = moved_group_fixture(&ctx, "D-3IIIB").await;
+
+        let result = undo_act_with(&ctx, f.act, &[choice(f.arm.group, true)]).await;
+
+        assert!(result.needs_group_restore.is_none());
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        assert_eq!(member_rows(&ctx, f.released).await, 1);
+        assert_eq!(device_place(&ctx, f.released).await, Some(c));
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'device' \
+                 AND entity_id = ?1 AND source = 'group' AND act_id IS NULL",
+                vec![int(f.released)]
+            )
+            .await,
+            1,
+            "строка журнала источника group"
+        );
+        assert_act_clean(&ctx, f.act).await;
+    })
+    .await;
+}
+
+// D-42 (iii-c): «оставить» — вне группы на месте, где восстановил откат.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_moved_group_keep_out_choice_leaves_device_outside_at_prior_place() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let (f, c) = moved_group_fixture(&ctx, "D-3IIIC").await;
+
+        let result = undo_act_with(&ctx, f.act, &[choice(f.arm.group, false)]).await;
+
+        assert!(result.needs_group_restore.is_none());
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        assert_eq!(member_rows(&ctx, f.released).await, 0);
+        assert_eq!(device_place(&ctx, f.released).await, Some(f.a));
+        assert_eq!(group_place(&ctx, f.arm.group).await, Some(c));
+        assert_act_clean(&ctx, f.act).await;
+    })
+    .await;
+}
+
+// D-42: каскад (выдача + возврат), группа перенесена после — без выбора ничего не удалено.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_cascade_handover_with_return_collects_conflicts_across_acts() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let f = partial_act(&ctx, "D-5").await;
+        let d = seed_place(&ctx, "Склад Г").await;
+        let ret = return_ok(&ctx, f.act, &[f.released], Some(d)).await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let version = group_version(&ctx, f.arm.group).await;
+        ctx.groups
+            .move_group(&admin(), f.arm.group, version, c)
+            .await
+            .expect("move group");
+        let handover_version = act_version(&ctx, f.act).await;
+        let return_version = act_version(&ctx, ret).await;
+
+        let result = undo_act(&ctx, f.act).await;
+
+        let warning = result.needs_group_restore.expect("нужен выбор");
+        assert_eq!(warning.groups.len(), 1);
+        assert_eq!(warning.groups[0].group_id, f.arm.group);
+        assert_eq!(act_version(&ctx, f.act).await, handover_version);
+        assert_eq!(act_version(&ctx, ret).await, return_version);
+        assert_eq!(device_place(&ctx, f.released).await, Some(d), "ничего не откатилось");
+
+        let done = undo_act_with(&ctx, f.act, &[choice(f.arm.group, true)]).await;
+
+        assert!(done.needs_group_restore.is_none());
+        assert!(ctx.acts.get(f.act).await.is_err(), "выдача удалена");
+        assert!(ctx.acts.get(ret).await.is_err(), "возврат удалён каскадом");
+        assert_eq!(member_rows(&ctx, f.released).await, 1);
+        assert_eq!(device_place(&ctx, f.released).await, Some(c));
     })
     .await;
 }
