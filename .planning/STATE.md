@@ -4,12 +4,12 @@ milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
 last_updated: "2026-11-01T19:24:25.744Z"
-last_activity: 2026-11-02 -- 41.13-15 complete (D-32 network printer ban lifted everywhere at once: server, tests, client, texts, briefing; Rust guard + gate rule H)
+last_activity: 2026-11-05 -- 41.13-14 complete, PHASE 41.13 CLOSED (D-03 reversal recorded, targeted boundary regression 13/13 green, repeat live UAT 20/20 by user, PGR-01..04 all Complete)
 progress:
   total_phases: 27
-  completed_phases: 15
+  completed_phases: 16
   total_plans: 250
-  completed_plans: 249
+  completed_plans: 250
   percent: 56
 ---
 
@@ -24,9 +24,19 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 41.13 (printers-usb-host) — NOT PLANNED YET
-Plan: 0 of TBD
-Status: Ready to execute
+Phase: 41.13 (printers-usb-host) — ЗАКРЫТА 2026-11-05
+Plan: 15 of 15
+Status: Complete. Первая живая UAT 19/19 (2026-11-01) дала находки F-1 (принтер с непустым IP не
+мог получить USB-хост) и F-2 (нет имени хоста под чипом USB). Доработка планами 09-13 и 15:
+правка IP при редактировании (D-13), независимость IP и USB-хоста (D-15, по прямому замечанию
+пользователя «принтер может быть связан по USB и в это же время быть сетевым»), подпись хоста в
+карточке группы (D-14), снятие запрета D-32 на сетевой принтер в группе (D-16). План 14: отмена
+решения D-03 фазы 40.3 помечена в трёх её артефактах, прицельный регресс границы волны 13/13
+зелёный (968 тестов, 0 падений, без второго сплошного прогона — обоснование в SUMMARY),
+повторная живая UAT 20/20 без замечаний. PGR-01..04 все Complete.
+Отложено по фазе: O-2 (второе свойство device_refs несёт одно происхождение по приоритету —
+оставлено по желанию пользователя), /gsd-secure-phase 41.13, косметика PrinterListRow.svelte:60
+(ipText показывает IP, когда заданы и IP, и хост), перенос тега v1.4.0-phase41.13 с 9cc03adc.
 Предыдущая, 41.2 (groups-acts-places): 16/16 планов, живая UAT пройдена (H1–H3, H6–H9 на
 браузерном стенде оркестратором; H4, H5 пользователем на Windows 2026-10-28). Открытыми по 41.2
 остаются: пробел IN-01 (правка возвратного акта только по состоянию выбрасывает члена группы),
