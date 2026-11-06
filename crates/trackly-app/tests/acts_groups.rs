@@ -3535,6 +3535,153 @@ async fn return_partial_different_places_move_group_rejected_release_still_works
     .await;
 }
 
+/// CR-02: «АРМ #3» (прямые «Монитор #2», «Клавиатура #5», «Мышь #6») с вложенной якорной
+/// группой «Системный блок #4» выдан целиком в `b`. Возвращаются два прямых члена на `x` и
+/// якорь на `y`. `MoveGroup` увёз бы якорную группу на `x` вместе с родителем, и место `y`,
+/// указанное в форме, потерялось бы. Ожидаемо: вопрос показывает перенос недоступным,
+/// сервер отклоняет `MoveGroup` и ничего не пишет; `Release` работает, якорь едет на `y`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_partial_move_group_with_nested_anchor_on_other_place_is_rejected() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let x = seed_place(&ctx, "Склад В").await;
+        let y = seed_place(&ctx, "Склад Г").await;
+        let container = seed_group(&ctx, "АРМ #3", Some(a), None).await;
+        let monitor = seed_device(&ctx, dev("Монитор #2", Some(a), Some(container))).await;
+        let keyboard = seed_device(&ctx, dev("Клавиатура #5", Some(a), Some(container))).await;
+        let mouse = seed_device(&ctx, dev("Мышь #6", Some(a), Some(container))).await;
+        let nested = seed_group(&ctx, "Системный блок #4", Some(a), Some(container)).await;
+        let anchor = seed_device(&ctx, dev("Системный блок #4", Some(a), Some(nested))).await;
+        set_anchor(&ctx, nested, anchor).await;
+        let part = seed_device(&ctx, dev("SSD #1", Some(a), Some(nested))).await;
+        let handover = create_ok(
+            &ctx,
+            dto("S-N1", &[monitor, keyboard, mouse, anchor], Some(b), false),
+        )
+        .await;
+        assert_eq!(group_place(&ctx, container).await, Some(b), "выдан целиком");
+        assert_eq!(group_place(&ctx, nested).await, Some(b));
+
+        let ids = [monitor, keyboard, anchor];
+        let payload = || return_payload(&ids, &[Some(x), Some(x), Some(y)], None, false);
+
+        // Вопрос: перенос группы недоступен — места расходятся с учётом вложенной группы.
+        let w = ctx
+            .acts
+            .return_group_split_preview(handover, &payload())
+            .await
+            .expect("preview");
+        assert_eq!(w.items.len(), 1);
+        assert_eq!(w.items[0].group_id, container);
+        assert!(
+            !w.items[0].places_match,
+            "якорь вложенной группы едет на другое место"
+        );
+        assert_eq!(w.items[0].target_place_name, None);
+
+        // MoveGroup: отказ валидации D-46, ничего не записано.
+        let counters_before = counters(&ctx).await;
+        let acts_before = scalar_i64(&ctx, "SELECT COUNT(*) FROM acts", vec![]).await;
+        let err = return_with(&ctx, handover, payload(), GroupSplitChoiceDto::MoveGroup)
+            .await
+            .expect_err("MoveGroup при разных местах прямых членов и вложенного якоря");
+        match &err {
+            AppError::Validation { field, message } => {
+                assert_eq!(field, "place_id");
+                assert!(message.contains("АРМ #3"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(counters(&ctx).await, counters_before);
+        assert_eq!(
+            scalar_i64(&ctx, "SELECT COUNT(*) FROM acts", vec![]).await,
+            acts_before
+        );
+        assert_eq!(group_place(&ctx, container).await, Some(b));
+        assert_eq!(group_place(&ctx, nested).await, Some(b));
+        assert_eq!(device_place(&ctx, anchor).await, Some(b));
+
+        // Release: прямые члены выходят из группы на `x`, якорная группа отцепляется и едет на `y`.
+        return_with(&ctx, handover, payload(), GroupSplitChoiceDto::Release)
+            .await
+            .expect("Release работает");
+        assert_eq!(
+            group_place(&ctx, container).await,
+            Some(b),
+            "контейнер на месте"
+        );
+        assert_eq!(device_place(&ctx, monitor).await, Some(x));
+        assert_eq!(device_place(&ctx, keyboard).await, Some(x));
+        assert_eq!(member_rows(&ctx, monitor).await, 0);
+        assert_eq!(
+            group_place(&ctx, nested).await,
+            Some(y),
+            "место якоря не потеряно"
+        );
+        assert_eq!(device_place(&ctx, anchor).await, Some(y));
+        assert_eq!(device_place(&ctx, part).await, Some(y));
+        assert_eq!(device_place(&ctx, mouse).await, Some(b));
+    })
+    .await;
+}
+
+/// CR-02, контроль: якорь вложенной группы возвращается туда же, куда прямые члены, —
+/// `MoveGroup` доступен, вложенная группа едет вместе с родителем и остаётся в нём.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_partial_move_group_with_nested_anchor_on_same_place_moves_together() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let x = seed_place(&ctx, "Склад В").await;
+        let container = seed_group(&ctx, "АРМ #3", Some(a), None).await;
+        let monitor = seed_device(&ctx, dev("Монитор #2", Some(a), Some(container))).await;
+        let keyboard = seed_device(&ctx, dev("Клавиатура #5", Some(a), Some(container))).await;
+        let mouse = seed_device(&ctx, dev("Мышь #6", Some(a), Some(container))).await;
+        let nested = seed_group(&ctx, "Системный блок #4", Some(a), Some(container)).await;
+        let anchor = seed_device(&ctx, dev("Системный блок #4", Some(a), Some(nested))).await;
+        set_anchor(&ctx, nested, anchor).await;
+        let handover = create_ok(
+            &ctx,
+            dto("S-N2", &[monitor, keyboard, mouse, anchor], Some(b), false),
+        )
+        .await;
+        let ids = [monitor, keyboard, anchor];
+        let payload = return_payload(&ids, &[Some(x), Some(x), Some(x)], None, false);
+        let w = ctx
+            .acts
+            .return_group_split_preview(handover, &payload)
+            .await
+            .expect("preview");
+        assert!(w.items[0].places_match);
+        return_with(&ctx, handover, payload, GroupSplitChoiceDto::MoveGroup)
+            .await
+            .expect("MoveGroup при одном месте");
+        assert_eq!(group_place(&ctx, container).await, Some(x));
+        assert_eq!(group_place(&ctx, nested).await, Some(x));
+        assert_eq!(device_place(&ctx, anchor).await, Some(x));
+        assert_eq!(
+            opt_i64(
+                &ctx,
+                "SELECT parent_group_id FROM groups WHERE id = ?1",
+                vec![int(nested)]
+            )
+            .await,
+            Some(container),
+            "вложенная группа осталась в родителе"
+        );
+        assert_eq!(
+            member_rows(&ctx, mouse).await,
+            0,
+            "невозвращённый вне группы"
+        );
+        assert_eq!(device_place(&ctx, mouse).await, Some(b));
+    })
+    .await;
+}
+
 // ---------------------------------------------------------------------------
 // (UD-2) правка акта возврата: выбор разбиения и перенос контейнера (план 41.2-25)
 // ---------------------------------------------------------------------------

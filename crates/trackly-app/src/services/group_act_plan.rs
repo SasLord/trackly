@@ -193,10 +193,11 @@ pub(crate) struct GroupSplit {
     /// Имена заполняет `plan_for_return_in_tx` (чистый планировщик оставляет пустые).
     pub returned_device_names: Vec<String>,
     pub kept_device_names: Vec<String>,
-    /// Общее место возврата возвращаемых прямых членов; `None`, если места не заданы
-    /// или не совпали.
+    /// Общее место возврата возвращаемых прямых членов и покрытых дочерних переносов, которые
+    /// при `MoveGroup` едут вместе с группой (CR-02); `None`, если места не заданы или не совпали.
     pub target_place_id: Option<i64>,
-    /// Места возвращаемых прямых членов совпали (все `None` тоже совпадение).
+    /// Места возвращаемых прямых членов и цели покрытых дочерних переносов совпали (все `None`
+    /// тоже совпадение).
     pub places_match: bool,
     pub parent_group_id: Option<i64>,
     pub parent_name: Option<String>,
@@ -519,10 +520,21 @@ pub(crate) fn plan_for_return(
             .copied()
             .filter(|d| !returned_direct.contains(d))
             .collect();
-        let places: HashSet<Option<i64>> = returned_direct
+        let mut places: HashSet<Option<i64>> = returned_direct
             .iter()
             .map(|d| return_places.get(d).copied().flatten())
             .collect();
+        // CR-02 (D-44/D-46): покрытые дочерние переносы при `MoveGroup` едут вместе с группой
+        // (`apply_split_move_in_tx`) на её место. Их собственная цель (место возврата якоря у
+        // якорной группы, общее место возвращаемых устройств у контейнера) входит в сравнение
+        // мест: иначе место возврата, указанное для них пользователем, молча заменилось бы
+        // местом родителя.
+        for m in moves
+            .iter()
+            .filter(|m| m.detach.as_ref().is_some_and(|d| d.parent_group_id == g.id))
+        {
+            places.insert(return_move_target(m, return_places));
+        }
         let places_match = places.len() == 1;
         let target = if places_match {
             places.into_iter().next().flatten()
@@ -810,11 +822,7 @@ pub(crate) fn apply_return_plan_in_tx(
         {
             continue; // едет с группой-разбиением
         }
-        let target = match mv.anchor_device_id {
-            Some(anchor) => return_places.get(&anchor).copied().flatten(),
-            None => mv.target_place_id,
-        };
-        let Some(target) = target else {
+        let Some(target) = return_move_target(mv, return_places) else {
             total
                 .stationary_device_ids
                 .extend(mv.subtree_device_ids.iter().copied());
@@ -896,6 +904,17 @@ pub(crate) fn apply_return_plan_in_tx(
     total.touched_place_ids.sort_unstable();
     total.touched_group_ids.sort_unstable();
     Ok(total)
+}
+
+/// Цель покрытого переноса при возврате: якорная группа едет к месту возврата якоря, контейнер —
+/// к общему месту возврата своих возвращаемых устройств (`GroupMove::target_place_id`).
+/// `None` — группа остаётся на месте. Общая для применения плана и для сравнения мест
+/// разбиения, чьи покрытые дочерние переносы едут вместе с ним (CR-02).
+fn return_move_target(mv: &GroupMove, return_places: &HashMap<i64, Option<i64>>) -> Option<i64> {
+    match mv.anchor_device_id {
+        Some(anchor) => return_places.get(&anchor).copied().flatten(),
+        None => mv.target_place_id,
+    }
 }
 
 /// `MoveGroup` для одного разбиения: kept-члены выходят (эффект `release`), непокрытые
@@ -2004,6 +2023,47 @@ mod tests {
         assert_eq!(p.splits[0].returned_device_ids, vec![10, 11]);
         assert_eq!(p.splits[0].kept_device_ids, vec![12]);
         assert!(p.releases.is_empty());
+    }
+
+    /// CR-02: покрытая вложенная якорная группа при `MoveGroup` едет вместе с разбиением,
+    /// поэтому место возврата её якоря входит в сравнение мест разбиения. Разные места —
+    /// `places_match = false` (перенос группы недоступен), одно место — общая цель.
+    #[test]
+    fn split_places_match_counts_covered_nested_anchor_that_rides_along() {
+        let snap = ActGroupSnapshot::new(
+            vec![
+                grp(1, None, "АРМ #3", Some(5), None),
+                grp(3, Some(1), "Системный блок #4", Some(5), Some(30)),
+            ],
+            vec![(10, 1), (11, 1), (12, 1), (30, 3), (31, 3)],
+        );
+        let differ = plan_for_return(
+            &snap,
+            &[10, 11, 30],
+            &places(&[(10, Some(9)), (11, Some(9)), (30, Some(7))]),
+        );
+        assert_eq!(differ.splits.len(), 1);
+        assert!(
+            !differ.splits[0].places_match,
+            "якорь вложенной группы возвращается в другое место"
+        );
+        assert_eq!(differ.splits[0].target_place_id, None);
+
+        let same = plan_for_return(
+            &snap,
+            &[10, 11, 30],
+            &places(&[(10, Some(9)), (11, Some(9)), (30, Some(9))]),
+        );
+        assert!(same.splits[0].places_match);
+        assert_eq!(same.splits[0].target_place_id, Some(9));
+
+        // Якорь без места против прямых членов с местом — тоже расхождение (D-46: None != Some).
+        let none = plan_for_return(
+            &snap,
+            &[10, 11, 30],
+            &places(&[(10, Some(9)), (11, Some(9)), (30, None)]),
+        );
+        assert!(!none.splits[0].places_match);
     }
 
     /// Вложенная непокрытая группа не мешает покрытому корню: корень едет целиком.
