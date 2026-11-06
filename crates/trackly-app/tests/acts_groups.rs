@@ -2758,50 +2758,6 @@ async fn undo_group_without_place_returns_released_members_silently() {
     .await;
 }
 
-// (d4) целая группа перенесена актом, затем перемещена после акта: удаление проходит, группа
-// остаётся там, куда её переместили, устройства акта на исходных местах, вне этой группы.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn undo_whole_group_moved_after_the_act_stays_and_devices_leave_it() {
-    timed(async {
-        let (ctx, _dir) = make_test_ctx().await;
-        let a = seed_place(&ctx, "Склад А").await;
-        let b = seed_place(&ctx, "Склад Б").await;
-        let c = seed_place(&ctx, "Склад В").await;
-        let arm = seed_arm(&ctx, a).await;
-        let act = create_ok(&ctx, dto("D-4", &arm.devices, Some(b), false)).await;
-        let version = group_version(&ctx, arm.group).await;
-        ctx.groups
-            .move_group(&admin(), arm.group, version, c)
-            .await
-            .expect("move group after the act");
-
-        let result = undo_act(&ctx, act).await;
-
-        assert_eq!(
-            group_place(&ctx, arm.group).await,
-            Some(c),
-            "группа не тронута"
-        );
-        for d in &arm.devices {
-            assert_eq!(
-                device_place(&ctx, *d).await,
-                Some(a),
-                "место акта вернулось"
-            );
-            assert_eq!(member_rows(&ctx, *d).await, 0, "вне перемещённой группы");
-        }
-        assert!(
-            result.notices.iter().any(|n| n.message.contains("АРМ #3")
-                && n.message.contains("после акта её переместили")
-                && n.group_id == Some(arm.group)),
-            "{:?}",
-            notice_texts(&result)
-        );
-        assert_act_clean(&ctx, act).await;
-    })
-    .await;
-}
-
 // (d5) якорь с деталью-принтером и прикреплённым картриджем: откат возвращает группу, детали и
 // картридж. Расхождение с (d9): группу после акта не двигали.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3001,6 +2957,222 @@ async fn undo_anchor_group_moved_after_the_act_stays_and_the_undo_passes() {
                 .any(|n| n.group_id == Some(control.group)),
             "по второй группе уведомлений нет"
         );
+        assert_eq!(
+            mv_count(&ctx, "group", f.group, a, c, "group").await,
+            1,
+            "D-48: «откуда» ручного переноса группы - место до акта"
+        );
+        assert_act_clean(&ctx, act).await;
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// D-48 (UD-4): удаление акта, переносившего группу, после последующих перемещений
+// ---------------------------------------------------------------------------
+
+/// Строк журнала мест сущности с заданными «откуда», «куда» и источником.
+async fn mv_count(ctx: &AppCtx, kind: &str, id: i64, from: i64, to: i64, source: &str) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM place_movements WHERE entity_type = ?1 AND entity_id = ?2 \
+         AND from_place_id = ?3 AND to_place_id = ?4 AND source = ?5",
+        vec![text(kind), int(id), int(from), int(to), text(source)],
+    )
+    .await
+}
+
+/// Цепочка D-48: А1 переносит «АРМ #3» со «Склада А» на «Склад Б», А2 - со «Склада Б» на «Склад В».
+/// Вторая передача допускается сервисом: группа целиком уже стоит на «Складе Б».
+struct Chain {
+    a: i64,
+    b: i64,
+    c: i64,
+    arm: Arm,
+    a1: i64,
+    a2: i64,
+}
+
+async fn move_chain(ctx: &AppCtx) -> Chain {
+    let a = seed_place(ctx, "Склад А").await;
+    let b = seed_place(ctx, "Склад Б").await;
+    let c = seed_place(ctx, "Склад В").await;
+    let arm = seed_arm(ctx, a).await;
+    let a1 = create_ok(ctx, dto("UD4-1", &arm.devices, Some(b), false)).await;
+    let a2 = create_ok(ctx, dto("UD4-2", &arm.devices, Some(c), false)).await;
+    Chain {
+        a,
+        b,
+        c,
+        arm,
+        a1,
+        a2,
+    }
+}
+
+async fn assert_arm_in_group_at(ctx: &AppCtx, arm: &Arm, place: i64) {
+    assert_eq!(group_place(ctx, arm.group).await, Some(place));
+    for d in &arm.devices {
+        assert_eq!(member_rows(ctx, *d).await, 1, "член остался в группе");
+        assert_eq!(device_place(ctx, *d).await, Some(place));
+    }
+}
+
+async fn move_effect_from(ctx: &AppCtx, act: i64) -> Option<i64> {
+    opt_i64(
+        ctx,
+        "SELECT from_place_id FROM act_group_effects WHERE act_id = ?1 AND kind = 'move'",
+        vec![int(act)],
+    )
+    .await
+}
+
+// Контроль: удаление последнего из двух переносов возвращает группу на место после первого.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_later_of_two_group_moves_returns_group_to_the_earlier_place() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let k = move_chain(&ctx).await;
+        assert_arm_in_group_at(&ctx, &k.arm, k.c).await;
+
+        let result = undo_act(&ctx, k.a2).await;
+
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        assert_arm_in_group_at(&ctx, &k.arm, k.b).await;
+        assert_act_clean(&ctx, k.a2).await;
+    })
+    .await;
+}
+
+// D-48: удаление первого переноса при живом втором забывает его, группа и члены остаются.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_earlier_of_two_group_moves_keeps_group_and_members_at_the_later_place() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let k = move_chain(&ctx).await;
+        // Не вакуумно: до удаления журнал А2 начинается со «Склада Б», эффект - тоже.
+        assert_arm_in_group_at(&ctx, &k.arm, k.c).await;
+        assert_eq!(mv_count(&ctx, "group", k.arm.group, k.b, k.c, "act").await, 1);
+        assert_eq!(move_effect_from(&ctx, k.a2).await, Some(k.b));
+
+        let result = undo_act(&ctx, k.a1).await;
+
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        assert_arm_in_group_at(&ctx, &k.arm, k.c).await;
+        assert_act_clean(&ctx, k.a1).await;
+        assert_eq!(
+            mv_count(&ctx, "group", k.arm.group, k.a, k.c, "act").await,
+            1,
+            "строка группы А2 теперь начинается со «Склада А»"
+        );
+        for d in &k.arm.devices {
+            assert_eq!(mv_count(&ctx, "device", *d, k.a, k.c, "act").await, 1);
+            assert_eq!(mv_count(&ctx, "device", *d, k.b, k.c, "act").await, 0);
+        }
+        assert_eq!(move_effect_from(&ctx, k.a2).await, Some(k.a));
+
+        undo_act(&ctx, k.a2).await;
+
+        assert_arm_in_group_at(&ctx, &k.arm, k.a).await;
+        assert_act_clean(&ctx, k.a2).await;
+    })
+    .await;
+}
+
+// D-48: ручной перенос после акта - удаление акта группу не трогает, члены не выводятся.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_act_after_a_manual_group_move_keeps_group_and_members() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let arm = seed_arm(&ctx, a).await;
+        let act = create_ok(&ctx, dto("D-4", &arm.devices, Some(b), false)).await;
+        let version = group_version(&ctx, arm.group).await;
+        ctx.groups
+            .move_group(&admin(), arm.group, version, c)
+            .await
+            .expect("move group after the act");
+
+        let result = undo_act(&ctx, act).await;
+
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        assert_arm_in_group_at(&ctx, &arm, c).await;
+        assert_eq!(mv_count(&ctx, "group", arm.group, a, c, "group").await, 1);
+        assert!(opt_string(
+            &ctx,
+            "SELECT from_place_path FROM place_movements WHERE entity_type = 'group' \
+             AND entity_id = ?1 AND source = 'group'",
+            vec![int(arm.group)]
+        )
+        .await
+        .is_some_and(|p| !p.is_empty()));
+        for d in &arm.devices {
+            assert_eq!(mv_count(&ctx, "device", *d, a, c, "group").await, 1);
+        }
+        assert_act_clean(&ctx, act).await;
+    })
+    .await;
+}
+
+// D-48: акт возврата переносил группу, затем ручной перенос; удаление акта возврата.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_return_act_that_moved_container_then_manual_move_keeps_members() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let arm = seed_arm(&ctx, a).await;
+        let handover = create_ok(&ctx, dto("UD4-R", &arm.devices, Some(b), false)).await;
+        let ret = return_ok(&ctx, handover, &arm.devices, Some(a)).await;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        let version = group_version(&ctx, arm.group).await;
+        ctx.groups
+            .move_group(&admin(), arm.group, version, c)
+            .await
+            .expect("move group after the return");
+
+        let result = undo_act(&ctx, ret).await;
+
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        assert_eq!(group_place(&ctx, arm.group).await, Some(c));
+        for d in &arm.devices {
+            assert_eq!(member_rows(&ctx, *d).await, 1);
+            assert_eq!(device_place(&ctx, *d).await, Some(c));
+        }
+        assert_eq!(mv_count(&ctx, "group", arm.group, b, c, "group").await, 1);
+        assert_act_clean(&ctx, ret).await;
+    })
+    .await;
+}
+
+// Страж: группа вернулась вручную на место акта - откат обычный, ручная история цела.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn undo_act_when_group_came_back_to_the_acts_place_reverts_normally_and_keeps_manual_history()
+{
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let arm = seed_arm(&ctx, a).await;
+        let act = create_ok(&ctx, dto("UD4-G", &arm.devices, Some(b), false)).await;
+        for target in [c, b] {
+            let version = group_version(&ctx, arm.group).await;
+            ctx.groups
+                .move_group(&admin(), arm.group, version, target)
+                .await
+                .expect("manual move");
+        }
+
+        let result = undo_act(&ctx, act).await;
+
+        assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
+        assert_arm_in_group_at(&ctx, &arm, a).await;
+        assert_eq!(mv_count(&ctx, "group", arm.group, b, c, "group").await, 1);
+        assert_eq!(mv_count(&ctx, "group", arm.group, c, b, "group").await, 1);
         assert_act_clean(&ctx, act).await;
     })
     .await;
