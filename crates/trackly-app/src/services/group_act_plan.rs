@@ -1620,6 +1620,134 @@ pub(crate) fn restore_released_members_in_tx(
     Ok(out)
 }
 
+/// Кандидат на возврат в группу: (устройство, id следа `release`, подпись группы).
+type RejoinCandidate = (i64, i64, String);
+
+/// Итог [`rejoin_released_by_act_in_tx`].
+#[derive(Debug, Default)]
+pub(crate) struct RejoinedByAct {
+    /// Устройство, вернувшееся в группу -> место группы, на котором оно теперь стоит.
+    pub group_place_of: HashMap<i64, Option<i64>>,
+    pub touched_group_ids: Vec<i64>,
+}
+
+/// G8 (живая UAT 41.2, D-44/D-47/D-48): правка возврата добавляет позиции по членам, которых
+/// ЭТОТ ЖЕ возврат раньше вывел из группы (`MoveGroup`: невозвращённые члены; либо позиция,
+/// убранная прошлой правкой при переехавшей группе). Правка «переписывает» сделанное актом:
+/// такое устройство возвращается в группу, след `release` снимается, и оно встаёт на место
+/// группы — как если бы первая версия возврата включала его. Вызывающий исключает эти
+/// устройства из плана добавленных (иначе группа частично покрыта и снова разбивается).
+///
+/// Условия возврата: след `release` этого акта по устройству был ДО правки (`prior_effects`,
+/// прочитаны первым действием правки, W-7), группа перенесена этим же актом (эффект `move`
+/// жив после шага `removed`), группа жива, устройство сейчас не входит ни в одну группу.
+/// Члены, выведенные НЕ этим актом (другим актом, вручную), следа этого акта не имеют и не
+/// трогаются.
+///
+/// D-46: место возврата вернувшихся (`None` = место группы) и места удержанных позиций той же
+/// группы (`retained_places`) обязаны совпасть; иначе валидационная ошибка ДО любой записи.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rejoin_released_by_act_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    added: &[i64],
+    prior_effects: &[ActGroupEffectRow],
+    added_places: &HashMap<i64, Option<i64>>,
+    retained_places: &HashMap<i64, Option<i64>>,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<RejoinedByAct, AppError> {
+    let mut out = RejoinedByAct::default();
+    let moved: HashSet<i64> = deps
+        .groups
+        .list_act_group_effects_in_tx(tx, act_id)?
+        .into_iter()
+        .filter(|e| e.kind == ActGroupEffectKind::Move)
+        .map(|e| e.group_id)
+        .collect();
+    if moved.is_empty() {
+        return Ok(out);
+    }
+    // Кандидаты, сгруппированные по группе (порядок по id группы детерминирован).
+    let mut by_group: Vec<(i64, Vec<RejoinCandidate>)> = Vec::new();
+    for &device_id in added {
+        let Some(effect) = prior_effects.iter().find(|e| {
+            e.kind == ActGroupEffectKind::Release
+                && e.device_id == Some(device_id)
+                && moved.contains(&e.group_id)
+        }) else {
+            continue;
+        };
+        if deps.groups.group_of_device_in_tx(tx, device_id)?.is_some() {
+            continue; // уже в группе: возвращать нечего или некуда
+        }
+        let entry = (device_id, effect.id, effect.group_label.clone());
+        match by_group.iter_mut().find(|(g, _)| *g == effect.group_id) {
+            Some((_, list)) => list.push(entry),
+            None => by_group.push((effect.group_id, vec![entry])),
+        }
+    }
+    by_group.sort_by_key(|(g, _)| *g);
+
+    // Проверки до записи: группа жива, места совпадают (D-46).
+    let mut live: Vec<(trackly_core::domain::groups::GroupRow, Vec<RejoinCandidate>)> = Vec::new();
+    for (group_id, members) in by_group {
+        let group = match deps.groups.get_group_in_tx(tx, group_id) {
+            Ok(g) => g,
+            Err(AppError::NotFound { .. }) => continue,
+            Err(e) => return Err(e),
+        };
+        let mut places: HashSet<Option<i64>> = members
+            .iter()
+            .map(|(d, _, _)| added_places.get(d).copied().flatten().or(group.place_id))
+            .collect();
+        for d in deps.groups.subtree_device_ids_in_tx(tx, group.id)? {
+            if let Some(place) = retained_places.get(&d) {
+                places.insert(*place);
+            }
+        }
+        if places.len() > 1 {
+            return Err(places_mismatch_error(&group.name));
+        }
+        live.push((group, members));
+    }
+
+    let ids: Vec<i64> = live
+        .iter()
+        .flat_map(|(_, m)| m.iter().map(|(d, _, _)| *d))
+        .collect();
+    let names = device_names_in_tx(tx, &ids)?;
+    for (group, members) in live {
+        for (device_id, effect_id, label) in members {
+            let name = names.get(&device_id).cloned().unwrap_or_default();
+            match restore_membership_with_policy_in_tx(
+                tx,
+                deps,
+                device_id,
+                group.id,
+                &label,
+                &name,
+                group.place_id,
+                act_id,
+                user_id,
+                now,
+                PlaceConflictPolicy::Skip,
+            )? {
+                RestoreResult::Skipped(notice) => {
+                    tracing::warn!(act_id, group_id = ?notice.group_id, "{}", notice.message);
+                }
+                _ => {
+                    deps.groups.delete_act_group_effect_in_tx(tx, effect_id)?;
+                    out.group_place_of.insert(device_id, group.place_id);
+                    push_unique(&mut out.touched_group_ids, group.id);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Режим освобождения для устройства, убираемого из акта (читатель, без записей).
 ///
 /// `Record`, если устройство состоит в живой группе G и G либо её предок совпадает с группой

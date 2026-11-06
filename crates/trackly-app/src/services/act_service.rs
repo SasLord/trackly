@@ -56,7 +56,7 @@ use crate::pdf::PdfRenderer;
 use crate::services::act_kit::kit_for_item_in_tx;
 use crate::services::group_act_plan::{
     self, apply_plan_in_tx, apply_return_plan_in_tx, forget_moved_details_in_tx,
-    plan_for_return_in_tx, plan_in_tx, prior_release_effect_id_in_tx,
+    plan_for_return_in_tx, plan_in_tx, prior_release_effect_id_in_tx, rejoin_released_by_act_in_tx,
     release_effect_for_removed_in_tx, restore_released_members_in_tx, revert_detach_effect_in_tx,
     revert_group_moves_in_tx, revert_move_effect_in_tx, units_of_group_in_tx, GroupSplitChoice,
 };
@@ -3115,7 +3115,41 @@ impl ActService {
                         (*id, location)
                     })
                     .collect();
-                let added_plan = plan_for_return_in_tx(&tx, &added, &added_places)?;
+                // G8 (D-44/D-47/D-48): члены, которых ЭТОТ возврат раньше вывел из перенесённой
+                // им группы, возвращаются в неё и встают на её место; в план добавленных они не
+                // идут, иначе группа частично покрыта и разбилась бы снова.
+                let mut retained_return_places: std::collections::HashMap<i64, Option<i64>> =
+                    std::collections::HashMap::new();
+                for &dev_id in &retained {
+                    let location = effective_by_device.get(&dev_id).and_then(|e| e.2);
+                    let place = match location {
+                        Some(p) => Some(p),
+                        None => devices_repo.get_in_tx(&tx, dev_id)?.place_id,
+                    };
+                    retained_return_places.insert(dev_id, place);
+                }
+                let rejoined = rejoin_released_by_act_in_tx(
+                    &tx,
+                    &group_deps,
+                    payload.id,
+                    &added,
+                    &effects_before,
+                    &added_places,
+                    &retained_return_places,
+                    user_id_opt,
+                    now,
+                )?;
+                for group in &rejoined.touched_group_ids {
+                    if !touched_group_ids.contains(group) {
+                        touched_group_ids.push(*group);
+                    }
+                }
+                let planned_added: Vec<i64> = added
+                    .iter()
+                    .copied()
+                    .filter(|d| !rejoined.group_place_of.contains_key(d))
+                    .collect();
+                let added_plan = plan_for_return_in_tx(&tx, &planned_added, &added_places)?;
                 // CR-01 (D-45): без выбора разбиение не выполняется; предпросмотр отвечает
                 // здесь же, по состоянию после шага 9.
                 let Some(added_split) = update_return_stage_choice(&added_plan, mode)? else {
@@ -3152,7 +3186,9 @@ impl ActService {
                         Some(row) => row.clone(),
                         None => devices_repo.get_in_tx(&tx, added_id)?,
                     };
-                    let group_placed = applied_added.moved_device_ids.contains(&added_id)
+                    let rejoined_place = rejoined.group_place_of.get(&added_id).copied();
+                    let group_placed = rejoined_place.is_some()
+                        || applied_added.moved_device_ids.contains(&added_id)
                         || applied_added.stationary_device_ids.contains(&added_id);
                     let before_json =
                         device_snapshot_json(&before).map_err(|e| AppError::Internal {
@@ -3171,7 +3207,10 @@ impl ActService {
                     //
                     // Место устройства группы определяет сама группа (она переехала или
                     // осталась на месте): берётся текущее. Якорь из состава не выводится.
-                    let effective_location = if group_placed {
+                    // G8: вернувшийся в группу встаёт на место группы.
+                    let effective_location = if let Some(place) = rejoined_place {
+                        place
+                    } else if group_placed {
                         devices_repo.get_in_tx(&tx, added_id)?.place_id
                     } else {
                         location.or(before.place_id)
@@ -3275,8 +3314,12 @@ impl ActService {
                 // с изменившимся местом переносит группу: в набор идут все возвращаемые
                 // члены группы (ровно одним планом, второй вызов планировщика не нужен).
                 let container_coverages = moved_container_coverages(&tx, payload.id)?;
-                let retained_set: std::collections::HashSet<i64> =
-                    retained.iter().copied().collect();
+                // G8: вернувшиеся в группу этой правкой едут с ней, как удержанные позиции.
+                let retained_set: std::collections::HashSet<i64> = retained
+                    .iter()
+                    .copied()
+                    .chain(rejoined.group_place_of.keys().copied())
+                    .collect();
                 let mut moving_anchors: Vec<i64> = Vec::new();
                 let mut retained_places: std::collections::HashMap<i64, Option<i64>> =
                     std::collections::HashMap::new();
