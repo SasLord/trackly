@@ -1863,40 +1863,7 @@ impl ActService {
             let snapshot = group_act_plan::load_snapshot(&conn, &SqliteGroupRepository)?;
             let plan = group_act_plan::plan_for_return(&snapshot, &returned_ids, &return_places);
 
-            let mut ids: Vec<i64> = Vec::new();
-            for s in &plan.splits {
-                ids.extend(s.returned_device_ids.iter().copied());
-                ids.extend(s.kept_device_ids.iter().copied());
-            }
-            for c in &plan.place_conflicts {
-                ids.extend(c.device_ids.iter().copied());
-            }
-            let names = device_names_for_preview(&conn, &ids)?;
-            let name_of = |id: &i64| names.get(id).cloned().unwrap_or_default();
-
-            let mut out = ReturnGroupSplitWarningDto::default();
-            for s in &plan.splits {
-                let target_place_name = match s.target_place_id {
-                    Some(pid) => Some(places_repo.full_path(&conn, pid)?),
-                    None => None,
-                };
-                out.items.push(ReturnGroupSplitItemDto {
-                    group_id: s.group_id,
-                    group_name: s.group_name.clone(),
-                    returned_names: s.returned_device_ids.iter().map(name_of).collect(),
-                    kept_names: s.kept_device_ids.iter().map(name_of).collect(),
-                    target_place_name,
-                    places_match: s.places_match,
-                    parent_group_name: s.parent_name.clone(),
-                });
-            }
-            for c in &plan.place_conflicts {
-                out.place_conflicts.push(ReturnGroupPlaceConflictDto {
-                    group_id: c.group_id,
-                    group_name: c.group_name.clone(),
-                    device_names: c.device_ids.iter().map(name_of).collect(),
-                });
-            }
+            let out = build_split_warning(&conn, places_repo.as_ref(), &plan)?;
             Ok(out)
         })
         .await
@@ -2505,7 +2472,139 @@ impl ActService {
         caller: &Identity,
         payload: ActUpdateReturnDto,
     ) -> Result<ActDto, AppError> {
+        self.update_return_with_split(caller, payload, GroupSplitChoiceDto::Release)
+            .await
+    }
+
+    /// Предварительный вопрос UD-2 для правки возврата (D-47): какие контейнерные группы
+    /// правка разобьёт (добавленные позиции) или потянет за собой (смена места члена
+    /// перенесённого контейнера) и какие целиком возвращаемые группы получили разные места.
+    /// Только чтение; классификация и планировщик те же, что в `update_return_with_split`.
+    pub async fn update_return_group_split_preview(
+        &self,
+        payload: &ActUpdateReturnDto,
+    ) -> Result<ReturnGroupSplitWarningDto, AppError> {
+        Self::validate_update_return(payload)?;
+        let readers = self.readers.clone();
+        let acts_repo = self.acts_repo.clone();
+        let places_repo = self.places_repo.clone();
+        let payload = payload.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let act = acts_repo.get(&conn, payload.id)?;
+            if act.deleted_at_utc.is_some() {
+                return Err(AppError::NotFound {
+                    entity: "act",
+                    id: payload.id,
+                });
+            }
+            if act.act_type != ActType::Return {
+                return Err(AppError::Validation {
+                    field: "id".into(),
+                    message: "Редактировать можно только акты возврата".into(),
+                });
+            }
+            let effective_by_device = effective_by_device_map(&payload);
+            let d_old: std::collections::HashSet<i64> = {
+                let mut stmt = conn
+                    .prepare("SELECT device_id FROM act_items WHERE act_id = ?1")
+                    .map_err(map_rusqlite)?;
+                let ids: std::collections::HashSet<i64> = stmt
+                    .query_map(params![payload.id], |r| r.get::<_, i64>(0))
+                    .map_err(map_rusqlite)?
+                    .collect::<rusqlite::Result<_>>()
+                    .map_err(map_rusqlite)?;
+                ids
+            };
+            let mut added: Vec<i64> = effective_by_device
+                .keys()
+                .copied()
+                .filter(|d| !d_old.contains(d))
+                .collect();
+            added.sort_unstable();
+            let retained: std::collections::HashSet<i64> = effective_by_device
+                .keys()
+                .copied()
+                .filter(|d| d_old.contains(d))
+                .collect();
+            let added_places: HashMap<i64, Option<i64>> = added
+                .iter()
+                .map(|id| (*id, effective_by_device.get(id).and_then(|e| e.2)))
+                .collect();
+            let snapshot = group_act_plan::load_snapshot(&conn, &SqliteGroupRepository)?;
+            let added_plan = group_act_plan::plan_for_return(&snapshot, &added, &added_places);
+            let mut out = build_split_warning(&conn, places_repo.as_ref(), &added_plan)?;
+
+            // Удержанные позиции с изменившимся местом (как в шаге 11 правки).
+            let coverages = moved_container_coverages(&conn, payload.id)?;
+            let mut moving: Vec<i64> = Vec::new();
+            let mut retained_places: HashMap<i64, Option<i64>> = HashMap::new();
+            let mut changed_members: Vec<i64> = Vec::new();
+            let mut sorted_retained: Vec<i64> = retained.iter().copied().collect();
+            sorted_retained.sort_unstable();
+            for &dev_id in &sorted_retained {
+                let location = effective_by_device.get(&dev_id).and_then(|e| e.2);
+                let current_place: Option<i64> = conn
+                    .query_row(
+                        "SELECT place_id FROM devices WHERE id = ?1",
+                        params![dev_id],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                if location.is_none() || location == current_place {
+                    continue;
+                }
+                let is_anchor: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM groups \
+                         WHERE anchor_device_id = ?1 AND deleted_at_utc IS NULL)",
+                        params![dev_id],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                if is_anchor {
+                    moving.push(dev_id);
+                    retained_places.insert(dev_id, location);
+                } else {
+                    changed_members.push(dev_id);
+                }
+            }
+            for member in container_members_to_move(&coverages, &changed_members, &retained) {
+                let location = effective_by_device.get(&member).and_then(|e| e.2);
+                let current_place: Option<i64> = conn
+                    .query_row(
+                        "SELECT place_id FROM devices WHERE id = ?1",
+                        params![member],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                moving.push(member);
+                retained_places.insert(member, location.or(current_place));
+            }
+            let retained_plan =
+                group_act_plan::plan_for_return(&snapshot, &moving, &retained_places);
+            let more = build_split_warning(&conn, places_repo.as_ref(), &retained_plan)?;
+            out.items.extend(more.items);
+            out.place_conflicts.extend(more.place_conflicts);
+            Ok(out)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("update_return_group_split_preview join: {e}"),
+        })?
+    }
+
+    /// Правка акта возврата с выбором для частично возвращаемой контейнерной группы (UD-2,
+    /// D-47): тот же выбор и перенос, что при создании возврата. Выбор действует на обеих
+    /// стадиях (добавленные позиции и позиции с изменённым местом).
+    pub async fn update_return_with_split(
+        &self,
+        caller: &Identity,
+        payload: ActUpdateReturnDto,
+        split: GroupSplitChoiceDto,
+    ) -> Result<ActDto, AppError> {
         Self::validate_update_return(&payload)?;
+        let split: GroupSplitChoice = split.into();
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -2603,46 +2702,7 @@ impl ActService {
                 // `do_return`'s per-item override resolution exactly
                 // (per-row override wins, `apply_to_all` bulk fallback else
                 // None).
-                let mut effective_by_device: std::collections::HashMap<
-                    i64,
-                    (i64, Option<String>, Option<i64>),
-                > = std::collections::HashMap::new();
-                for item in &payload.items {
-                    let dids = effective_device_ids(item);
-                    let per_device_qty: i64 = if item.device_ids.is_empty() {
-                        item.quantity
-                    } else {
-                        1
-                    };
-                    let effective_condition: Option<String> =
-                        item.condition_override.clone().or_else(|| {
-                            if payload.apply_to_all {
-                                payload.bulk_condition.clone()
-                            } else {
-                                None
-                            }
-                        });
-                    // D-18: place_id_override приходит от caller'а
-                    // (PlacePicker), без name-based резолва.
-                    let per_row_place_id: Option<i64> = item.place_id_override;
-                    let effective_location: Option<i64> = per_row_place_id.or({
-                        if payload.apply_to_all {
-                            resolved_bulk_place_id
-                        } else {
-                            None
-                        }
-                    });
-                    for &device_id in &dids {
-                        effective_by_device.insert(
-                            device_id,
-                            (
-                                per_device_qty,
-                                effective_condition.clone(),
-                                effective_location,
-                            ),
-                        );
-                    }
-                }
+                let effective_by_device = effective_by_device_map(&payload);
 
                 // 7. Compute delta between current act_items (this return's
                 // own, NOT the parent's) and the payload's full replacement
@@ -3099,7 +3159,7 @@ impl ActService {
                     payload.id,
                     &added_plan,
                     &added_places,
-                    GroupSplitChoice::Release,
+                    split,
                     &added,
                     user_id_opt,
                     now,
@@ -3238,19 +3298,38 @@ impl ActService {
                 //
                 // Phase 41.2 (D-13): у якоря, чьё место возврата изменилось, группа едет на
                 // новое место (второй эффект `move` с from = текущее место группы).
+                // D-47: удержанная позиция члена контейнера, перенесённого ЭТИМ актом,
+                // с изменившимся местом переносит группу: в набор идут все возвращаемые
+                // члены группы (ровно одним планом, второй вызов планировщика не нужен).
+                let container_coverages = moved_container_coverages(&tx, payload.id)?;
+                let retained_set: std::collections::HashSet<i64> =
+                    retained.iter().copied().collect();
                 let mut moving_anchors: Vec<i64> = Vec::new();
                 let mut retained_places: std::collections::HashMap<i64, Option<i64>> =
                     std::collections::HashMap::new();
+                let mut changed_members: Vec<i64> = Vec::new();
                 for &dev_id in &retained_with_change {
                     let location = effective_by_device.get(&dev_id).and_then(|e| e.2);
                     let current_place = devices_repo.get_in_tx(&tx, dev_id)?.place_id;
                     let is_anchor = SqliteGroupRepository
                         .anchor_group_of_device_in_tx(&tx, dev_id)?
                         .is_some();
-                    if is_anchor && location.is_some() && location != current_place {
-                        moving_anchors.push(dev_id);
-                        retained_places.insert(dev_id, location);
+                    if location.is_some() && location != current_place {
+                        if is_anchor {
+                            moving_anchors.push(dev_id);
+                            retained_places.insert(dev_id, location);
+                        } else {
+                            changed_members.push(dev_id);
+                        }
                     }
+                }
+                for member in
+                    container_members_to_move(&container_coverages, &changed_members, &retained_set)
+                {
+                    let location = effective_by_device.get(&member).and_then(|e| e.2);
+                    let current_place = devices_repo.get_in_tx(&tx, member)?.place_id;
+                    moving_anchors.push(member);
+                    retained_places.insert(member, location.or(current_place));
                 }
                 let retained_plan = plan_for_return_in_tx(&tx, &moving_anchors, &retained_places)?;
                 retained_plan.ensure_places_match()?;
@@ -3260,7 +3339,7 @@ impl ActService {
                     payload.id,
                     &retained_plan,
                     &retained_places,
-                    GroupSplitChoice::Release,
+                    split,
                     &moving_anchors,
                     user_id_opt,
                     now,
@@ -4698,7 +4777,15 @@ fn undo_device_mutations_for_act(
 
     // (2) Снимки устройств.
     let rows = audit_repo.select_device_mutations_for_act(tx, act_id)?;
-    for (device_id, before_json) in rows.into_iter().rev() {
+    // У устройства может быть несколько строк (создание акта + правки): членство проверяется
+    // только на ПОСЛЕДНЕМ восстановлении (самая ранняя строка), иначе промежуточный снимок,
+    // чьё место расходится с уже возвращённой группой, ошибочно вывел бы устройство из неё.
+    let mut earliest_row: HashMap<i64, usize> = HashMap::new();
+    for (i, (device_id, _)) in rows.iter().enumerate() {
+        earliest_row.entry(*device_id).or_insert(i);
+    }
+    for (row_index, (device_id, before_json)) in rows.into_iter().enumerate().rev() {
+        let is_final_restore = earliest_row.get(&device_id) == Some(&row_index);
         let snapshot: serde_json::Value =
             serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
                 source_chain: format!("undo: corrupt before_json for device {device_id}: {e}"),
@@ -4728,20 +4815,23 @@ fn undo_device_mutations_for_act(
             None => {
                 let restored =
                     devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
-                // Phase 41 D-22: акт выводит устройство из состава группы.
-                if let Some(group_id) =
-                    crate::services::group_membership::release_if_locked_device_in_tx(
-                        tx,
-                        &SqliteGroupRepository,
-                        audit_repo,
-                        device_id,
-                        Some(act_id),
-                        user_id_opt,
-                        now,
-                        crate::services::group_membership::ReleaseEffect::Skip,
-                    )?
-                {
-                    extend_unique(&mut out.touched_group_ids, vec![group_id]);
+                // Phase 41 D-22: акт выводит устройство из состава группы (только на
+                // последнем восстановлении устройства, см. выше).
+                if is_final_restore {
+                    if let Some(group_id) =
+                        crate::services::group_membership::release_if_locked_device_in_tx(
+                            tx,
+                            &SqliteGroupRepository,
+                            audit_repo,
+                            device_id,
+                            Some(act_id),
+                            user_id_opt,
+                            now,
+                            crate::services::group_membership::ReleaseEffect::Skip,
+                        )?
+                    {
+                        extend_unique(&mut out.touched_group_ids, vec![group_id]);
+                    }
                 }
                 restored
             }
@@ -4799,6 +4889,147 @@ fn effective_return_location(
 ) -> Option<i64> {
     item.place_id_override
         .or(if apply_to_all { bulk_place_id } else { None })
+}
+
+/// Эффективные (количество, состояние, место возврата) по каждому устройству правки возврата:
+/// значение строки перекрывает общее (`apply_to_all`). Чистая функция, общая для правки и
+/// её предварительного вопроса.
+fn effective_by_device_map(
+    payload: &ActUpdateReturnDto,
+) -> HashMap<i64, (i64, Option<String>, Option<i64>)> {
+    let mut map: HashMap<i64, (i64, Option<String>, Option<i64>)> = HashMap::new();
+    for item in &payload.items {
+        let per_device_qty: i64 = if item.device_ids.is_empty() {
+            item.quantity
+        } else {
+            1
+        };
+        let effective_condition: Option<String> = item.condition_override.clone().or_else(|| {
+            if payload.apply_to_all {
+                payload.bulk_condition.clone()
+            } else {
+                None
+            }
+        });
+        let effective_location: Option<i64> = item.place_id_override.or(if payload.apply_to_all {
+            payload.bulk_place_id
+        } else {
+            None
+        });
+        for device_id in effective_device_ids(item) {
+            map.insert(
+                device_id,
+                (
+                    per_device_qty,
+                    effective_condition.clone(),
+                    effective_location,
+                ),
+            );
+        }
+    }
+    map
+}
+
+/// Предварительный вопрос по плану возврата: имена и место-цель для разбиений и расхождений
+/// мест. Общий для `return_group_split_preview` и `update_return_group_split_preview`.
+fn build_split_warning(
+    conn: &rusqlite::Connection,
+    places_repo: &SqlitePlaceRepository,
+    plan: &group_act_plan::ActGroupPlan,
+) -> Result<ReturnGroupSplitWarningDto, AppError> {
+    let mut ids: Vec<i64> = Vec::new();
+    for s in &plan.splits {
+        ids.extend(s.returned_device_ids.iter().copied());
+        ids.extend(s.kept_device_ids.iter().copied());
+    }
+    for c in &plan.place_conflicts {
+        ids.extend(c.device_ids.iter().copied());
+    }
+    let names = device_names_for_preview(conn, &ids)?;
+    let name_of = |id: &i64| names.get(id).cloned().unwrap_or_default();
+
+    let mut out = ReturnGroupSplitWarningDto::default();
+    for s in &plan.splits {
+        let target_place_name = match s.target_place_id {
+            Some(pid) => Some(places_repo.full_path(conn, pid)?),
+            None => None,
+        };
+        out.items.push(ReturnGroupSplitItemDto {
+            group_id: s.group_id,
+            group_name: s.group_name.clone(),
+            returned_names: s.returned_device_ids.iter().map(name_of).collect(),
+            kept_names: s.kept_device_ids.iter().map(name_of).collect(),
+            target_place_name,
+            places_match: s.places_match,
+            parent_group_name: s.parent_name.clone(),
+        });
+    }
+    for c in &plan.place_conflicts {
+        out.place_conflicts.push(ReturnGroupPlaceConflictDto {
+            group_id: c.group_id,
+            group_name: c.group_name.clone(),
+            device_names: c.device_ids.iter().map(name_of).collect(),
+        });
+    }
+    Ok(out)
+}
+
+/// Покрытие каждой контейнерной группы, перенесённой ЭТИМ актом (есть эффект `move`): список
+/// устройств состава со вложенными группами. Чистое чтение; служит и правке возврата, и
+/// предварительному вопросу (один источник правды). Якорные группы дают покрытие из одного
+/// якоря — они обрабатываются отдельной веткой (`moving_anchors`).
+fn moved_container_coverages(
+    conn: &rusqlite::Connection,
+    act_id: i64,
+) -> Result<Vec<Vec<i64>>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT group_id FROM act_group_effects \
+             WHERE act_id = ?1 AND kind = 'move' ORDER BY group_id",
+        )
+        .map_err(map_rusqlite)?;
+    let group_ids: Vec<i64> = stmt
+        .query_map(params![act_id], |r| r.get::<_, i64>(0))
+        .map_err(map_rusqlite)?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(map_rusqlite)?;
+    if group_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let snapshot = group_act_plan::load_snapshot(conn, &SqliteGroupRepository)?;
+    Ok(group_ids
+        .into_iter()
+        .map(|gid| {
+            let mut ids: Vec<i64> = group_act_plan::act_units(&snapshot, gid)
+                .into_iter()
+                .map(|u| u.device_id)
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        })
+        .collect())
+}
+
+/// Члены перенесённого контейнера, которых надо отдать планировщику вместе с изменившим место:
+/// все удержанные в акте позиции покрытия, в котором есть хотя бы одна изменённая.
+fn container_members_to_move(
+    coverages: &[Vec<i64>],
+    changed: &[i64],
+    retained: &std::collections::HashSet<i64>,
+) -> Vec<i64> {
+    let mut out: Vec<i64> = Vec::new();
+    for coverage in coverages {
+        if !coverage.iter().any(|d| changed.contains(d)) {
+            continue;
+        }
+        for d in coverage {
+            if retained.contains(d) && !out.contains(d) {
+                out.push(*d);
+            }
+        }
+    }
+    out
 }
 
 /// Возвращаемые устройства и место возврата каждого (то же правило, что в цикле позиций).

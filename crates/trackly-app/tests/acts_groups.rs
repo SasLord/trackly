@@ -3358,3 +3358,270 @@ async fn return_partial_different_places_move_group_rejected_release_still_works
     })
     .await;
 }
+
+// ---------------------------------------------------------------------------
+// (UD-2) правка акта возврата: выбор разбиения и перенос контейнера (план 41.2-25)
+// ---------------------------------------------------------------------------
+
+fn update_return_payload(
+    act: &trackly_app::dto::act::ActDto,
+    ids: &[i64],
+    places: &[Option<i64>],
+    bulk: Option<i64>,
+    apply_to_all: bool,
+) -> ActUpdateReturnDto {
+    ActUpdateReturnDto {
+        id: act.id,
+        expected_version: act.version,
+        giver_name: act.giver_name.clone(),
+        receiver_name: act.receiver_name.clone(),
+        place_id: act.place_id,
+        notes: None,
+        deadline_utc: None,
+        handover_date_utc: act.handover_date_utc,
+        bulk_condition: None,
+        bulk_place_id: bulk,
+        apply_to_all,
+        items: ids
+            .iter()
+            .zip(places)
+            .map(|(&id, &p)| {
+                let mut item = return_item(id);
+                item.place_id_override = p;
+                item
+            })
+            .collect(),
+    }
+}
+
+/// Четыре устройства «АРМ #3» (группа на `a`) и одиночное устройство выданы в `b`;
+/// возврат оформлен только по одиночному устройству.
+async fn lone_return_fixture(ctx: &AppCtx, a: i64, b: i64, number: &str) -> (Arm, i64, i64, i64) {
+    let mut arm = seed_arm(ctx, a).await;
+    arm.devices
+        .push(seed_device(ctx, dev("Колонки #1", Some(a), Some(arm.group))).await);
+    let lone = seed_device(ctx, dev("Принтер #7", Some(a), None)).await;
+    let mut all = arm.devices.clone();
+    all.push(lone);
+    let handover = create_ok(ctx, dto(number, &all, Some(b), false)).await;
+    let ret = return_ok(ctx, handover, &[lone], Some(a)).await;
+    (arm, lone, handover, ret)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_add_position_move_group_choice_moves_group() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, lone, _handover, ret) = lone_return_fixture(&ctx, a, b, "U-1").await;
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let ids = vec![lone, arm.devices[0], arm.devices[1]];
+        ctx.acts
+            .update_return_with_split(
+                &admin(),
+                update_return_payload(&act, &ids, &[None, None, None], Some(a), true),
+                GroupSplitChoiceDto::MoveGroup,
+            )
+            .await
+            .expect("update_return MoveGroup");
+        assert_eq!(
+            group_place(&ctx, arm.group).await,
+            Some(a),
+            "группа переехала"
+        );
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        for d in &arm.devices[..2] {
+            assert_eq!(member_rows(&ctx, *d).await, 1);
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+        }
+        for d in &arm.devices[2..] {
+            assert_eq!(member_rows(&ctx, *d).await, 0, "невозвращённые вне группы");
+            assert_eq!(device_place(&ctx, *d).await, Some(b), "на старом месте");
+        }
+        assert_eq!(effects(&ctx, ret, "release").await, 2);
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_add_position_release_default_keeps_old_behavior() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, lone, _handover, ret) = lone_return_fixture(&ctx, a, b, "U-2").await;
+        update_return_ok(&ctx, ret, &[lone, arm.devices[0], arm.devices[1]], Some(a)).await;
+        assert_eq!(
+            group_place(&ctx, arm.group).await,
+            Some(b),
+            "группа осталась"
+        );
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        for d in &arm.devices[..2] {
+            assert_eq!(member_rows(&ctx, *d).await, 0);
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+        }
+        assert_eq!(effects(&ctx, ret, "move").await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_split_preview_for_added_position() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, lone, _handover, ret) = lone_return_fixture(&ctx, a, b, "U-3").await;
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let ids = vec![lone, arm.devices[0], arm.devices[1]];
+        let w = ctx
+            .acts
+            .update_return_group_split_preview(&update_return_payload(
+                &act,
+                &ids,
+                &[None, None, None],
+                Some(a),
+                true,
+            ))
+            .await
+            .expect("preview");
+        assert_eq!(w.items.len(), 1);
+        assert_eq!(w.items[0].group_id, arm.group);
+        assert_eq!(w.items[0].returned_names.len(), 2);
+        assert_eq!(w.items[0].kept_names.len(), 2);
+        assert!(w.items[0].places_match);
+        assert!(w.place_conflicts.is_empty());
+
+        let quiet = ctx
+            .acts
+            .update_return_group_split_preview(&update_return_payload(
+                &act,
+                &[lone],
+                &[None],
+                Some(a),
+                true,
+            ))
+            .await
+            .expect("preview quiet");
+        assert!(quiet.items.is_empty() && quiet.place_conflicts.is_empty());
+    })
+    .await;
+}
+
+/// Контейнер из трёх устройств выдан в `b` и целиком возвращён на `a`.
+async fn whole_return_fixture(ctx: &AppCtx, a: i64, b: i64, number: &str) -> (Arm, i64, i64) {
+    let arm = seed_arm(ctx, a).await;
+    let handover = create_ok(ctx, dto(number, &arm.devices, Some(b), false)).await;
+    let ret = return_ok(ctx, handover, &arm.devices, Some(a)).await;
+    (arm, handover, ret)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_retained_place_change_of_all_members_moves_container() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let (arm, _handover, ret) = whole_return_fixture(&ctx, a, b, "U-4").await;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        update_return_ok(&ctx, ret, &arm.devices, Some(c)).await;
+        assert_eq!(
+            group_place(&ctx, arm.group).await,
+            Some(c),
+            "группа переехала"
+        );
+        assert_eq!(group_members(&ctx, arm.group).await, 3, "состав цел");
+        for d in &arm.devices {
+            assert_eq!(device_place(&ctx, *d).await, Some(c));
+        }
+        assert_eq!(effects(&ctx, ret, "move").await, 2);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_retained_place_change_of_one_member_is_rejected() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let (arm, _handover, ret) = whole_return_fixture(&ctx, a, b, "U-5").await;
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let before = counters(&ctx).await;
+        let payload = update_return_payload(
+            &act,
+            &arm.devices,
+            &[Some(c), Some(a), Some(a)],
+            None,
+            false,
+        );
+        let err = ctx
+            .acts
+            .update_return(&admin(), payload.clone())
+            .await
+            .expect_err("разные места целиком возвращённой группы");
+        assert!(matches!(&err, AppError::Validation { .. }), "{err:?}");
+        assert_eq!(counters(&ctx).await, before, "до отказа ничего не записано");
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        assert_eq!(group_members(&ctx, arm.group).await, 3);
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
+        for d in &arm.devices {
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+        }
+
+        let w = ctx
+            .acts
+            .update_return_group_split_preview(&payload)
+            .await
+            .expect("preview");
+        assert_eq!(w.place_conflicts.len(), 1, "{w:?}");
+
+        // Контроль: те же позиции с одним местом проходят.
+        update_return_ok(&ctx, ret, &arm.devices, Some(c)).await;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(c));
+        let all_c = ctx.acts.get(ret).await.expect("get return");
+        let quiet = ctx
+            .acts
+            .update_return_group_split_preview(&update_return_payload(
+                &all_c,
+                &arm.devices,
+                &[None, None, None],
+                Some(a),
+                true,
+            ))
+            .await
+            .expect("preview");
+        assert!(quiet.place_conflicts.is_empty());
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_container_move_chain_is_undone_in_lifo_order() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let (arm, _handover, ret) = whole_return_fixture(&ctx, a, b, "U-6").await;
+        update_return_ok(&ctx, ret, &arm.devices, Some(c)).await;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(c));
+        let result = undo_act(&ctx, ret).await;
+        let _ = result;
+        assert_eq!(
+            group_place(&ctx, arm.group).await,
+            Some(b),
+            "оба переноса откатаны: группа на месте выдачи"
+        );
+        assert_eq!(group_members(&ctx, arm.group).await, 3);
+        for d in &arm.devices {
+            assert_eq!(device_place(&ctx, *d).await, Some(b));
+        }
+    })
+    .await;
+}

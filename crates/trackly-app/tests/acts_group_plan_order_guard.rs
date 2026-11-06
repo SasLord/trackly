@@ -139,7 +139,7 @@ fn body_of(src: &str, signature: &str) -> String {
 const SIG_CREATE: &str = "pub async fn create(";
 const SIG_UPDATE: &str = "pub async fn update(";
 const SIG_DO_RETURN: &str = "pub async fn do_return_with_split(";
-const SIG_UPDATE_RETURN: &str = "pub async fn update_return(";
+const SIG_UPDATE_RETURN: &str = "pub async fn update_return_with_split(";
 const SIG_UNDO: &str = "fn undo_device_mutations_for_act(";
 
 /// Все четыре пути записи, на которых охраняется порядок «план -> запись».

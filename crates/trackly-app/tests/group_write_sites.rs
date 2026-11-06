@@ -2507,7 +2507,7 @@ const ACT_DIRECT_PATH_SIGS: [&str; 4] = [
     "pub async fn create(",
     "pub async fn update(",
     "pub async fn do_return_with_split(",
-    "pub async fn update_return(",
+    "pub async fn update_return_with_split(",
 ];
 
 /// Окно (в строках от строки с ИМЕНЕМ вызова), в котором должен встретиться режим
@@ -2892,8 +2892,8 @@ fn write_site_gate_act_restore_release_adjacent() {
 
     // Мутант 2: режим следа убран из вызова в undo (последний аргумент заменён).
     let m2 = src.replacen(
-        "crate::services::group_membership::ReleaseEffect::Skip,\n                    )?\n                {\n                    extend_unique(",
-        "None::<()>,\n                    )?\n                {\n                    extend_unique(",
+        "crate::services::group_membership::ReleaseEffect::Skip,\n                        )?\n                    {\n                        extend_unique(",
+        "None::<()>,\n                        )?\n                    {\n                        extend_unique(",
         1,
     );
     assert_ne!(m2, src, "якорь мутанта режима найден в undo");
