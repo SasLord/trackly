@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "uat-41.2-places-tabs-group-rows: в «Местах» при выключенном «Разворачивать группы» строка группы и раскрытый состав не учитывают вкладку"
 created: 2026-11-05
 updated: 2026-11-05
@@ -56,3 +56,7 @@ root_cause: Фильтр вкладок в PlaceContents.svelte реализуе
 fix:
 verification:
 files_changed: []
+
+
+## Закрыто 2026-11-07
+Подтверждено живой UAT 41.2 (G1–G12).

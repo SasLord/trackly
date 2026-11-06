@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "uat-41.2-act-delete-membership-restore: удаление акта не возвращает устройства в контейнерную группу (группа без места; группа перенесена после акта)"
 created: 2026-11-05
 updated: 2026-11-05
@@ -54,3 +54,7 @@ root_cause: restore_membership_in_tx (group_membership.rs:245) применяе�
 fix: (не применялся — режим диагностики)
 verification:
 files_changed: []
+
+
+## Закрыто 2026-11-07
+Подтверждено живой UAT 41.2 (G1–G12).

@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "uat-41.2-return-act-container-group: Возврат актом устройств контейнерной группы, перенесённой ранее актом, опустошает группу. Нужно продуктовое изменение — опишите текущий механизм и точки, где его менять."
 created: 2026-11-05T00:00:00Z
 updated: 2026-11-05T00:00:00Z
@@ -59,3 +59,7 @@ root_cause: plan_for_return в group_act_plan.rs переносит при во�
 fix:
 verification:
 files_changed: []
+
+
+## Закрыто 2026-11-07
+Подтверждено живой UAT 41.2 (G1–G12).

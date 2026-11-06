@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "uat-41.2-group-delete-error-toasts: удаление контейнерной группы, из которой ранее актом выведены устройства, показывает два красных тоста-ошибки, хотя группа удаляется"
 created: 2026-11-05T15:00:00Z
 updated: 2026-11-05T15:40:00Z
@@ -68,3 +68,7 @@ root_cause: Гонка инвалидации. GroupService::delete_group шлё
 fix: (не применялся — режим диагностики)
 verification: (не применялась)
 files_changed: []
+
+
+## Закрыто 2026-11-07
+Подтверждено живой UAT 41.2 (G1–G12).

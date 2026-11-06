@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "G8 (41.2 HUMAN-UAT): частичный возврат разбил группу (G6, вероятно MoveGroup), затем возврат отредактировали до полной группы; акт ушёл в архив (верно), но группа не восстановилась: устройство, выведенное первой версией возврата, в группу не вернулось"
 created: 2026-11-07
 updated: 2026-11-07
@@ -55,3 +55,7 @@ fix: "group_act_plan::rejoin_released_by_act_in_tx: до плана добавл
 verification: "acts_groups: 4 новых MoveGroup-теста красные до фикса (stash src), зелёные после; release-вариант зелёный до и после (поведение не менялось); регресс: acts_groups 78/0, acts_update_return 20/0, acts_returns 20/0, acts_return_split_http 6/0, group_write_sites 34/0, entities_changed_acts 13/0, acts_group_plan_order_guard 17/0, acts_delete_choice_http 3/0, --lib group_act_plan:: 47/0, entities_changed_gate 45/4 (4 известных по device_service.rs); fmt и clippy -D warnings чистые"
 
 release_decision: "D-49 (пользователь, 2026-11-07): вариант 2. Правка до полной группы отменяет и выбор Release. Реализовано group_act_plan::rejoin_released_retained_for_whole_group_in_tx: удержанные позиции со следом release ЭТОГО акта (effects_before) возвращаются в группу, если каждый юнит текущего состава группы есть в позициях правки; затем идут в план добавленных вместе с новыми, группа покрыта целиком и едет на место возврата (D-44), места проверяет план (D-46). Правка, не делающая возврат полным, ничего не меняет. Тест update_return_after_release_split_to_whole_group_moves_rest_of_group переименован в ..._restores_membership; красный на 91753cf1 (группа 2 вместо 4), зелёный после. Добавлены контроли: not_whole_keeps_released_members_out, skips_member_without_this_acts_trace, with_different_places_is_rejected; якорная деталь: re_adding_removed_part_of_moved_anchor_group_restores_membership (зелёный уже на 91753cf1 — покрыт первым фиксом)."
+
+
+## Закрыто 2026-11-07
+Подтверждено живой UAT 41.2 (G1–G12).
