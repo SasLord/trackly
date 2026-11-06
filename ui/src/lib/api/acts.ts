@@ -20,7 +20,9 @@ import type {
   ActUpdateDto,
   ActUpdateReturnDto,
   GroupRestoreChoiceDto,
+  GroupSplitChoiceDto,
   Pagination,
+  ReturnGroupSplitWarningDto,
 } from '../../bindings';
 
 export const acts = {
@@ -41,11 +43,23 @@ export const acts = {
   update: (payload: ActUpdateDto) => apiCall<ActSaveOutcome>('acts_update', { payload }),
 
   /** Phase 22 — редактирование существующего возврата (ACT-03). */
-  updateReturn: (payload: ActUpdateReturnDto) => apiCall<ActDto>('acts_update_return', { payload }),
+  updateReturn: (payload: ActUpdateReturnDto, groupSplit?: GroupSplitChoiceDto) =>
+    apiCall<ActDto>('acts_update_return', groupSplit ? { payload, groupSplit } : { payload }),
+
+  /** D-45: вопрос перед правкой возврата — какие контейнерные группы он разобьёт. */
+  updateReturnGroupSplitPreview: (payload: ActUpdateReturnDto) =>
+    apiCall<ReturnGroupSplitWarningDto>('acts_update_return_group_split_preview', { payload }),
 
   /** Plan 03-03 — оформление возврата по handover-акту. */
-  doReturn: (actId: number, payload: ActReturnDto) =>
-    apiCall<ActDto>('acts_return', { actId, payload }),
+  doReturn: (actId: number, payload: ActReturnDto, groupSplit?: GroupSplitChoiceDto) =>
+    apiCall<ActDto>(
+      'acts_return',
+      groupSplit ? { actId, payload, groupSplit } : { actId, payload },
+    ),
+
+  /** D-45: вопрос перед возвратом — какие контейнерные группы он разобьёт. */
+  returnGroupSplitPreview: (actId: number, payload: ActReturnDto) =>
+    apiCall<ReturnGroupSplitWarningDto>('acts_return_group_split_preview', { actId, payload }),
 
   /**
    * 40.1 exhaustive sweep: `changed_place_ids` are the `place_id`s the undo

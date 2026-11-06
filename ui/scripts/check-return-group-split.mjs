@@ -251,16 +251,17 @@ export function scanSource(files, violations) {
       if (n !== 1)
         violations.push(`(C) ${POPUP}: подпись «${label}» встречается ${n} раз, нужно ровно 1.`);
     }
-    const mv = /<Button\b[^>]*>\s*Изменить расположение группы\s*<\/Button>/.exec(popup);
-    if (
-      mv === null ||
-      (!/disabled=\{[^}]*places_match/.test(mv[0]) && !/disabled=\{[^}]*Disabled/.test(mv[0]))
-    ) {
-      violations.push(
-        `(C) ${POPUP}: «Изменить расположение группы» не привязана disabled к places_match.`,
+    const mv =
+      /<Button\b(?:(?!<Button\b)[\s\S])*?>\s*Изменить расположение группы\s*<\/Button\s*>/.exec(
+        popup,
       );
-    } else if (/disabled=\{[^}]*Disabled/.test(mv[0]) && !/places_match/.test(popup)) {
-      violations.push(`(C) ${POPUP}: places_match нигде не читается.`);
+    const def = /\bmoveDisabled\s*=\s*\$derived\(([^;]*)\);/.exec(popup);
+    if (mv === null || !/disabled=\{moveDisabled\}/.test(mv[0])) {
+      violations.push(
+        `(C) ${POPUP}: «Изменить расположение группы» не привязана disabled={moveDisabled}.`,
+      );
+    } else if (def === null || !def[1].includes('places_match')) {
+      violations.push(`(C) ${POPUP}: moveDisabled не зависит от places_match (D-46, UD-3).`);
     }
   }
 
@@ -437,7 +438,12 @@ function runSelfTest() {
         name: '(11) disabled не привязан к places_match',
         files: withFile(
           POPUP,
-          mutate(pp, 'disabled={!item.places_match}', 'disabled={false}', 'drop disabled binding'),
+          mutate(
+            pp,
+            'items.some((item) => !item.places_match)',
+            'false',
+            'drop places_match dependency',
+          ),
         ),
         rule: 'C',
       },

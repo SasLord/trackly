@@ -35,7 +35,16 @@
   import ReturnItemsTable, { type ReturnRowState } from './ReturnItemsTable.svelte';
   import { buildReturnItems } from './returnPayload';
   import { acts } from './api';
-  import type { ActDto, ActReturnDto, ActUpdateReturnDto, PlaceDto } from '../../bindings';
+  import GroupSplitChoicePopup from './GroupSplitChoicePopup.svelte';
+  import type {
+    ActDto,
+    ActReturnDto,
+    ActUpdateReturnDto,
+    GroupSplitChoiceDto,
+    PlaceDto,
+    ReturnGroupSplitItemDto,
+    ReturnGroupSplitWarningDto,
+  } from '../../bindings';
 
   interface Props {
     open: boolean;
@@ -252,84 +261,92 @@
     rows = next;
   }
 
-  async function handleSubmit() {
-    if (!canSubmit) return;
+  // D-45: что именно уходит на сервер. Собирается один раз: и вопрос (preview),
+  // и сама отправка работают с одним и тем же payload.
+  type BuiltReturn =
+    | { kind: 'edit'; payload: ActUpdateReturnDto; count: number }
+    | { kind: 'create'; actId: number; wasArchived: boolean; payload: ActReturnDto; count: number };
 
+  // Встроенная ошибка формы (D-46, UD-3) и попап выбора (D-45).
+  let formError = $state<string | null>(null);
+  let splitPrompt = $state<{ items: ReturnGroupSplitItemDto[]; built: BuiltReturn } | null>(null);
+
+  function errorMessage(e: unknown, fallback: string): string {
+    return e && typeof e === 'object' && 'message' in e
+      ? String((e as { message: unknown }).message)
+      : fallback;
+  }
+
+  function build(): BuiltReturn | null {
+    const items = buildReturnItems(rows, applyToAll);
+    const count = items.reduce((sum, it) => sum + (it.device_ids?.length ?? 0), 0);
     if (mode === 'edit') {
-      if (!editTarget) return;
-      submitting = true;
-
-      const items = buildReturnItems(rows, applyToAll);
-      const updatePayload: ActUpdateReturnDto = {
-        id: editTarget.id,
-        expected_version: editTarget.version,
-        giver_name: giverName.trim(),
-        receiver_name: receiverName.trim(),
-        place_id: null,
-        notes: null,
-        deadline_utc: null,
-        handover_date_utc: isoToUnix(returnDateISO)!,
+      if (!editTarget) return null;
+      return {
+        kind: 'edit',
+        count,
+        payload: {
+          id: editTarget.id,
+          expected_version: editTarget.version,
+          giver_name: giverName.trim(),
+          receiver_name: receiverName.trim(),
+          place_id: null,
+          notes: null,
+          deadline_utc: null,
+          handover_date_utc: isoToUnix(returnDateISO)!,
+          bulk_condition: bulkCondition.trim().length > 0 ? bulkCondition.trim() : null,
+          bulk_place_id: bulkPlaceId,
+          apply_to_all: applyToAll,
+          items,
+        },
+      };
+    }
+    if (!act) return null;
+    // PER-ROW SPLIT INVARIANT (W-4): see plan 03.1-03 must_haves; covered by
+    // returnPayload.test.ts `splits_per_row_overrides_to_single_device_items` test.
+    // Phase 22 (Pitfall 1 fix): giver_name/receiver_name/handover_date_utc
+    // are sent — иначе backend откатывается к parent-swap по умолчанию.
+    return {
+      kind: 'create',
+      actId: act.id,
+      wasArchived: act.archived,
+      count,
+      payload: {
         bulk_condition: bulkCondition.trim().length > 0 ? bulkCondition.trim() : null,
         bulk_place_id: bulkPlaceId,
         apply_to_all: applyToAll,
         items,
-      };
+        giver_name: giverName.trim(),
+        receiver_name: receiverName.trim(),
+        handover_date_utc: isoToUnix(returnDateISO),
+      },
+    };
+  }
 
-      try {
-        const saved = await acts.updateReturn(updatePayload);
-        const n = items.reduce((sum, it) => sum + (it.device_ids?.length ?? 0), 0);
-        pushToast('success', `Возврат №${saved.number} обновлён. Позиций: ${n}.`);
-
+  // Отправка возврата. groupSplit передаётся только когда пользователь выбрал исход.
+  async function send(built: BuiltReturn, groupSplit?: GroupSplitChoiceDto) {
+    submitting = true;
+    try {
+      if (built.kind === 'edit') {
+        const saved = await acts.updateReturn(built.payload, groupSplit);
+        pushToast('success', `Возврат №${saved.number} обновлён. Позиций: ${built.count}.`);
         try {
           const parent = await acts.get(saved.parent_act_id!);
           onSuccess(saved, parent.archived);
         } catch {
           onSuccess(saved, false);
         }
-      } catch (e: unknown) {
-        const msg =
-          e && typeof e === 'object' && 'message' in e
-            ? String((e as { message: unknown }).message)
-            : 'Не удалось сохранить возврат';
-        pushToast('error', msg);
-      } finally {
-        submitting = false;
+        return;
       }
-      return;
-    }
-
-    if (!act) return;
-    submitting = true;
-
-    // PER-ROW SPLIT INVARIANT (W-4): see plan 03.1-03 must_haves; covered by
-    // returnPayload.test.ts `splits_per_row_overrides_to_single_device_items` test.
-    const items = buildReturnItems(rows, applyToAll);
-
-    // Phase 22 (Pitfall 1 fix): giver_name/receiver_name/handover_date_utc
-    // are now sent — previously collected by this form but silently dropped
-    // from the payload, so the backend always fell back to the parent-swap
-    // default (Plan 22-02's `do_return` fix + this wiring close the gap
-    // end-to-end).
-    const payload: ActReturnDto = {
-      bulk_condition: bulkCondition.trim().length > 0 ? bulkCondition.trim() : null,
-      bulk_place_id: bulkPlaceId,
-      apply_to_all: applyToAll,
-      items,
-      giver_name: giverName.trim(),
-      receiver_name: receiverName.trim(),
-      handover_date_utc: isoToUnix(returnDateISO),
-    };
-
-    try {
-      const wasArchivedBefore = act.archived;
-      const ret = await acts.doReturn(act.id, payload);
-      const n = items.reduce((sum, it) => sum + (it.device_ids?.length ?? 0), 0);
-      pushToast('success', `Создан акт возврата №${ret.number}. ${n} устр. вернулось на склад.`);
-
+      const ret = await acts.doReturn(built.actId, built.payload, groupSplit);
+      pushToast(
+        'success',
+        `Создан акт возврата №${ret.number}. ${built.count} устр. вернулось на склад.`,
+      );
       // Узнать про auto-archive — повторно подтянуть parent.
       try {
-        const parent = await acts.get(act.id);
-        if (parent.archived && !wasArchivedBefore) {
+        const parent = await acts.get(built.actId);
+        if (parent.archived && !built.wasArchived) {
           pushToast('info', `Акт №${parent.number} переехал в Архив (все устройства вернулись).`);
         }
         onSuccess(ret, parent.archived);
@@ -337,14 +354,69 @@
         onSuccess(ret, false);
       }
     } catch (e: unknown) {
-      const msg =
-        e && typeof e === 'object' && 'message' in e
-          ? String((e as { message: unknown }).message)
-          : 'Не удалось оформить возврат';
-      pushToast('error', msg);
+      // Серверная валидация (в т.ч. разные места целиком возвращаемой группы) —
+      // последняя защита; показываем тем же встроенным блоком.
+      formError = errorMessage(
+        e,
+        built.kind === 'edit' ? 'Не удалось сохранить возврат' : 'Не удалось оформить возврат',
+      );
     } finally {
       submitting = false;
     }
+  }
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    formError = null;
+    const built = build();
+    if (!built) return;
+    submitting = true;
+
+    // D-45: сначала спрашиваем сервер, разобьёт ли возврат контейнерную группу.
+    let warning: ReturnGroupSplitWarningDto;
+    try {
+      warning =
+        built.kind === 'edit'
+          ? await acts.updateReturnGroupSplitPreview(built.payload)
+          : await acts.returnGroupSplitPreview(built.actId, built.payload);
+    } catch (e: unknown) {
+      pushToast('error', errorMessage(e, 'Не удалось проверить возврат'));
+      submitting = false;
+      return;
+    }
+
+    // D-46 (UD-3): целиком возвращаемая группа с разными местами — ни попапа, ни отправки.
+    if (warning.place_conflicts.length > 0) {
+      formError = warning.place_conflicts
+        .map(
+          (c) =>
+            `Группа «${c.group_name}» возвращается целиком: укажите одно место возврата для всех её устройств (${c.device_names.join(', ')}).`,
+        )
+        .join(' ');
+      submitting = false;
+      return;
+    }
+
+    // D-45: возврат разбивает группу — один попап с тремя исходами, отправки пока нет.
+    if (warning.items.length > 0) {
+      splitPrompt = { items: warning.items, built };
+      submitting = false;
+      return;
+    }
+
+    await send(built);
+  }
+
+  function cancelSplitPrompt() {
+    splitPrompt = null;
+    submitting = false;
+  }
+
+  async function chooseSplit(choice: GroupSplitChoiceDto) {
+    const prompt = splitPrompt;
+    if (!prompt) return;
+    splitPrompt = null;
+    await send(prompt.built, choice);
   }
 </script>
 
@@ -458,6 +530,9 @@
         {#if applyToAll && !canSubmit && checkedRows.length > 0 && !submitting}
           <p class="empty-hint">Заполните bulk-поле «Состояние».</p>
         {/if}
+        {#if formError}
+          <p class="empty-hint form-error" role="alert">{formError}</p>
+        {/if}
       </section>
     {/if}
   {/if}
@@ -471,6 +546,15 @@
     </Button>
   {/snippet}
 </Modal>
+
+{#if splitPrompt}
+  <GroupSplitChoicePopup
+    items={splitPrompt.items}
+    loading={submitting}
+    onChoose={chooseSplit}
+    onClose={cancelSplitPrompt}
+  />
+{/if}
 
 <style lang="scss">
   .subheading {
