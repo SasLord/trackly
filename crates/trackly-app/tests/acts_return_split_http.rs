@@ -308,6 +308,19 @@ fn assert_json(ct: &Option<String>, bytes: &[u8]) {
     );
 }
 
+/// Ответ «нужен выбор» (CR-01): VALIDATION по полю `group_split` с названием группы.
+fn assert_needs_split_choice(bytes: &[u8], group_name: &str) {
+    let v: serde_json::Value = serde_json::from_slice(bytes).expect("тело — AppError");
+    assert_eq!(v["code"], "VALIDATION", "{v}");
+    assert_eq!(v["details"]["field"], "group_split", "{v}");
+    let message = v["message"].as_str().unwrap_or_default();
+    assert!(message.contains(group_name), "{message}");
+}
+
+async fn act_version(ctx: &AppCtx, act: i64) -> i64 {
+    ctx.acts.get(act).await.expect("get act").version
+}
+
 fn parse_preview(r: (StatusCode, Option<String>, Vec<u8>)) -> ReturnGroupSplitWarningDto {
     assert_eq!(r.0, StatusCode::OK, "{}", String::from_utf8_lossy(&r.2));
     assert_json(&r.1, &r.2);
@@ -423,14 +436,42 @@ async fn http_return_applies_group_split_choice() {
         assert_json(&ct, &b);
         assert_eq!(group_place(&ctx, f.group).await, Some(f.place_c));
 
-        // без groupSplit: Release — группа на месте, возвращённый вышел из неё.
+        // CR-01 (D-45): без groupSplit разбиение не выполняется — 400 по полю group_split,
+        // ничего не записано (умолчания Release нет).
         let g = issued_arm(&ctx, "r", 6).await;
         let before = group_place(&ctx, g.group).await;
+        let acts_before = act_count(&ctx).await;
         let (s, ct, b) = post(
             &app,
             &cookie,
             "acts_return",
             serde_json::json!({"actId": g.act, "payload": ret_dto(&g, &[0])}),
+        )
+        .await;
+        assert_eq!(
+            s,
+            StatusCode::BAD_REQUEST,
+            "{}",
+            String::from_utf8_lossy(&b)
+        );
+        assert_json(&ct, &b);
+        assert_needs_split_choice(&b, "АРМ #6");
+        assert_eq!(act_count(&ctx).await, acts_before, "акт возврата не создан");
+        assert_eq!(group_place(&ctx, g.group).await, before, "группа на месте");
+        assert_eq!(
+            member_rows(&ctx, g.devices[0]).await,
+            1,
+            "из группы не выведен"
+        );
+
+        // release, выбранный явно: группа на месте, возвращённый вышел из неё.
+        let (s, ct, b) = post(
+            &app,
+            &cookie,
+            "acts_return",
+            serde_json::json!({
+                "actId": g.act, "payload": ret_dto(&g, &[0]), "groupSplit": "release"
+            }),
         )
         .await;
         assert_eq!(s, StatusCode::OK, "{}", String::from_utf8_lossy(&b));
@@ -451,6 +492,122 @@ async fn http_return_applies_group_split_choice() {
         )
         .await;
         assert!(s.is_client_error(), "статус {s}");
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("budget");
+}
+
+/// CR-01: правка возврата «убрать A + добавить B и C». До шага 9 (откат убранных позиций)
+/// группа = {B, C} и возвращается целиком; после шага 9 A снова в группе, и правка группу
+/// РАЗБИВАЕТ. Вопрос обязан считаться по состоянию записи, а запись без выбора — ничего
+/// не писать.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_update_return_split_after_restoring_removed_member_asks_and_writes_nothing() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let (ctx, _dir, app, cookie, _emp) = setup().await;
+        let f = issued_arm(&ctx, "w", 10).await;
+        let issued_place = group_place(&ctx, f.group).await;
+        // Возврат A с явным Release: A выведен из группы, группа = {B, C}.
+        let ret = ctx
+            .acts
+            .do_return(&Identity::trusted_admin(), f.act, ret_dto(&f, &[0]))
+            .await
+            .expect("return A");
+        assert_eq!(member_rows(&ctx, f.devices[0]).await, 0, "A вне группы");
+        let ur = ActUpdateReturnDto {
+            id: ret.id,
+            expected_version: ret.version,
+            giver_name: ret.giver_name.clone(),
+            receiver_name: ret.receiver_name.clone(),
+            place_id: ret.place_id,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: ret.handover_date_utc,
+            bulk_condition: None,
+            bulk_place_id: Some(f.place_c),
+            apply_to_all: true,
+            items: vec![
+                ret_item(f.items[1], f.devices[1], None),
+                ret_item(f.items[2], f.devices[2], None),
+            ],
+        };
+
+        // Вопрос по состоянию после шага 9: группа {A, B, C}, B и C — разбиение.
+        let p = parse_preview(
+            post(
+                &app,
+                &cookie,
+                "acts_update_return_group_split_preview",
+                serde_json::json!({"payload": ur}),
+            )
+            .await,
+        );
+        assert_eq!(p.items.len(), 1, "правка разбивает группу: вопрос нужен");
+        assert_eq!(p.items[0].group_id, f.group);
+        assert_eq!(p.items[0].returned_names.len(), 2);
+        assert_eq!(p.items[0].kept_names, vec!["Системный блок #4".to_string()]);
+        assert!(p.place_conflicts.is_empty());
+        // Предпросмотр ничего не записал.
+        assert_eq!(act_version(&ctx, ret.id).await, ret.version);
+        assert_eq!(
+            member_rows(&ctx, f.devices[0]).await,
+            0,
+            "A всё ещё вне группы"
+        );
+
+        // Запись без выбора: 400 group_split, ничего не записано.
+        let (s, ct, b) = post(
+            &app,
+            &cookie,
+            "acts_update_return",
+            serde_json::json!({"payload": ur}),
+        )
+        .await;
+        assert_eq!(
+            s,
+            StatusCode::BAD_REQUEST,
+            "{}",
+            String::from_utf8_lossy(&b)
+        );
+        assert_json(&ct, &b);
+        assert_needs_split_choice(&b, "АРМ #10");
+        assert_eq!(
+            act_version(&ctx, ret.id).await,
+            ret.version,
+            "правка не записана"
+        );
+        assert_eq!(member_rows(&ctx, f.devices[0]).await, 0);
+        assert_eq!(
+            member_rows(&ctx, f.devices[1]).await,
+            1,
+            "B не выведен молча"
+        );
+        assert_eq!(
+            member_rows(&ctx, f.devices[2]).await,
+            1,
+            "C не выведен молча"
+        );
+        assert_eq!(group_place(&ctx, f.group).await, issued_place);
+
+        // Повтор с выбором из попапа: группа с B и C переезжает, A вне группы.
+        let (s, ct, b) = post(
+            &app,
+            &cookie,
+            "acts_update_return",
+            serde_json::json!({"payload": ur, "groupSplit": "move_group"}),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "{}", String::from_utf8_lossy(&b));
+        assert_json(&ct, &b);
+        assert_eq!(group_place(&ctx, f.group).await, Some(f.place_c));
+        assert_eq!(member_rows(&ctx, f.devices[1]).await, 1);
+        assert_eq!(member_rows(&ctx, f.devices[2]).await, 1);
+        assert_eq!(
+            member_rows(&ctx, f.devices[0]).await,
+            0,
+            "невозвращённый вне группы"
+        );
         ctx.shutdown.cancel();
     })
     .await

@@ -1831,15 +1831,16 @@ impl ActService {
         Ok(())
     }
 
-    /// Возврат с прежним поведением разбиения групп: частично возвращаемая контейнерная
-    /// группа остаётся на месте, возвращаемые члены выходят из неё (`Release`).
+    /// Возврат с явным выбором `Release` для разбиения групп: частично возвращаемая
+    /// контейнерная группа остаётся на месте, возвращаемые члены выходят из неё. Транспорты
+    /// эту обёртку не зовут: они передают выбор пользователя как есть (D-45).
     pub async fn do_return(
         &self,
         caller: &Identity,
         act_id: i64,
         payload: ActReturnDto,
     ) -> Result<ActDto, AppError> {
-        self.do_return_with_split(caller, act_id, payload, GroupSplitChoiceDto::Release)
+        self.do_return_with_split(caller, act_id, payload, Some(GroupSplitChoiceDto::Release))
             .await
     }
 
@@ -1887,15 +1888,18 @@ impl ActService {
         })?
     }
 
+    /// Возврат с выбором для частично возвращаемой контейнерной группы (D-45). `split = None`
+    /// означает «пользователя не спрашивали»: если план разбивает группу, ничего не пишется,
+    /// ответ — `AppError::Validation` с полем `group_split` (клиент задаёт вопрос и повторяет).
     pub async fn do_return_with_split(
         &self,
         caller: &Identity,
         act_id: i64,
         payload: ActReturnDto,
-        split: GroupSplitChoiceDto,
+        split: Option<GroupSplitChoiceDto>,
     ) -> Result<ActDto, AppError> {
         Self::validate_return(&payload)?;
-        let split: GroupSplitChoice = split.into();
+        let split: Option<GroupSplitChoice> = split.map(Into::into);
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -2011,6 +2015,8 @@ impl ActService {
                 let group_plan = plan_for_return_in_tx(&tx, &returned_ids, &return_places)?;
                 // D-46: целиком возвращаемая группа возвращается в одно место (до любой записи).
                 group_plan.ensure_places_match()?;
+                // D-45: разбиение группы без выбора пользователя не выполняется (до любой записи).
+                let split = split_choice_required(&group_plan, split)?;
 
                 // 4. Next sub_number (Phase 40.5, D-04/D-05/D-17): наименьший
                 //    свободный среди живых возвратов родителя, пропускающий
@@ -2492,139 +2498,62 @@ impl ActService {
         caller: &Identity,
         payload: ActUpdateReturnDto,
     ) -> Result<ActDto, AppError> {
-        self.update_return_with_split(caller, payload, GroupSplitChoiceDto::Release)
-            .await
+        match self
+            .update_return_with_split(
+                caller,
+                payload,
+                UpdateReturnSplit::Choice(GroupSplitChoiceDto::Release),
+            )
+            .await?
+        {
+            UpdateReturnOutcome::Saved(dto) => Ok(*dto),
+            UpdateReturnOutcome::Preview(_) => Err(AppError::Internal {
+                source_chain: "update_return: ответ предпросмотра вне режима Preview".into(),
+            }),
+        }
     }
 
     /// Предварительный вопрос UD-2 для правки возврата (D-47): какие контейнерные группы
     /// правка разобьёт (добавленные позиции) или потянет за собой (смена места члена
     /// перенесённого контейнера) и какие целиком возвращаемые группы получили разные места.
-    /// Только чтение; классификация и планировщик те же, что в `update_return_with_split`.
+    ///
+    /// CR-01 (D-45): вопрос считается ТЕМ ЖЕ путём записи и по тому же состоянию, что и сама
+    /// правка: `update_return_with_split` в режиме `Preview` проходит шаги 1–11 в транзакции
+    /// writer'а (в том числе откат убранных позиций шага 9, который возвращает устройства в
+    /// группы) и всегда её откатывает. Ничего не коммитится, событий нет.
     pub async fn update_return_group_split_preview(
         &self,
+        caller: &Identity,
         payload: &ActUpdateReturnDto,
     ) -> Result<ReturnGroupSplitWarningDto, AppError> {
-        Self::validate_update_return(payload)?;
-        let readers = self.readers.clone();
-        let acts_repo = self.acts_repo.clone();
-        let places_repo = self.places_repo.clone();
-        let payload = payload.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn = readers.acquire();
-            let act = acts_repo.get(&conn, payload.id)?;
-            if act.deleted_at_utc.is_some() {
-                return Err(AppError::NotFound {
-                    entity: "act",
-                    id: payload.id,
-                });
-            }
-            if act.act_type != ActType::Return {
-                return Err(AppError::Validation {
-                    field: "id".into(),
-                    message: "Редактировать можно только акты возврата".into(),
-                });
-            }
-            let effective_by_device = effective_by_device_map(&payload);
-            let d_old: std::collections::HashSet<i64> = {
-                let mut stmt = conn
-                    .prepare("SELECT device_id FROM act_items WHERE act_id = ?1")
-                    .map_err(map_rusqlite)?;
-                let ids: std::collections::HashSet<i64> = stmt
-                    .query_map(params![payload.id], |r| r.get::<_, i64>(0))
-                    .map_err(map_rusqlite)?
-                    .collect::<rusqlite::Result<_>>()
-                    .map_err(map_rusqlite)?;
-                ids
-            };
-            let mut added: Vec<i64> = effective_by_device
-                .keys()
-                .copied()
-                .filter(|d| !d_old.contains(d))
-                .collect();
-            added.sort_unstable();
-            let retained: std::collections::HashSet<i64> = effective_by_device
-                .keys()
-                .copied()
-                .filter(|d| d_old.contains(d))
-                .collect();
-            let added_places: HashMap<i64, Option<i64>> = added
-                .iter()
-                .map(|id| (*id, effective_by_device.get(id).and_then(|e| e.2)))
-                .collect();
-            let snapshot = group_act_plan::load_snapshot(&conn, &SqliteGroupRepository)?;
-            let added_plan = group_act_plan::plan_for_return(&snapshot, &added, &added_places);
-            let mut out = build_split_warning(&conn, places_repo.as_ref(), &added_plan)?;
-
-            // Удержанные позиции с изменившимся местом (как в шаге 11 правки).
-            let coverages = moved_container_coverages(&conn, payload.id)?;
-            let mut moving: Vec<i64> = Vec::new();
-            let mut retained_places: HashMap<i64, Option<i64>> = HashMap::new();
-            let mut changed_members: Vec<i64> = Vec::new();
-            let mut sorted_retained: Vec<i64> = retained.iter().copied().collect();
-            sorted_retained.sort_unstable();
-            for &dev_id in &sorted_retained {
-                let location = effective_by_device.get(&dev_id).and_then(|e| e.2);
-                let current_place: Option<i64> = conn
-                    .query_row(
-                        "SELECT place_id FROM devices WHERE id = ?1",
-                        params![dev_id],
-                        |r| r.get(0),
-                    )
-                    .map_err(map_rusqlite)?;
-                if location.is_none() || location == current_place {
-                    continue;
-                }
-                let is_anchor: bool = conn
-                    .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM groups \
-                         WHERE anchor_device_id = ?1 AND deleted_at_utc IS NULL)",
-                        params![dev_id],
-                        |r| r.get(0),
-                    )
-                    .map_err(map_rusqlite)?;
-                if is_anchor {
-                    moving.push(dev_id);
-                    retained_places.insert(dev_id, location);
-                } else {
-                    changed_members.push(dev_id);
-                }
-            }
-            for member in container_members_to_move(&coverages, &changed_members, &retained) {
-                let location = effective_by_device.get(&member).and_then(|e| e.2);
-                let current_place: Option<i64> = conn
-                    .query_row(
-                        "SELECT place_id FROM devices WHERE id = ?1",
-                        params![member],
-                        |r| r.get(0),
-                    )
-                    .map_err(map_rusqlite)?;
-                moving.push(member);
-                retained_places.insert(member, location.or(current_place));
-            }
-            let retained_plan =
-                group_act_plan::plan_for_return(&snapshot, &moving, &retained_places);
-            let more = build_split_warning(&conn, places_repo.as_ref(), &retained_plan)?;
-            out.items.extend(more.items);
-            out.place_conflicts.extend(more.place_conflicts);
-            Ok(out)
-        })
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("update_return_group_split_preview join: {e}"),
-        })?
+        match self
+            .update_return_with_split(caller, payload.clone(), UpdateReturnSplit::Preview)
+            .await?
+        {
+            UpdateReturnOutcome::Preview(warning) => Ok(warning),
+            UpdateReturnOutcome::Saved(_) => Err(AppError::Internal {
+                source_chain: "update_return_group_split_preview: режим Preview закоммитил правку"
+                    .into(),
+            }),
+        }
     }
 
     /// Правка акта возврата с выбором для частично возвращаемой контейнерной группы (UD-2,
     /// D-47): тот же выбор и перенос, что при создании возврата. Выбор действует на обеих
     /// стадиях (добавленные позиции и позиции с изменённым местом).
+    ///
+    /// `mode` (CR-01, D-45): `Choice` — выбор пользователя; `Ask` — выбора нет, и если стадия
+    /// разбивает группу, ничего не пишется (`AppError::Validation`, поле `group_split`);
+    /// `Preview` — предварительный вопрос: тот же путь по тому же состоянию, ответ —
+    /// предупреждение первой стадии, которой нужен выбор (или пустое), транзакция всегда
+    /// откатывается и событий нет.
     pub async fn update_return_with_split(
         &self,
         caller: &Identity,
         payload: ActUpdateReturnDto,
-        split: GroupSplitChoiceDto,
-    ) -> Result<ActDto, AppError> {
+        mode: UpdateReturnSplit,
+    ) -> Result<UpdateReturnOutcome, AppError> {
         Self::validate_update_return(&payload)?;
-        let split: GroupSplitChoice = split.into();
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -2633,7 +2562,7 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let (return_act_id, touched_place_ids, touched_group_ids) = self
+        let run = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -3187,6 +3116,15 @@ impl ActService {
                     })
                     .collect();
                 let added_plan = plan_for_return_in_tx(&tx, &added, &added_places)?;
+                // CR-01 (D-45): без выбора разбиение не выполняется; предпросмотр отвечает
+                // здесь же, по состоянию после шага 9.
+                let Some(added_split) = update_return_stage_choice(&added_plan, mode)? else {
+                    return Ok(UpdateReturnTx::Preview(build_split_warning(
+                        &tx,
+                        places_repo.as_ref(),
+                        &added_plan,
+                    )?));
+                };
                 added_plan.ensure_places_match()?;
                 let applied_added = apply_return_plan_in_tx(
                     &tx,
@@ -3194,7 +3132,7 @@ impl ActService {
                     payload.id,
                     &added_plan,
                     &added_places,
-                    split,
+                    added_split,
                     &added,
                     user_id_opt,
                     now,
@@ -3367,14 +3305,29 @@ impl ActService {
                     retained_places.insert(member, location.or(current_place));
                 }
                 let retained_plan = plan_for_return_in_tx(&tx, &moving_anchors, &retained_places)?;
+                // CR-01 (D-45): то же для второй стадии, по состоянию после шага 10.
+                let Some(retained_split) = update_return_stage_choice(&retained_plan, mode)? else {
+                    return Ok(UpdateReturnTx::Preview(build_split_warning(
+                        &tx,
+                        places_repo.as_ref(),
+                        &retained_plan,
+                    )?));
+                };
                 retained_plan.ensure_places_match()?;
+                if mode == UpdateReturnSplit::Preview {
+                    // Всё, что зависит от выбора, пройдено, вопрос не нужен. Транзакция
+                    // откатывается при drop.
+                    return Ok(UpdateReturnTx::Preview(
+                        ReturnGroupSplitWarningDto::default(),
+                    ));
+                }
                 let applied_retained = apply_return_plan_in_tx(
                     &tx,
                     &group_deps,
                     payload.id,
                     &retained_plan,
                     &retained_places,
-                    split,
+                    retained_split,
                     &moving_anchors,
                     user_id_opt,
                     now,
@@ -3567,9 +3520,18 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok((payload.id, touched_place_ids, touched_group_ids))
+                Ok(UpdateReturnTx::Committed(
+                    payload.id,
+                    touched_place_ids,
+                    touched_group_ids,
+                ))
             })
             .await?;
+        let (return_act_id, touched_place_ids, touched_group_ids) = match run {
+            // Предпросмотр: транзакция откатилась, рассылать нечего.
+            UpdateReturnTx::Preview(warning) => return Ok(UpdateReturnOutcome::Preview(warning)),
+            UpdateReturnTx::Committed(id, places, groups) => (id, places, groups),
+        };
 
         // D-03/D-04 (41.7): one deduped list for both the event and the DTO.
         let changed = dedupe_place_ids(touched_place_ids);
@@ -3582,10 +3544,10 @@ impl ActService {
         );
 
         let dto = self.get(return_act_id).await?;
-        Ok(ActDto {
+        Ok(UpdateReturnOutcome::Saved(Box::new(ActDto {
             changed_place_ids: changed,
             ..dto
-        })
+        })))
     }
 
     // -----------------------------------------------------------------------
@@ -4977,6 +4939,95 @@ fn effective_by_device_map(
         }
     }
     map
+}
+
+/// Как правка возврата поступает с частично возвращаемой контейнерной группой (D-45, CR-01).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateReturnSplit {
+    /// Пользователь выбрал исход в попапе.
+    Choice(GroupSplitChoiceDto),
+    /// Выбора нет: если стадия правки разбивает группу, ничего не пишется (ошибка поля
+    /// `group_split`). Умолчания `Release` нет.
+    Ask,
+    /// Предварительный вопрос: тот же путь записи по тому же состоянию, транзакция всегда
+    /// откатывается.
+    Preview,
+}
+
+impl From<Option<GroupSplitChoiceDto>> for UpdateReturnSplit {
+    fn from(v: Option<GroupSplitChoiceDto>) -> Self {
+        match v {
+            Some(choice) => Self::Choice(choice),
+            None => Self::Ask,
+        }
+    }
+}
+
+/// Итог `ActService::update_return_with_split`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdateReturnOutcome {
+    /// Правка записана (режимы `Choice` и `Ask`).
+    Saved(Box<ActDto>),
+    /// Ответ режима `Preview`: пустое предупреждение — вопрос не нужен.
+    Preview(ReturnGroupSplitWarningDto),
+}
+
+/// Итог транзакции правки возврата: коммит или откат предпросмотра.
+enum UpdateReturnTx {
+    Committed(i64, Vec<Option<i64>>, Vec<i64>),
+    Preview(ReturnGroupSplitWarningDto),
+}
+
+/// D-45 (CR-01): выбор для плана возврата. Пока план не разбивает ни одной группы, выбор ни на
+/// что не влияет; если разбивает, а пользователя не спросили, — ошибка поля `group_split`,
+/// и вызывающий ничего не пишет.
+fn split_choice_required(
+    plan: &group_act_plan::ActGroupPlan,
+    choice: Option<GroupSplitChoice>,
+) -> Result<GroupSplitChoice, AppError> {
+    if plan.splits.is_empty() {
+        return Ok(choice.unwrap_or(GroupSplitChoice::Release));
+    }
+    choice.ok_or_else(|| {
+        let names: Vec<String> = plan
+            .splits
+            .iter()
+            .map(|s| format!("«{}»", s.group_name))
+            .collect();
+        AppError::Validation {
+            field: "group_split".into(),
+            message: format!(
+                "Возврат разделяет группу {}: выберите, вывести устройства из группы или изменить её расположение.",
+                names.join(", ")
+            ),
+        }
+    })
+}
+
+/// Стадия правки возврата (CR-01): `Some(выбор)` — применять план; `None` — режим `Preview`
+/// остановился на этой стадии (есть разбиение или конфликт мест D-46), ответ — её
+/// предупреждение. В `Ask`/`Choice` конфликт мест — ошибка D-46 раньше ошибки выбора.
+fn update_return_stage_choice(
+    plan: &group_act_plan::ActGroupPlan,
+    mode: UpdateReturnSplit,
+) -> Result<Option<GroupSplitChoice>, AppError> {
+    match mode {
+        UpdateReturnSplit::Preview => {
+            if plan.splits.is_empty() && plan.place_conflicts.is_empty() {
+                Ok(Some(GroupSplitChoice::Release))
+            } else {
+                Ok(None)
+            }
+        }
+        UpdateReturnSplit::Ask => {
+            plan.ensure_places_match()?;
+            split_choice_required(plan, None).map(Some)
+        }
+        UpdateReturnSplit::Choice(choice) => {
+            plan.ensure_places_match()?;
+            split_choice_required(plan, Some(choice.into())).map(Some)
+        }
+    }
 }
 
 /// Предварительный вопрос по плану возврата: имена и место-цель для разбиений и расхождений

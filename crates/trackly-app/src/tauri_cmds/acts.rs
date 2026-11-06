@@ -18,6 +18,7 @@ use crate::dto::act::{
     GroupSplitChoiceDto, Pagination, ReturnGroupSplitWarningDto,
 };
 use crate::dto::suggest::SuggestPersonField;
+use crate::services::act_service::{UpdateReturnOutcome, UpdateReturnSplit};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
@@ -71,13 +72,10 @@ pub async fn build_acts_return(
     group_split: Option<GroupSplitChoiceDto>,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
+    // D-45: выбор не подменяется умолчанием. Без выбора возврат, разбивающий группу,
+    // ничего не пишет и отвечает ошибкой поля `group_split`.
     ctx.acts
-        .do_return_with_split(
-            caller,
-            act_id,
-            payload,
-            group_split.unwrap_or(GroupSplitChoiceDto::Release),
-        )
+        .do_return_with_split(caller, act_id, payload, group_split)
         .await
 }
 
@@ -100,7 +98,9 @@ pub async fn build_acts_update_return_group_split_preview(
     payload: ActUpdateReturnDto,
 ) -> Result<ReturnGroupSplitWarningDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.update_return_group_split_preview(&payload).await
+    ctx.acts
+        .update_return_group_split_preview(caller, &payload)
+        .await
 }
 
 /// Мутация: требует `caller` с правом `MutateActs`.
@@ -144,13 +144,17 @@ pub async fn build_acts_update_return(
     group_split: Option<GroupSplitChoiceDto>,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts
-        .update_return_with_split(
-            caller,
-            payload,
-            group_split.unwrap_or(GroupSplitChoiceDto::Release),
-        )
-        .await
+    // D-45: выбор не подменяется умолчанием (см. `build_acts_return`).
+    match ctx
+        .acts
+        .update_return_with_split(caller, payload, UpdateReturnSplit::from(group_split))
+        .await?
+    {
+        UpdateReturnOutcome::Saved(dto) => Ok(*dto),
+        UpdateReturnOutcome::Preview(_) => Err(AppError::Internal {
+            source_chain: "update_return_with_split: ответ предпросмотра вне режима Preview".into(),
+        }),
+    }
 }
 
 pub async fn build_acts_counts(ctx: &AppCtx, caller: &Identity) -> Result<ActsCountsDto, AppError> {

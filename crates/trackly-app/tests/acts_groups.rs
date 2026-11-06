@@ -26,6 +26,7 @@ use trackly_app::dto::act::{
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
 use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::dto::printer::WsEvent;
+use trackly_app::services::act_service::UpdateReturnSplit;
 use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -3247,7 +3248,7 @@ async fn return_with(
     split: GroupSplitChoiceDto,
 ) -> Result<i64, AppError> {
     ctx.acts
-        .do_return_with_split(&admin(), parent, payload, split)
+        .do_return_with_split(&admin(), parent, payload, Some(split))
         .await
         .map(|a| a.id)
 }
@@ -3596,7 +3597,7 @@ async fn update_return_add_position_move_group_choice_moves_group() {
             .update_return_with_split(
                 &admin(),
                 update_return_payload(&act, &ids, &[None, None, None], Some(a), true),
-                GroupSplitChoiceDto::MoveGroup,
+                UpdateReturnSplit::Choice(GroupSplitChoiceDto::MoveGroup),
             )
             .await
             .expect("update_return MoveGroup");
@@ -3654,13 +3655,10 @@ async fn update_return_split_preview_for_added_position() {
         let ids = vec![lone, arm.devices[0], arm.devices[1]];
         let w = ctx
             .acts
-            .update_return_group_split_preview(&update_return_payload(
-                &act,
-                &ids,
-                &[None, None, None],
-                Some(a),
-                true,
-            ))
+            .update_return_group_split_preview(
+                &admin(),
+                &update_return_payload(&act, &ids, &[None, None, None], Some(a), true),
+            )
             .await
             .expect("preview");
         assert_eq!(w.items.len(), 1);
@@ -3672,13 +3670,10 @@ async fn update_return_split_preview_for_added_position() {
 
         let quiet = ctx
             .acts
-            .update_return_group_split_preview(&update_return_payload(
-                &act,
-                &[lone],
-                &[None],
-                Some(a),
-                true,
-            ))
+            .update_return_group_split_preview(
+                &admin(),
+                &update_return_payload(&act, &[lone], &[None], Some(a), true),
+            )
             .await
             .expect("preview quiet");
         assert!(quiet.items.is_empty() && quiet.place_conflicts.is_empty());
@@ -3751,7 +3746,7 @@ async fn update_return_retained_place_change_of_one_member_is_rejected() {
 
         let w = ctx
             .acts
-            .update_return_group_split_preview(&payload)
+            .update_return_group_split_preview(&admin(), &payload)
             .await
             .expect("preview");
         assert_eq!(w.place_conflicts.len(), 1, "{w:?}");
@@ -3762,13 +3757,10 @@ async fn update_return_retained_place_change_of_one_member_is_rejected() {
         let all_c = ctx.acts.get(ret).await.expect("get return");
         let quiet = ctx
             .acts
-            .update_return_group_split_preview(&update_return_payload(
-                &all_c,
-                &arm.devices,
-                &[None, None, None],
-                Some(a),
-                true,
-            ))
+            .update_return_group_split_preview(
+                &admin(),
+                &update_return_payload(&all_c, &arm.devices, &[None, None, None], Some(a), true),
+            )
             .await
             .expect("preview");
         assert!(quiet.place_conflicts.is_empty());

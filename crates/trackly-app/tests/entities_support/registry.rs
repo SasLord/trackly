@@ -248,8 +248,13 @@ pub const REGISTRY: &[Entry] = &[
         "update_return",
         "делегирует в update_return_with_split с выбором Release; запись и рассылка живут там",
     ),
-    // Предпросмотр разбиения группы при правке возврата: только `readers`.
-    ro(ACT, "update_return_group_split_preview"),
+    // Предпросмотр разбиения группы при правке возврата (CR-01): прогон
+    // `update_return_with_split` в режиме Preview, его транзакция всегда откатывается.
+    ex(
+        ACT,
+        "update_return_group_split_preview",
+        "предпросмотр: update_return_with_split в режиме Preview откатывает транзакцию writer'а до коммита и не рассылает",
+    ),
     b(ACT, "update_return_with_split"),
     ro(ACT, "get"),
     ro(ACT, "search"),

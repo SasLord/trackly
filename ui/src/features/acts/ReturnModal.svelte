@@ -354,6 +354,19 @@
         onSuccess(ret, false);
       }
     } catch (e: unknown) {
+      // CR-01 (D-45): сервер не разбивает группу без выбора. Если состав группы изменился
+      // после вопроса, спрашиваем заново через тот же handleSubmit (свежий preview → попап).
+      // Повторный вопрос — один раз: вслепую отправка не повторяется.
+      if (groupSplit === undefined && needsSplitChoice(e) && !splitReasked) {
+        splitReasked = true;
+        submitting = false;
+        try {
+          await handleSubmit();
+        } finally {
+          splitReasked = false;
+        }
+        return;
+      }
       // Серверная валидация (в т.ч. разные места целиком возвращаемой группы) —
       // последняя защита; показываем тем же встроенным блоком.
       formError = errorMessage(
@@ -363,6 +376,16 @@
     } finally {
       submitting = false;
     }
+  }
+
+  // Повторный вопрос после ответа «нужен выбор» уже идёт (защита от цикла).
+  let splitReasked = false;
+
+  // Ответ сервера «возврат разделяет группу: нужен выбор» (поле group_split).
+  function needsSplitChoice(e: unknown): boolean {
+    if (!e || typeof e !== 'object') return false;
+    const err = e as { code?: string; details?: { field?: string } };
+    return err.code === 'VALIDATION' && err.details?.field === 'group_split';
   }
 
   async function handleSubmit() {

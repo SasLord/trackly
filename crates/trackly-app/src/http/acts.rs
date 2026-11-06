@@ -74,7 +74,8 @@ pub struct UpdatePayload {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateReturnPayload {
     pub payload: ActUpdateReturnDto,
-    /// Выбор разбиения (D-45); нет поля = Release.
+    /// Выбор разбиения (D-45); нет поля = выбора нет: разбиение группы отклоняется
+    /// ошибкой поля `group_split` (CR-01), умолчания Release нет.
     #[serde(default)]
     pub group_split: Option<GroupSplitChoiceDto>,
 }
@@ -90,7 +91,8 @@ pub struct UpdateReturnPreviewPayload {
 pub struct ReturnPayload {
     pub act_id: i64,
     pub payload: ActReturnDto,
-    /// Выбор разбиения (D-45); нет поля = Release.
+    /// Выбор разбиения (D-45); нет поля = выбора нет: разбиение группы отклоняется
+    /// ошибкой поля `group_split` (CR-01), умолчания Release нет.
     #[serde(default)]
     pub group_split: Option<GroupSplitChoiceDto>,
 }

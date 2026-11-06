@@ -35,6 +35,7 @@ use trackly_app::dto::act::{
     ActUpdateDto, ActUpdateItemDto, ActUpdateReturnDto, GroupSplitChoiceDto,
 };
 use trackly_app::dto::number_template::NumberFieldInput;
+use trackly_app::services::act_service::{UpdateReturnOutcome, UpdateReturnSplit};
 use trackly_core::error::AppError;
 
 /// Бюджет каждого теста (форма `number_space_broadcast_gate.rs`).
@@ -280,7 +281,7 @@ async fn scenario_do_return_with_split() {
                 &admin(),
                 handover.id,
                 return_payload(&handover, &[d1], "Исправно", back),
-                GroupSplitChoiceDto::Release,
+                Some(GroupSplitChoiceDto::Release),
             )
             .await
             .expect("do_return_with_split");
@@ -323,10 +324,13 @@ async fn scenario_update_return_with_split() {
             .update_return_with_split(
                 &admin(),
                 update_return_payload(&handover, &ret, &[d1], "Исправно", second),
-                GroupSplitChoiceDto::Release,
+                UpdateReturnSplit::Choice(GroupSplitChoiceDto::Release),
             )
             .await
             .expect("update_return_with_split");
+        let UpdateReturnOutcome::Saved(edited) = edited else {
+            panic!("режим Choice обязан записать правку: {edited:?}");
+        };
 
         let (places, devices, groups) = assert_one_entities(&mut rx, "update_return_with_split");
         assert!(!edited.changed_place_ids.is_empty(), "ответ несёт места");
