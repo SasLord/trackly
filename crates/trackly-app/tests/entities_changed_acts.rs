@@ -32,7 +32,7 @@ use entities_support::fixture::{
 use trackly_app::context::AppCtx;
 use trackly_app::dto::act::{
     ActCreateDto, ActDto, ActItemNewDto, ActNumberEditInput, ActReturnDto, ActReturnItemDto,
-    ActUpdateDto, ActUpdateItemDto, ActUpdateReturnDto,
+    ActUpdateDto, ActUpdateItemDto, ActUpdateReturnDto, GroupSplitChoiceDto,
 };
 use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_core::error::AppError;
@@ -260,7 +260,7 @@ async fn scenario_update() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn scenario_do_return() {
+async fn scenario_do_return_with_split() {
     tokio::time::timeout(BUDGET, async {
         let (ctx, _dir) = make_test_ctx().await;
         let act_place = seed_place(&ctx, "Кабинет A").await;
@@ -274,9 +274,18 @@ async fn scenario_do_return() {
         drain(&mut rx);
 
         // Частичный возврат одного устройства: уходит с места акта на склад D.
-        let ret = return_act(&ctx, &handover, &[d1], "Исправно", back).await;
+        let ret = ctx
+            .acts
+            .do_return_with_split(
+                &admin(),
+                handover.id,
+                return_payload(&handover, &[d1], "Исправно", back),
+                GroupSplitChoiceDto::Release,
+            )
+            .await
+            .expect("do_return_with_split");
 
-        let (places, devices, groups) = assert_one_entities(&mut rx, "do_return");
+        let (places, devices, groups) = assert_one_entities(&mut rx, "do_return_with_split");
         assert_eq!(
             sorted(places.clone()),
             sorted(ret.changed_place_ids.clone()),
@@ -291,11 +300,11 @@ async fn scenario_do_return() {
         assert!(devices.is_empty() && groups.is_empty());
     })
     .await
-    .expect("scenario_do_return вышел за бюджет");
+    .expect("scenario_do_return_with_split вышел за бюджет");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn scenario_update_return() {
+async fn scenario_update_return_with_split() {
     tokio::time::timeout(BUDGET, async {
         let (ctx, _dir) = make_test_ctx().await;
         let act_place = seed_place(&ctx, "Кабинет A").await;
@@ -311,14 +320,15 @@ async fn scenario_update_return() {
         // Правка возврата: устройство переезжает со склада D на склад E.
         let edited = ctx
             .acts
-            .update_return(
+            .update_return_with_split(
                 &admin(),
                 update_return_payload(&handover, &ret, &[d1], "Исправно", second),
+                GroupSplitChoiceDto::Release,
             )
             .await
-            .expect("update_return");
+            .expect("update_return_with_split");
 
-        let (places, devices, groups) = assert_one_entities(&mut rx, "update_return");
+        let (places, devices, groups) = assert_one_entities(&mut rx, "update_return_with_split");
         assert!(!edited.changed_place_ids.is_empty(), "ответ несёт места");
         assert_eq!(
             sorted(places.clone()),
@@ -329,7 +339,7 @@ async fn scenario_update_return() {
         assert!(devices.is_empty() && groups.is_empty());
     })
     .await
-    .expect("scenario_update_return вышел за бюджет");
+    .expect("scenario_update_return_with_split вышел за бюджет");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

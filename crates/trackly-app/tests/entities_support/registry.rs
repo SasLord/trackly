@@ -233,8 +233,24 @@ pub const REGISTRY: &[Entry] = &[
     ro(ACT, "with_org_db"),
     b(ACT, "create"),
     b(ACT, "update"),
-    b(ACT, "do_return"),
-    b(ACT, "update_return"),
+    // Тонкая обёртка над `do_return_with_split` (D-45): сама не пишет и не рассылает.
+    ex(
+        ACT,
+        "do_return",
+        "делегирует в do_return_with_split с выбором Release; запись и рассылка живут там",
+    ),
+    // Предпросмотр разбиения группы: только `readers`, ничего не пишет.
+    ro(ACT, "return_group_split_preview"),
+    b(ACT, "do_return_with_split"),
+    // Тонкая обёртка над `update_return_with_split` (D-45): сама не пишет и не рассылает.
+    ex(
+        ACT,
+        "update_return",
+        "делегирует в update_return_with_split с выбором Release; запись и рассылка живут там",
+    ),
+    // Предпросмотр разбиения группы при правке возврата: только `readers`.
+    ro(ACT, "update_return_group_split_preview"),
+    b(ACT, "update_return_with_split"),
     ro(ACT, "get"),
     ro(ACT, "search"),
     ro(ACT, "list"),

@@ -2395,7 +2395,12 @@ impl ActService {
         // D-03/D-04 (41.7): one deduped list for both the event and the DTO.
         let changed = dedupe_place_ids(touched_place_ids);
         let place_ids = changed.clone();
-        self.broadcast_entities("do_return", place_ids, Vec::new(), touched_group_ids);
+        self.broadcast_entities(
+            "do_return_with_split",
+            place_ids,
+            Vec::new(),
+            touched_group_ids,
+        );
 
         let dto = self.get(return_act_id).await?;
         Ok(ActDto {
@@ -3569,7 +3574,12 @@ impl ActService {
         // D-03/D-04 (41.7): one deduped list for both the event and the DTO.
         let changed = dedupe_place_ids(touched_place_ids);
         let place_ids = changed.clone();
-        self.broadcast_entities("update_return", place_ids, Vec::new(), touched_group_ids);
+        self.broadcast_entities(
+            "update_return_with_split",
+            place_ids,
+            Vec::new(),
+            touched_group_ids,
+        );
 
         let dto = self.get(return_act_id).await?;
         Ok(ActDto {
