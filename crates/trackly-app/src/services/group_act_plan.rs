@@ -1623,6 +1623,93 @@ pub(crate) fn restore_released_members_in_tx(
 /// Кандидат на возврат в группу: (устройство, id следа `release`, подпись группы).
 type RejoinCandidate = (i64, i64, String);
 
+/// D-49 (G8, вариант Release): правка, делающая возврат ПОЛНЫМ возвратом группы, отменяет и
+/// выбор «Вывести из группы». Удержанные позиции со следом `release` ЭТОГО акта (прочитан до
+/// правки, W-7) возвращаются в свою группу, след снимается; вызывающий отдаёт их планировщику
+/// вместе с добавленными, и группа, теперь покрытая целиком, едет на место возврата (D-44).
+/// Места проверяет сам план (D-46, `ensure_places_match`) до применения; при отказе транзакция
+/// не коммитится.
+///
+/// «Полный»: каждый юнит текущего состава группы (`units_of_group_in_tx`) есть в позициях правки.
+/// Иначе ничего не меняется: частичная правка разбиение не отменяет. Члены без следа этого акта
+/// (выведены вручную или другим актом) не трогаются. Возвращаются id вернувшихся устройств.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rejoin_released_retained_for_whole_group_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    act_id: i64,
+    retained: &[i64],
+    payload_device_ids: &HashSet<i64>,
+    prior_effects: &[ActGroupEffectRow],
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<RejoinedByAct, AppError> {
+    let mut out = RejoinedByAct::default();
+    let mut by_group: Vec<(i64, Vec<RejoinCandidate>)> = Vec::new();
+    let mut sorted: Vec<i64> = retained.to_vec();
+    sorted.sort_unstable();
+    for device_id in sorted {
+        let Some(effect) = prior_effects
+            .iter()
+            .find(|e| e.kind == ActGroupEffectKind::Release && e.device_id == Some(device_id))
+        else {
+            continue;
+        };
+        if deps.groups.group_of_device_in_tx(tx, device_id)?.is_some() {
+            continue;
+        }
+        let entry = (device_id, effect.id, effect.group_label.clone());
+        match by_group.iter_mut().find(|(g, _)| *g == effect.group_id) {
+            Some((_, list)) => list.push(entry),
+            None => by_group.push((effect.group_id, vec![entry])),
+        }
+    }
+    by_group.sort_by_key(|(g, _)| *g);
+    for (group_id, members) in by_group {
+        let group = match deps.groups.get_group_in_tx(tx, group_id) {
+            Ok(g) => g,
+            Err(AppError::NotFound { .. }) => continue,
+            Err(e) => return Err(e),
+        };
+        let whole = units_of_group_in_tx(tx, group.id)?
+            .iter()
+            .all(|d| payload_device_ids.contains(d));
+        if !whole {
+            continue;
+        }
+        let ids: Vec<i64> = members.iter().map(|(d, _, _)| *d).collect();
+        let names = device_names_in_tx(tx, &ids)?;
+        for (device_id, effect_id, label) in members {
+            let name = names.get(&device_id).cloned().unwrap_or_default();
+            // Место устройства не трогается: группу на место возврата переносит план. Место
+            // группы передано как «место после восстановления», чтобы правило (c) не сработало.
+            match restore_membership_with_policy_in_tx(
+                tx,
+                deps,
+                device_id,
+                group.id,
+                &label,
+                &name,
+                group.place_id,
+                act_id,
+                user_id,
+                now,
+                PlaceConflictPolicy::Skip,
+            )? {
+                RestoreResult::Skipped(notice) => {
+                    tracing::warn!(act_id, group_id = ?notice.group_id, "{}", notice.message);
+                }
+                _ => {
+                    deps.groups.delete_act_group_effect_in_tx(tx, effect_id)?;
+                    out.group_place_of.insert(device_id, group.place_id);
+                    push_unique(&mut out.touched_group_ids, group.id);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Итог [`rejoin_released_by_act_in_tx`].
 #[derive(Debug, Default)]
 pub(crate) struct RejoinedByAct {

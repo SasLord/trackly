@@ -4483,19 +4483,18 @@ async fn update_return_to_whole_group_does_not_rejoin_member_released_elsewhere(
     .await;
 }
 
-/// G8, вариант Release: возврат 2 из 4 с «Вывести из группы», затем правка до всех четырёх.
-/// Однозначная часть: акт выдачи в архиве, оставшиеся в группе члены покрывают её целиком и
-/// группа едет на место возврата (D-44). Возврат в состав выведенных по выбору «Вывести из
-/// группы» — открытый вопрос (см. .planning/debug/uat-41.2-g8-update-return-full-group-restore.md):
-/// здесь закреплено действующее поведение — они остаются вне группы.
+/// G8, вариант Release (D-49): возврат 2 из 4 с «Вывести из группы», затем правка до всех
+/// четырёх. Правка, делающая возврат полным возвратом группы, отменяет и выбор Release:
+/// выведенные ЭТИМ актом удержанные позиции возвращаются в группу, вся группа на месте
+/// возврата (D-44); удаление возврата возвращает всё на место выдачи.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn update_return_after_release_split_to_whole_group_moves_rest_of_group() {
+async fn update_return_after_release_split_to_whole_group_restores_membership() {
     timed(async {
         let (ctx, _dir) = make_test_ctx().await;
         let a = seed_place(&ctx, "Склад А").await;
         let b = seed_place(&ctx, "Склад Б").await;
         let (arm, handover) = four_member_fixture(&ctx, a, b, "G8-3").await;
-        let (returned, kept) = (arm.devices[..2].to_vec(), arm.devices[2..].to_vec());
+        let returned = arm.devices[..2].to_vec();
         let ret = return_with(
             &ctx,
             handover,
@@ -4527,20 +4526,213 @@ async fn update_return_after_release_split_to_whole_group_moves_rest_of_group() 
             Some(a),
             "группа на месте возврата"
         );
-        for d in &kept {
+        assert_eq!(
+            group_members(&ctx, arm.group).await,
+            4,
+            "группа снова целая"
+        );
+        for d in &arm.devices {
+            assert_eq!(member_rows(&ctx, *d).await, 1, "устройство {d} в составе");
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+            assert_eq!(device_status(&ctx, *d).await, ON_WAREHOUSE);
+        }
+        assert_eq!(effects(&ctx, ret, "release").await, 0, "следы вывода сняты");
+        assert_eq!(effects(&ctx, ret, "move").await, 1);
+
+        undo_act(&ctx, ret).await;
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(group_members(&ctx, arm.group).await, 4);
+        for d in &arm.devices {
+            assert_eq!(member_rows(&ctx, *d).await, 1);
+            assert_eq!(device_place(&ctx, *d).await, Some(b));
+            assert_eq!(device_status(&ctx, *d).await, IN_WORK);
+        }
+        assert_act_clean(&ctx, ret).await;
+    })
+    .await;
+}
+
+/// D-49, контроль: правка Release-возврата, которая НЕ делает его полным (добавлен один из
+/// двух оставшихся), выведенные позиции не трогает; разбиение снова спрашивается.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_after_release_split_not_whole_keeps_released_members_out() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "G8-6").await;
+        let returned = arm.devices[..2].to_vec();
+        let ret = return_with(
+            &ctx,
+            handover,
+            return_payload(&returned, &[None, None], Some(a), true),
+            GroupSplitChoiceDto::Release,
+        )
+        .await
+        .expect("release");
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let ids = arm.devices[..3].to_vec();
+        let payload = update_return_payload(&act, &ids, &[None, None, None], Some(a), true);
+        let w = ctx
+            .acts
+            .update_return_group_split_preview(&admin(), &payload)
+            .await
+            .expect("preview");
+        assert_eq!(w.items.len(), 1, "оставшаяся группа разбивается: {w:?}");
+        ctx.acts
+            .update_return_with_split(
+                &admin(),
+                payload,
+                UpdateReturnSplit::Choice(GroupSplitChoiceDto::Release),
+            )
+            .await
+            .expect("update_return");
+        for d in &returned {
+            assert_eq!(member_rows(&ctx, *d).await, 0, "выведенный {d} вне группы");
             assert_eq!(
-                member_rows(&ctx, *d).await,
+                device_effects(&ctx, ret, "release", *d).await,
                 1,
-                "оставшиеся в группе в составе"
+                "след {d} цел"
             );
             assert_eq!(device_place(&ctx, *d).await, Some(a));
         }
-        for d in &returned {
-            assert_eq!(device_place(&ctx, *d).await, Some(a));
-            // Открытый вопрос: действующее поведение — выведенные по «Вывести из группы»
-            // остаются вне группы.
-            assert_eq!(member_rows(&ctx, *d).await, 0);
-        }
+        assert_eq!(
+            group_place(&ctx, arm.group).await,
+            Some(b),
+            "группа на месте"
+        );
+        assert_eq!(group_members(&ctx, arm.group).await, 1);
+        assert!(!act_archived(&ctx, handover).await);
+    })
+    .await;
+}
+
+/// D-49, контроль: Release-позиция, выведенная из группы ВРУЧНУЮ (без следа этого акта),
+/// при правке до полной группы в состав не возвращается.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_after_release_to_whole_group_skips_member_without_this_acts_trace() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "G8-7").await;
+        // Устройство 0 выводим вручную ДО возврата; возврат Release выводит устройство 1.
+        let manual = arm.devices[0];
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "DELETE FROM group_devices WHERE device_id = ?1",
+                    params![manual],
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("manual release");
+        let ret = return_with(
+            &ctx,
+            handover,
+            return_payload(&arm.devices[..2], &[None, None], Some(a), true),
+            GroupSplitChoiceDto::Release,
+        )
+        .await
+        .expect("release");
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let payload =
+            update_return_payload(&act, &arm.devices, &[None, None, None, None], Some(a), true);
+        ctx.acts
+            .update_return_with_split(&admin(), payload, UpdateReturnSplit::Ask)
+            .await
+            .expect("update_return");
+        assert_eq!(
+            member_rows(&ctx, manual).await,
+            0,
+            "выведенный вручную вне группы"
+        );
+        assert_eq!(
+            member_rows(&ctx, arm.devices[1]).await,
+            1,
+            "выведенный актом вернулся"
+        );
+        assert_eq!(group_members(&ctx, arm.group).await, 3);
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+    })
+    .await;
+}
+
+/// D-49, D-46: Release-позиции и добавленные с разными местами — отказ, ничего не записано.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_after_release_to_whole_group_with_different_places_is_rejected() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "G8-8").await;
+        let ret = return_with(
+            &ctx,
+            handover,
+            return_payload(&arm.devices[..2], &[None, None], Some(a), true),
+            GroupSplitChoiceDto::Release,
+        )
+        .await
+        .expect("release");
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let before = counters(&ctx).await;
+        let payload = update_return_payload(
+            &act,
+            &arm.devices,
+            &[Some(a), Some(a), Some(c), Some(c)],
+            None,
+            false,
+        );
+        let err = ctx
+            .acts
+            .update_return_with_split(&admin(), payload, UpdateReturnSplit::Ask)
+            .await
+            .expect_err("разные места группы");
+        assert!(
+            matches!(&err, AppError::Validation { field, .. } if field == "place_id"),
+            "{err:?}"
+        );
+        assert_eq!(counters(&ctx).await, before);
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        assert_eq!(effects(&ctx, ret, "release").await, 2);
+    })
+    .await;
+}
+
+/// G8, якорная группа (слепая зона): деталь, убранная прошлой правкой при группе, перенесённой
+/// этим возвратом, и добавленная обратно, возвращается в группу на её место.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_re_adding_removed_part_of_moved_anchor_group_restores_membership() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let f = seed_anchor_group(&ctx, a).await;
+        let part = f.parts[2];
+        let handover = create_ok(&ctx, dto("G8-9", &[f.anchor, part], Some(b), false)).await;
+        let ret = return_ok(&ctx, handover, &[f.anchor, part], Some(a)).await;
+        update_return_ok(&ctx, ret, &[f.anchor], Some(a)).await;
+        assert_eq!(member_rows(&ctx, part).await, 0, "деталь выведена правкой");
+        assert_eq!(device_effects(&ctx, ret, "release", part).await, 1);
+
+        update_return_ok(&ctx, ret, &[f.anchor, part], Some(a)).await;
+        assert_eq!(member_rows(&ctx, part).await, 1, "деталь снова в группе");
+        assert_eq!(group_members(&ctx, f.group).await, 5);
+        assert_eq!(group_place(&ctx, f.group).await, Some(a));
+        assert_eq!(device_place(&ctx, part).await, Some(a));
+        assert_eq!(
+            device_effects(&ctx, ret, "release", part).await,
+            0,
+            "след снят"
+        );
+
+        undo_act(&ctx, ret).await;
+        assert_eq!(group_place(&ctx, f.group).await, Some(b));
+        assert_eq!(group_members(&ctx, f.group).await, 5);
+        assert_eq!(device_place(&ctx, part).await, Some(b));
+        assert_act_clean(&ctx, ret).await;
     })
     .await;
 }

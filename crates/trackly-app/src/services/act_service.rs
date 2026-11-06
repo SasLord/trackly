@@ -57,8 +57,9 @@ use crate::services::act_kit::kit_for_item_in_tx;
 use crate::services::group_act_plan::{
     self, apply_plan_in_tx, apply_return_plan_in_tx, forget_moved_details_in_tx,
     plan_for_return_in_tx, plan_in_tx, prior_release_effect_id_in_tx, rejoin_released_by_act_in_tx,
-    release_effect_for_removed_in_tx, restore_released_members_in_tx, revert_detach_effect_in_tx,
-    revert_group_moves_in_tx, revert_move_effect_in_tx, units_of_group_in_tx, GroupSplitChoice,
+    rejoin_released_retained_for_whole_group_in_tx, release_effect_for_removed_in_tx,
+    restore_released_members_in_tx, revert_detach_effect_in_tx, revert_group_moves_in_tx,
+    revert_move_effect_in_tx, units_of_group_in_tx, GroupSplitChoice,
 };
 use crate::services::group_membership::{
     anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, RestoreOutcome,
@@ -3128,6 +3129,24 @@ impl ActService {
                     };
                     retained_return_places.insert(dev_id, place);
                 }
+                // D-49: правка, делающая возврат полным возвратом группы, отменяет и выбор
+                // «Вывести из группы»: удержанные позиции со следом release этого акта
+                // возвращаются в группу и идут в план вместе с добавленными.
+                let rejoined_retained = rejoin_released_retained_for_whole_group_in_tx(
+                    &tx,
+                    &group_deps,
+                    payload.id,
+                    &retained,
+                    &d_new,
+                    &effects_before,
+                    user_id_opt,
+                    now,
+                )?;
+                for group in &rejoined_retained.touched_group_ids {
+                    if !touched_group_ids.contains(group) {
+                        touched_group_ids.push(*group);
+                    }
+                }
                 let rejoined = rejoin_released_by_act_in_tx(
                     &tx,
                     &group_deps,
@@ -3144,11 +3163,21 @@ impl ActService {
                         touched_group_ids.push(*group);
                     }
                 }
-                let planned_added: Vec<i64> = added
+                let mut planned_added: Vec<i64> = added
                     .iter()
                     .copied()
                     .filter(|d| !rejoined.group_place_of.contains_key(d))
                     .collect();
+                let mut added_items: Vec<i64> = added.clone();
+                let mut added_places = added_places;
+                let mut rejoined_retained_ids: Vec<i64> =
+                    rejoined_retained.group_place_of.keys().copied().collect();
+                rejoined_retained_ids.sort_unstable();
+                for id in rejoined_retained_ids {
+                    planned_added.push(id);
+                    added_items.push(id);
+                    added_places.insert(id, retained_return_places.get(&id).copied().flatten());
+                }
                 let added_plan = plan_for_return_in_tx(&tx, &planned_added, &added_places)?;
                 // CR-01 (D-45): без выбора разбиение не выполняется; предпросмотр отвечает
                 // здесь же, по состоянию после шага 9.
@@ -3167,7 +3196,7 @@ impl ActService {
                     &added_plan,
                     &added_places,
                     added_split,
-                    &added,
+                    &added_items,
                     user_id_opt,
                     now,
                 )?;
