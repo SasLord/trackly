@@ -15,7 +15,7 @@ use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDeleteResultDto, ActDto, ActFilter, ActListResponse, ActReturnDto,
     ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupRestoreChoiceDto,
-    Pagination,
+    GroupSplitChoiceDto, Pagination, ReturnGroupSplitWarningDto,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::tauri_cmds::users::resolve_tauri_identity;
@@ -68,9 +68,39 @@ pub async fn build_acts_return(
     caller: &Identity,
     act_id: i64,
     payload: ActReturnDto,
+    group_split: Option<GroupSplitChoiceDto>,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.do_return(caller, act_id, payload).await
+    ctx.acts
+        .do_return_with_split(
+            caller,
+            act_id,
+            payload,
+            group_split.unwrap_or(GroupSplitChoiceDto::Release),
+        )
+        .await
+}
+
+/// Предварительный вопрос о разбиении групп при возврате (UD-2, D-45):
+/// требует `MutateActs`; ничего не пишет.
+pub async fn build_acts_return_group_split_preview(
+    ctx: &AppCtx,
+    caller: &Identity,
+    act_id: i64,
+    payload: ActReturnDto,
+) -> Result<ReturnGroupSplitWarningDto, AppError> {
+    authorize(caller, &Action::MutateActs)?;
+    ctx.acts.return_group_split_preview(act_id, &payload).await
+}
+
+/// То же для правки акта возврата (UD-2, D-45).
+pub async fn build_acts_update_return_group_split_preview(
+    ctx: &AppCtx,
+    caller: &Identity,
+    payload: ActUpdateReturnDto,
+) -> Result<ReturnGroupSplitWarningDto, AppError> {
+    authorize(caller, &Action::MutateActs)?;
+    ctx.acts.update_return_group_split_preview(&payload).await
 }
 
 /// Мутация: требует `caller` с правом `MutateActs`.
@@ -111,9 +141,16 @@ pub async fn build_acts_update_return(
     ctx: &AppCtx,
     caller: &Identity,
     payload: ActUpdateReturnDto,
+    group_split: Option<GroupSplitChoiceDto>,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.update_return(caller, payload).await
+    ctx.acts
+        .update_return_with_split(
+            caller,
+            payload,
+            group_split.unwrap_or(GroupSplitChoiceDto::Release),
+        )
+        .await
 }
 
 pub async fn build_acts_counts(ctx: &AppCtx, caller: &Identity) -> Result<ActsCountsDto, AppError> {
@@ -213,9 +250,31 @@ pub async fn acts_return(
     state: tauri::State<'_, AppCtx>,
     act_id: i32,
     payload: ActReturnDto,
+    group_split: Option<GroupSplitChoiceDto>,
 ) -> Result<ActDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_acts_return(state.inner(), &caller, act_id as i64, payload).await
+    build_acts_return(state.inner(), &caller, act_id as i64, payload, group_split).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_return_group_split_preview(
+    state: tauri::State<'_, AppCtx>,
+    act_id: i32,
+    payload: ActReturnDto,
+) -> Result<ReturnGroupSplitWarningDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_return_group_split_preview(state.inner(), &caller, act_id as i64, payload).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_update_return_group_split_preview(
+    state: tauri::State<'_, AppCtx>,
+    payload: ActUpdateReturnDto,
+) -> Result<ReturnGroupSplitWarningDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_update_return_group_split_preview(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]
@@ -252,9 +311,10 @@ pub async fn acts_update(
 pub async fn acts_update_return(
     state: tauri::State<'_, AppCtx>,
     payload: ActUpdateReturnDto,
+    group_split: Option<GroupSplitChoiceDto>,
 ) -> Result<ActDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_acts_update_return(state.inner(), &caller, payload).await
+    build_acts_update_return(state.inner(), &caller, payload, group_split).await
 }
 
 #[tauri::command]

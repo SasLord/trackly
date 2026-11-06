@@ -15,15 +15,16 @@ use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDeleteResultDto, ActDto, ActFilter, ActListResponse, ActReturnDto,
     ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupRestoreChoiceDto,
-    Pagination,
+    GroupSplitChoiceDto, Pagination, ReturnGroupSplitWarningDto,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
-    build_acts_render_pdf, build_acts_return, build_acts_search, build_acts_suggest_person,
-    build_acts_update, build_acts_update_return, build_devices_render_acceptance_pdf,
+    build_acts_render_pdf, build_acts_return, build_acts_return_group_split_preview,
+    build_acts_search, build_acts_suggest_person, build_acts_update, build_acts_update_return,
+    build_acts_update_return_group_split_preview, build_devices_render_acceptance_pdf,
 };
 
 #[derive(serde::Deserialize)]
@@ -73,11 +74,30 @@ pub struct UpdatePayload {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateReturnPayload {
     pub payload: ActUpdateReturnDto,
+    /// Выбор разбиения (D-45); нет поля = Release.
+    #[serde(default)]
+    pub group_split: Option<GroupSplitChoiceDto>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReturnPreviewPayload {
+    pub payload: ActUpdateReturnDto,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReturnPayload {
+    pub act_id: i64,
+    pub payload: ActReturnDto,
+    /// Выбор разбиения (D-45); нет поля = Release.
+    #[serde(default)]
+    pub group_split: Option<GroupSplitChoiceDto>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReturnPreviewPayload {
     pub act_id: i64,
     pub payload: ActReturnDto,
 }
@@ -175,7 +195,37 @@ pub async fn handler_return(
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_return(&ctx, &identity, p.act_id, p.payload)
+        build_acts_return(&ctx, &identity, p.act_id, p.payload, p.group_split)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_return_group_split_preview(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ReturnPreviewPayload>,
+) -> Result<Json<ReturnGroupSplitWarningDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_acts_return_group_split_preview(&ctx, &identity, p.act_id, p.payload)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_update_return_group_split_preview(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<UpdateReturnPreviewPayload>,
+) -> Result<Json<ReturnGroupSplitWarningDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_acts_update_return_group_split_preview(&ctx, &identity, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -220,7 +270,7 @@ pub async fn handler_update_return(
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_update_return(&ctx, &identity, p.payload)
+        build_acts_update_return(&ctx, &identity, p.payload, p.group_split)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -309,6 +359,14 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/acts_get", post(handler_get))
         .route("/api/v1/acts_create", post(handler_create))
         .route("/api/v1/acts_return", post(handler_return))
+        .route(
+            "/api/v1/acts_return_group_split_preview",
+            post(handler_return_group_split_preview),
+        )
+        .route(
+            "/api/v1/acts_update_return_group_split_preview",
+            post(handler_update_return_group_split_preview),
+        )
         .route("/api/v1/acts_delete", post(handler_delete))
         .route("/api/v1/acts_update", post(handler_update))
         .route("/api/v1/acts_update_return", post(handler_update_return))
