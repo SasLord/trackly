@@ -3800,3 +3800,186 @@ async fn update_return_container_move_chain_is_undone_in_lifo_order() {
     })
     .await;
 }
+
+// ---------------------------------------------------------------------------
+// D-48 (UD-4) для правки акта (план 41.2-30)
+// ---------------------------------------------------------------------------
+
+/// Строк журнала мест акта по группе и её устройствам (без «одиночных» позиций).
+async fn group_rows_of_act(ctx: &AppCtx, act: i64, group: i64, devices: &[i64]) -> i64 {
+    let mut n = scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 \
+         AND entity_type = 'group' AND entity_id = ?2",
+        vec![int(act), int(group)],
+    )
+    .await;
+    for d in devices {
+        n += movement_rows_of_act(ctx, act, *d).await;
+    }
+    n
+}
+
+// Передача: ручной перенос после акта, правка убирает все позиции группы.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_removing_all_positions_of_a_moved_group_after_manual_move_keeps_members() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let arm = seed_arm(&ctx, a).await;
+        let mut all = vec![solo];
+        all.extend(&arm.devices);
+        let act = create_ok(&ctx, dto("UD4-U1", &all, Some(b), false)).await;
+        let version = group_version(&ctx, arm.group).await;
+        ctx.groups
+            .move_group(&admin(), arm.group, version, c)
+            .await
+            .expect("manual move after the act");
+        assert!(group_rows_of_act(&ctx, act, arm.group, &arm.devices).await > 0);
+
+        update_ok(&ctx, act, &[solo], false).await;
+
+        assert_arm_in_group_at(&ctx, &arm, c).await;
+        assert_eq!(
+            group_rows_of_act(&ctx, act, arm.group, &arm.devices).await,
+            0,
+            "строки акта по группе удалены"
+        );
+        assert_eq!(effects(&ctx, act, "move").await, 0);
+        assert_eq!(
+            mv_count(&ctx, "group", arm.group, a, c, "group").await,
+            1,
+            "«откуда» ручного переноса - место до акта"
+        );
+    })
+    .await;
+}
+
+// Возврат: после ручного переноса контейнера правка возврата отклоняется охраной «устройство
+// изменилось после возврата» (шаг 8 update_return), поэтому ветка «забыть перенос» в этом пути
+// недостижима; проверяем, что отказ не трогает ни группу, ни членов, ни журнал.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_after_manual_move_of_a_moved_container_is_rejected_and_keeps_members() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let arm = seed_arm(&ctx, a).await;
+        let mut all = vec![solo];
+        all.extend(&arm.devices);
+        let handover = create_ok(&ctx, dto("UD4-UR", &all, Some(b), false)).await;
+        let ret = return_ok(&ctx, handover, &all, Some(a)).await;
+        let version = group_version(&ctx, arm.group).await;
+        ctx.groups
+            .move_group(&admin(), arm.group, version, c)
+            .await
+            .expect("manual move after the return");
+        let rows_before = group_rows_of_act(&ctx, ret, arm.group, &arm.devices).await;
+        assert!(rows_before > 0);
+
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let result = ctx
+            .acts
+            .update_return(
+                &admin(),
+                ActUpdateReturnDto {
+                    id: act.id,
+                    expected_version: act.version,
+                    giver_name: act.giver_name.clone(),
+                    receiver_name: act.receiver_name.clone(),
+                    place_id: act.place_id,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: act.handover_date_utc,
+                    bulk_condition: None,
+                    bulk_place_id: Some(a),
+                    apply_to_all: true,
+                    items: vec![return_item(solo)],
+                },
+            )
+            .await;
+
+        assert!(
+            matches!(result, Err(AppError::Conflict { .. })),
+            "{result:?}"
+        );
+        assert_arm_in_group_at(&ctx, &arm, c).await;
+        assert_eq!(
+            group_rows_of_act(&ctx, ret, arm.group, &arm.devices).await,
+            rows_before
+        );
+    })
+    .await;
+}
+
+// Контроль: группу после акта не двигали - правка возвращает её на прежнее место.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_removing_all_positions_of_a_group_not_moved_after_returns_it_to_the_old_place() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let arm = seed_arm(&ctx, a).await;
+        let mut all = vec![solo];
+        all.extend(&arm.devices);
+        let act = create_ok(&ctx, dto("UD4-UC", &all, Some(b), false)).await;
+
+        update_ok(&ctx, act, &[solo], false).await;
+
+        assert_arm_in_group_at(&ctx, &arm, a).await;
+        assert_eq!(effects(&ctx, act, "move").await, 0);
+    })
+    .await;
+}
+
+// Контроль: убрана часть покрытия - группа остаётся переехавшей, эффект на месте.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_removing_part_of_the_coverage_keeps_the_group_moved() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let arm = seed_arm(&ctx, a).await;
+        let act = create_ok(&ctx, dto("UD4-UP", &arm.devices, Some(b), false)).await;
+
+        update_ok(&ctx, act, &arm.devices[..2], false).await;
+
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        assert_eq!(effects(&ctx, act, "move").await, 1);
+    })
+    .await;
+}
+
+// Цепочка: правка А1 убирает все позиции группы при живом А2.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_removing_earlier_act_positions_while_later_act_alive_keeps_group_and_rebases() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let arm = seed_arm(&ctx, a).await;
+        let mut all = vec![solo];
+        all.extend(&arm.devices);
+        let a1 = create_ok(&ctx, dto("UD4-C1", &all, Some(b), false)).await;
+        let a2 = create_ok(&ctx, dto("UD4-C2", &arm.devices, Some(c), false)).await;
+        assert_eq!(move_effect_from(&ctx, a2).await, Some(b));
+
+        update_ok(&ctx, a1, &[solo], false).await;
+
+        assert_arm_in_group_at(&ctx, &arm, c).await;
+        assert_eq!(move_effect_from(&ctx, a2).await, Some(a));
+        assert_eq!(
+            group_rows_of_act(&ctx, a1, arm.group, &arm.devices).await,
+            0
+        );
+    })
+    .await;
+}

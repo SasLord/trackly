@@ -1338,6 +1338,7 @@ impl ActService {
                     .groups
                     .list_act_group_effects_in_tx(&tx, payload.id)?;
                 let removed_set: std::collections::HashSet<i64> = removed.iter().copied().collect();
+                let mut kept_groups: Vec<i64> = Vec::new();
                 for effect in effects_before
                     .iter()
                     .filter(|e| e.kind == ActGroupEffectKind::Move)
@@ -1349,6 +1350,12 @@ impl ActService {
                     }
                     let mut reverted =
                         revert_move_effect_in_tx(&tx, &group_deps, effect, user_id_opt, now)?;
+                    // D-48: группы, чей перенос забыт, - члены убранных позиций остаются в них.
+                    for group in &reverted.kept_in_place_group_ids {
+                        if !kept_groups.contains(group) {
+                            kept_groups.push(*group);
+                        }
+                    }
                     // Следы деталей снятой группы отвязываются от акта: позднее удаление
                     // акта не должно восстановить из них устаревший снимок.
                     forget_moved_details_in_tx(
@@ -1411,8 +1418,8 @@ impl ActService {
                                 payload.id
                             ),
                         })?;
-                    let snapshot: serde_json::Value =
-                        serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
+                    let mut snapshot: serde_json::Value = serde_json::from_str(&before_json)
+                        .map_err(|e| AppError::Internal {
                             source_chain: format!(
                                 "update: corrupt before_json for device {removed_id}: {e}"
                             ),
@@ -1455,6 +1462,14 @@ impl ActService {
                             place_before_restore.clone()
                         }
                         None => {
+                            // D-48: член группы, чей перенос забыт, остаётся на её месте.
+                            crate::services::group_act_plan::snapshot_keeping_group_place_in_tx(
+                                &tx,
+                                &SqliteGroupRepository,
+                                removed_id,
+                                &mut snapshot,
+                                &kept_groups,
+                            )?;
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                             // Phase 41 D-22: акт выводит устройство из состава группы.
@@ -2908,6 +2923,7 @@ impl ActService {
                 let effects_before = group_deps
                     .groups
                     .list_act_group_effects_in_tx(&tx, payload.id)?;
+                let mut kept_groups: Vec<i64> = Vec::new();
                 for effect in effects_before
                     .iter()
                     .rev()
@@ -2920,6 +2936,12 @@ impl ActService {
                     }
                     let mut reverted =
                         revert_move_effect_in_tx(&tx, &group_deps, effect, user_id_opt, now)?;
+                    // D-48: группы, чей перенос забыт, - члены убранных позиций остаются в них.
+                    for group in &reverted.kept_in_place_group_ids {
+                        if !kept_groups.contains(group) {
+                            kept_groups.push(*group);
+                        }
+                    }
                     // Следы деталей снятой группы отвязываются от акта: позднее удаление
                     // акта не должно восстановить из них устаревший снимок.
                     forget_moved_details_in_tx(
@@ -2982,8 +3004,8 @@ impl ActService {
                                 payload.id
                             ),
                         })?;
-                    let snapshot: serde_json::Value =
-                        serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
+                    let mut snapshot: serde_json::Value = serde_json::from_str(&before_json)
+                        .map_err(|e| AppError::Internal {
                             source_chain: format!(
                                 "update_return: corrupt before_json for device {removed_id}: {e}"
                             ),
@@ -3023,6 +3045,14 @@ impl ActService {
                             place_before_restore.clone()
                         }
                         None => {
+                            // D-48: член группы, чей перенос забыт, остаётся на её месте.
+                            crate::services::group_act_plan::snapshot_keeping_group_place_in_tx(
+                                &tx,
+                                &SqliteGroupRepository,
+                                removed_id,
+                                &mut snapshot,
+                                &kept_groups,
+                            )?;
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                             // Phase 41 D-22: акт выводит устройство из состава группы.
