@@ -3365,6 +3365,11 @@ impl ActService {
                     let is_anchor = SqliteGroupRepository
                         .anchor_group_of_device_in_tx(&tx, dev_id)?
                         .is_some();
+                    // IN-01 (41.2): удержанная позиция уже возвращена этим актом, первичный
+                    // вывод (или его отсутствие по D-44/D-45) решён при возврате. Правка
+                    // выводит из группы, только если реально меняет место устройства вне
+                    // переноса группы; правка одного состояния состав не трогает.
+                    let location_moved = location.is_some() && location != before.place_id;
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         dev_id,
@@ -3375,7 +3380,7 @@ impl ActService {
                     )?;
                     // Phase 41 D-22: акт выводит устройство из состава группы. Якорь не
                     // выводится никогда.
-                    if !group_placed && !is_anchor {
+                    if location_moved && !group_placed && !is_anchor {
                         crate::services::group_membership::release_device_in_tx(
                             &tx,
                             &SqliteGroupRepository,

@@ -4122,3 +4122,211 @@ async fn update_removing_earlier_act_positions_while_later_act_alive_keeps_group
     })
     .await;
 }
+
+// ---------------------------------------------------------------------------
+// IN-01: правка возврата, меняющая только состояние, не выводит члена из группы
+// ---------------------------------------------------------------------------
+
+/// Позиции возврата с прежним местом `place` у каждой (место не меняется) и без массовых
+/// значений; у `edited` другое состояние.
+fn condition_only_payload(
+    act: &trackly_app::dto::act::ActDto,
+    ids: &[i64],
+    place: i64,
+    edited: i64,
+) -> ActUpdateReturnDto {
+    let places = vec![Some(place); ids.len()];
+    let mut payload = update_return_payload(act, ids, &places, None, false);
+    for item in &mut payload.items {
+        if item.device_id == edited {
+            item.condition_override = Some("Требует ремонта".into());
+        }
+    }
+    payload
+}
+
+async fn condition_at_time(ctx: &AppCtx, act: i64, device: i64) -> Option<String> {
+    opt_string(
+        ctx,
+        "SELECT condition_at_time FROM act_items WHERE act_id = ?1 AND device_id = ?2",
+        vec![int(act), int(device)],
+    )
+    .await
+}
+
+// Контейнер возвращён целиком (D-44): члены остаются в группе. Правка возврата, меняющая
+// только состояние одного члена, не трогает состав.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_condition_only_edit_keeps_whole_container_membership() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, _handover, ret) = whole_return_fixture(&ctx, a, b, "IN-1").await;
+        assert_eq!(group_members(&ctx, arm.group).await, 3);
+        let edited = arm.devices[1];
+        let act = ctx.acts.get(ret).await.expect("get return");
+        ctx.acts
+            .update_return(
+                &admin(),
+                condition_only_payload(&act, &arm.devices, a, edited),
+            )
+            .await
+            .expect("update_return");
+        assert_eq!(
+            condition_at_time(&ctx, ret, edited).await.as_deref(),
+            Some("Требует ремонта"),
+            "состояние записано"
+        );
+        assert_eq!(member_rows(&ctx, edited).await, 1, "член остался в группе");
+        assert_eq!(group_members(&ctx, arm.group).await, 3, "состав цел");
+        assert_eq!(
+            audit_rows(&ctx, edited, "custom:group_member_released").await,
+            0
+        );
+        assert_eq!(effects(&ctx, ret, "release").await, 0);
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        for d in &arm.devices {
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+        }
+    })
+    .await;
+}
+
+// Частичный возврат с выбором «Изменить расположение группы» (D-45): возвращённые члены в
+// группе. Правка только состояния одного из них состав не трогает.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_condition_only_edit_keeps_move_group_membership() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, handover) = four_member_fixture(&ctx, a, b, "IN-2").await;
+        let returned = arm.devices[..2].to_vec();
+        let ret = return_with(
+            &ctx,
+            handover,
+            return_payload(&returned, &[None, None], Some(a), true),
+            GroupSplitChoiceDto::MoveGroup,
+        )
+        .await
+        .expect("move group");
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        let releases = effects(&ctx, ret, "release").await;
+        let edited = returned[0];
+        let act = ctx.acts.get(ret).await.expect("get return");
+        ctx.acts
+            .update_return(&admin(), condition_only_payload(&act, &returned, a, edited))
+            .await
+            .expect("update_return");
+        assert_eq!(
+            condition_at_time(&ctx, ret, edited).await.as_deref(),
+            Some("Требует ремонта")
+        );
+        assert_eq!(member_rows(&ctx, edited).await, 1, "член остался в группе");
+        assert_eq!(group_members(&ctx, arm.group).await, 2);
+        assert_eq!(
+            audit_rows(&ctx, edited, "custom:group_member_released").await,
+            0
+        );
+        assert_eq!(effects(&ctx, ret, "release").await, releases);
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        assert_eq!(device_place(&ctx, edited).await, Some(a));
+    })
+    .await;
+}
+
+/// Частичный возврат с выбором «Вывести из группы»; первое возвращённое устройство после
+/// возврата вручную вошло в другую группу на месте возврата `a`. Возвращает
+/// (акт возврата, возвращённые устройства, новая группа).
+async fn rejoined_member_fixture(
+    ctx: &AppCtx,
+    a: i64,
+    b: i64,
+    number: &str,
+) -> (i64, Vec<i64>, i64) {
+    let (arm, handover) = four_member_fixture(ctx, a, b, number).await;
+    let returned = arm.devices[..2].to_vec();
+    let ret = return_with(
+        ctx,
+        handover,
+        return_payload(&returned, &[None, None], Some(a), true),
+        GroupSplitChoiceDto::Release,
+    )
+    .await
+    .expect("release");
+    let edited = returned[0];
+    assert_eq!(member_rows(ctx, edited).await, 0);
+    let rack = seed_group(ctx, "Стойка #1", Some(a), None).await;
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+                 VALUES (?1, ?2, 1700000000)",
+                params![edited, rack],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("join rack");
+    (ret, returned, rack)
+}
+
+// Контроль: смена места у члена группы, которую этот акт не переносил, по-прежнему выводит
+// его из группы (D-22).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_place_change_of_uncovered_member_still_releases_it() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let c = seed_place(&ctx, "Склад В").await;
+        let (ret, returned, rack) = rejoined_member_fixture(&ctx, a, b, "IN-3").await;
+        let edited = returned[0];
+        let released_before = audit_rows(&ctx, edited, "custom:group_member_released").await;
+        let act = ctx.acts.get(ret).await.expect("get return");
+        let payload = update_return_payload(&act, &returned, &[Some(c), Some(a)], None, false);
+        ctx.acts
+            .update_return(&admin(), payload)
+            .await
+            .expect("update_return place");
+        assert_eq!(device_place(&ctx, edited).await, Some(c));
+        assert_eq!(member_rows(&ctx, edited).await, 0, "смена места выводит");
+        assert_eq!(group_members(&ctx, rack).await, 0);
+        assert_eq!(
+            audit_rows(&ctx, edited, "custom:group_member_released").await,
+            released_before + 1
+        );
+    })
+    .await;
+}
+
+// Тот же член чужой группы: правка только состояния его из группы не выводит.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_return_condition_only_edit_keeps_uncovered_member() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (ret, returned, rack) = rejoined_member_fixture(&ctx, a, b, "IN-4").await;
+        let edited = returned[0];
+        let released_before = audit_rows(&ctx, edited, "custom:group_member_released").await;
+        let act = ctx.acts.get(ret).await.expect("get return");
+        ctx.acts
+            .update_return(&admin(), condition_only_payload(&act, &returned, a, edited))
+            .await
+            .expect("update_return condition");
+        assert_eq!(
+            condition_at_time(&ctx, ret, edited).await.as_deref(),
+            Some("Требует ремонта")
+        );
+        assert_eq!(member_rows(&ctx, edited).await, 1, "состояние не выводит");
+        assert_eq!(group_members(&ctx, rack).await, 1);
+        assert_eq!(
+            audit_rows(&ctx, edited, "custom:group_member_released").await,
+            released_before
+        );
+    })
+    .await;
+}
