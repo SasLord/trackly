@@ -284,7 +284,13 @@ pub const REGISTRY: &[Entry] = &[
         "insert_new_and_get",
         "приватный владелец записи; рассылают публичные вызывающие, свой вызов дал бы по событию на каждую строку пакета",
     ),
-    b(DEVICE, "create"),
+    // Тонкая обёртка над `create_with_printer_block` (quick 261105-s6s): сама не пишет и не рассылает.
+    ex(
+        DEVICE,
+        "create",
+        "делегирует в create_with_printer_block с блоком None; запись и рассылка живут там",
+    ),
+    b(DEVICE, "create_with_printer_block"),
     b(DEVICE, "create_single_with_number_check_with_printer"),
     ex(
         DEVICE,

@@ -744,7 +744,12 @@ impl DeviceService {
             // Unconditional: sent regardless of the inventory number (trap P4).
             let place_ids: Vec<i64> = dto.place_id.into_iter().collect();
             let device_ids = vec![dto.id];
-            self.broadcast_entities("create", place_ids, device_ids, Vec::new());
+            self.broadcast_entities(
+                "create_with_printer_block",
+                place_ids,
+                device_ids,
+                Vec::new(),
+            );
             if dto.inventory_no.is_some() {
                 self.broadcast_number_space_changed();
             }

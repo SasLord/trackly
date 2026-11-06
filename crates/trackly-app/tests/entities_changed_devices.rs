@@ -98,7 +98,7 @@ fn csv_mapping() -> HashMap<String, String> {
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn scenario_create() {
+async fn scenario_create_with_printer_block() {
     tokio::time::timeout(BUDGET, async {
         let (ctx, _dir) = make_test_ctx().await;
         let a = seed_place(&ctx, "Кабинет A").await;
@@ -115,7 +115,7 @@ async fn scenario_create() {
             "create",
         );
 
-        let (places, devices, groups) = assert_one_entities(&mut rx, "create");
+        let (places, devices, groups) = assert_one_entities(&mut rx, "create_with_printer_block");
         assert_eq!(
             sorted(places.clone()),
             vec![a],

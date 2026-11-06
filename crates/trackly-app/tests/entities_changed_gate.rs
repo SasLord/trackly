@@ -1368,25 +1368,36 @@ fn mutation_broadcast_moved_before_write_on_real_sources_is_red() {
         kinds(&after)
     );
 
-    // (C) device_service::create -> create_without_broadcast -> insert_new_and_get.
+    // (C) device_service::create_with_printer_block -> create_without_broadcast -> insert_new_and_get.
     let f = "device_service.rs";
     let src = read_service(f);
-    let anchor = "let outcome = self.create_without_broadcast(new).await?;";
+    let anchor = "let outcome = self.create_without_broadcast(new, printer).await?;";
     let mutated = replace_unique(
         &src,
         anchor,
-        &format!("{}\n        {anchor}", probe_call("create")),
+        &format!(
+            "{}\n        {anchor}",
+            probe_call("create_with_printer_block")
+        ),
     );
     assert_ne!(mutated, src, "мутация (C) не применилась");
     let base = scan(f, &src, REGISTRY);
     assert!(
-        !has(&base, "create", Kind::BroadcastBeforeWriter),
+        !has(
+            &base,
+            "create_with_printer_block",
+            Kind::BroadcastBeforeWriter
+        ),
         "(C) красная до мутации: {:?}",
         kinds(&base)
     );
     let after = scan(f, &mutated, REGISTRY);
     assert!(
-        has(&after, "create", Kind::BroadcastBeforeWriter),
+        has(
+            &after,
+            "create_with_printer_block",
+            Kind::BroadcastBeforeWriter
+        ),
         "(C) рассылка до транзитивно делегированной записи не покраснела: {:?}",
         kinds(&after)
     );
