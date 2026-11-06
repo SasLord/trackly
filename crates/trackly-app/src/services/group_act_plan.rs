@@ -1041,6 +1041,10 @@ pub(crate) struct GroupRevertOutcome {
     pub conflicts: Vec<GroupRestoreConflict>,
     pub touched_place_ids: Vec<i64>,
     pub touched_group_ids: Vec<i64>,
+    /// D-48: корни групп, чьё место после отката авторитетно для членов (перенос «забыт» и
+    /// группа остаётся там, где стоит, либо группа возвращена на прежнее место): снимки
+    /// их членов восстанавливаются с местом группы вместо записанного в снимке.
+    pub kept_in_place_group_ids: Vec<i64>,
 }
 
 fn push_unique(out: &mut Vec<i64>, id: i64) {
@@ -1279,6 +1283,39 @@ fn absorb(out: &mut GroupRevertOutcome, other: GroupRevertOutcome) {
     for group in other.touched_group_ids {
         push_unique(&mut out.touched_group_ids, group);
     }
+    for group in other.kept_in_place_group_ids {
+        push_unique(&mut out.kept_in_place_group_ids, group);
+    }
+}
+
+/// D-48: если устройство входит в группу, чей перенос актом забыт, подменить в снимке
+/// `place_id` текущим местом корня группы, чтобы восстановление не вывело устройство из
+/// группы. Место берётся из живой группы. Возвращает `true`, если подмена выполнена.
+pub(crate) fn snapshot_keeping_group_place_in_tx(
+    tx: &Transaction<'_>,
+    groups: &SqliteGroupRepository,
+    device_id: i64,
+    snapshot: &mut serde_json::Value,
+    kept_group_ids: &[i64],
+) -> Result<bool, AppError> {
+    if kept_group_ids.is_empty() {
+        return Ok(false);
+    }
+    let Some(group) = groups.group_of_device_in_tx(tx, device_id)? else {
+        return Ok(false);
+    };
+    let root_id = groups.root_group_id_in_tx(tx, group.id)?;
+    if !kept_group_ids.contains(&root_id) {
+        return Ok(false);
+    }
+    let Some(place) = groups.get_group_in_tx(tx, root_id)?.place_id else {
+        return Ok(false);
+    };
+    if let Some(obj) = snapshot.as_object_mut() {
+        obj.insert("place_id".into(), serde_json::json!(place));
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 /// Обратить ОДИН эффект `move` (Phase 41.2): группа жива, её место равно `to_place_id`
@@ -1301,8 +1338,28 @@ pub(crate) fn revert_move_effect_in_tx(
             Err(AppError::NotFound { .. }) => return Ok(None),
             Err(e) => return Err(e),
         };
-        if group.parent_group_id.is_some() || group.place_id != effect.to_place_id {
+        if group.parent_group_id.is_some() {
             return Ok(None);
+        }
+        if group.place_id != effect.to_place_id {
+            // D-48 (UD-4): корневая группа стоит на другом месте - перенос актом «забывается»:
+            // группа и члены остаются, журнал и следующий эффект переписываются.
+            if group.place_id.is_none() {
+                return Ok(None);
+            }
+            deps.movements
+                .forget_group_move_rows_in_tx(tx, act_id, effect.group_id)?;
+            deps.groups.rebase_later_move_effects_in_tx(
+                tx,
+                effect.group_id,
+                effect.id,
+                effect.to_place_id,
+                effect.from_place_id,
+            )?;
+            let mut places: Vec<i64> = Vec::new();
+            places.extend(effect.from_place_id);
+            places.extend(effect.to_place_id);
+            return Ok(Some(places));
         }
         let mut changed: Vec<i64> = Vec::new();
         match effect.from_place_id {
@@ -1338,6 +1395,10 @@ pub(crate) fn revert_move_effect_in_tx(
                 push_unique(&mut out.touched_place_ids, place);
             }
             push_unique(&mut out.touched_group_ids, effect.group_id);
+            // Место группы после отката авторитетно для её членов: при «забытом» переносе
+            // это текущее место, при обычном возврате - прежнее (снимок члена может
+            // устареть, если предыдущий перенос цепочки был забыт, D-48).
+            push_unique(&mut out.kept_in_place_group_ids, effect.group_id);
         }
         Ok(None) | Err(_) => out.notices.push(GroupNotice {
             message: format!(
@@ -2665,9 +2726,10 @@ mod apply_tests {
         assert_eq!(group_parent(&tx, 8), Some(7), "вложенность восстановлена");
     }
 
-    /// (d) Группу переместили после акта: уведомление, группа не двигается.
+    /// (d) D-48: группу переместили после акта - перенос забыт: уведомления нет, группа
+    /// остаётся, строки акта удалены, ручная строка получила «откуда» акта.
     #[test]
-    fn revert_skips_a_group_that_was_moved_after_the_act() {
+    fn revert_forgets_a_group_that_was_moved_after_the_act() {
         let (mut conn, _g) = fresh_db();
         seed(&conn);
         let tx = conn
@@ -2675,22 +2737,137 @@ mod apply_tests {
             .unwrap();
         let p = plan_for(&tx, &[1, 2, 3]);
         apply_plan_in_tx(&tx, &deps(), ACT, &p, Some(2), &[1, 2, 3], None, NOW).expect("apply");
-        // «После акта» группу перенесли на место 3.
+        // «После акта» группу перенесли на место 3, ручная строка журнала 2 -> 3.
         tx.execute("UPDATE groups SET place_id = 3 WHERE id = 1", [])
             .unwrap();
+        tx.execute(
+            "INSERT INTO place_movements (entity_type, entity_id, from_place_id, from_place_path, \
+             to_place_id, to_place_path, source, act_id, group_id, created_at_utc) \
+             VALUES ('group', 1, 2, 'П2', 3, 'П3', 'group', NULL, 1, ?1)",
+            [NOW + 5],
+        )
+        .unwrap();
+        let acts_rows_before = scalar(&tx, "SELECT COUNT(*) FROM place_movements WHERE act_id = 7");
         let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
+        let acts_rows_after = scalar(&tx, "SELECT COUNT(*) FROM place_movements WHERE act_id = 7");
+        let successor_from = scalar(
+            &tx,
+            "SELECT from_place_id FROM place_movements WHERE source = 'group' AND entity_id = 1",
+        );
         tx.commit().unwrap();
 
-        assert_eq!(
-            reverted.notices,
-            vec![GroupNotice {
-                message:
-                    "Группа «АРМ #3» не возвращена на прежнее место: после акта её переместили."
-                        .to_string(),
-                group_id: Some(1),
-            }]
-        );
+        assert!(reverted.notices.is_empty(), "{:?}", reverted.notices);
+        assert_eq!(reverted.kept_in_place_group_ids, vec![1]);
         assert_eq!(group_place(&conn, 1), Some(3), "группа не двигалась");
+        assert!(acts_rows_before > 0);
+        assert_eq!(acts_rows_after, 0, "строки забытого переноса удалены");
+        assert_eq!(successor_from, 1, "«откуда» ручной строки = место до акта");
+    }
+
+    /// (d2) D-48: перепись следующего эффекта - ровно один ближайший более поздний `move`.
+    #[test]
+    fn rebase_changes_exactly_the_nearest_later_move_effect() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        for (act, from, to) in [(7, 1, 2), (8, 2, 3), (9, 2, 3)] {
+            tx.execute(
+                "INSERT INTO act_group_effects (act_id, kind, group_id, group_label, \
+                 from_place_id, to_place_id, created_at_utc) VALUES (?1, 'move', 1, 'АРМ #3', ?2, ?3, ?4)",
+                [act, from, to, NOW],
+            )
+            .unwrap();
+        }
+        let first = scalar(&tx, "SELECT MIN(id) FROM act_group_effects");
+        let changed = deps()
+            .groups
+            .rebase_later_move_effects_in_tx(&tx, 1, first, Some(2), Some(1))
+            .expect("rebase");
+        assert_eq!(changed, 1);
+        assert_eq!(
+            scalar(
+                &tx,
+                "SELECT COUNT(*) FROM act_group_effects WHERE from_place_id = 1"
+            ),
+            2,
+            "первый эффект и ровно один следующий"
+        );
+        assert_eq!(
+            scalar(
+                &tx,
+                "SELECT from_place_id FROM act_group_effects WHERE act_id = 9"
+            ),
+            2,
+            "третий не тронут"
+        );
+    }
+
+    /// (d3) D-48: строка без преемника удаляется; преемник другой сущности не трогается;
+    /// строка другого акта по другой группе остаётся.
+    #[test]
+    fn forget_rows_without_successor_are_deleted_and_others_untouched() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        tx.execute(
+            "INSERT INTO acts (id, number, act_type, giver_name, receiver_name, created_at_utc, updated_at_utc) \
+             VALUES (8, '8', 'handover', 'Иванов И.И.', 'Петров П.П.', ?1, ?1)",
+            [NOW],
+        )
+        .unwrap();
+        let ins = |entity: i64, from: i64, to: i64, act: Option<i64>, group: i64, t: i64| {
+            tx.execute(
+                "INSERT INTO place_movements (entity_type, entity_id, from_place_id, \
+                 from_place_path, to_place_id, to_place_path, source, act_id, group_id, \
+                 created_at_utc) VALUES ('device', ?1, ?2, ?3, ?4, ?5, 'act', ?6, ?7, ?8)",
+                rusqlite::params![
+                    entity,
+                    from,
+                    format!("П{from}"),
+                    to,
+                    format!("П{to}"),
+                    act,
+                    group,
+                    t
+                ],
+            )
+            .unwrap();
+        };
+        ins(10, 1, 2, Some(7), 1, 1);
+        ins(11, 1, 2, Some(7), 1, 2);
+        ins(10, 2, 3, None, 1, 3); // преемник устройства 10
+        ins(12, 2, 3, None, 1, 4); // другая сущность: не преемник
+        ins(13, 1, 2, Some(8), 2, 5); // другой акт и группа
+        let removed = deps()
+            .movements
+            .forget_group_move_rows_in_tx(&tx, 7, 1)
+            .expect("forget");
+        assert_eq!(removed, 2);
+        assert_eq!(
+            scalar(
+                &tx,
+                "SELECT from_place_id FROM place_movements WHERE entity_id = 10"
+            ),
+            1
+        );
+        assert_eq!(
+            scalar(
+                &tx,
+                "SELECT from_place_id FROM place_movements WHERE entity_id = 12"
+            ),
+            2
+        );
+        assert_eq!(
+            scalar(
+                &tx,
+                "SELECT COUNT(*) FROM place_movements WHERE entity_id = 13"
+            ),
+            1
+        );
     }
 
     /// (e) Отцепление и возврат вложенной якорной группы туда и обратно.

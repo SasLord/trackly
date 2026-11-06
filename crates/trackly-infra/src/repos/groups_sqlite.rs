@@ -1113,6 +1113,26 @@ impl SqliteGroupRepository {
         Ok(())
     }
 
+    /// D-48 (UD-4): у ближайшего более позднего эффекта `move` той же группы (id больше
+    /// `after_effect_id`) с `from_place_id == from_to_place` выставить `from_place_id = new_from`.
+    /// Возвращает число изменённых эффектов (0 или 1).
+    pub fn rebase_later_move_effects_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        group_id: i64,
+        after_effect_id: i64,
+        from_to_place: Option<i64>,
+        new_from: Option<i64>,
+    ) -> Result<usize, AppError> {
+        tx.execute(
+            "UPDATE act_group_effects SET from_place_id = ?4 WHERE id = (
+                 SELECT MIN(id) FROM act_group_effects
+                  WHERE kind = 'move' AND group_id = ?1 AND id > ?2 AND from_place_id IS ?3)",
+            rusqlite::params![group_id, after_effect_id, from_to_place, new_from],
+        )
+        .map_err(map_rusqlite)
+    }
+
     /// Удалить все следы акта; возвращает число удалённых строк.
     pub fn delete_act_group_effects_in_tx(
         &self,

@@ -4774,6 +4774,7 @@ fn undo_device_mutations_for_act(
         .extend(reverted.touched_place_ids.into_iter().map(Some));
     extend_unique(&mut out.touched_group_ids, reverted.touched_group_ids);
     out.notices.extend(reverted.notices);
+    let kept_groups = reverted.kept_in_place_group_ids;
 
     // (2) Снимки устройств.
     let rows = audit_repo.select_device_mutations_for_act(tx, act_id)?;
@@ -4786,7 +4787,7 @@ fn undo_device_mutations_for_act(
     }
     for (row_index, (device_id, before_json)) in rows.into_iter().enumerate().rev() {
         let is_final_restore = earliest_row.get(&device_id) == Some(&row_index);
-        let snapshot: serde_json::Value =
+        let mut snapshot: serde_json::Value =
             serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
                 source_chain: format!("undo: corrupt before_json for device {device_id}: {e}"),
             })?;
@@ -4813,6 +4814,14 @@ fn undo_device_mutations_for_act(
                 place_before_undo.clone()
             }
             None => {
+                // D-48: перенос группы «забыт» - член остаётся там, где стоит его группа.
+                crate::services::group_act_plan::snapshot_keeping_group_place_in_tx(
+                    tx,
+                    &SqliteGroupRepository,
+                    device_id,
+                    &mut snapshot,
+                    &kept_groups,
+                )?;
                 let restored =
                     devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
                 // Phase 41 D-22: акт выводит устройство из состава группы (только на

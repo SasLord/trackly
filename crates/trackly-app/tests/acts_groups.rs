@@ -3052,7 +3052,10 @@ async fn undo_earlier_of_two_group_moves_keeps_group_and_members_at_the_later_pl
         let k = move_chain(&ctx).await;
         // Не вакуумно: до удаления журнал А2 начинается со «Склада Б», эффект - тоже.
         assert_arm_in_group_at(&ctx, &k.arm, k.c).await;
-        assert_eq!(mv_count(&ctx, "group", k.arm.group, k.b, k.c, "act").await, 1);
+        assert_eq!(
+            mv_count(&ctx, "group", k.arm.group, k.b, k.c, "act").await,
+            1
+        );
         assert_eq!(move_effect_from(&ctx, k.a2).await, Some(k.b));
 
         let result = undo_act(&ctx, k.a1).await;

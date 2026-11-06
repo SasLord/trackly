@@ -287,6 +287,66 @@ impl SqlitePlaceMovementsRepository {
         .map_err(map_rusqlite)
     }
 
+    /// D-48 (UD-4): «забыть» перемещение группы актом. Для каждой строки акта по группе
+    /// (`group_id` пакета — группа, вложенные группы, устройства, картриджи) ближайшая более
+    /// поздняя строка той же сущности ДРУГОГО акта или без акта, чьё «откуда» равно «куда»
+    /// забываемой строки, получает «откуда» забываемой строки; затем строки акта по группе
+    /// удаляются. Строка без преемника просто удаляется. Возвращает число удалённых строк.
+    pub fn forget_group_move_rows_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        group_id: i64,
+    ) -> Result<usize, AppError> {
+        let rows: Vec<(i64, String, i64, i64, i64, String)> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id, entity_type, entity_id, to_place_id, from_place_id, from_place_path \
+                       FROM place_movements WHERE act_id = ?1 AND group_id = ?2 ORDER BY id",
+                )
+                .map_err(map_rusqlite)?;
+            let mapped = stmt
+                .query_map(params![act_id, group_id], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                })
+                .map_err(map_rusqlite)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(map_rusqlite)?;
+            mapped
+        };
+        for (id, entity_type, entity_id, to_place, from_place, from_path) in rows {
+            tx.execute(
+                "UPDATE place_movements SET from_place_id = ?1, from_place_path = ?2 \
+                  WHERE id = (SELECT MIN(id) FROM place_movements \
+                               WHERE id > ?3 AND entity_type = ?4 AND entity_id = ?5 \
+                                 AND from_place_id = ?6 \
+                                 AND (act_id IS NULL OR act_id != ?7))",
+                params![
+                    from_place,
+                    from_path,
+                    id,
+                    entity_type,
+                    entity_id,
+                    to_place,
+                    act_id
+                ],
+            )
+            .map_err(map_rusqlite)?;
+        }
+        tx.execute(
+            "DELETE FROM place_movements WHERE act_id = ?1 AND group_id = ?2",
+            params![act_id, group_id],
+        )
+        .map_err(map_rusqlite)
+    }
+
     /// HST-02/HST-17 timeline read: all movements for one `(entity_type, entity_id)`
     /// pair, newest-first (D-20), unpaginated (no `LIMIT` — D-20/RESEARCH's scale note:
     /// movements per item are "единицы за годы" at this org's scale).
