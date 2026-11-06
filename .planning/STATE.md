@@ -4,7 +4,7 @@ milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
 last_updated: "2026-11-06T10:21:55.919Z"
-last_activity: 2026-11-05 -- Phase 41.2 execution started
+last_activity: 2026-11-06 -- 41.2-28 boundary complete
 progress:
   total_phases: 27
   completed_phases: 15
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.2 (groups-acts-places) — EXECUTING
-Plan: 25 of 30 (41.2-25 complete)
+Plan: 30 of 30 (41.2-28 complete; ждёт живой UAT G1-G11)
 Status: Executing Phase 41.2
 мог получить USB-хост) и F-2 (нет имени хоста под чипом USB). Доработка планами 09-13 и 15:
 правка IP при редактировании (D-13), независимость IP и USB-хоста (D-15, по прямому замечанию
