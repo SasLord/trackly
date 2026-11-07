@@ -479,6 +479,16 @@ impl AppCtx {
 
         let shutdown = CancellationToken::new();
 
+        // Phase 41.3 D-20: integrity scan in the background, never blocks startup.
+        {
+            let scan_svc = attachments.clone();
+            tokio::spawn(async move {
+                if let Err(e) = scan_svc.run_integrity_scan().await {
+                    tracing::warn!("attachments integrity scan failed: {e}");
+                }
+            });
+        }
+
         Ok(Self {
             writer,
             readers,
