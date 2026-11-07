@@ -238,7 +238,7 @@
 
 ### Вложения (ATT)
 
-- [ ] **ATT-01**: Файл хранится в каталоге `./attachments/` рядом с БД под именем от хэша
+- [x] **ATT-01**: Файл хранится в каталоге `./attachments/` рядом с БД под именем от хэша
       содержимого, в БД — исходное имя, MIME, размер и хэш; лимит размера и whitelist MIME
       проверяются на сервере
 - [ ] **ATT-02**: В серверном режиме файл отдаётся только под сессией и только при доступе к
@@ -463,7 +463,7 @@
 | PGR-02 | Phase 41.13 | Complete |
 | PGR-03 | Phase 41.13 | Complete |
 | PGR-04 | Phase 41.13 | Complete |
-| ATT-01 | Phase 41.3 | Pending |
+| ATT-01 | Phase 41.3 | Complete |
 | ATT-02 | Phase 41.3 | Pending |
 | ATT-03 | Phase 41.3 | Pending |
 | REP-01 | Phase 41.4 | Pending |
