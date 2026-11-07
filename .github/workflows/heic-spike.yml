@@ -1,0 +1,115 @@
+name: heic-spike
+
+# Спайк D-10/D-24 (фаза 41.3): собирается ли Windows-бинарник с `--features heic`
+# (libheif + libde265, статически, без внешних DLL). Только ручной запуск:
+# никогда не блокирует CI и не входит в релиз.
+#
+# УСЛОВИЕ УСПЕХА для добавления `--features heic` в релизную Windows-сборку:
+# job зелёный, а в dumpbin-отчёте нет heif.dll / libde265.dll. Решение принимает
+# человек (фиксируется в плане 41.3-15). Если сборка не удалась, фича остаётся
+# выключенной, а HEIC отклоняется с кодом heic_failed («сохраните как JPEG»).
+#
+# vcpkg: только libheif[core,libde265] — без x265 / hevc-энкодера (GPL), без
+# cargo-vcpkg. Триплет x64-windows-static-md: статические библиотеки, динамический
+# CRT, поэтому RUSTFLAGS "crt-static" НЕ задаётся.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample_url:
+        description: 'Необязательно: URL тестового HEIC (синтетика, не личное фото) для проверки конвертации'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  heic:
+    name: heic build (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      VCPKGRS_TRIPLET: x64-windows-static-md
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static-md
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (1.88)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.88'
+
+      - name: Cache Cargo registry + build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install libheif via vcpkg (static-md, libde265 only)
+        shell: pwsh
+        run: |
+          vcpkg install "libheif[core,libde265]:x64-windows-static-md"
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: pnpm install (frozen lockfile)
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      # rust-embed needs ui/dist at compile time; seed a placeholder as in ci-full
+      # (the prebuild hook compiles trackly-app before vite writes ui/dist).
+      - name: Seed ui/dist placeholder
+        shell: bash
+        run: |
+          mkdir -p ui/dist
+          [ -f ui/dist/index.html ] || printf '<!doctype html><title>placeholder</title>\n' > ui/dist/index.html
+
+      - name: Build Svelte SPA (ui/dist)
+        working-directory: ui
+        run: pnpm build
+
+      - name: cargo build --features heic
+        run: cargo build -p trackly-app --features heic
+
+      - name: Fetch optional HEIC sample
+        if: ${{ inputs.sample_url != '' }}
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "${{ inputs.sample_url }}" -OutFile "$env:RUNNER_TEMP\sample.heic"
+          "TRACKLY_HEIC_SAMPLE=$env:RUNNER_TEMP\sample.heic" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: cargo test attachments_heic --features heic
+        env:
+          TRACKLY_AD_MOCK: '1'
+          TRACKLY_SNMP_MOCK: '1'
+        run: cargo test -p trackly-app --features heic --test attachments_heic -- --test-threads=1 --nocapture
+
+      - name: dumpbin /dependents (no heif.dll / libde265.dll allowed)
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -like '*Hostx64\x64*' } | Select-Object -First 1
+          & $dumpbin.FullName /dependents target\debug\trackly.exe | Tee-Object -FilePath dumpbin.txt
+          if (Select-String -Path dumpbin.txt -Pattern 'heif\.dll|libde265\.dll' -Quiet) {
+            Write-Error 'trackly.exe depends on an external heif/libde265 DLL (D-10 violated)'
+            exit 1
+          }
+
+      - name: Upload dumpbin report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heic-dumpbin-${{ github.run_id }}
+          path: dumpbin.txt
+          if-no-files-found: ignore
