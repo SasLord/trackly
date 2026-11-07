@@ -322,6 +322,19 @@
     viewerOpen = true;
   }
 
+  /** Открыть вложение по id из истории карточки: просмотр или скачивание. */
+  export function open(attachmentId: number): void {
+    const active = items.find((i) => i.id === attachmentId);
+    const deleted = active ? undefined : deletedItems.find((i) => i.id === attachmentId);
+    const item = active ?? deleted;
+    if (!item) return;
+    if (item.viewable && !item.missing) {
+      openViewer(item, active ? 'active' : 'deleted');
+    } else if (!item.missing) {
+      void download(item);
+    }
+  }
+
   async function download(item: AttachmentDto) {
     try {
       const buf = await fetchAttachmentBytes(item.id);

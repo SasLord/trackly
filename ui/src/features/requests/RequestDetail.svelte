@@ -30,6 +30,11 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import { requests } from './api';
+  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
+  import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
+  import { attachments } from '../attachments/api';
+  import { onWsEvent } from '$lib/api/ws';
+  import type { AttachmentHistoryEventDto } from '../../bindings';
   import type { RequestDto } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
   import type { RequestHistoryEntry } from './api';
@@ -54,6 +59,8 @@
   let completeSubmitting = $state(false);
   let historyEntries = $state<RequestHistoryEntry[]>([]);
   let historyLoading = $state(false);
+  let attachmentEvents = $state<AttachmentHistoryEventDto[]>([]);
+  let attachmentsBlock = $state<ReturnType<typeof AttachmentsBlock> | null>(null);
 
   // ad_register approval modal state (Screen 5b, D-REG-02: role defaults to employee).
   let approveModalOpen = $state(false);
@@ -154,26 +161,68 @@
   // meta-row header lives as bespoke content inside children (see template).
   const panelTitle = $derived<string | undefined>(request ? typeLabel : undefined);
 
-  // Load history when request changes
+  // Load history when request changes. D-14: события вложений берём из
+  // attachments.history (у них есть attachment_id, имя, состояние), а сырые
+  // строки custom:attachment_* стандартного списка отбрасываем на клиенте.
+  async function loadHistory(id: number, silent: boolean) {
+    if (!silent) historyLoading = true;
+    try {
+      const [entries, events] = await Promise.all([
+        requests.getHistory(id),
+        attachments.history('request', id).catch(() => [] as AttachmentHistoryEventDto[]),
+      ]);
+      if (request?.id !== id) return;
+      historyEntries = entries.filter((e) => !e.action.startsWith('custom:attachment_'));
+      attachmentEvents = events;
+    } catch {
+      if (request?.id !== id) return;
+      historyEntries = [];
+      attachmentEvents = [];
+    } finally {
+      if (request?.id === id) historyLoading = false;
+    }
+  }
+
   $effect(() => {
     const id = request?.id;
     if (id === undefined || id === null) {
       historyEntries = [];
+      attachmentEvents = [];
       return;
     }
-    historyLoading = true;
-    requests
-      .getHistory(id)
-      .then((entries) => {
-        historyEntries = entries;
-      })
-      .catch(() => {
-        historyEntries = [];
-      })
-      .finally(() => {
-        historyLoading = false;
-      });
+    void loadHistory(id, false);
   });
+
+  // D-15: история перечитывается вместе с блоком.
+  $effect(() => {
+    const off = onWsEvent((ev) => {
+      const id = request?.id;
+      if (
+        id !== undefined &&
+        ev.type === 'attachments_changed' &&
+        ev.parentKind === 'request' &&
+        ev.parentId === id
+      ) {
+        void loadHistory(id, true);
+      }
+    });
+    return off;
+  });
+
+  type HistoryRow =
+    | { kind: 'entry'; at: number; entry: RequestHistoryEntry }
+    | { kind: 'attachment'; at: number; event: AttachmentHistoryEventDto };
+
+  const mergedHistory = $derived<HistoryRow[]>(
+    [
+      ...historyEntries.map(
+        (entry): HistoryRow => ({ kind: 'entry', at: entry.createdAtUtc, entry }),
+      ),
+      ...attachmentEvents.map(
+        (event): HistoryRow => ({ kind: 'attachment', at: event.createdAtUtc, event }),
+      ),
+    ].sort((a, b) => a.at - b.at),
+  );
 
   // Relative date helper
   function relativeDate(utcSeconds: number): string {
@@ -625,24 +674,36 @@
         </DetailSection>
       {/if}
 
+      <!-- D-02: вложения для заявки любого статуса -->
+      <AttachmentsBlock parentKind="request" parentId={request.id} bind:this={attachmentsBlock} />
+
       <!-- История (REQ-07) -->
       <DetailSection heading="История">
         {#if historyLoading}
           <div class="history-loading">
             <Spinner size="sm" />
           </div>
-        {:else if historyEntries.length === 0}
+        {:else if mergedHistory.length === 0}
           <p class="history-empty">История пуста</p>
         {:else}
           <ul class="history-list">
-            {#each historyEntries as entry (entry.id)}
-              <li class="history-row">
-                <span class="history-text">
-                  {formatFullDate(entry.createdAtUtc)} — {actionLabel(entry.action)}{entry.actorName
-                    ? `; ${entry.actorName}`
-                    : ''}{entry.notes ? `; ${entry.notes}` : ''}
-                </span>
-              </li>
+            {#each mergedHistory as row, i (row.kind === 'entry' ? `e${row.entry.id}` : `a${i}`)}
+              {#if row.kind === 'entry'}
+                <li class="history-row">
+                  <span class="history-text">
+                    {formatFullDate(row.entry.createdAtUtc)} — {actionLabel(row.entry.action)}{row
+                      .entry.actorName
+                      ? `; ${row.entry.actorName}`
+                      : ''}{row.entry.notes ? `; ${row.entry.notes}` : ''}
+                  </span>
+                </li>
+              {:else}
+                <AttachmentHistory
+                  bare
+                  events={[row.event]}
+                  onOpen={(id) => attachmentsBlock?.open(id)}
+                />
+              {/if}
             {/each}
           </ul>
         {/if}

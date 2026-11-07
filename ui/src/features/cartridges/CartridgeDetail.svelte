@@ -31,6 +31,10 @@
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
+  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
+  import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
+  import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
+  import type { AttachmentHistoryEventDto } from '../../bindings';
   import { apiCall } from '$lib/api/client';
   import { push } from 'svelte-spa-router';
   import type { AuditEntryDto, CartridgeDto, MovementEntryDto } from '../../bindings';
@@ -44,6 +48,29 @@
   }
 
   const { cartridge, history, loading, onCreate, onMenuAction }: Props = $props();
+
+  // D-14: события вложений вставляются в «Журнал операций» по времени; сырые
+  // строки custom:attachment_* общего журнала отбрасываются на клиенте.
+  let attachmentsBlock = $state<ReturnType<typeof AttachmentsBlock> | null>(null);
+  const attEvents = createAttachmentEvents(
+    () => 'cartridge',
+    () => cartridge?.id,
+  );
+
+  type JournalRow =
+    | { kind: 'entry'; at: number; entry: AuditEntryDto }
+    | { kind: 'attachment'; at: number; event: AttachmentHistoryEventDto };
+
+  const journal = $derived<JournalRow[]>(
+    [
+      ...history
+        .filter((e) => !e.action.startsWith('custom:attachment_'))
+        .map((entry): JournalRow => ({ kind: 'entry', at: entry.created_at_utc, entry })),
+      ...attEvents.events.map(
+        (event): JournalRow => ({ kind: 'attachment', at: event.createdAtUtc, event }),
+      ),
+    ].sort((a, b) => a.at - b.at),
+  );
 
   let movements = $state<MovementEntryDto[]>([]);
   let movementsLoading = $state(false);
@@ -237,15 +264,29 @@
         </div>
       </DetailSection>
 
+      <AttachmentsBlock
+        parentKind="cartridge"
+        parentId={cartridge.id}
+        bind:this={attachmentsBlock}
+      />
+
       <DetailSection heading="Журнал операций">
-        {#if history.length === 0}
+        {#if journal.length === 0}
           <p class="history-empty">История пуста</p>
         {:else}
           <ul class="history-list">
-            {#each history as entry (entry.id)}
-              <li class="history-row">
-                {formatHistoryEntry(entry)}
-              </li>
+            {#each journal as row, i (row.kind === 'entry' ? `e${row.entry.id}` : `a${i}`)}
+              {#if row.kind === 'entry'}
+                <li class="history-row">
+                  {formatHistoryEntry(row.entry)}
+                </li>
+              {:else}
+                <AttachmentHistory
+                  bare
+                  events={[row.event]}
+                  onOpen={(id) => attachmentsBlock?.open(id)}
+                />
+              {/if}
             {/each}
           </ul>
         {/if}
