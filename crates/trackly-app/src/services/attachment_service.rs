@@ -5,21 +5,28 @@
 //! id or a content hash grants nothing; the file path is built only from the
 //! hash stored in the DB row.
 
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use rusqlite::OptionalExtension;
 use trackly_core::auth::{Identity, Role};
-use trackly_core::domain::attachments::{ParentKind, DEFAULT_MAX_BYTES, SETTING_MAX_BYTES};
+use trackly_core::domain::attachments::{
+    sanitize_file_name, ParentKind, RejectCode, DEFAULT_MAX_BYTES, MAX_BYTES_CEILING,
+    SETTING_MAX_BYTES,
+};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::attachments_sqlite::{AttachmentRow, SqliteAttachmentRepository};
-use trackly_infra::repos::audit_log_sqlite::SqliteAuditLogRepository;
+use trackly_infra::repos::attachments_sqlite::{
+    AttachmentNew, AttachmentRow, SqliteAttachmentRepository,
+};
+use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 
+use super::attachment_media;
 use super::attachment_store::AttachmentStore;
-use crate::dto::attachment::{AttachmentDto, AttachmentListDto};
+use crate::dto::attachment::{AttachmentDto, AttachmentListDto, AttachmentUploadDto};
 use crate::dto::printer::WsEvent;
 
 /// MIME types the browser can show inline.
@@ -90,17 +97,91 @@ fn internal(e: tokio::task::JoinError) -> AppError {
     }
 }
 
+/// Process-wide cap for CPU-heavy media work (sniff, HEIC, thumbnail).
+static MEDIA_PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+
+/// Bytes of the head read for signature sniffing.
+const HEAD_BYTES: usize = 32 * 1024;
+
+/// Failure while receiving the body into staging.
+#[derive(Debug)]
+pub enum StageError {
+    /// Per-file reject (size limit); never aborts other files.
+    Reject(RejectCode),
+    /// Disk failure on the staging file.
+    Internal(AppError),
+}
+
+/// Upload body being received into a temp file under `<root>/.tmp`.
+pub struct StagedUpload {
+    file: tempfile::NamedTempFile,
+    count: u64,
+}
+
+impl StagedUpload {
+    /// Appends a chunk; fails with `TooLarge` as soon as the running size
+    /// exceeds `min(limit, MAX_BYTES_CEILING)` (D-07, T-41.3-24).
+    pub fn write_chunk(&mut self, chunk: &[u8], limit: i64) -> Result<(), StageError> {
+        let limit = (limit.max(0) as u64).min(MAX_BYTES_CEILING);
+        self.count += chunk.len() as u64;
+        if self.count > limit {
+            return Err(StageError::Reject(RejectCode::TooLarge));
+        }
+        self.file.write_all(chunk).map_err(|e| {
+            StageError::Internal(AppError::Validation {
+                field: "attachments_path".to_string(),
+                message: format!("Не удалось записать вложение: {e}"),
+            })
+        })
+    }
+
+    /// Bytes received so far.
+    pub fn len(&self) -> u64 {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
+/// Result of the blocking media stage.
+enum Prepared {
+    Rejected(RejectCode),
+    Ready {
+        temp: tempfile::NamedTempFile,
+        hash: String,
+        mime: &'static str,
+        size: i64,
+        name: String,
+    },
+}
+
+fn audit_entity(kind: ParentKind) -> &'static str {
+    match kind {
+        ParentKind::Request => "request",
+        ParentKind::Device => "device",
+        ParentKind::Cartridge => "cartridge",
+    }
+}
+
+/// Replaces the extension of `name` with `jpg` (HEIC converted to JPEG).
+fn with_jpg_ext(name: &str) -> String {
+    let stem = match name.rsplit_once('.') {
+        Some((stem, _)) if !stem.is_empty() => stem,
+        _ => name,
+    };
+    format!("{stem}.jpg")
+}
+
 /// Application service for attachments. `Arc` fields keep `Clone` O(1).
 #[derive(Clone)]
 pub struct AttachmentService {
     pub writer: Arc<WriterHandle>,
     pub readers: Arc<ReaderPool>,
-    // Used by the write paths (plans 07+).
-    #[allow(dead_code)]
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) store: Arc<AttachmentStore>,
     pub(crate) repo: Arc<SqliteAttachmentRepository>,
-    #[allow(dead_code)]
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
     /// Shared WS sender; `None` in test fixtures, wired by `AppCtx::build`.
     pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
@@ -321,6 +402,146 @@ impl AttachmentService {
         }
     }
 
+    /// Access check before the first body byte is read (D-04).
+    pub async fn authorize_attach(
+        &self,
+        caller: &Identity,
+        parent: ParentRef,
+    ) -> Result<Perms, AppError> {
+        self.authorize(parent, caller, Intent::Attach).await
+    }
+
+    /// Effective upload limit: the setting, never above the hard ceiling.
+    pub async fn effective_limit(&self) -> Result<i64, AppError> {
+        Ok(self.max_bytes().await?.min(MAX_BYTES_CEILING as i64))
+    }
+
+    /// Opens a staging temp file for one incoming file.
+    pub fn begin_staging(&self) -> Result<StagedUpload, AppError> {
+        let file = self
+            .store
+            .begin_staging()
+            .map_err(|e| AppError::Validation {
+                field: "attachments_path".to_string(),
+                message: format!("Не удалось начать загрузку вложения: {e}"),
+            })?;
+        Ok(StagedUpload { file, count: 0 })
+    }
+
+    /// Validates, stores and registers one staged file. Rejects come back as
+    /// `Ok(AttachmentUploadDto { reject_code })`; only `Forbidden`, `NotFound`
+    /// and `Internal` are errors. On any reject the staging temp is dropped.
+    pub async fn ingest(
+        &self,
+        caller: &Identity,
+        parent: ParentRef,
+        raw_name: &str,
+        staged: StagedUpload,
+    ) -> Result<AttachmentUploadDto, AppError> {
+        self.authorize_attach(caller, parent).await?;
+        let reject = |c: RejectCode| AttachmentUploadDto {
+            attachment: None,
+            reject_code: Some(c.as_code().to_string()),
+        };
+        if staged.count == 0 {
+            return Ok(reject(RejectCode::Empty));
+        }
+        let decoded = percent_encoding::percent_decode_str(raw_name)
+            .decode_utf8_lossy()
+            .into_owned();
+        let name = sanitize_file_name(&decoded);
+
+        let _permit = MEDIA_PERMITS
+            .acquire()
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("media semaphore: {e}"),
+            })?;
+        let store = self.store.clone();
+        let prepared = tokio::task::spawn_blocking(move || prepare(&store, staged, name))
+            .await
+            .map_err(internal)??;
+        drop(_permit);
+
+        let (temp, hash, mime, size, name) = match prepared {
+            Prepared::Rejected(code) => return Ok(reject(code)),
+            Prepared::Ready {
+                temp,
+                hash,
+                mime,
+                size,
+                name,
+            } => (temp, hash, mime, size, name),
+        };
+
+        let repo = self.repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let store = self.store.clone();
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let kind_str = parent.kind.as_str();
+        let entity = audit_entity(parent.kind);
+        let parent_id = parent.id;
+        let row = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let id = repo.insert_on(
+                    &tx,
+                    &AttachmentNew {
+                        parent_kind: kind_str,
+                        parent_id,
+                        original_name: &name,
+                        mime,
+                        size_bytes: size,
+                        content_hash: &hash,
+                        uploaded_by_user_id: user_id,
+                        created_at_utc: now,
+                    },
+                )?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: entity,
+                        entity_id: parent_id,
+                        action: "custom:attachment_added",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({ "attachment_id": id, "name": name }).to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
+                // D-18: moves only when the blob is absent. If the commit below
+                // fails after the rename, the orphan blob is left for the
+                // integrity scan (plan 08).
+                store.commit_staged(temp, &hash)?;
+                let row = repo.get_by_id_on(&tx, id)?.ok_or(AppError::NotFound {
+                    entity: "attachment",
+                    id,
+                })?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(row)
+            })
+            .await?;
+
+        // D-15/D-25: only after the writer returned Ok.
+        let requested_by = self.requested_by_for_event(parent).await;
+        if let Some(tx) = &self.ws_tx {
+            let _ = tx.send(WsEvent::AttachmentsChanged {
+                parent_kind: parent.kind.as_str().to_string(),
+                parent_id: parent.id,
+                requested_by_user_id: requested_by,
+            });
+        }
+        Ok(AttachmentUploadDto {
+            attachment: Some(self.to_dto(&row)),
+            reject_code: None,
+        })
+    }
+
     /// Author id of a request parent (for `AttachmentsChanged`), `None` for
     /// device/cartridge parents.
     pub async fn requested_by_for_event(&self, parent: ParentRef) -> Option<i64> {
@@ -333,6 +554,73 @@ impl AttachmentService {
         .ok()
         .flatten()
     }
+}
+
+/// Blocking stage: sniff, optional HEIC conversion, hash, thumbnail.
+fn prepare(
+    store: &AttachmentStore,
+    staged: StagedUpload,
+    name: String,
+) -> Result<Prepared, AppError> {
+    let io = |e: std::io::Error| AppError::Internal {
+        source_chain: format!("attachment staging io: {e}"),
+    };
+    let temp = staged.file;
+    let mut head = Vec::with_capacity(HEAD_BYTES);
+    std::fs::File::open(temp.path())
+        .map_err(io)?
+        .take(HEAD_BYTES as u64)
+        .read_to_end(&mut head)
+        .map_err(io)?;
+    let full = if head.starts_with(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]) {
+        Some(std::fs::read(temp.path()).map_err(io)?)
+    } else {
+        None
+    };
+    let sniffed = match attachment_media::sniff(&head, full.as_deref(), &name) {
+        Ok(s) => s,
+        Err(attachment_media::MediaReject::Empty) => {
+            return Ok(Prepared::Rejected(RejectCode::Empty))
+        }
+        Err(attachment_media::MediaReject::TypeNotAllowed) => {
+            return Ok(Prepared::Rejected(RejectCode::TypeNotAllowed))
+        }
+    };
+    let (temp, mime, name) = if sniffed.is_heic {
+        let bytes = std::fs::read(temp.path()).map_err(io)?;
+        let Ok(jpeg) = attachment_media::heic_to_jpeg(&bytes) else {
+            return Ok(Prepared::Rejected(RejectCode::HeicFailed));
+        };
+        drop(bytes);
+        let mut out = store.begin_staging().map_err(io)?;
+        out.write_all(&jpeg).map_err(io)?;
+        (out, "image/jpeg", with_jpg_ext(&name))
+    } else {
+        (temp, sniffed.mime, name)
+    };
+    let hash = attachment_media::sha256_file(temp.path()).map_err(io)?;
+    let size = std::fs::metadata(temp.path()).map_err(io)?.len() as i64;
+    if PHOTO_MIMES.contains(&mime) {
+        // A failed thumbnail never fails the upload (D-11). A concurrent purge
+        // may remove it before the row exists: the UI then shows the type icon.
+        if let Ok(dest) = store.thumb_path(&hash) {
+            if !dest.is_file() {
+                if let Some(dir) = dest.parent() {
+                    let _ = std::fs::create_dir_all(dir);
+                }
+                if let Err(e) = attachment_media::make_thumbnail(temp.path(), &dest) {
+                    tracing::debug!("attachment thumbnail skipped: {e}");
+                }
+            }
+        }
+    }
+    Ok(Prepared::Ready {
+        temp,
+        hash,
+        mime,
+        size,
+        name,
+    })
 }
 
 /// Live parent row: returns the request author (`None` for other kinds).
