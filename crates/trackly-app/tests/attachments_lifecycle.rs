@@ -8,7 +8,7 @@ use trackly_app::context::AppCtx;
 use trackly_app::dto::printer::WsEvent;
 use trackly_app::services::attachment_service::{ParentRef, StageError};
 use trackly_core::auth::{Identity, Role};
-use trackly_core::domain::attachments::{ParentKind, RejectCode};
+use trackly_core::domain::attachments::ParentKind;
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
 
