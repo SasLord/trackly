@@ -33,7 +33,7 @@ import { execFileSync } from 'node:child_process';
 // Импорт из самого гейта: файл выполняет main() только при прямом вызове,
 // поэтому импорт безопасен. Нужен, чтобы проверить CR-01 сквозным
 // round-trip'ом — --add требует TTY и напрямую из теста не вызывается.
-import { canonicalizeAddValue, normalize, sha256Hex } from './check-privacy.mjs';
+import { canonicalizeAddValue, normalize, scanForbiddenPaths, sha256Hex } from './check-privacy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -168,6 +168,41 @@ function assertNoLeak(name, args, secret) {
   const args = ['--hashes', TOKENS_HASHES, ...iconFiles, logoFixture];
   assertExitCode('icons/ + logo_test.png в BINARY_ALLOWLIST проходят (R8)', args, 0);
 }
+
+// ---------------------------------------------------------------------------
+// 6b. Вложения (D-23, ATT-03): запрет по пути, не по содержимому.
+// ---------------------------------------------------------------------------
+{
+  const hex64 = 'a1'.repeat(32); // вымышленный литерал
+  const flagged = (p) => scanForbiddenPaths([{ path: p }]).length === 1;
+  assertTrue('attachments/ab/<64hex> в корне — нарушение', flagged(`attachments/ab/${hex64}`));
+  assertTrue('data/attachments/ab/<64hex> (вложенный шард) — нарушение', flagged(`data/attachments/ab/${hex64}`));
+  assertTrue('attachments/readme.txt (корень, любой файл) — нарушение', flagged('attachments/readme.txt'));
+  assertTrue(
+    'контроль: ui/src/features/attachments/AttachmentsBlock.svelte проходит',
+    !flagged('ui/src/features/attachments/AttachmentsBlock.svelte'),
+  );
+  assertTrue(
+    'контроль: .planning/phases/41.3-attachments-storage/41.3-PLAN.md проходит',
+    !flagged('.planning/phases/41.3-attachments-storage/41.3-PLAN.md'),
+  );
+  // Сквозной прогон: реальный файл в attachments/ в корне репозитория.
+  const dir = path.join(REPO_ROOT, 'attachments');
+  const existed = fs.existsSync(dir);
+  const file = path.join(dir, 'selftest-probe.txt');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, 'fictional probe\n');
+    const { code, output } = runGate(['--hashes', TOKENS_HASHES, file]);
+    assertTrue('сквозной: файл в attachments/ роняет гейт', code === 1);
+    assertTrue('сквозной: вывод называет путь, не содержимое', !output.includes('fictional probe'));
+  } finally {
+    fs.rmSync(file, { force: true });
+    if (!existed) fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// 
 
 // ---------------------------------------------------------------------------
 // 7. CR-01 — --add обязан хэшировать ту же каноническую форму, что строит

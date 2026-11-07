@@ -428,6 +428,24 @@ function scanBinaries(targets) {
   return violations;
 }
 
+// D-23 (ATT-03): вложения — пользовательские бинарные файлы, текстом их не
+// проверить, поэтому гейт ловит их ПО ПУТИ: корень attachments/ либо
+// шардированный файл attachments/<2 hex>/<64 hex> на любой глубине.
+// Правило «сегмент attachments на любой глубине» запрещено: оно бьёт по
+// ui/src/features/attachments и по каталогу фазы в .planning.
+const ATTACHMENT_ROOT_RE = /^attachments\//;
+const ATTACHMENT_SHARD_RE = /(^|\/)attachments\/[0-9a-f]{2}\/[0-9a-f]{64}$/;
+
+function scanForbiddenPaths(targets) {
+  const violations = [];
+  for (const { path: p } of targets) {
+    if (ATTACHMENT_ROOT_RE.test(p) || ATTACHMENT_SHARD_RE.test(p)) {
+      violations.push({ path: p, line: 0, cls: 'E' });
+    }
+  }
+  return violations;
+}
+
 // ---------------------------------------------------------------------------
 // Загрузка файла хэшей — fail-closed (R7)
 // ---------------------------------------------------------------------------
@@ -707,6 +725,7 @@ async function main() {
     ...scanAllowlist(targets),
     ...scanHashes(targets, hashMap),
     ...scanBinaries(targets),
+    ...scanForbiddenPaths(targets),
   ];
 
   for (const v of violations) console.error(formatViolation(v));
@@ -747,4 +766,4 @@ if (invokedDirectly) {
   await main();
 }
 
-export { canonicalizeAddValue, extractNgrams, normalize, sha256Hex, NGRAM_MAX_WORDS };
+export { scanForbiddenPaths, canonicalizeAddValue, extractNgrams, normalize, sha256Hex, NGRAM_MAX_WORDS };
