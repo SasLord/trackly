@@ -30,6 +30,22 @@ pub struct Paths {
     is_portable: bool,
 }
 
+/// Каталог вложений (D-21, D-28).
+///
+/// Непустое значение конфига возвращается как есть. UNC здесь НЕ отвергается:
+/// запрет UNC относится только к БД (WAL не работает на сетевых шарах), а
+/// вложения — неизменяемые файлы. Пусто — `attachments/` рядом с файлом БД.
+pub fn resolve_attachments_dir(db_path: &Path, configured: &str) -> PathBuf {
+    if !configured.trim().is_empty() {
+        return PathBuf::from(configured);
+    }
+    db_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .join("attachments")
+}
+
 impl Paths {
     /// Резолвит пути относительно `std::env::current_exe()?.parent()?`.
     ///

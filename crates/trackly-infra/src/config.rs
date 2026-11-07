@@ -85,6 +85,10 @@ pub struct PathsConfig {
     /// Полный путь к SQLite-файлу. Пусто = `Paths::db_path()` default
     /// (`<exe_dir>/trackly.db`).
     pub db_path: String,
+    /// Каталог вложений. Пусто = `attachments/` рядом с файлом БД (D-21).
+    /// Может быть UNC-путём (D-28): файлы неизменяемы, WAL не задействован.
+    #[serde(default)]
+    pub attachments_path: String,
 }
 
 /// `[logging]` — параметры tracing.
