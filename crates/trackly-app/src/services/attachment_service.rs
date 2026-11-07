@@ -26,7 +26,9 @@ use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepositor
 
 use super::attachment_media;
 use super::attachment_store::AttachmentStore;
-use crate::dto::attachment::{AttachmentDto, AttachmentListDto, AttachmentUploadDto};
+use crate::dto::attachment::{
+    AttachmentDto, AttachmentHistoryEventDto, AttachmentListDto, AttachmentUploadDto,
+};
 use crate::dto::printer::WsEvent;
 
 /// MIME types the browser can show inline.
@@ -528,6 +530,17 @@ impl AttachmentService {
             .await?;
 
         // D-15/D-25: only after the writer returned Ok.
+        self.notify_changed(parent).await;
+        Ok(AttachmentUploadDto {
+            attachment: Some(self.to_dto(&row)),
+            reject_code: None,
+        })
+    }
+
+    /// Sends `AttachmentsChanged` (D-15/D-25). Called only AFTER the writer
+    /// await of a mutation that changed something; the gate test
+    /// `attachments_changed_gate` enforces the ordering.
+    async fn notify_changed(&self, parent: ParentRef) {
         let requested_by = self.requested_by_for_event(parent).await;
         if let Some(tx) = &self.ws_tx {
             let _ = tx.send(WsEvent::AttachmentsChanged {
@@ -536,10 +549,250 @@ impl AttachmentService {
                 requested_by_user_id: requested_by,
             });
         }
-        Ok(AttachmentUploadDto {
-            attachment: Some(self.to_dto(&row)),
-            reject_code: None,
+    }
+
+    async fn load_row(&self, id: i64) -> Result<(AttachmentRow, ParentRef), AppError> {
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let not_found = AppError::NotFound {
+            entity: "attachment",
+            id,
+        };
+        let row = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.get_by_id_on(&conn, id)
         })
+        .await
+        .map_err(internal)??
+        .ok_or(not_found)?;
+        let kind = ParentKind::parse(&row.parent_kind).ok_or(AppError::NotFound {
+            entity: "attachment",
+            id,
+        })?;
+        let parent = ParentRef {
+            kind,
+            id: row.parent_id,
+        };
+        Ok((row, parent))
+    }
+
+    /// Soft delete (D-16): the uploader (own file, parent still readable) or
+    /// Admin/Manager (any). The file stays on disk (D-18). Idempotent.
+    pub async fn delete(&self, caller: &Identity, id: i64) -> Result<(), AppError> {
+        let (row, parent) = self.load_row(id).await?;
+        let perms = self.authorize(parent, caller, Intent::Read).await?;
+        let intent = if perms.can_delete_any {
+            Intent::DeleteAny
+        } else {
+            Intent::DeleteOwn {
+                uploaded_by: row.uploaded_by_user_id,
+            }
+        };
+        self.authorize(parent, caller, intent).await?;
+        let repo = self.repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let entity = audit_entity(parent.kind);
+        let name = row.original_name.clone();
+        let changed = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let changed = repo.soft_delete_on(&tx, id, user_id, now)?;
+                if changed {
+                    insert_audit(
+                        &audit_repo,
+                        &tx,
+                        entity,
+                        parent.id,
+                        "custom:attachment_deleted",
+                        user_id,
+                        id,
+                        &name,
+                        now,
+                    )?;
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(changed)
+            })
+            .await?;
+        if changed {
+            self.notify_changed(parent).await;
+        }
+        Ok(())
+    }
+
+    /// Restore a soft-deleted attachment (D-17): Admin only, parent must be live.
+    pub async fn restore(&self, caller: &Identity, id: i64) -> Result<(), AppError> {
+        let (row, parent) = self.load_row(id).await?;
+        self.authorize(parent, caller, Intent::ManageDeleted)
+            .await?;
+        let repo = self.repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let entity = audit_entity(parent.kind);
+        let name = row.original_name.clone();
+        let changed = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let changed = repo.restore_on(&tx, id)?;
+                if changed {
+                    insert_audit(
+                        &audit_repo,
+                        &tx,
+                        entity,
+                        parent.id,
+                        "custom:attachment_restored",
+                        user_id,
+                        id,
+                        &name,
+                        now,
+                    )?;
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(changed)
+            })
+            .await?;
+        if changed {
+            self.notify_changed(parent).await;
+        }
+        Ok(())
+    }
+
+    /// Purge a soft-deleted attachment (D-17/D-18): Admin only. The blob and
+    /// thumbnail go away only when no other row, including soft-deleted ones,
+    /// references the hash; count and removal run inside the single writer
+    /// closure, so a concurrent upload of the same bytes is serialized with it.
+    pub async fn purge(&self, caller: &Identity, id: i64) -> Result<(), AppError> {
+        let (_row, parent) = self.load_row(id).await?;
+        self.authorize(parent, caller, Intent::ManageDeleted)
+            .await?;
+        let repo = self.repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let store = self.store.clone();
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let entity = audit_entity(parent.kind);
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = repo.get_by_id_on(&tx, id)?.ok_or(AppError::NotFound {
+                    entity: "attachment",
+                    id,
+                })?;
+                if row.deleted_at_utc.is_none() {
+                    return Err(AppError::Validation {
+                        field: "attachment".to_string(),
+                        message: "Сначала удалите вложение, затем очистите его".to_string(),
+                    });
+                }
+                repo.delete_row_on(&tx, id)?;
+                let last = repo.count_by_hash_on(&tx, &row.content_hash, None)? == 0;
+                insert_audit(
+                    &audit_repo,
+                    &tx,
+                    entity,
+                    parent.id,
+                    "custom:attachment_purged",
+                    user_id,
+                    id,
+                    &row.original_name,
+                    now,
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                if last {
+                    // Row gone and committed; an I/O failure here leaves an
+                    // orphan blob for the integrity scan, never a dangling row.
+                    if let Err(e) = store.remove_blob(&row.content_hash) {
+                        tracing::warn!("attachment purge: blob removal failed: {e}");
+                    }
+                }
+                Ok(())
+            })
+            .await?;
+        self.notify_changed(parent).await;
+        Ok(())
+    }
+
+    /// Attachment events of a parent (D-14) with the current state of each
+    /// attachment: `active`, `deleted` or `purged`.
+    pub async fn history(
+        &self,
+        caller: &Identity,
+        parent: ParentRef,
+    ) -> Result<Vec<AttachmentHistoryEventDto>, AppError> {
+        self.authorize(parent, caller, Intent::Read).await?;
+        let readers = self.readers.clone();
+        let entity = audit_entity(parent.kind);
+        let parent_id = parent.id;
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT l.action, l.payload_json, l.created_at_utc, u.full_name \
+                     FROM audit_log l LEFT JOIN users u ON u.id = l.user_id \
+                     WHERE l.entity_type = ?1 AND l.entity_id = ?2 \
+                       AND substr(l.action, 1, 18) = 'custom:attachment_' \
+                     ORDER BY l.created_at_utc, l.id",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(rusqlite::params![entity, parent_id], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                    ))
+                })
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            let mut out = Vec::new();
+            for (action, payload, at, user_name) in rows {
+                let v: serde_json::Value = payload
+                    .and_then(|p| serde_json::from_str(&p).ok())
+                    .unwrap_or(serde_json::Value::Null);
+                let Some(att_id) = v.get("attachment_id").and_then(|x| x.as_i64()) else {
+                    continue;
+                };
+                let name = v
+                    .get("name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let deleted: Option<Option<i64>> = conn
+                    .query_row(
+                        "SELECT deleted_at_utc FROM attachments WHERE id = ?1",
+                        rusqlite::params![att_id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?;
+                let state = match deleted {
+                    None => "purged",
+                    Some(Some(_)) => "deleted",
+                    Some(None) => "active",
+                };
+                out.push(AttachmentHistoryEventDto {
+                    attachment_id: att_id,
+                    name,
+                    action: action
+                        .strip_prefix("custom:attachment_")
+                        .unwrap_or(&action)
+                        .to_string(),
+                    state: state.to_string(),
+                    user_name,
+                    created_at_utc: at,
+                });
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(internal)?
     }
 
     /// Author id of a request parent (for `AttachmentsChanged`), `None` for
@@ -554,6 +807,36 @@ impl AttachmentService {
         .ok()
         .flatten()
     }
+}
+
+/// Audit row of an attachment mutation; payload keeps the name snapshot.
+#[allow(clippy::too_many_arguments)]
+fn insert_audit(
+    audit_repo: &SqliteAuditLogRepository,
+    tx: &rusqlite::Transaction<'_>,
+    entity: &'static str,
+    parent_id: i64,
+    action: &'static str,
+    user_id: Option<i64>,
+    attachment_id: i64,
+    name: &str,
+    now: i64,
+) -> Result<(), AppError> {
+    audit_repo.insert(
+        tx,
+        AuditEntry {
+            entity_type: entity,
+            entity_id: parent_id,
+            action,
+            user_id,
+            before_json: None,
+            after_json: None,
+            payload_json: Some(
+                serde_json::json!({ "attachment_id": attachment_id, "name": name }).to_string(),
+            ),
+            created_at_utc: now,
+        },
+    )
 }
 
 /// Blocking stage: sniff, optional HEIC conversion, hash, thumbnail.
