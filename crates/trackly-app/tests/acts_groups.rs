@@ -414,6 +414,56 @@ async fn create_whole_group_moves_it_without_confirmation() {
     .await;
 }
 
+/// A-WR-01: `device_id` вне непустого `device_ids` не позиция акта и не должен
+/// переносить или выводить из состава свою живую группу.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn create_stray_device_id_does_not_touch_its_group() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let g = seed_group(&ctx, "Группа Ж", Some(a), None).await;
+        let g1 = seed_device(&ctx, dev("Член 1", Some(a), Some(g))).await;
+        let g2 = seed_device(&ctx, dev("Член 2", Some(a), Some(g))).await;
+        let f1 = seed_device(&ctx, dev("Свободный 1", Some(a), None)).await;
+        let f2 = seed_device(&ctx, dev("Свободный 2", Some(a), None)).await;
+        let mut payload = dto("G-STRAY", &[], Some(b), false);
+        payload.items = vec![ActItemNewDto {
+            device_id: g1,
+            device_ids: vec![f1, f2],
+            quantity: 2,
+        }];
+        let act = create_ok(&ctx, payload).await;
+
+        assert_eq!(group_place(&ctx, g).await, Some(a));
+        assert_eq!(group_members(&ctx, g).await, 2);
+        assert_eq!(member_rows(&ctx, g1).await, 1);
+        assert_eq!(member_rows(&ctx, g2).await, 1);
+        assert_eq!(device_place(&ctx, g1).await, Some(a));
+        assert_eq!(effects(&ctx, act, "move").await, 0);
+        assert_eq!(effects(&ctx, act, "release").await, 0);
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM act_items WHERE act_id = ?1 AND device_id IN (?2, ?3)",
+                vec![int(act), int(f1), int(f2)]
+            )
+            .await,
+            2
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM act_items WHERE act_id = ?1",
+                vec![int(act)]
+            )
+            .await,
+            2
+        );
+    })
+    .await;
+}
+
 // ---------------------------------------------------------------------------
 // (b) журнал пакета
 // ---------------------------------------------------------------------------

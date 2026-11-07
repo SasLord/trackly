@@ -301,11 +301,7 @@ impl ActService {
                 });
             }
             // Dedup: same device_id не может быть в двух items одновременно.
-            let ids_to_check: Vec<i64> = if it.device_ids.is_empty() {
-                vec![it.device_id]
-            } else {
-                it.device_ids.clone()
-            };
+            let ids_to_check: Vec<i64> = create_item_device_ids(it);
             for did in &ids_to_check {
                 if !seen_device_ids.insert(*did) {
                     return Err(AppError::Validation {
@@ -493,8 +489,7 @@ impl ActService {
                 // оставляет в базе ничего.
                 let mut act_device_ids: Vec<i64> = Vec::new();
                 for item in &payload.items {
-                    for id in std::iter::once(item.device_id).chain(item.device_ids.iter().copied())
-                    {
+                    for id in create_item_device_ids(item) {
                         if !act_device_ids.contains(&id) {
                             act_device_ids.push(id);
                         }
@@ -4723,6 +4718,17 @@ fn compute_return_suffix(is_return: bool, sub_number: Option<i64>) -> String {
         format!("в{}", sub_number.unwrap_or(1))
     } else {
         String::new()
+    }
+}
+
+/// Какие устройства входят в позицию акта при создании (A-WR-01): `device_ids`,
+/// а при пустом списке — одиночный `device_id`. Совпадает с `effective_device_ids`
+/// писателя, поэтому планировщик групп видит ровно те устройства, что станут act_items.
+fn create_item_device_ids(item: &crate::dto::act::ActItemNewDto) -> Vec<i64> {
+    if item.device_ids.is_empty() {
+        vec![item.device_id]
+    } else {
+        item.device_ids.clone()
     }
 }
 
