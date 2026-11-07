@@ -206,6 +206,7 @@
   <div
     class="modal-backdrop"
     style:z-index={backdropZIndex}
+    data-modal-depth={stackDepth}
     onmousedown={handleBackdropMousedown}
     onmouseup={handleBackdropMouseup}
     aria-modal="true"
