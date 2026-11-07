@@ -27,6 +27,10 @@ crates/trackly-app/gen/
 *.db-wal
 *.db-shm
 
+# Attachments (user files, never commit — D-23)
+/attachments/
+**/attachments/??/
+
 # Logs
 logs/
 *.log

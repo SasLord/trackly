@@ -100,3 +100,13 @@ fn shipped_example_uses_real_paths_section_not_stale_storage() {
         "example must not reintroduce the non-existent [storage] section"
     );
 }
+
+#[test]
+fn shipped_example_documents_attachments_path_and_parses() {
+    assert!(
+        EXAMPLE.contains("attachments_path"),
+        "example must document the optional attachments_path"
+    );
+    let cfg: AppConfig = toml::from_str(&uncomment_example(EXAMPLE)).expect("example parses");
+    assert_eq!(cfg.paths.attachments_path, r"D:\trackly-data\attachments");
+}
