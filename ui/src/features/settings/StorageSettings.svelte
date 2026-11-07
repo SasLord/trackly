@@ -4,6 +4,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
+  import AttachmentSettings from './AttachmentSettings.svelte';
 
   let dbPath = $state('');
   let confirmMove = $state(false);
@@ -111,6 +112,8 @@
   {/if}
 </section>
 
+<AttachmentSettings />
+
 <!-- Confirmation modal (T-07-04-03: requires desktop context + user confirmation) -->
 <Modal
   open={confirmMove}
@@ -136,6 +139,10 @@
     padding: var(--tr-space-xl);
     max-width: 640px;
     position: relative;
+  }
+
+  :global(.settings-section + .settings-section) {
+    margin-top: var(--tr-space-md);
   }
 
   .section-title {
