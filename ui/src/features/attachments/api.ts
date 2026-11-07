@@ -7,6 +7,7 @@
 // query-ключи snake_case). Файл и миниатюра — схема `trackly-att` (десктоп) или
 // GET /api/v1/attachments/{id}/file|thumb (браузер).
 
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { apiCall } from '$lib/api/client';
 import { parseAppError } from '$lib/api/errors';
 import type {
@@ -43,9 +44,8 @@ export const attachments = {
 };
 
 /** URL файла или миниатюры; работает в `<img>`/`<iframe>` обоих режимов. */
-export async function attachmentUrl(id: number, kind: AttachmentKind): Promise<string> {
+export function attachmentUrl(id: number, kind: AttachmentKind): string {
   if (inTauri()) {
-    const { convertFileSrc } = await import('@tauri-apps/api/core');
     return convertFileSrc(`${id}/${kind}`, 'trackly-att');
   }
   return `/api/v1/attachments/${id}/${kind}`;
@@ -62,7 +62,7 @@ export class AttachmentFetchError extends Error {
 }
 
 export async function fetchAttachmentBytes(id: number): Promise<ArrayBuffer> {
-  const url = await attachmentUrl(id, 'file');
+  const url = attachmentUrl(id, 'file');
   let res: globalThis.Response;
   try {
     res = await fetch(url, { credentials: 'same-origin' });
