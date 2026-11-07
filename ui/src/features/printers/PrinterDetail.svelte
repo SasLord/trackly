@@ -27,6 +27,9 @@
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
+  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
+  import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
+  import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
   import { printers } from './api';
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';
@@ -61,6 +64,13 @@
   }
 
   const { printer, loading, onRefresh, onDeviceSaved }: Props = $props();
+
+  // 41.3-14: принтер — строка устройства, вложения привязаны к device.
+  let attachmentsBlock = $state<ReturnType<typeof AttachmentsBlock> | null>(null);
+  const attEvents = createAttachmentEvents(
+    () => 'device',
+    () => printer?.deviceId,
+  );
 
   let refreshing = $state(false);
   let readings = $state<PrinterReadingDto[]>([]);
@@ -351,6 +361,21 @@
           {/each}
         {/if}
       </DetailSection>
+
+      <AttachmentsBlock
+        parentKind="device"
+        parentId={printer.deviceId}
+        bind:this={attachmentsBlock}
+      />
+
+      {#if attEvents.events.length > 0}
+        <DetailSection heading="История вложений">
+          <AttachmentHistory
+            events={attEvents.events}
+            onOpen={(id) => attachmentsBlock?.open(id)}
+          />
+        </DetailSection>
+      {/if}
 
       <!-- Секция: история статусов (PRN-05) -->
       <DetailSection heading="История статусов">

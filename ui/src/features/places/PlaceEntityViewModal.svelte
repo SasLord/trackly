@@ -33,6 +33,9 @@
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import CartridgeFormBody from '../cartridges/CartridgeFormBody.svelte';
   import CartridgeFormModal from '../cartridges/CartridgeFormModal.svelte';
+  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
+  import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
+  import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';
   import { apiCall } from '$lib/api/client';
@@ -91,6 +94,14 @@
   };
 
   const isCartridge = row.kind === 'cartridge';
+
+  // 41.3-14: вложения карточки (устройство и принтер — одна сущность device).
+  const attParentKind = $derived(row.kind === 'cartridge' ? 'cartridge' : 'device');
+  let attachmentsBlock = $state<ReturnType<typeof AttachmentsBlock> | null>(null);
+  const attEvents = createAttachmentEvents(
+    () => attParentKind,
+    () => row.id,
+  );
 
   let loading = $state(true);
   let loadError = $state(false);
@@ -266,6 +277,14 @@
           }}>{deviceDto.origin_group_name ?? ''}</Button
         >
       </DetailField>
+    {/if}
+
+    <AttachmentsBlock parentKind={attParentKind} parentId={row.id} bind:this={attachmentsBlock} />
+
+    {#if attEvents.events.length > 0}
+      <DetailSection heading="История вложений">
+        <AttachmentHistory events={attEvents.events} onOpen={(id) => attachmentsBlock?.open(id)} />
+      </DetailSection>
     {/if}
 
     <DetailSection heading="История перемещений">

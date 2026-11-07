@@ -16,7 +16,13 @@
 //        `isContentEditable`) стоит РАНЬШЕ intakeAllowed() и enqueue( (T-41.3-58);
 //   [G6] api.ts: uploadAttachment и fetchAttachmentBytes не идут через apiCall
 //        (на HTTP-пути он портит бинарное тело);
-//   [G8] слушатель paste на window подключается только при canAttach.
+//   [G8] слушатель paste на window подключается только при canAttach;
+//   [G9] (план 14) в каждой из четырёх карточек `<AttachmentsBlock` стоит РАНЬШЕ
+//        первого заголовка истории (заявка «История», принтер «История статусов»,
+//        картридж «Журнал операций», просмотр места «История перемещений»);
+//   [G10] (план 14) RequestDetail отбрасывает custom:attachment_* на клиенте и
+//        берёт события вложений через attachments.history('request', ...);
+//        CartridgeDetail тоже отбрасывает сырые custom:attachment_*.
 //
 // Счёт имён слеп к порядку, поэтому G4/G5 сравнивают ПОЗИЦИИ в теле функции,
 // а самопроверка (--selftest) включает мутации-перестановки, не только удаление.
@@ -31,7 +37,30 @@ import { stripComments } from './_strip.mjs';
 const TAG = '[check-attachments-block]';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIR = path.resolve(HERE, '../src/features/attachments');
-const REQUIRED = ['AttachmentsBlock.svelte', 'AttachmentTile.svelte', 'api.ts'];
+const FEATURES = path.resolve(HERE, '../src/features');
+// Карточки, во встраивание которых блок обязан попасть (план 14). Ключ в наборе
+// файлов — `card:<имя>`, чтобы не путать с файлами каталога attachments.
+const CARDS = {
+  'card:RequestDetail.svelte': { rel: 'requests/RequestDetail.svelte', heading: 'История' },
+  'card:PrinterDetail.svelte': {
+    rel: 'printers/PrinterDetail.svelte',
+    heading: 'История статусов',
+  },
+  'card:CartridgeDetail.svelte': {
+    rel: 'cartridges/CartridgeDetail.svelte',
+    heading: 'Журнал операций',
+  },
+  'card:PlaceEntityViewModal.svelte': {
+    rel: 'places/PlaceEntityViewModal.svelte',
+    heading: 'История перемещений',
+  },
+};
+const REQUIRED = [
+  'AttachmentsBlock.svelte',
+  'AttachmentTile.svelte',
+  'api.ts',
+  ...Object.keys(CARDS),
+];
 
 /** Тело функции `name` (между фигурными скобками) либо null. */
 function functionBody(text, name) {
@@ -90,7 +119,7 @@ export function check(files) {
   for (const [name, text] of Object.entries(files)) src[name] = stripComments(text);
 
   for (const [name, text] of Object.entries(src)) {
-    if (name.endsWith('.svelte') && /\{@html\b/.test(text)) {
+    if (name.endsWith('.svelte') && !name.startsWith('card:') && /\{@html\b/.test(text)) {
       v.push({ code: 'G1', msg: `${name}: найден {@html}` });
     }
   }
@@ -164,6 +193,31 @@ export function check(files) {
   if (!/onpaste=\{\s*canAttach\s*\?\s*handlePaste\s*:\s*undefined\s*\}/.test(block)) {
     v.push({ code: 'G8', msg: 'слушатель paste подключён не только при canAttach' });
   }
+
+  for (const [key, card] of Object.entries(CARDS)) {
+    const text = src[key];
+    const at = text.indexOf('<AttachmentsBlock');
+    const head = text.indexOf(`heading="${card.heading}"`);
+    if (at === -1) {
+      v.push({ code: 'G9', msg: `${card.rel}: нет <AttachmentsBlock` });
+    } else if (head === -1 || at > head) {
+      v.push({
+        code: 'G9',
+        msg: `${card.rel}: <AttachmentsBlock должен стоять раньше заголовка «${card.heading}»`,
+      });
+    }
+  }
+
+  const req = src['card:RequestDetail.svelte'];
+  if (!/startsWith\(\s*['"]custom:attachment_['"]\s*\)/.test(req)) {
+    v.push({ code: 'G10', msg: 'RequestDetail не отбрасывает custom:attachment_* на клиенте' });
+  }
+  if (!req.includes("attachments.history('request'")) {
+    v.push({ code: 'G10', msg: "RequestDetail не зовёт attachments.history('request', ...)" });
+  }
+  if (!/startsWith\(\s*['"]custom:attachment_['"]\s*\)/.test(src['card:CartridgeDetail.svelte'])) {
+    v.push({ code: 'G10', msg: 'CartridgeDetail не отбрасывает custom:attachment_* на клиенте' });
+  }
   return v;
 }
 
@@ -172,6 +226,10 @@ function readFiles(dir) {
   for (const n of fs.readdirSync(dir)) {
     if (n.endsWith('.svelte') || n === 'api.ts')
       out[n] = fs.readFileSync(path.join(dir, n), 'utf8');
+  }
+  for (const [key, card] of Object.entries(CARDS)) {
+    const file = path.join(FEATURES, card.rel);
+    if (fs.existsSync(file)) out[key] = fs.readFileSync(file, 'utf8');
   }
   return out;
 }
@@ -293,6 +351,63 @@ function selftest(files) {
           'onpaste={handlePaste}',
           'paste attach',
         ),
+    },
+    ...Object.entries(CARDS).map(([key, card]) => ({
+      name: `блок переставлен после заголовка «${card.heading}» (${card.rel})`,
+      expect: 'G9',
+      make: () =>
+        mutate(
+          files,
+          key,
+          '<AttachmentsBlock',
+          `<DetailSection heading="${card.heading}"></DetailSection><AttachmentsBlock`,
+          `order ${key}`,
+        ),
+    })),
+    {
+      name: 'RequestDetail не фильтрует сырые custom:attachment_',
+      expect: 'G10',
+      make: () =>
+        mutate(
+          files,
+          'card:RequestDetail.svelte',
+          "!e.action.startsWith('custom:attachment_')",
+          'true',
+          'request filter',
+        ),
+    },
+    {
+      name: 'RequestDetail не берёт события через attachments.history',
+      expect: 'G10',
+      make: () =>
+        mutate(
+          files,
+          'card:RequestDetail.svelte',
+          "attachments.history('request', id)",
+          "attachments.history('device', id)",
+          'request history call',
+        ),
+    },
+    {
+      name: 'CartridgeDetail не фильтрует сырые custom:attachment_',
+      expect: 'G10',
+      make: () =>
+        mutate(
+          files,
+          'card:CartridgeDetail.svelte',
+          "!e.action.startsWith('custom:attachment_')",
+          'true',
+          'cartridge filter',
+        ),
+    },
+    {
+      name: 'пропал файл карточки (не «пропуск», а красный)',
+      expect: 'G0',
+      make: () => {
+        const copy = { ...files };
+        delete copy['card:PrinterDetail.svelte'];
+        return copy;
+      },
     },
     {
       name: 'пропал файл блока (не «пропуск», а красный)',
