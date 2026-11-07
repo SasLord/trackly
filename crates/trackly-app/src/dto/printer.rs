@@ -358,6 +358,17 @@ pub enum WsEvent {
         #[specta(type = Vec<i32>)]
         group_ids: Vec<i64>,
     },
+    /// Attachments of a parent changed (Phase 41.3, D-25). NOT
+    /// `EntitiesChanged`: Employee must see it for their own request.
+    /// Sent after commit and outside `writer.execute` (D-15).
+    #[serde(rename_all = "camelCase")]
+    AttachmentsChanged {
+        parent_kind: String,
+        #[specta(type = i32)]
+        parent_id: i64,
+        #[specta(type = Option<i32>)]
+        requested_by_user_id: Option<i64>,
+    },
 }
 
 impl WsEvent {
@@ -397,6 +408,14 @@ impl WsEvent {
             }
             WsEvent::EntitiesChanged { .. } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
+            }
+            WsEvent::AttachmentsChanged {
+                requested_by_user_id,
+                ..
+            } => {
+                matches!(identity.role, Role::Admin | Role::Manager)
+                    || (requested_by_user_id.is_some()
+                        && identity.user_id == *requested_by_user_id)
             }
         }
     }
@@ -474,6 +493,45 @@ mod tests {
                 "type": "request_status_changed",
                 "requestId": 7,
                 "newStatus": "completed",
+                "requestedByUserId": 3
+            })
+        );
+    }
+
+    #[test]
+    fn attachments_changed_visibility() {
+        let own = WsEvent::AttachmentsChanged {
+            parent_kind: "request".to_string(),
+            parent_id: 5,
+            requested_by_user_id: Some(42),
+        };
+        assert!(own.is_visible_to(&identity(None, Role::Admin)));
+        assert!(own.is_visible_to(&identity(Some(9), Role::Manager)));
+        assert!(own.is_visible_to(&identity(Some(42), Role::Employee)));
+        assert!(!own.is_visible_to(&identity(Some(7), Role::Employee)));
+        let none = WsEvent::AttachmentsChanged {
+            parent_kind: "device".to_string(),
+            parent_id: 5,
+            requested_by_user_id: None,
+        };
+        assert!(!none.is_visible_to(&identity(Some(42), Role::Employee)));
+        assert!(!none.is_visible_to(&identity(None, Role::Employee)));
+        assert!(none.is_visible_to(&identity(None, Role::Admin)));
+    }
+
+    #[test]
+    fn attachments_changed_serializes_camel_case() {
+        let event = WsEvent::AttachmentsChanged {
+            parent_kind: "request".to_string(),
+            parent_id: 5,
+            requested_by_user_id: Some(3),
+        };
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::json!({
+                "type": "attachments_changed",
+                "parentKind": "request",
+                "parentId": 5,
                 "requestedByUserId": 3
             })
         );
