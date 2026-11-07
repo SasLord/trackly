@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-11-07T12:25:38.349Z"
-last_activity: 2026-11-07 -- Phase 41.3 execution started
+last_updated: "2026-11-07T13:43:35.006Z"
+last_activity: 2026-11-07
 progress:
   total_phases: 27
   completed_phases: 16
   total_plans: 279
-  completed_plans: 265
+  completed_plans: 266
   percent: 59
 ---
 
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.3 (attachments-storage) — EXECUTING
-Plan: 1 of 15
-Status: Executing Phase 41.3
+Plan: 2 of 15
+Status: Ready to execute
 мог получить USB-хост) и F-2 (нет имени хоста под чипом USB). Доработка планами 09-13 и 15:
 правка IP при редактировании (D-13), независимость IP и USB-хоста (D-15, по прямому замечанию
 пользователя «принтер может быть связан по USB и в это же время быть сетевым»), подпись хоста в
@@ -165,7 +165,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-07 -- Phase 41.3 execution started
+Last activity: 2026-11-07
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
