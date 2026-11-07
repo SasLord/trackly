@@ -196,3 +196,125 @@ async fn backup_retention_prunes_oldest() {
     .await
     .expect("backup_retention_prunes_oldest budget")
 }
+
+fn h(c: char) -> String {
+    std::iter::repeat_n(c, 64).collect()
+}
+
+fn put_blob(root: &std::path::Path, hash: &str, bytes: &[u8]) {
+    let d = root.join(&hash[..2]);
+    std::fs::create_dir_all(&d).expect("shard dir");
+    std::fs::write(d.join(hash), bytes).expect("blob");
+}
+
+fn make_with_attachments() -> (BackupService, tempfile::TempDir, std::path::PathBuf) {
+    let (svc, dir) = make_backup_service();
+    let src = dir.path().join("att_src");
+    std::fs::create_dir_all(&src).expect("src");
+    let svc = svc.with_attachments_dir(src.clone());
+    (svc, dir, src)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn backup_copies_attachments_incrementally() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (svc, dir, src) = make_with_attachments();
+        put_blob(&src, &h('a'), b"one");
+        put_blob(&src, &h('c'), b"two!");
+        std::fs::create_dir_all(src.join("thumbs")).expect("thumbs");
+        std::fs::write(src.join("thumbs/x.jpg"), b"t").expect("thumb");
+        std::fs::create_dir_all(src.join(".tmp")).expect("tmp");
+        std::fs::write(src.join(".tmp/y"), b"t").expect("tmpf");
+        let bdir = dir.path().join("bk");
+        let b = bdir.to_str().expect("utf8");
+
+        svc.run_backup(b).await.expect("backup 1");
+        let dest = bdir.join("attachments");
+        assert!(dest.join("aa").join(h('a')).is_file());
+        assert!(dest.join("cc").join(h('c')).is_file());
+        assert!(!dest.join("thumbs").exists());
+        assert!(!dest.join(".tmp").exists());
+        let m1 = std::fs::metadata(dest.join("aa").join(h('a')))
+            .expect("meta")
+            .modified()
+            .expect("mtime");
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        put_blob(&src, &h('e'), b"three");
+        svc.run_backup(b).await.expect("backup 2");
+        let m2 = std::fs::metadata(dest.join("aa").join(h('a')))
+            .expect("meta")
+            .modified()
+            .expect("mtime");
+        assert_eq!(m1, m2, "existing blob must not be re-copied");
+        assert!(dest.join("ee").join(h('e')).is_file());
+
+        // same name, different size -> recopied
+        std::fs::write(dest.join("aa").join(h('a')), b"x").expect("corrupt");
+        svc.run_backup(b).await.expect("backup 3");
+        assert_eq!(
+            std::fs::read(dest.join("aa").join(h('a'))).expect("read"),
+            b"one"
+        );
+    })
+    .await
+    .expect("budget")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn backup_retention_keeps_attachments() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (svc, dir, src) = make_with_attachments();
+        put_blob(&src, &h('a'), b"one");
+        let bdir = dir.path().join("bk");
+        std::fs::create_dir_all(&bdir).expect("bk");
+        svc.set_config(
+            &admin_caller(),
+            BackupConfigPatch {
+                backup_folder: Some(bdir.to_str().expect("utf8").to_string()),
+                schedule: None,
+                retention: Some(1),
+            },
+        )
+        .await
+        .expect("cfg");
+        for i in 0..3 {
+            std::fs::write(bdir.join(format!("trackly-backup-{}.db", 1_000 + i)), b"x")
+                .expect("fake");
+            tokio::time::sleep(Duration::from_millis(30)).await;
+        }
+        svc.run_backup(bdir.to_str().expect("utf8"))
+            .await
+            .expect("bk");
+        assert!(bdir.join("attachments").join("aa").join(h('a')).is_file());
+    })
+    .await
+    .expect("budget")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn backup_without_attachments_dir_creates_none() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, dir) = make_backup_service();
+        let bdir = dir.path().join("bk");
+        svc.run_backup(bdir.to_str().expect("utf8"))
+            .await
+            .expect("bk");
+        assert!(!bdir.join("attachments").exists());
+    })
+    .await
+    .expect("budget")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn backup_missing_attachments_source_still_succeeds() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, dir) = make_backup_service();
+        let svc = svc.with_attachments_dir(dir.path().join("nope"));
+        let bdir = dir.path().join("bk");
+        let r = svc.run_backup(bdir.to_str().expect("utf8")).await;
+        assert!(r.is_ok(), "DB backup must succeed: {r:?}");
+    })
+    .await
+    .expect("budget")
+}

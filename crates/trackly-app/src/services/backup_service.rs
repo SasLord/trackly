@@ -43,6 +43,8 @@ pub struct BackupService {
     pub readers: Arc<ReaderPool>,
     pub clock: Arc<dyn Clock + Send + Sync>,
     pub db_path: PathBuf,
+    /// Источник вложений (`attachments/`); `None` — вложения не копируются.
+    pub attachments_dir: Option<PathBuf>,
 }
 
 impl BackupService {
@@ -57,7 +59,15 @@ impl BackupService {
             readers,
             clock,
             db_path,
+            attachments_dir: None,
         }
+    }
+
+    /// Задаёт каталог вложений для инкрементального копирования (D-22).
+    #[must_use]
+    pub fn with_attachments_dir(mut self, dir: PathBuf) -> Self {
+        self.attachments_dir = Some(dir);
+        self
     }
 
     /// Проверяет что путь не является UNC (\\server\share или //...).
@@ -83,6 +93,7 @@ impl BackupService {
         let timestamp = self.clock.unix_seconds();
         let dest_folder_owned = dest_folder.to_string();
         let readers = self.readers.clone();
+        let attachments_src = self.attachments_dir.clone();
 
         // Читаем retention из конфига
         let config = self.get_config().await?;
@@ -120,6 +131,15 @@ impl BackupService {
 
             // Backup через rusqlite::backup::Backup (NOT fs::copy — clippy ban)
             run_rusqlite_backup(&readers, &dest_path)?;
+
+            // Вложения: общий каталог рядом с копиями БД, best-effort (D-22)
+            if let Some(src) = attachments_src.as_deref() {
+                let dest = canonical_folder.join("attachments");
+                match copy_attachments_incremental(src, &dest) {
+                    Ok(n) => tracing::info!(copied = n, "backup: вложения скопированы"),
+                    Err(e) => tracing::warn!(error = %e, "backup: копирование вложений не удалось"),
+                }
+            }
 
             // Retention cleanup
             apply_retention(&canonical_folder, retention)?;
@@ -248,6 +268,64 @@ fn run_rusqlite_backup(readers: &ReaderPool, dest_path: &Path) -> Result<(), App
     }
 
     Ok(())
+}
+
+fn is_shard_name(name: &str) -> bool {
+    name.len() == 2
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Инкрементально копирует блобы `<src>/<2 hex>/<64 hex>` в `dest`.
+/// Копируются только отсутствующие файлы или файлы с иным размером;
+/// `thumbs/`, `.tmp/`, симлинки и прочее игнорируются; в `dest` ничего не удаляется.
+fn copy_attachments_incremental(src: &Path, dest: &Path) -> std::io::Result<usize> {
+    use std::io::Write;
+    let mut copied = 0usize;
+    for shard in std::fs::read_dir(src)? {
+        let shard = shard?;
+        let name = shard.file_name().to_string_lossy().to_string();
+        if !is_shard_name(&name) {
+            continue;
+        }
+        let shard_meta = std::fs::symlink_metadata(shard.path())?;
+        if !shard_meta.file_type().is_dir() {
+            continue;
+        }
+        for file in std::fs::read_dir(shard.path())? {
+            let file = file?;
+            let fname = file.file_name().to_string_lossy().to_string();
+            if !trackly_core::domain::attachments::is_valid_hash(&fname) {
+                continue;
+            }
+            let meta = std::fs::symlink_metadata(file.path())?;
+            if !meta.file_type().is_file() {
+                continue;
+            }
+            let dest_dir = dest.join(&name);
+            let dest_file = dest_dir.join(&fname);
+            if let Ok(dm) = std::fs::symlink_metadata(&dest_file) {
+                if dm.file_type().is_file() && dm.len() == meta.len() {
+                    continue;
+                }
+            }
+            std::fs::create_dir_all(&dest_dir)?;
+            let tmp = dest_dir.join(format!("{fname}.tmp"));
+            let mut input = std::fs::File::open(file.path())?;
+            let mut output = std::fs::File::create(&tmp)?;
+            std::io::copy(&mut input, &mut output)?;
+            output.flush()?;
+            output.sync_all()?;
+            drop(output);
+            if let Err(e) = std::fs::rename(&tmp, &dest_file) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(e);
+            }
+            copied += 1;
+        }
+    }
+    Ok(copied)
 }
 
 /// Удаляет старые файлы бэкапа, оставляя не более `retention` штук.
