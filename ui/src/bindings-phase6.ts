@@ -229,6 +229,11 @@ export type RequestCountsDto = {
  * "reload everything"; `deviceIds`/`groupIds` are a slot for Phases 43-45.
  * Admin|Manager only. No Rust<->TS gate covers WsEvent — the JSON-literal
  * unit test in `dto/printer.rs` is the safety net.
+ *
+ * Phase 41.3 added `WsEvent::AttachmentsChanged { parentKind, parentId,
+ * requestedByUserId }` (`attachments_changed`) — attachments of a parent
+ * changed (D-15/D-25). Admin|Manager see all; Employee only for their own
+ * request (`requestedByUserId`).
  */
 export type WsEvent =
   | { type: 'new_request'; requestId: number; requestType: string; requesterName: string }
@@ -240,4 +245,10 @@ export type WsEvent =
     }
   | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string }
   | { type: 'number_space_changed'; contexts: string[] }
-  | { type: 'entities_changed'; placeIds: number[]; deviceIds: number[]; groupIds: number[] };
+  | { type: 'entities_changed'; placeIds: number[]; deviceIds: number[]; groupIds: number[] }
+  | {
+      type: 'attachments_changed';
+      parentKind: string;
+      parentId: number;
+      requestedByUserId: number | null;
+    };
