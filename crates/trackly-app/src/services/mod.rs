@@ -9,6 +9,7 @@ pub(crate) mod act_kit;
 pub mod act_number_display;
 pub mod act_service;
 pub(crate) mod attachment_media;
+pub mod attachment_service;
 pub(crate) mod attachment_store;
 pub mod auth;
 pub mod backup_service;
@@ -35,6 +36,7 @@ pub mod supervisor;
 pub mod template_service;
 
 pub use act_service::ActService;
+pub use attachment_service::AttachmentService;
 pub use auth::AuthService;
 pub use backup_service::{BackupConfigDto, BackupResult, BackupService};
 pub use cartridge_service::CartridgeService;

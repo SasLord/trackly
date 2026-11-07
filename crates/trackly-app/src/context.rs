@@ -33,11 +33,13 @@ use trackly_infra::{AppConfig, Paths};
 use crate::dto::printer::WsEvent;
 use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
+use crate::services::attachment_store::AttachmentStore;
 use crate::services::{
-    run_poll_task, seed_supervisor_tasks, ActService, AuthService, BackupService, CartridgeService,
-    DashboardService, DeviceService, GroupService, GroupTypeService, NumberTemplateService,
-    OrgDbService, OrganizationService, PlaceMovementService, PlaceService, PrinterService,
-    ReportService, RequestService, TemplateService,
+    run_poll_task, seed_supervisor_tasks, ActService, AttachmentService, AuthService,
+    BackupService, CartridgeService, DashboardService, DeviceService, GroupService,
+    GroupTypeService, NumberTemplateService, OrgDbService, OrganizationService,
+    PlaceMovementService, PlaceService, PrinterService, ReportService, RequestService,
+    TemplateService,
 };
 use trackly_infra::ad::{
     directory::RealAdDirectory, directory_mock::MockAdDirectory, mock::MockAdClient,
@@ -130,6 +132,8 @@ pub struct AppCtx {
     /// Phase 40.2 Plan 05 (the service itself was built in Plan 04 but not
     /// yet wired into the composition root).
     pub number_templates: Arc<NumberTemplateService>,
+    /// Attachment service - read side (list/open/authorize). Phase 41.3 Plan 05.
+    pub attachments: Arc<AttachmentService>,
 }
 
 impl AppCtx {
@@ -284,12 +288,31 @@ impl AppCtx {
         ));
 
         // Phase 7 Plan 02: BackupService.
-        let backup = Arc::new(BackupService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-            db_path.clone(),
-        ));
+        // Phase 41.3: attachments dir (config override or `<db dir>/attachments`).
+        let attachments_dir =
+            trackly_infra::paths::resolve_attachments_dir(&db_path, &config.paths.attachments_path);
+        let attachment_store = Arc::new(AttachmentStore::new(attachments_dir.clone()));
+        attachment_store
+            .ensure_dirs()
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let attachments = Arc::new(
+            AttachmentService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                attachment_store,
+            )
+            .with_ws_tx(ws_broadcast.clone()),
+        );
+        let backup = Arc::new(
+            BackupService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                db_path.clone(),
+            )
+            .with_attachments_dir(attachments_dir),
+        );
 
         // Phase 7 Plan 02: migrate legacy org.json → org_settings table (one-time hook).
         org_db.migrate_from_org_json().await;
@@ -485,6 +508,7 @@ impl AppCtx {
             groups,
             place_movements,
             number_templates,
+            attachments,
         })
     }
 }
