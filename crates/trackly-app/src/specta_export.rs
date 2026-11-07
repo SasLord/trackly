@@ -248,5 +248,14 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::number_templates::number_template_contexts_get,
         crate::tauri_cmds::number_templates::number_template_contexts_set,
         crate::tauri_cmds::number_templates::number_templates_is_occupied,
+        // Phase 41.3 Plan 10 — Attachments
+        crate::tauri_cmds::attachments::attachments_list,
+        crate::tauri_cmds::attachments::attachments_delete,
+        crate::tauri_cmds::attachments::attachments_restore,
+        crate::tauri_cmds::attachments::attachments_purge,
+        crate::tauri_cmds::attachments::attachments_history,
+        crate::tauri_cmds::attachments::attachments_get_limit,
+        crate::tauri_cmds::attachments::attachments_set_limit,
+        crate::tauri_cmds::attachments::attachments_report,
     ])
 }

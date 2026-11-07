@@ -7,6 +7,7 @@
 //! хелпер — это и есть «один DTO, два транспорта».
 
 pub mod acts;
+pub mod attachments;
 pub mod auth;
 pub mod cartridges;
 pub mod dashboard;

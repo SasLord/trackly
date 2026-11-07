@@ -261,7 +261,22 @@ fn main() -> anyhow::Result<()> {
             // Phase 7 Plan 07 — app_restart command (D-19 DB move workflow).
             .plugin(tauri_plugin_process::init())
             .manage(ctx)
-            .invoke_handler(builder.invoke_handler())
+            .invoke_handler({
+                // `attachments_upload` takes a raw `tauri::ipc::Request` which
+                // specta cannot describe; dispatch it ahead of the specta handler.
+                let specta_handler = builder.invoke_handler();
+                let upload_handler: Box<dyn Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync> =
+                    Box::new(tauri::generate_handler![
+                        trackly_app::tauri_cmds::attachments::attachments_upload
+                    ]);
+                move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
+                    if invoke.message.command() == "attachments_upload" {
+                        upload_handler(invoke)
+                    } else {
+                        specta_handler(invoke)
+                    }
+                }
+            })
             .setup(move |app| {
                 builder.mount_events(app);
 
