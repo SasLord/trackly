@@ -260,6 +260,13 @@ fn main() -> anyhow::Result<()> {
             .plugin(tauri_plugin_fs::init())
             // Phase 7 Plan 07 — app_restart command (D-19 DB move workflow).
             .plugin(tauri_plugin_process::init())
+            // Phase 41.3 Plan 10: desktop file/thumbnail serving through the
+            // shared AttachmentService (same access check as the HTTP route).
+            .register_asynchronous_uri_scheme_protocol("trackly-att", |uri_ctx, request, responder| {
+                use tauri::Manager;
+                let app_ctx = uri_ctx.app_handle().state::<AppCtx>().inner().clone();
+                trackly_app::attachments_protocol::handle(app_ctx, request, responder);
+            })
             .manage(ctx)
             .invoke_handler({
                 // `attachments_upload` takes a raw `tauri::ipc::Request` which
