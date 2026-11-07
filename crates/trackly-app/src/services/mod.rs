@@ -8,7 +8,9 @@
 pub(crate) mod act_kit;
 pub mod act_number_display;
 pub mod act_service;
-pub(crate) mod attachment_media;
+// pub only so the integration test attachments_heic can reach it.
+#[doc(hidden)]
+pub mod attachment_media;
 pub mod attachment_service;
 pub(crate) mod attachment_store;
 pub mod auth;
