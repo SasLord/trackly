@@ -138,6 +138,12 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         readers.clone(),
         clock.clone(),
     ));
+    let attachments = Arc::new(trackly_app::services::AttachmentService::with_root(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+        dir.path().join("attachments"),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
@@ -146,6 +152,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         groups,
         place_movements,
         number_templates,
+        attachments,
         paths: paths_arc,
         org_db,
         reports,

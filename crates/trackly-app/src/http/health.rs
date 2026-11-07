@@ -144,6 +144,15 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let attachments = Arc::new(
+            crate::services::AttachmentService::with_root(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                dir.path().join("attachments"),
+            )
+            .with_ws_tx(ws_broadcast.clone()),
+        );
         let ctx = AppCtx {
             writer,
             readers,
@@ -152,6 +161,7 @@ mod tests {
             groups,
             place_movements,
             number_templates,
+            attachments,
             paths: paths_arc,
             org_db,
             reports,

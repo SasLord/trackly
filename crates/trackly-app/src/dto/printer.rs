@@ -414,8 +414,7 @@ impl WsEvent {
                 ..
             } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
-                    || (requested_by_user_id.is_some()
-                        && identity.user_id == *requested_by_user_id)
+                    || (requested_by_user_id.is_some() && identity.user_id == *requested_by_user_id)
             }
         }
     }

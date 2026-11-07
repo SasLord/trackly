@@ -161,13 +161,11 @@ mod tests {
             clock.clone(),
         ));
         let attachments = Arc::new(
-            crate::services::AttachmentService::new(
+            crate::services::AttachmentService::with_root(
                 writer.clone(),
                 readers.clone(),
                 clock.clone(),
-                Arc::new(crate::services::attachment_store::AttachmentStore::new(
-                    dir.path().join("attachments"),
-                )),
+                dir.path().join("attachments"),
             )
             .with_ws_tx(ws_broadcast.clone()),
         );

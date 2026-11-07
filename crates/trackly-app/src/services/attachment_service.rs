@@ -124,6 +124,17 @@ impl AttachmentService {
         }
     }
 
+    /// Convenience constructor over a blob root directory (used by fixtures
+    /// that cannot name the `pub(crate)` store type).
+    pub fn with_root(
+        writer: Arc<WriterHandle>,
+        readers: Arc<ReaderPool>,
+        clock: Arc<dyn Clock + Send + Sync>,
+        root: PathBuf,
+    ) -> Self {
+        Self::new(writer, readers, clock, Arc::new(AttachmentStore::new(root)))
+    }
+
     /// Builder: wire the shared WS broadcast sender.
     #[must_use]
     pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
@@ -316,10 +327,7 @@ impl AttachmentService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            match load_parent(&conn, parent) {
-                Ok(owner) => owner,
-                Err(_) => None,
-            }
+            load_parent(&conn, parent).unwrap_or_default()
         })
         .await
         .ok()
