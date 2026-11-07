@@ -8,6 +8,7 @@
 //! `build_*` helper что и Tauri command.
 
 pub mod acts;
+pub mod attachments;
 pub mod auth;
 pub mod cartridges;
 pub mod dashboard;
@@ -184,6 +185,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(groups::router())
         .merge(place_movements::router())
         .merge(acts::router())
+        .merge(attachments::router())
         .merge(cartridges::router())
         .merge(number_templates::router())
         .merge(organization::router())
@@ -208,7 +210,10 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
 
     // --- Security headers (T-05-14, глобально) ---
     let security_headers = ServiceBuilder::new()
-        .layer(SetResponseHeaderLayer::overriding(
+        // if_not_present: the attachment FILE route sets SAMEORIGIN itself so an
+        // inline PDF can load in the viewer iframe (Phase 41.3, T-41.3-48); every
+        // other response still gets DENY.
+        .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-frame-options"),
             HeaderValue::from_static("DENY"),
         ))

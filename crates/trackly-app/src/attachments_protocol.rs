@@ -72,7 +72,7 @@ pub fn content_disposition(name: &str, inline: bool) -> String {
 }
 
 /// Safe header value: the DB mime is validated against a conservative charset.
-fn safe_mime(mime: &str) -> &str {
+pub fn safe_mime(mime: &str) -> &str {
     if !mime.is_empty()
         && mime
             .bytes()

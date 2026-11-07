@@ -99,9 +99,37 @@ pub async fn build_attachments_report(
     ctx.attachments.get_report(caller).await
 }
 
-/// Upload of one file. Order matters: authorization first, then the size
-/// check against the limit, and only then anything is written to disk.
-pub async fn build_attachments_upload(
+/// Upload step 1 (shared by both transports): authorization BEFORE the first
+/// body byte is read, then the effective size limit. Returns the parent and
+/// the limit the transport must enforce while receiving the body.
+pub async fn build_attachments_upload_begin(
+    ctx: &AppCtx,
+    caller: &Identity,
+    parent_kind: String,
+    parent_id: i64,
+) -> Result<(ParentRef, i64), AppError> {
+    let parent = parent_ref(&parent_kind, parent_id)?;
+    ctx.attachments.authorize_attach(caller, parent).await?;
+    let limit = ctx.attachments.effective_limit().await?;
+    Ok((parent, limit))
+}
+
+/// Upload step 2 (shared): ingest a fully received staged file.
+pub async fn build_attachments_upload_finish(
+    ctx: &AppCtx,
+    caller: &Identity,
+    parent: ParentRef,
+    name: &str,
+    staged: crate::services::attachment_service::StagedUpload,
+) -> Result<AttachmentUploadDto, AppError> {
+    ctx.attachments.ingest(caller, parent, name, staged).await
+}
+
+/// Tauri upload of one already-received buffer. Order matters: authorization
+/// first, then the size check against the limit, and only then anything is
+/// written to disk. The HTTP transport streams through the same two steps
+/// (`build_attachments_upload_http`).
+pub async fn build_attachments_upload_tauri(
     ctx: &AppCtx,
     caller: &Identity,
     parent_kind: String,
@@ -109,9 +137,8 @@ pub async fn build_attachments_upload(
     name: String,
     body: &[u8],
 ) -> Result<AttachmentUploadDto, AppError> {
-    let parent = parent_ref(&parent_kind, parent_id)?;
-    ctx.attachments.authorize_attach(caller, parent).await?;
-    let limit = ctx.attachments.effective_limit().await?;
+    let (parent, limit) =
+        build_attachments_upload_begin(ctx, caller, parent_kind, parent_id).await?;
     if body.len() as i64 > limit {
         return Ok(AttachmentUploadDto {
             attachment: None,
@@ -129,7 +156,7 @@ pub async fn build_attachments_upload(
         }
         Err(StageError::Internal(e)) => return Err(e),
     }
-    ctx.attachments.ingest(caller, parent, &name, staged).await
+    build_attachments_upload_finish(ctx, caller, parent, &name, staged).await
 }
 
 fn header_decoded(req: &tauri::ipc::Request<'_>, name: &str) -> Result<String, AppError> {
@@ -251,5 +278,5 @@ pub async fn attachments_upload(
             message: "Ожидалось бинарное тело запроса".to_string(),
         });
     };
-    build_attachments_upload(state.inner(), &caller, kind, id, name, bytes).await
+    build_attachments_upload_tauri(state.inner(), &caller, kind, id, name, bytes).await
 }
