@@ -8,6 +8,8 @@
 pub(crate) mod act_kit;
 pub mod act_number_display;
 pub mod act_service;
+pub(crate) mod attachment_media;
+pub(crate) mod attachment_store;
 pub mod auth;
 pub mod backup_service;
 pub mod cartridge_service;
