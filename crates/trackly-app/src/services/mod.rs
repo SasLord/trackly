@@ -10,6 +10,7 @@ pub mod act_number_display;
 pub mod act_service;
 // pub only so the integration test attachments_heic can reach it.
 #[doc(hidden)]
+pub(crate) mod attachment_admin;
 pub mod attachment_media;
 pub mod attachment_service;
 pub(crate) mod attachment_store;

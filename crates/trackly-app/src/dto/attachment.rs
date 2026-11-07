@@ -68,26 +68,47 @@ pub struct AttachmentHistoryEventDto {
     pub created_at_utc: i64,
 }
 
-/// Integrity report (filled by plan 08).
+/// Integrity report of the attachments store (D-20). Counts only: no file
+/// names and no hashes (T-41.3-33).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrityReportDto {
     #[specta(type = i32)]
     pub checked_at_utc: i64,
+    /// Blob files found on disk.
     #[specta(type = i32)]
-    pub missing_files: i32,
+    pub files: i64,
+    /// Total size of those files.
     #[specta(type = i32)]
-    pub orphan_files: i32,
+    pub bytes: i64,
+    /// DB rows whose blob is missing (counted by distinct content).
     #[specta(type = i32)]
-    pub size_mismatches: i32,
+    pub lost: i64,
+    /// Orphan blobs (no row, older than 24 h) deleted by this scan.
+    #[specta(type = i32)]
+    pub orphans_removed: i64,
+    /// Orphan blobs younger than 24 h, left untouched.
+    #[specta(type = i32)]
+    pub orphans_young: i64,
+    /// Soft-deleted attachments (refreshed at read time).
+    #[specta(type = i32)]
+    pub deleted_rows: i64,
+    #[specta(type = i32)]
+    pub deleted_bytes: i64,
+    /// "ok" | "unavailable".
+    pub status: String,
 }
 
-/// Size-limit setting (filled by plan 08).
+/// Size-limit setting and the resolved attachments directory (Admin only).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentLimitDto {
     #[specta(type = i32)]
     pub max_bytes: i64,
     #[specta(type = i32)]
+    pub default_bytes: i64,
+    #[specta(type = i32)]
     pub ceiling_bytes: i64,
+    /// Resolved attachments directory, shown read-only.
+    pub path: String,
 }
