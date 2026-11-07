@@ -64,8 +64,8 @@ pub struct LimitPayload {
     pub bytes: i64,
 }
 
+/// Query keys are snake_case: `?parent_kind=..&parent_id=..`.
 #[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct UploadQuery {
     pub parent_kind: String,
     pub parent_id: i64,

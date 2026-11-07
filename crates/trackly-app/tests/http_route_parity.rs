@@ -142,6 +142,22 @@ const ROUTE_WITHOUT_CMD: &[Verdict] = &[
                  инвалидация идёт внутрипроцессными событиями, команды Tauri здесь нет",
     },
     Verdict {
+        name: "attachments/{id}/file",
+        reason: "Tauri отдаёт файл вложения через URI-схему trackly-att (attachments_protocol.rs); \
+                 команды invoke нет. Оба транспорта идут через AttachmentService::open_for_read",
+    },
+    Verdict {
+        name: "attachments/{id}/thumb",
+        reason: "Tauri отдаёт миниатюру вложения через URI-схему trackly-att (attachments_protocol.rs); \
+                 команды invoke нет. Оба транспорта идут через AttachmentService::open_for_read",
+    },
+    Verdict {
+        name: "attachments_upload",
+        reason: "команда attachments_upload есть в Tauri, но это обычная #[tauri::command] без specta \
+                 (tauri::ipc::Request не реализует specta::Type), её диспетчеризует main.rs перед \
+                 specta-обработчиком, поэтому в collect_commands! её нет; HTTP — multipart",
+    },
+    Verdict {
         name: "users_reset_password",
         reason: "HTTP-only: handler и build_users_reset_password есть в http/users.rs, но ни \
                  команды Tauri, ни вызывающей стороны в ui/src нет — админский сброс пароля \
@@ -248,8 +264,10 @@ fn tauri_commands() -> BTreeSet<String> {
 
 /// R: зарегистрированные пути `/api/v1/<name>` по `src/http/*.rs`.
 /// `\s*` в регулярке покрывает многострочный `.route(\n "…",\n …)`.
+/// Класс `[\w/{}]` ловит и вложенные пути (`attachments/{id}/file`): иначе GET-маршруты
+/// вложений были бы невидимы для гейта.
 fn http_routes() -> BTreeSet<String> {
-    let re = regex::Regex::new(r#"\.route\(\s*"/api/v1/(\w+)""#).expect("regex");
+    let re = regex::Regex::new(r#"\.route\(\s*"/api/v1/([\w/{}]+)""#).expect("regex");
     let mut routes = BTreeSet::new();
     let mut raw = 0usize;
     for (_label, src) in read_rs_dir("src/http") {

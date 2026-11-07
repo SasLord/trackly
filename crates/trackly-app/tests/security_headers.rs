@@ -299,3 +299,114 @@ async fn server_serves_embedded_spa_index() {
     .await
     .expect("server_serves_embedded_spa_index exceeded 30s budget");
 }
+
+/// Phase 41.3 plan 11 (T-41.3-48): the attachment FILE route is the only one that
+/// may be framed (inline PDF in the viewer iframe) and only by the same origin;
+/// every other response - including the same route's 401/404 errors - keeps DENY.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn attachment_file_route_is_sameorigin_everything_else_deny() {
+    use tower_sessions::session::{Id, Record};
+    use tower_sessions::SessionStore;
+
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (router, ctx) = build_test_components().await.expect("components");
+        let admin = ctx
+            .auth
+            .create_user(
+                trackly_app::dto::auth::UserNew {
+                    login: "hdr_admin".to_string(),
+                    full_name: "Иванов И.И.".to_string(),
+                    password: "password123".to_string(),
+                    role: "admin".to_string(),
+                    email: None,
+                },
+                &trackly_core::auth::Identity::trusted_admin(),
+            )
+            .await
+            .expect("admin");
+        let store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let sid = Id::default();
+        let mut record = Record {
+            id: sid,
+            data: Default::default(),
+            expiry_date: time::OffsetDateTime::now_utc() + time::Duration::days(1),
+        };
+        record.data.insert(
+            "identity".to_string(),
+            serde_json::to_value(trackly_app::http::auth::SessionIdentity {
+                user_id: Some(admin.id),
+                role: "admin".to_string(),
+            })
+            .unwrap(),
+        );
+        store.create(&mut record).await.expect("session");
+        let cookie = format!("id={sid}");
+
+        let hash = "cd".repeat(32);
+        let blob = ctx.attachments.store().blob_path(&hash).unwrap();
+        std::fs::create_dir_all(blob.parent().unwrap()).unwrap();
+        std::fs::write(&blob, b"%PDF-1.4 x").unwrap();
+        let admin_id = admin.id;
+        let att_id = ctx
+            .writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO requests (request_type, status, requested_by_user_id, \
+                     created_at_utc, updated_at_utc) VALUES ('free_form', 'open', ?1, 1, 1)",
+                    rusqlite::params![admin_id],
+                )
+                .unwrap();
+                let rid = conn.last_insert_rowid();
+                conn.execute(
+                    "INSERT INTO attachments (parent_kind, parent_id, original_name, mime, \
+                     size_bytes, content_hash, uploaded_by_user_id, created_at_utc) \
+                     VALUES ('request', ?1, 'a.pdf', 'application/pdf', 10, ?2, ?3, 1)",
+                    rusqlite::params![rid, hash, admin_id],
+                )
+                .unwrap();
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("seed");
+
+        let xfo = |uri: String, cookie: Option<String>| {
+            let router = router.clone();
+            async move {
+                let mut b = Request::builder().method("GET").uri(uri);
+                if let Some(c) = cookie {
+                    b = b.header("cookie", c);
+                }
+                let res = router
+                    .oneshot(b.body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                (
+                    res.status(),
+                    res.headers()
+                        .get("x-frame-options")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string(),
+                )
+            }
+        };
+
+        let (st, h) = xfo(
+            format!("/api/v1/attachments/{att_id}/file"),
+            Some(cookie.clone()),
+        )
+        .await;
+        assert_eq!((st, h.as_str()), (StatusCode::OK, "SAMEORIGIN"));
+        let (st, h) = xfo(format!("/api/v1/attachments/{att_id}/file"), None).await;
+        assert_eq!((st, h.as_str()), (StatusCode::UNAUTHORIZED, "DENY"));
+        let (st, h) = xfo(format!("/api/v1/attachments/{att_id}/thumb"), Some(cookie)).await;
+        assert_eq!(st, StatusCode::NOT_FOUND);
+        assert_eq!(h, "DENY");
+        let (_, h) = xfo("/".to_string(), None).await;
+        assert_eq!(h, "DENY");
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("attachment_file_route_is_sameorigin_everything_else_deny exceeded 30s");
+}

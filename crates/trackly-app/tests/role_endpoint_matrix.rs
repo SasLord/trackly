@@ -5288,3 +5288,127 @@ async fn places_group_members_role_matrix() {
     .await
     .expect("places_group_members_role_matrix exceeded 60s");
 }
+
+/// Вложения (Phase 41.3 plan 11, ATT-02, T-41.3-45): Employee не видит вложения
+/// чужой заявки, устройства и картриджа (403); Manager не управляет удалёнными и
+/// отчётом целостности (403); Admin получает JSON-ответы (200), а не index.html.
+/// Отдельная функция: фильтр cargo по имени не видит кейсов внутри монолита.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn attachments_role_matrix_http() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let employee_id = env.employee.user_id.unwrap();
+        let admin_id = env.admin.user_id.unwrap();
+
+        // Заявка чужого автора (admin), устройство и картридж.
+        gt_db_exec(
+            &env.ctx,
+            "INSERT INTO requests (request_type, status, requested_by_user_id, \
+             created_at_utc, updated_at_utc) VALUES ('free_form', 'open', ?1, 1700000000, 1700000000)",
+            vec![gt_int(admin_id)],
+        )
+        .await;
+        let request_id = gt_db_i64(
+            &env.ctx,
+            "SELECT id FROM requests WHERE requested_by_user_id = ?1",
+            vec![gt_int(admin_id)],
+        )
+        .await;
+        let device_id = groups_seed_device(&env, "Тестовое устройство вложений", "ATT-INV-1").await;
+        gt_db_exec(
+            &env.ctx,
+            "INSERT INTO cartridge_models (brand, model, created_at_utc, updated_at_utc) \
+             VALUES ('Brand', 'M-ATT', 1700000000, 1700000000)",
+            vec![],
+        )
+        .await;
+        gt_db_exec(
+            &env.ctx,
+            "INSERT INTO cartridges (code, model_id, created_at_utc, updated_at_utc) \
+             VALUES ('C-ATT001', (SELECT id FROM cartridge_models WHERE model = 'M-ATT'), \
+             1700000000, 1700000000)",
+            vec![],
+        )
+        .await;
+        let cartridge_id = gt_db_i64(
+            &env.ctx,
+            "SELECT id FROM cartridges WHERE code = 'C-ATT001'",
+            vec![],
+        )
+        .await;
+        gt_db_exec(
+            &env.ctx,
+            "INSERT INTO attachments (parent_kind, parent_id, original_name, mime, size_bytes, \
+             content_hash, uploaded_by_user_id, created_at_utc, deleted_at_utc) \
+             VALUES ('request', ?1, 'a.pdf', 'application/pdf', 4, ?2, ?3, 1700000000, 1700000001)",
+            vec![gt_int(request_id), gt_text(&"ab".repeat(32)), gt_int(admin_id)],
+        )
+        .await;
+        let att_id = gt_db_i64(
+            &env.ctx,
+            "SELECT id FROM attachments WHERE parent_id = ?1",
+            vec![gt_int(request_id)],
+        )
+        .await;
+        assert!(employee_id > 0);
+
+        // Employee: чужая заявка, устройство, картридж -> 403.
+        for (kind, id) in [
+            ("request", request_id),
+            ("device", device_id),
+            ("cartridge", cartridge_id),
+        ] {
+            let (status, _) = gt_post(
+                &env,
+                &env.employee_cookie,
+                "attachments_list",
+                json!({ "parentKind": kind, "parentId": id }),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "employee -> attachments_list({kind}) -> ожидался 403, получен {status}"
+            );
+        }
+
+        // Manager: restore/purge/report -> 403.
+        for (name, body) in [
+            ("attachments_restore", json!({ "id": att_id })),
+            ("attachments_purge", json!({ "id": att_id })),
+            ("attachments_report", json!({})),
+        ] {
+            let (status, _) = gt_post(&env, &env.manager_cookie, name, body).await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "manager -> {name} -> ожидался 403, получен {status}"
+            );
+        }
+
+        // Admin: настоящие JSON-ответы.
+        let (status, body) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "attachments_list",
+            json!({ "parentKind": "device", "parentId": device_id }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "admin -> attachments_list: {body}");
+        assert!(body["items"].is_array(), "admin: не JSON списка: {body}");
+        let (status, body) =
+            gt_post(&env, &env.admin_cookie, "attachments_report", json!({})).await;
+        assert_eq!(status, StatusCode::OK, "admin -> attachments_report: {body}");
+        let (status, body) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "attachments_restore",
+            json!({ "id": att_id }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "admin -> attachments_restore: {body}");
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("attachments_role_matrix_http exceeded 60s");
+}
