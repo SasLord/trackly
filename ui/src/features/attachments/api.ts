@@ -46,7 +46,10 @@ export const attachments = {
 /** URL файла или миниатюры; работает в `<img>`/`<iframe>` обоих режимов. */
 export function attachmentUrl(id: number, kind: AttachmentKind): string {
   if (inTauri()) {
-    return convertFileSrc(`${id}/${kind}`, 'trackly-att');
+    // convertFileSrc кодирует аргумент через encodeURIComponent: "12/thumb"
+    // превратился бы в "12%2Fthumb", и строгий parse_uri ответил бы 404 (G1).
+    // Поэтому кодируется только id, а вид дописывается после него.
+    return `${convertFileSrc(String(id), 'trackly-att')}/${kind}`;
   }
   return `/api/v1/attachments/${id}/${kind}`;
 }

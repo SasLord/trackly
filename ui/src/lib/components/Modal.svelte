@@ -314,6 +314,10 @@
 
   .modal-title {
     margin: 0;
+    // Длинное слово без пробелов (имя файла) переносится, а не уезжает под
+    // крестик и за край окна (41.3 G4).
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-size: var(--tr-font-size-h3);
     font-weight: var(--tr-font-weight-semibold);
     line-height: var(--tr-line-height-h3);

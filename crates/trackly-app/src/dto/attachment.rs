@@ -26,6 +26,10 @@ pub struct AttachmentDto {
     #[specta(type = i32)]
     pub created_at_utc: i64,
     pub deleted_by_name: Option<String>,
+    /// NULL together with a NULL name = deleted from the desktop app without a
+    /// user account (`Identity::trusted_admin`), not a deleted account (G2).
+    #[specta(type = Option<i32>)]
+    pub deleted_by_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub deleted_at_utc: Option<i64>,
 }
@@ -60,6 +64,8 @@ pub struct AttachmentHistoryEventDto {
     #[specta(type = i32)]
     pub attachment_id: i64,
     pub name: String,
+    /// "added" | "deleted" | "restored" | "purged" (audit action without the
+    /// `custom:attachment_` prefix; the UI labels exactly these codes).
     pub action: String,
     /// "active" | "deleted" | "purged".
     pub state: String,

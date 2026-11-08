@@ -10,6 +10,7 @@
   import { formatFileSize } from '$lib/utils/formatFileSize';
   import { formatDateTimeShort } from '$lib/utils/date';
   import { attachmentUrl, fetchAttachmentBytes } from './api';
+  import { actorLabel } from './labels';
   import type { AttachmentDto } from '../../bindings';
 
   interface Props {
@@ -57,14 +58,14 @@
     current
       ? [
           formatFileSize(current.sizeBytes),
-          current.uploadedByName ?? 'Пользователь удалён',
+          actorLabel(current.uploadedByName, current.uploadedById),
           formatDateTimeShort(current.createdAtUtc),
         ].join(' · ')
       : '',
   );
   const deletedLine = $derived(
     live && live.deletedAtUtc !== null
-      ? `Удалено · ${live.deletedByName ?? 'Пользователь удалён'} · ${formatDateTimeShort(live.deletedAtUtc)}`
+      ? `Удалено · ${actorLabel(live.deletedByName, live.deletedById)} · ${formatDateTimeShort(live.deletedAtUtc)}`
       : '',
   );
 

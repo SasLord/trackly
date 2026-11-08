@@ -195,6 +195,9 @@ async fn lifecycle_soft_delete() {
         let l = ctx.attachments.list(req(r), &admin).await.unwrap();
         assert_eq!(l.deleted.len(), 1);
         assert_eq!(l.deleted[0].deleted_by_name.as_deref(), Some("Иванов И.И."));
+        // G2: id удалившего отдаётся вместе с именем — UI отличает удалённую
+        // учётную запись (id есть, имени нет) от действия из приложения (id нет).
+        assert_eq!(l.deleted[0].deleted_by_id, ea.user_id);
         assert!(l.deleted[0].deleted_at_utc.is_some());
 
         // Manager deletes any; employee-uploader who lost the parent is Forbidden.

@@ -132,6 +132,7 @@
       uploadedById: null,
       createdAtUtc: 0,
       deletedByName: null,
+      deletedById: null,
       deletedAtUtc: null,
     };
   }
@@ -160,6 +161,7 @@
   function enqueue(files: globalThis.File[], folderNames: string[] = []) {
     if (destroyed) return;
     const lines: string[] = folderNames.map((n) => `«${n}» — это папка. Приложите файлы из неё.`);
+    const oversized: globalThis.File[] = [];
     let accepted = 0;
     for (const file of files) {
       if (file.size === 0) {
@@ -167,7 +169,9 @@
         continue;
       }
       if (maxBytes > 0 && file.size > maxBytes) {
-        lines.push(rejectLine(file.name, 'too_large', file.size));
+        // Лимит прочитан при открытии карточки и мог устареть (G3): решение
+        // откладывается до перечитывания списка в recheckOversized.
+        oversized.push(file);
         continue;
       }
       const key = nextKey++;
@@ -176,6 +180,7 @@
       accepted += 1;
     }
     if (lines.length > 0) errors = [...errors, ...lines];
+    if (oversized.length > 0) void recheckOversized(oversized);
     if (accepted === 0) return;
     if (!processing) {
       batchTotal = 0;
@@ -186,6 +191,20 @@
     if (!processing) void processQueue();
   }
 
+  // Файлы, превысившие лимит из списка, проверяются заново по свежему лимиту:
+  // после повышения лимита они уходят в загрузку, иначе отказ называет
+  // действующее значение, а не прочитанное при открытии карточки (G3).
+  async function recheckOversized(files: globalThis.File[]) {
+    await load(true);
+    if (destroyed) return;
+    const fits = files.filter((f) => !(maxBytes > 0 && f.size > maxBytes));
+    const lines = files
+      .filter((f) => maxBytes > 0 && f.size > maxBytes)
+      .map((f) => rejectLine(f.name, 'too_large', f.size));
+    if (lines.length > 0) errors = [...errors, ...lines];
+    if (fits.length > 0) enqueue(fits);
+  }
+
   async function processQueue() {
     processing = true;
     try {
@@ -194,6 +213,9 @@
         const res = await uploadAttachment(parentKind, parentId, entry.file);
         pending = pending.filter((p) => p.id !== -entry.key);
         if (res.rejectCode !== null || res.attachment === null) {
+          // Отказ по размеру пришёл от сервера: лимит в списке устарел, его
+          // нужно перечитать до того, как он попадёт в текст отказа (G3).
+          if (res.rejectCode === 'too_large' && !destroyed) await load(true);
           errors = [
             ...errors,
             rejectLine(entry.file.name, res.rejectCode ?? 'network', entry.file.size),

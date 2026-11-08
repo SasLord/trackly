@@ -23,6 +23,14 @@
 //   [G10] (план 14) RequestDetail отбрасывает custom:attachment_* на клиенте и
 //        берёт события вложений через attachments.history('request', ...);
 //        CartridgeDetail тоже отбрасывает сырые custom:attachment_*.
+//   [G11] (UAT G1) attachmentUrl кодирует в convertFileSrc только id: строка
+//        с `/` превращается в `%2F`, и схема trackly-att отвечает 404;
+//   [G12] (UAT G5) коды событий истории совпадают с сервером: Rust отрезает
+//        префикс `custom:attachment_`, а AttachmentHistory подписывает именно
+//        added/deleted/restored/purged и не сравнивает с полной строкой;
+//   [G13] (UAT G2) подпись автора/удалившего идёт через actorLabel (пустой id —
+//        действие из приложения, а не удалённая учётная запись), литерал
+//        «Пользователь удалён» в плитке и просмотрщике не встречается.
 //
 // Счёт имён слеп к порядку, поэтому G4/G5 сравнивают ПОЗИЦИИ в теле функции,
 // а самопроверка (--selftest) включает мутации-перестановки, не только удаление.
@@ -55,10 +63,18 @@ const CARDS = {
     heading: 'История перемещений',
   },
 };
+// Серверная сторона контракта истории (G12).
+const RUST_SERVICE = path.resolve(
+  HERE,
+  '../../crates/trackly-app/src/services/attachment_service.rs',
+);
 const REQUIRED = [
   'AttachmentsBlock.svelte',
   'AttachmentTile.svelte',
+  'AttachmentViewer.svelte',
+  'AttachmentHistory.svelte',
   'api.ts',
+  'rust:attachment_service.rs',
   ...Object.keys(CARDS),
 ];
 
@@ -218,6 +234,48 @@ export function check(files) {
   if (!/startsWith\(\s*['"]custom:attachment_['"]\s*\)/.test(src['card:CartridgeDetail.svelte'])) {
     v.push({ code: 'G10', msg: 'CartridgeDetail не отбрасывает custom:attachment_* на клиенте' });
   }
+
+  const urlBody = functionBody(api, 'attachmentUrl');
+  if (urlBody === null) {
+    v.push({ code: 'G11', msg: 'api.ts: нет функции attachmentUrl' });
+  } else {
+    const calls = [...urlBody.matchAll(/convertFileSrc\(\s*([^,]+),/g)].map((m) => m[1].trim());
+    if (calls.length === 0 || calls.some((arg) => arg !== 'String(id)')) {
+      v.push({
+        code: 'G11',
+        msg: `api.ts: в convertFileSrc должен уходить только String(id), а не ${calls.join(', ') || 'ничего'} (иначе «/» станет %2F)`,
+      });
+    }
+  }
+
+  const rust = src['rust:attachment_service.rs'];
+  if (!/strip_prefix\(\s*"custom:attachment_"\s*\)/.test(rust)) {
+    v.push({
+      code: 'G12',
+      msg: 'attachment_service.rs: history() больше не отрезает префикс — сверить контракт с AttachmentHistory',
+    });
+  }
+  const hist = src['AttachmentHistory.svelte'];
+  for (const code of ['added', 'deleted', 'restored', 'purged']) {
+    if (!new RegExp(`case\\s+'${code}'\\s*:`).test(hist)) {
+      v.push({ code: 'G12', msg: `AttachmentHistory: нет подписи для кода '${code}'` });
+    }
+  }
+  if (/['"]custom:attachment_/.test(hist)) {
+    v.push({
+      code: 'G12',
+      msg: 'AttachmentHistory сравнивает с полной строкой custom:attachment_*, а сервер её не отдаёт',
+    });
+  }
+
+  for (const name of ['AttachmentTile.svelte', 'AttachmentViewer.svelte']) {
+    if (src[name].includes('Пользователь удалён')) {
+      v.push({ code: 'G13', msg: `${name}: литерал «Пользователь удалён» вместо actorLabel()` });
+    }
+    if (!/actorLabel\(/.test(src[name])) {
+      v.push({ code: 'G13', msg: `${name}: подпись автора не через actorLabel()` });
+    }
+  }
   return v;
 }
 
@@ -230,6 +288,9 @@ function readFiles(dir) {
   for (const [key, card] of Object.entries(CARDS)) {
     const file = path.join(FEATURES, card.rel);
     if (fs.existsSync(file)) out[key] = fs.readFileSync(file, 'utf8');
+  }
+  if (fs.existsSync(RUST_SERVICE)) {
+    out['rust:attachment_service.rs'] = fs.readFileSync(RUST_SERVICE, 'utf8');
   }
   return out;
 }
@@ -398,6 +459,66 @@ function selftest(files) {
           "!e.action.startsWith('custom:attachment_')",
           'true',
           'cartridge filter',
+        ),
+    },
+    {
+      name: 'в convertFileSrc ушёл путь с «/» (G1 UAT)',
+      expect: 'G11',
+      make: () =>
+        mutate(
+          files,
+          'api.ts',
+          "`${convertFileSrc(String(id), 'trackly-att')}/${kind}`",
+          "convertFileSrc(`${id}/${kind}`, 'trackly-att')",
+          'url id only',
+        ),
+    },
+    {
+      name: 'сервер перестал отрезать префикс действия',
+      expect: 'G12',
+      make: () =>
+        mutate(
+          files,
+          'rust:attachment_service.rs',
+          '.strip_prefix("custom:attachment_")',
+          '.strip_prefix("")',
+          'rust strip',
+        ),
+    },
+    {
+      name: 'история снова ждёт полную строку custom:attachment_added',
+      expect: 'G12',
+      make: () =>
+        mutate(
+          files,
+          'AttachmentHistory.svelte',
+          "case 'added':",
+          "case 'custom:attachment_added':",
+          'history added',
+        ),
+    },
+    {
+      name: 'плитка снова пишет «Пользователь удалён» для пустого автора',
+      expect: 'G13',
+      make: () =>
+        mutate(
+          files,
+          'AttachmentTile.svelte',
+          'actorLabel(item.uploadedByName, item.uploadedById)',
+          "item.uploadedByName ?? 'Пользователь удалён'",
+          'tile actor',
+        ),
+    },
+    {
+      name: 'просмотрщик снова пишет «Пользователь удалён» для пустого автора',
+      expect: 'G13',
+      make: () =>
+        mutate(
+          files,
+          'AttachmentViewer.svelte',
+          'actorLabel(current.uploadedByName, current.uploadedById)',
+          "current.uploadedByName ?? 'Пользователь удалён'",
+          'viewer actor',
         ),
     },
     {

@@ -1,14 +1,16 @@
 <script lang="ts" module>
   // Фаза 41.3, план 14 (D-14): подписи событий вложений для историй карточек.
+  // Сервер (AttachmentService::history) отдаёт action БЕЗ префикса
+  // `custom:attachment_`: added / deleted / restored / purged (G5).
   export function attachmentActionLabel(action: string, name: string): string {
     switch (action) {
-      case 'custom:attachment_added':
+      case 'added':
         return `Приложен файл «${name}»`;
-      case 'custom:attachment_deleted':
+      case 'deleted':
         return `Удалён файл «${name}»`;
-      case 'custom:attachment_restored':
+      case 'restored':
         return `Восстановлен файл «${name}»`;
-      case 'custom:attachment_purged':
+      case 'purged':
         return `Файл «${name}» удалён навсегда`;
       default:
         return action;
@@ -38,7 +40,7 @@
 
   function linkable(ev: AttachmentHistoryEventDto): boolean {
     if (!onOpen) return false;
-    if (ev.action === 'custom:attachment_purged') return false;
+    if (ev.action === 'purged') return false;
     return ev.state === 'active' || (ev.state === 'deleted' && isAdmin);
   }
 
@@ -98,7 +100,17 @@
   }
   .history-text {
     flex: 1;
+    min-width: 0;
     padding: var(--tr-space-2xs) 0;
+    overflow-wrap: anywhere;
+  }
+
+  // Имя-ссылка (Button variant=link) по умолчанию не переносится: длинное имя
+  // файла давало горизонтальную прокрутку карточки (41.3 G4).
+  .history-text :global(button) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
   }
   .plain-name {
     color: var(--tr-text-primary);

@@ -10,6 +10,7 @@
   import { formatDateTimeShort } from '$lib/utils/date';
   import AttachmentTypeIcon, { iconKindForMime } from './AttachmentTypeIcon.svelte';
   import { attachmentUrl } from './api';
+  import { actorLabel } from './labels';
   import type { AttachmentDto } from '../../bindings';
 
   interface Props {
@@ -48,11 +49,11 @@
     item.hasThumbnail && !thumbFailed && !missing && tileState !== 'uploading',
   );
   const iconKind = $derived(iconKindForMime(item.mime, item.originalName));
-  const who = $derived(item.uploadedByName ?? 'Пользователь удалён');
+  const who = $derived(actorLabel(item.uploadedByName, item.uploadedById));
   const whoWhen = $derived(`${who} · ${formatDateTimeShort(item.createdAtUtc)}`);
   const deletedLine = $derived(
     item.deletedAtUtc !== null
-      ? `Удалил: ${item.deletedByName ?? 'Пользователь удалён'} · ${formatDateTimeShort(item.deletedAtUtc)}`
+      ? `Удалил: ${actorLabel(item.deletedByName, item.deletedById)} · ${formatDateTimeShort(item.deletedAtUtc)}`
       : '',
   );
   const primary = $derived<'open' | 'download'>(missing || item.viewable ? 'open' : 'download');

@@ -306,6 +306,7 @@ impl AttachmentService {
             uploaded_by_id: r.uploaded_by_user_id,
             created_at_utc: r.created_at_utc,
             deleted_by_name: r.deleted_by_name.clone(),
+            deleted_by_id: r.deleted_by_user_id,
             deleted_at_utc: r.deleted_at_utc,
         }
     }
