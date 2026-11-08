@@ -292,9 +292,17 @@ impl AppCtx {
         let attachments_dir =
             trackly_infra::paths::resolve_attachments_dir(&db_path, &config.paths.attachments_path);
         let attachment_store = Arc::new(AttachmentStore::new(attachments_dir.clone()));
-        attachment_store
-            .ensure_dirs()
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        // D-28 allows a UNC share / removable disk here. If it is unreachable at
+        // startup the app still starts: only attachments degrade (the integrity
+        // report says "unavailable", uploads fail with a message). Every write
+        // path creates its directories on demand, so nothing else depends on
+        // this call succeeding.
+        if let Err(e) = attachment_store.ensure_dirs() {
+            tracing::warn!(
+                path = %attachments_dir.display(),
+                "attachments directory unavailable at startup: {e}"
+            );
+        }
         let attachments = Arc::new(
             AttachmentService::new(
                 writer.clone(),
