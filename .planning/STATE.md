@@ -1667,8 +1667,8 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-08
-Stopped at: Completed 41.9-02-PLAN.md
-Resume file: .planning/phases/41.9-container-groups-devices/41.9-03-PLAN.md
+Stopped at: Completed 41.9-03-PLAN.md
+Resume file: .planning/phases/41.9-container-groups-devices/41.9-04-PLAN.md
 
 None
 
