@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.3 (attachments-storage) — EXECUTING
-Plan: 11 of 15
-Status: Ready to execute
+Plan: 15 of 15
+Status: All plans executed; live UAT 11/11 PASS (2026-11-08) — phase verification next
 мог получить USB-хост) и F-2 (нет имени хоста под чипом USB). Доработка планами 09-13 и 15:
 правка IP при редактировании (D-13), независимость IP и USB-хоста (D-15, по прямому замечанию
 пользователя «принтер может быть связан по USB и в это же время быть сетевым»), подпись хоста в
@@ -1644,8 +1644,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-07T18:39:06.012Z
-Stopped at: Phase 41.3 UI-SPEC approved
+Last session: 2026-11-08
+Stopped at: Phase 41.3 plan 15 complete (UAT 11/11, gaps G1–G5 fixed), verification pending
 Resume file: None
 
 None
