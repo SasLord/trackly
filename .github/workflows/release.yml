@@ -73,15 +73,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # --features heic: HEIC -> JPEG via libheif, linked statically (phase 41.3,
+          # D-10/D-24; heic-spike.yml passed 2026-11-07). macOS/Linux stay without it.
           - platform: windows-latest
-            args: '--bundles nsis'
+            args: '--bundles nsis --features heic'
           - platform: macos-latest
             args: '--target aarch64-apple-darwin --bundles dmg'
           - platform: ubuntu-22.04
             args: '--bundles appimage,deb'
 
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 60
+    # 90: the Windows job also builds libheif through vcpkg (heic feature).
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -111,6 +114,18 @@ jobs:
             librsvg2-dev \
             libxdo-dev \
             build-essential curl wget file libssl-dev
+
+      # libheif for `--features heic` (same recipe as heic-spike.yml): only
+      # libheif[core,libde265] — no x265 encoder (GPL); static libs with the
+      # dynamic CRT (x64-windows-static-md), so no heif.dll / libde265.dll ships.
+      - name: Install libheif via vcpkg (Windows, static-md)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install "libheif[core,libde265]:x64-windows-static-md"
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_DEFAULT_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -206,6 +221,19 @@ jobs:
           retryAttempts: 1
           projectPath: crates/trackly-app
           args: ${{ matrix.args }}
+
+      # D-10: the portable exe must not need heif.dll / libde265.dll next to it.
+      - name: Check trackly.exe has no external heif DLL (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -like '*Hostx64\x64*' } | Select-Object -First 1
+          & $dumpbin.FullName /dependents target\release\trackly.exe | Tee-Object -FilePath dumpbin.txt
+          if (Select-String -Path dumpbin.txt -Pattern 'heif\.dll|libde265\.dll' -Quiet) {
+            Write-Error 'trackly.exe depends on an external heif/libde265 DLL (D-10 violated)'
+            exit 1
+          }
 
       # Assemble portable ZIP on Windows only.
       # Contents (D-08): trackly.exe + portable.txt (empty marker) + README.md + trackly.config.toml.example
