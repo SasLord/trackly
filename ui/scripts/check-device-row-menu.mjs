@@ -124,6 +124,7 @@ const SELFTEST_MIN_SCANNED_FILES = 1;
 const ROW_FILES = [
   'src/features/devices/DeviceListRow.svelte',
   'src/features/devices/DeviceGroupRow.svelte',
+  'src/features/devices/DeviceContainerRow.svelte',
   'src/features/printers/PrinterListRow.svelte',
 ];
 // Обязательные: отсутствие файла или привязок — нарушение, SKIP недопустим.
@@ -131,6 +132,7 @@ const ROW_FILES = [
 const MANDATORY_ROW_FILES = [
   'src/features/devices/DeviceListRow.svelte',
   'src/features/devices/DeviceGroupRow.svelte',
+  'src/features/devices/DeviceContainerRow.svelte',
   'src/features/printers/PrinterListRow.svelte',
 ];
 // Привязки, которые обязательная строка ОБЯЗАНА иметь (закрывает слепое пятно
@@ -143,6 +145,8 @@ const MANDATORY_ROW_FILES = [
 const REQUIRED_BINDINGS = {
   'src/features/devices/DeviceListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
   'src/features/devices/DeviceGroupRow.svelte': ['ondblclick'],
+  // Строка АРМ (фаза 41.9): меню, двойной клик и клавиатура, как у DeviceListRow.
+  'src/features/devices/DeviceContainerRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
   'src/features/printers/PrinterListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
 };
 
@@ -1873,6 +1877,65 @@ async function selftest(cases) {
       console.error(`${TAG} SELFTEST FAIL — для обязательного ${f} нет записи в REQUIRED_BINDINGS`);
       process.exit(1);
     }
+  }
+  // 5d. Реальный исходник строки АРМ (фаза 41.9): чистый зелёный; мутация-перестановка
+  // охраны и удаление охраны краснят. Якорь каждой замены встречается ровно один раз
+  // (mutate падает иначе): неуникальный якорь снял бы охрану у соседней функции.
+  const CONTAINER_PATH = 'src/features/devices/DeviceContainerRow.svelte';
+  let containerSrc;
+  try {
+    containerSrc = fs.readFileSync(path.join(UI_ROOT, CONTAINER_PATH), 'utf8');
+  } catch {
+    console.error(`${TAG} SELFTEST FAIL — нет реального исходника ${CONTAINER_PATH}`);
+    process.exit(1);
+  }
+  const containerOpts = {
+    ...SELFTEST_OPTS,
+    mandatory: [CONTAINER_PATH],
+    rowFiles: [CONTAINER_PATH],
+    requiredBindings: { [CONTAINER_PATH]: ALL_BINDINGS },
+  };
+  const cleanContainer = scanStructural(
+    fixtureMap({ [CONTAINER_PATH]: containerSrc }),
+    containerOpts,
+  );
+  if (cleanContainer.violations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — реальная строка АРМ красная:\n  - ${cleanContainer.violations.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
+  }
+  const ctxHead =
+    'function handleContextMenu(e: MouseEvent) {\n    if (isRowOverlayEvent(e.target)) return;\n    e.preventDefault();';
+  const dblHead =
+    'function handleDblClick(e: MouseEvent) {\n    if (isRowOverlayEvent(e.target)) return;';
+  const containerMutants = [
+    {
+      name: 'перестановка охраны contextmenu (preventDefault раньше охраны)',
+      src: mutate(
+        containerSrc,
+        ctxHead,
+        'function handleContextMenu(e: MouseEvent) {\n    e.preventDefault();\n    if (isRowOverlayEvent(e.target)) return;',
+        'container-ctx-swap',
+      ),
+    },
+    {
+      name: 'удалена охрана dblclick',
+      src: mutate(
+        containerSrc,
+        dblHead,
+        'function handleDblClick(e: MouseEvent) {',
+        'container-dbl-drop',
+      ),
+    },
+  ];
+  for (const m of containerMutants) {
+    const r = scanStructural(fixtureMap({ [CONTAINER_PATH]: m.src }), containerOpts);
+    if (!r.violations.some((v) => v.file === CONTAINER_PATH)) {
+      console.error(`${TAG} SELFTEST FAIL — мутант строки АРМ НЕ пойман: ${m.name}`);
+      process.exit(1);
+    }
+    console.log(`${TAG} selftest: мутант строки АРМ ПОЙМАН — ${m.name}`);
   }
   const noFile = scanStructural(fixtureMap({ [ROW_PATH]: null }), mandatoryOpts);
   if (!noFile.violations.some((v) => v.code === 'F0')) {

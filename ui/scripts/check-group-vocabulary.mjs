@@ -115,6 +115,23 @@ const ALLOWLIST = [
     markers: ['Открыть группу'],
   },
   {
+    // 41.9-06 (GRD-07, UI-SPEC §6): строка АРМ. Бейдж-ссылка «Группа», пункт и
+    // подсказка «Открыть группу», подсказка счётчика, подпись триггера меню.
+    // Любая другая надпись про группу в файле красная.
+    file: 'src/features/devices/DeviceContainerRow.svelte',
+    markers: [
+      'Открыть группу',
+      'size="sm">Группа</Badge>',
+      'включая вложенные группы',
+      'Действия с группой',
+    ],
+  },
+  {
+    // 41.9-06 (D-09, UI-SPEC §11): подпись кнопки догрузки состава.
+    file: 'src/features/devices/GroupLoadRestButton.svelte',
+    markers: ['Загрузить весь состав группы'],
+  },
+  {
     // 41.1-19: раскрытие состава якоря — ссылка в пустом составе и строка
     // «Остальные — в разделе «Группы»».
     file: 'src/features/devices/DeviceList.svelte',
@@ -505,6 +522,24 @@ function runSelfTest() {
       file: 'src/features/devices/DeviceList.svelte',
       src: '<span>Состав группы пуст</span>',
       expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.9-06): тексты строки АРМ',
+      file: 'src/features/devices/DeviceContainerRow.svelte',
+      src: "<Badge variant=\"accent\" appearance=\"soft\" size=\"sm\">Группа</Badge>\ntitle={'Открыть группу «' + n + '»'}\ntitle={'Устройств в составе, включая вложенные группы: ' + c}\nlabel={'Действия с группой «' + n + '»'}",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.9-06): прочая надпись про группу в строке АРМ',
+      file: 'src/features/devices/DeviceContainerRow.svelte',
+      src: '<span>Состав группы пуст</span>',
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.9-06): подпись кнопки догрузки состава',
+      file: 'src/features/devices/GroupLoadRestButton.svelte',
+      src: "ariaLabel={'Загрузить весь состав группы «' + n + '»'}",
+      expectViolations: 0,
     },
     {
       name: 'позитив (41.1-19): тост состава группы в DevicesPage',

@@ -31,7 +31,7 @@
 // потребитель пути, о котором гейт не знает.
 //
 // «Семейство пути»: SHORT_RE — `place_path_short`, `from_/to_place_path_short`;
-// FULL_RE — `full_path`, `place_path`, `from_/to_place_path`.
+// FULL_RE — `full_path`, `place_path_full` (ContainerRowDto, 41.9), `place_path`, `from_/to_place_path`.
 //
 // Правила (код — в сообщениях):
 //   P1 полнота      — файл под `src/`, где (без комментариев) есть идентификатор
@@ -83,14 +83,14 @@ const TAG = '[check-place-path-short]';
 
 const SRC_DIR = 'src';
 const SHORT_RE = /\b(?:from_|to_)?place_path_short\b/;
-const FULL_RE = /\b(?:from_|to_)?(?:full_path|place_path)\b/;
+const FULL_RE = /\b(?:from_|to_)?(?:full_path|place_path_full|place_path)\b/;
 const SHORT_RE_G = new RegExp(SHORT_RE.source, 'g');
 const FULL_RE_G = new RegExp(FULL_RE.source, 'g');
 const MIN_REASON = 20;
 
 /** Пороги антивакуума: равны фактическим числам первого прогона по репозиторию. */
-const MIN_SHORT_CONSUMERS = 9;
-const MIN_VERDICTS = 23;
+const MIN_SHORT_CONSUMERS = 10;
+const MIN_VERDICTS = 24;
 
 /** Виды вердикта, требующие `reason` (освобождения). */
 const EXEMPT_KINDS = new Set(['PASSTHROUGH', 'FULL_BY_DESIGN', 'DATA_ONLY', 'DEMO', 'SLOT_TEXT']);
@@ -107,6 +107,7 @@ const VERDICTS = [
   // --- ROW_CELL: колонка «Место» в таблице; текст — short, title — полный путь ---
   { path: 'src/features/devices/DeviceListRow.svelte', kind: 'ROW_CELL' },
   { path: 'src/features/devices/DeviceGroupRow.svelte', kind: 'ROW_CELL' },
+  { path: 'src/features/devices/DeviceContainerRow.svelte', kind: 'ROW_CELL' },
   { path: 'src/features/cartridges/CartridgeListRow.svelte', kind: 'ROW_CELL' },
   { path: 'src/features/places/PlaceContents.svelte', kind: 'ROW_CELL' },
   // title читает `place_path` (поле DTO группового устройства), а не `full_path`

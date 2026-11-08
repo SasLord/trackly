@@ -13,15 +13,9 @@
   }
 
   const { groupName, shown, total, loading, onclick }: Props = $props();
-
-  // Строка не должна реагировать на клик по кнопке.
-  function stop(e: MouseEvent) {
-    e.stopPropagation();
-  }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<span class="load-rest" onclick={stop}>
+<span class="load-rest">
   <Button
     variant="ghost"
     size="sm"
