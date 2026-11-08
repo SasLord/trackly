@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-11-08T12:49:00.979Z
-last_activity: 2026-11-07
+status: "Ready to discuss — next command: /gsd-discuss-phase 41.9 (в новой сессии)"
+last_updated: "2026-11-08T14:19:25.276Z"
+last_activity: 2026-11-08
 progress:
   total_phases: 27
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 279
-  completed_plans: 542
-  percent: 59
-stopped_at: Phase 41.3 complete (15/15) — ready to discuss Phase 41.4
+  completed_plans: 279
+  percent: 63
 ---
 
 # Project State
@@ -35,13 +34,16 @@ Status: Ready to discuss — next command: /gsd-discuss-phase 41.9 (в ново�
 Зависимость — фаза 41.1 и её GAP-1 — закрыта (41.1-VERIFICATION: GAP-1 закрыт, G1-G3 passed).
 
 **Находки для обсуждения 41.9:**
+
 - 41.8, 41.9, 41.10 были описаны в ROADMAP, но отсутствовали в таблице прогресса, поэтому
   `phase.complete 41.3` назвал следующей 41.4; строки добавлены 2026-11-08. После 41.9 сверить, что
   SDK не перескакивает 41.8/41.10 (порядок 41.8 → 41.10 задан зависимостью 41.10 от 41.8).
+
 - Опора 41.9 — механика якорной строки фазы 41.1: флаги скрытия членов, `hidden_member_count`,
   `ui/src/features/devices/deviceListMode.ts`, якорная строка и её исключения (поиск, вкладка
   статуса, переход по `focusId` из «Мест» показывают устройство обычной строкой). Отличие АРМ —
   у контейнерной группы нет якорного устройства, строку нужно строить от самой группы.
+
 - Уроки, которые применять: решения в CONTEXT писать в нотации D-NN до планировщика (иначе гейт
   покрытия решений даёт вакуумный проход); проверять изменения UI в живом приложении (WKWebView/
   WebView2), а не синтетическим стендом; гейты UI — отдельные команды (`pnpm lint` не включает
@@ -1664,9 +1666,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-08
-Stopped at: Phase 41.3 complete (verified 96/96, release 1.4.0-phase41.3); next — /gsd-discuss-phase 41.9
-Resume file: None
+Last session: 2026-11-08T14:19:25.266Z
+Stopped at: Phase 41.9 context gathered
+Resume file: .planning/phases/41.9-container-groups-devices/41.9-CONTEXT.md
 
 None
 
