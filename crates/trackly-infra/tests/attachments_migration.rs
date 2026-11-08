@@ -40,6 +40,9 @@ fn v050_creates_table_indexes_and_keeps_children() {
 
     assert_eq!(count(&conn, "SELECT COUNT(*) FROM act_items"), items_before);
     assert_eq!(count(&conn, "SELECT COUNT(*) FROM acts"), acts_before);
+    // Каждая миграция обязана сама выставлять user_version (D-Migrations-02):
+    // без этого версия схемы застревает на 49, и защита от даунгрейда врёт.
+    assert_eq!(count(&conn, "PRAGMA user_version"), 50);
 
     let cols: Vec<String> = conn
         .prepare("SELECT name FROM pragma_table_info('attachments') ORDER BY cid")

@@ -31,3 +31,5 @@ CREATE TABLE attachments (
 
 CREATE INDEX idx_attachments_parent ON attachments (parent_kind, parent_id, created_at_utc, id);
 CREATE INDEX idx_attachments_hash ON attachments (content_hash);
+
+PRAGMA user_version = 50;
