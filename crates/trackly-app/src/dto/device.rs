@@ -353,6 +353,8 @@ pub struct DeviceFilter {
     /// кроме самого якоря. Пикеры актов флаг не ставят и видят все устройства;
     /// страница «Устройства» ставит его только на вкладке «Все» и не в режиме
     /// поиска (`search` флагов не принимает).
+    /// Phase 41.9: смысл расширен до «члены якорных и контейнерных групп»;
+    /// имя поля не менялось.
     #[serde(default)]
     pub hide_anchor_members: bool,
     /// Phase 41.1, opt-in: только якорные устройства.
@@ -402,6 +404,51 @@ pub struct DeviceListResponse {
     /// флаге, иначе 0.
     #[specta(type = i32)]
     pub hidden_member_count: i64,
+}
+
+/// Строка АРМ (контейнерной группы) в списке «Устройства» (D-01). Несёт только
+/// то, что есть у группы; полей устройства здесь нет и они не выдумываются.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ContainerRowDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    pub name: String,
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i64>,
+    pub place_path_short: Option<String>,
+    pub place_path_full: Option<String>,
+    /// Живые физические устройства с вложенными группами (D-13).
+    #[specta(type = i32)]
+    pub device_count: i64,
+}
+
+/// Строка смешанного списка: устройство или АРМ.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DeviceEntryDto {
+    Device { device: Box<DeviceDto> },
+    Container { container: ContainerRowDto },
+}
+
+/// Страница смешанного списка (D-04).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct DeviceEntriesResponse {
+    pub rows: Vec<DeviceEntryDto>,
+    #[specta(type = u32)]
+    pub total: u64,
+    pub has_more: bool,
+    #[specta(type = i32)]
+    pub hidden_member_count: i64,
+}
+
+/// Блок АРМ над свёртками (D-12, D-14).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ContainerListResponse {
+    pub containers: Vec<ContainerRowDto>,
+    #[specta(type = i32)]
+    pub hidden_member_count: i64,
+    /// Список усечён потолком блока (молчаливого усечения нет).
+    pub truncated: bool,
 }
 
 /// Набор одинаковых устройств, свёрнутых в одну строку (DEV-11 / D-Group-01).

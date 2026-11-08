@@ -43,9 +43,9 @@ use std::collections::HashMap;
 use crate::csv::session_store::ImportSessionStore;
 use crate::csv::{decode_to_string, detect, parse_rows, ImportSession};
 use crate::dto::device::{
-    CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
-    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, RowError,
-    StatusCount, STATE_HINTS,
+    ContainerListResponse, ContainerRowDto, CsvImportPreviewResponse, CsvImportReport, DeviceDto,
+    DeviceEntriesResponse, DeviceEntryDto, DeviceFilter, DeviceGroup, DeviceListResponse,
+    DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, RowError, StatusCount, STATE_HINTS,
 };
 use crate::dto::device_status::DeviceStatusDto;
 use crate::dto::device_type::DeviceTypeDto;
@@ -273,6 +273,107 @@ pub struct DeviceService {
     /// via `with_ws_tx`. Optional builder field, mirrors `ActService`/
     /// `CartridgeService`'s own `ws_tx` field.
     pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
+}
+
+/// Потолок блока АРМ над свёртками (T-41.9-10): выше — `truncated = true`.
+const CONTAINER_BLOCK_CAP: usize = 1000;
+
+fn to_domain_filter(filter: DeviceFilter) -> trackly_core::domain::devices::DeviceFilter {
+    trackly_core::domain::devices::DeviceFilter {
+        type_id: filter.type_id,
+        place_id: filter.place_id,
+        status_id: filter.status_id,
+        state: filter.state,
+        name_prefix: filter.name_prefix,
+        include_deleted: filter.include_deleted,
+        group_by_condition: false,
+        hide_anchor_members: filter.hide_anchor_members,
+        anchors_only: filter.anchors_only,
+        exclude_anchors: filter.exclude_anchors,
+        member_of_group_id: filter.member_of_group_id,
+        group_members_only: filter.group_members_only,
+    }
+}
+
+fn validate_page_limit(page: &Pagination) -> Result<(), AppError> {
+    if page.limit > 200 {
+        return Err(AppError::Validation {
+            field: "pagination.limit".to_string(),
+            message: "Максимальный размер страницы — 200".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn container_dto(
+    conn: &rusqlite::Connection,
+    row: trackly_core::domain::devices::ContainerRow,
+) -> ContainerRowDto {
+    let short = crate::services::place_path_display::compute_place_path_short_with_conn(
+        conn,
+        row.place_id,
+        row.place_full_path.clone(),
+    );
+    ContainerRowDto {
+        group_id: row.id,
+        name: row.name,
+        place_id: row.place_id,
+        place_path_short: short,
+        place_path_full: row.place_full_path,
+        device_count: row.device_count,
+    }
+}
+
+/// Ключи -> строки в порядке ключей: общая гидратация `list_entries` и
+/// `group_children`, чтобы порядок и форма строки не разошлись.
+fn hydrate_entries(
+    conn: &rusqlite::Connection,
+    repo: &SqliteDeviceRepository,
+    keys: Vec<trackly_core::domain::devices::EntryKey>,
+) -> Result<Vec<DeviceEntryDto>, AppError> {
+    use trackly_core::domain::devices::EntryKind;
+    let device_ids: Vec<i64> = keys
+        .iter()
+        .filter(|k| k.kind == EntryKind::Device)
+        .map(|k| k.id)
+        .collect();
+    let container_ids: Vec<i64> = keys
+        .iter()
+        .filter(|k| k.kind == EntryKind::Container)
+        .map(|k| k.id)
+        .collect();
+    let mut devices: HashMap<i64, DeviceDto> = repo
+        .list_by_ids(conn, &device_ids)?
+        .into_iter()
+        .map(|r| (r.id, DeviceDto::from(r)))
+        .collect();
+    {
+        let mut refs: Vec<&mut DeviceDto> = devices.values_mut().collect();
+        enrich_devices(conn, refs.drain(..))?;
+    }
+    let mut containers: HashMap<i64, ContainerRowDto> = repo
+        .container_rows(conn, &container_ids)?
+        .into_iter()
+        .map(|r| (r.id, container_dto(conn, r)))
+        .collect();
+    let mut rows = Vec::with_capacity(keys.len());
+    for k in keys {
+        match k.kind {
+            EntryKind::Device => {
+                if let Some(device) = devices.remove(&k.id) {
+                    rows.push(DeviceEntryDto::Device {
+                        device: Box::new(device),
+                    });
+                }
+            }
+            EntryKind::Container => {
+                if let Some(container) = containers.remove(&k.id) {
+                    rows.push(DeviceEntryDto::Container { container });
+                }
+            }
+        }
+    }
+    Ok(rows)
 }
 
 /// Phase 41.1 Plan 12 (D-12, D-19): обогащает строки списка информацией о группе,
@@ -1018,6 +1119,132 @@ impl DeviceService {
             items,
             total,
             hidden_member_count,
+        })
+    }
+
+    /// Phase 41.9 (D-04): смешанный список устройств и корневых АРМ одной
+    /// страницей в порядке ключей репозитория.
+    pub async fn list_entries(
+        &self,
+        filter: DeviceFilter,
+        page: Pagination,
+    ) -> Result<DeviceEntriesResponse, AppError> {
+        validate_page_limit(&page)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let domain_filter = to_domain_filter(filter);
+        let (rows, total, hidden_member_count) = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let (keys, total) =
+                repo.list_entry_keys(&conn, &domain_filter, page.limit as i64, page.offset as i64)?;
+            let hidden = if domain_filter.hide_anchor_members {
+                repo.count_hidden_anchor_members(&conn, &domain_filter)?
+            } else {
+                0
+            };
+            let rows = hydrate_entries(&conn, &repo, keys)?;
+            Ok::<_, AppError>((rows, total, hidden))
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })??;
+        let has_more = page.offset + (rows.len() as u64) < total;
+        Ok(DeviceEntriesResponse {
+            rows,
+            total,
+            has_more,
+            hidden_member_count,
+        })
+    }
+
+    /// Phase 41.9 (D-12, D-14): блок корневых непустых АРМ над свёртками.
+    pub async fn list_containers(
+        &self,
+        filter: DeviceFilter,
+        query: Option<String>,
+    ) -> Result<ContainerListResponse, AppError> {
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let domain_filter = to_domain_filter(filter);
+        let query = query
+            .map(|q| q.trim().to_string())
+            .filter(|q| !q.is_empty());
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let hide = domain_filter.hide_anchor_members;
+            let show_containers = hide
+                && domain_filter.status_id.is_none()
+                && !domain_filter.anchors_only
+                && domain_filter.member_of_group_id.is_none();
+            let mut rows = if show_containers {
+                repo.list_root_containers(&conn)?
+            } else {
+                Vec::new()
+            };
+            if let Some(q) = &query {
+                rows.retain(|r| trackly_core::domain::devices::container_name_matches(&r.name, q));
+            }
+            let truncated = rows.len() > CONTAINER_BLOCK_CAP;
+            rows.truncate(CONTAINER_BLOCK_CAP);
+            let containers = rows
+                .into_iter()
+                .map(|r| container_dto(&conn, r))
+                .collect::<Vec<_>>();
+            let hidden_member_count = if hide {
+                repo.count_hidden_anchor_members(&conn, &domain_filter)?
+            } else {
+                0
+            };
+            Ok::<_, AppError>(ContainerListResponse {
+                containers,
+                hidden_member_count,
+                truncated,
+            })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// Phase 41.9 (D-11): прямые дети группы одной страницей.
+    pub async fn group_children(
+        &self,
+        group_id: i64,
+        page: Pagination,
+    ) -> Result<DeviceEntriesResponse, AppError> {
+        validate_page_limit(&page)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let (rows, total) = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            // Несуществующая или удалённая группа — пустой состав, не ошибка.
+            let alive: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL)",
+                    [group_id],
+                    |r| r.get(0),
+                )
+                .map_err(map_rusqlite)?;
+            if !alive {
+                return Ok::<_, AppError>((Vec::new(), 0));
+            }
+            let (keys, total) =
+                repo.group_children_keys(&conn, group_id, page.limit as i64, page.offset as i64)?;
+            let rows = hydrate_entries(&conn, &repo, keys)?;
+            Ok::<_, AppError>((rows, total))
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })??;
+        let has_more = page.offset + (rows.len() as u64) < total;
+        Ok(DeviceEntriesResponse {
+            rows,
+            total,
+            has_more,
+            hidden_member_count: 0,
         })
     }
 
