@@ -121,8 +121,17 @@ jobs:
       - name: Install libheif via vcpkg (Windows, static-md)
         if: runner.os == 'Windows'
         shell: pwsh
+        # The source tarballs come from GitHub archives; on 2026-11-08 they answered
+        # 504 past vcpkg's own retries, so the whole install is retried with a pause.
         run: |
-          vcpkg install "libheif[core,libde265]:x64-windows-static-md"
+          $ok = $false
+          foreach ($attempt in 1..4) {
+            vcpkg install "libheif[core,libde265]:x64-windows-static-md"
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Host "vcpkg install failed (attempt $attempt), retrying in 60 s"
+            Start-Sleep -Seconds 60
+          }
+          if (-not $ok) { Write-Error 'vcpkg install of libheif failed after 4 attempts'; exit 1 }
           "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
           "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
           "VCPKG_DEFAULT_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -260,6 +269,7 @@ jobs:
 
       # Assemble portable ZIP on Windows only.
       # Contents (D-08): trackly.exe + portable.txt (empty marker) + README.md + trackly.config.toml.example
+      # + THIRD-PARTY-NOTICES.md (LGPL-3 notice for libheif/libde265, phase 41.3 plan 06)
       # portable.txt activates portable-mode path resolution in trackly_infra::paths (Phase 1 / D-10).
       # VERSION env var was exported by the "Extract version" step above.
       - name: Assemble portable ZIP
@@ -272,8 +282,16 @@ jobs:
           New-Item -ItemType File -Path "$STAGE\portable.txt" -Force
           Copy-Item "README-portable.md" "$STAGE\README.md"
           Copy-Item "trackly.config.toml.example" "$STAGE\trackly.config.toml.example"
+          # LGPL-3 notice for the statically linked libheif/libde265 (--features heic).
+          Copy-Item "THIRD-PARTY-NOTICES.md" "$STAGE\THIRD-PARTY-NOTICES.md"
           $ZIP_NAME = "trackly-v${env:VERSION}-windows-x64-portable.zip"
           Compress-Archive -Path "$STAGE\*" -DestinationPath $ZIP_NAME -Force
+          # The LGPL-3 notice must ship with the statically linked libheif build.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $ZIP_NAME))
+          $has = $zip.Entries.Name -contains 'THIRD-PARTY-NOTICES.md'
+          $zip.Dispose()
+          if (-not $has) { Write-Error 'THIRD-PARTY-NOTICES.md missing from the portable ZIP'; exit 1 }
           echo "PORTABLE_ZIP=$ZIP_NAME" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       # gh release upload accepts tag_name, not release_id.
