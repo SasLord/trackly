@@ -127,6 +127,29 @@ jobs:
           "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
           "VCPKG_DEFAULT_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # The AppImage bundler downloads its tools from GitHub release assets with a
+      # single attempt, and that CDN keeps answering 504 (2026-11-08: three reruns
+      # in a row). The bundler skips any tool already present in ~/.cache/tauri
+      # (tauri-bundler linux/appimage/linuxdeploy.rs, prepare_tools), so seed the
+      # cache here with retries.
+      - name: Pre-fetch AppImage tools with retries (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="$HOME/.cache/tauri"
+          mkdir -p "$T"
+          fetch() {
+            curl -fsSL --retry 8 --retry-all-errors --retry-delay 15 --max-time 300 -o "$T/$1" "$2"
+            chmod +x "$T/$1"
+          }
+          fetch AppRun-x86_64 https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64
+          fetch linuxdeploy-x86_64.AppImage https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage
+          fetch linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          fetch linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          fetch linuxdeploy-plugin-appimage.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          ls -la "$T"
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
