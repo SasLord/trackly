@@ -22,6 +22,8 @@
     groupName?: string;
     /** Group-row-mode only: colspan of the merged name cell. */
     groupColspan?: number;
+    /** Group-row-mode only: контент между шевроном и именем (маркер принтера, 41.9). */
+    groupLead?: Snippet;
     /** Group-row-mode only: fires on click of the row OR the chevron button. */
     onToggleGroup?: () => void;
     /** Форвард на <tr> в обоих режимах. preventDefault здесь НЕ вызывается:
@@ -47,6 +49,7 @@
     group = false,
     groupExpanded = false,
     groupName,
+    groupLead,
     groupColspan = 1,
     onToggleGroup,
     oncontextmenu,
@@ -67,6 +70,7 @@
   <tr class="tr-row tr-row-group {className}" onclick={onToggleGroup} {oncontextmenu} {ondblclick}>
     <td class="tr-row-group-name" colspan={groupColspan}>
       <RowChevron expanded={groupExpanded} onclick={handleChevronClick} />
+      {@render groupLead?.()}
       {groupName}
     </td>
     {@render children?.()}

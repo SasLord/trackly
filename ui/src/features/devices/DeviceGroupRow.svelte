@@ -6,6 +6,7 @@
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
+  import PrinterMark from './PrinterMark.svelte';
   import { isRowOverlayEvent } from './deviceRowMenu';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
@@ -158,6 +159,8 @@
   }
 </script>
 
+{#snippet printerLead()}<PrinterMark typeId={group.repr.type_id} />{/snippet}
+
 <TableRow
   group
   groupExpanded={expanded}
@@ -165,6 +168,7 @@
   groupColspan={4}
   onToggleGroup={toggleExpand}
   ondblclick={handleGroupDblClick}
+  groupLead={printerLead}
 >
   <!-- groupColspan={4} merges Наименование + Инв.№ + Серийный № + Модель columns;
        TableRow's own group-mode chevron + merged name cell replace the hand-rolled

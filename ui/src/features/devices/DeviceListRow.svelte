@@ -3,6 +3,8 @@
   import TableRow from '$lib/components/TableRow.svelte';
   import RowChevron from '$lib/components/icons/RowChevron.svelte';
   import DeviceRowMenu from './DeviceRowMenu.svelte';
+  import PrinterMark from './PrinterMark.svelte';
+  import GroupLoadRestButton from './GroupLoadRestButton.svelte';
   import { isOwnKeyEvent, isRowOverlayEvent } from './deviceRowMenu';
   import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import type { DeviceDto } from '../../bindings';
@@ -28,6 +30,15 @@
     onToggleExpand?: (_groupId: number) => void;
     /** Строка состава якоря: отступ первой ячейки (D-12, UI-SPEC 9.4). */
     indent?: boolean;
+    /** Фаза 41.9: глубина отступа первой ячейки (0..3), поверх indent. */
+    depth?: number;
+    /** Фаза 41.9 (D-10): кнопка догрузки состава якорной строки; null/не задано — нет. */
+    loadRest?: {
+      shown: number;
+      total: number;
+      loading: boolean;
+      onclick: () => void;
+    } | null;
   }
 
   const {
@@ -41,6 +52,8 @@
     expanded = false,
     onToggleExpand,
     indent = false,
+    depth = 0,
+    loadRest = null,
   }: Props = $props();
 
   // Якорь (D-12): устройство, на котором держится группа. Строка остаётся полной
@@ -113,6 +126,7 @@
   class={isLastInGroup ? 'group-last-child' : undefined}
   selected={isHighlighted}
   {indent}
+  {depth}
   oncontextmenu={handleContextMenu}
   ondblclick={handleDblClick}
 >
@@ -129,6 +143,7 @@
     {#if isAnchor}
       <span class="anchor-cell">
         <RowChevron {expanded} onclick={handleChevronClick} />
+        <PrinterMark typeId={device.type_id} />
         <span class="anchor-name">{device.name}</span>
         <a
           class="anchor-link"
@@ -142,9 +157,18 @@
         <Badge variant="accent" appearance="count" size="sm">
           <span class="tr-mono">{device.anchor_member_count ?? 0} шт.</span>
         </Badge>
+        {#if loadRest && device.anchor_group_name}
+          <GroupLoadRestButton
+            groupName={device.anchor_group_name}
+            shown={loadRest.shown}
+            total={loadRest.total}
+            loading={loadRest.loading}
+            onclick={loadRest.onclick}
+          />
+        {/if}
       </span>
     {:else}
-      {device.name}
+      <PrinterMark typeId={device.type_id} />{device.name}
     {/if}
   </td>
   <td class="cell cell-numeric" title={device.inventory_no ?? ''}
@@ -217,7 +241,9 @@
 
   .anchor-link {
     display: inline-flex;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
     text-decoration: none;
 
     &:hover {
