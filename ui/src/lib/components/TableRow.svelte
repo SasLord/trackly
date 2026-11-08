@@ -10,6 +10,8 @@
     selected?: boolean;
     /** padding-left: 32px on the row's first <td>. */
     indent?: boolean;
+    /** Глубина вложенности (фаза 41.9): 2 -> отступ 48px, 3 и глубже -> 64px; 0/1 — как прежде. */
+    depth?: number;
     /** Removes border-bottom from every <td> — literal last row of a table. */
     last?: boolean;
     /** Switches to group-row rendering mode. */
@@ -40,6 +42,7 @@
   const {
     selected = false,
     indent = false,
+    depth = 0,
     last = false,
     group = false,
     groupExpanded = false,
@@ -73,6 +76,8 @@
     class="tr-row {className}"
     class:selected
     class:indent
+    class:depth2={depth === 2}
+    class:depth3={depth >= 3}
     class:last
     {oncontextmenu}
     {ondblclick}
@@ -143,6 +148,14 @@
 
   .tr-row.indent :global(> td:first-child) {
     padding-left: 32px;
+  }
+
+  .tr-row.depth2 :global(> td:first-child) {
+    padding-left: var(--tr-space-4xl);
+  }
+
+  .tr-row.depth3 :global(> td:first-child) {
+    padding-left: var(--tr-space-5xl);
   }
 
   // Selected-row accent: an inset box-shadow on the first cell, NOT a border —

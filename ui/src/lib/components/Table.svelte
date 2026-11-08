@@ -29,9 +29,12 @@
      * inside fixed-height panels (e.g. master-detail). Default false so other
      * consumers (ActFormItemsTable, витрина) that size to content are unaffected. */
     fillHeight?: boolean;
+    /** Opt-in (фаза 41.9): сигнал «до конца прокрутки осталось не больше 240px» (в том числе когда
+     * содержимое короче окна). Только дёргает колбэк; защиту от повторов держит потребитель. */
+    onNearEnd?: () => void;
   }
 
-  const {
+  let {
     columns,
     loading = false,
     empty = false,
@@ -44,11 +47,34 @@
     footer,
     minWidth,
     fillHeight = false,
-  }: Props = $props();
+    onNearEnd,
+    wrapperEl = $bindable(null),
+  }: Props & { wrapperEl?: HTMLDivElement | null } = $props();
+
+  // Порог автоподгрузки (UI-SPEC §10.1): расстояние до конца прокрутки, px.
+  const NEAR_END_PX = 240;
+
+  $effect(() => {
+    const wrapper = wrapperEl;
+    const notify = onNearEnd;
+    if (!notify || !wrapper) return;
+    const check = () => {
+      if (wrapper.scrollHeight - wrapper.scrollTop - wrapper.clientHeight <= NEAR_END_PX) notify();
+    };
+    wrapper.addEventListener('scroll', check, { passive: true });
+    const observer = new ResizeObserver(check);
+    const table = wrapper.querySelector('table');
+    if (table) observer.observe(table);
+    observer.observe(wrapper);
+    return () => {
+      wrapper.removeEventListener('scroll', check);
+      observer.disconnect();
+    };
+  });
 </script>
 
 <div class="tr-table-framed" class:framed class:fill={fillHeight}>
-  <div class="tr-table-wrapper">
+  <div class="tr-table-wrapper" bind:this={wrapperEl}>
     <table class="tr-table" style:min-width={minWidth}>
       <thead>
         <tr class="tr-thead-row">
