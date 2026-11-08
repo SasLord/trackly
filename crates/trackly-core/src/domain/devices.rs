@@ -255,6 +255,41 @@ impl AutocompleteField {
     }
 }
 
+/// Вид строки смешанного списка «Устройства» (Phase 41.9): устройство или строка
+/// АРМ (контейнер). Ранг задаёт порядок при совпадающих именах: устройство раньше.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+    Device,
+    Container,
+}
+
+impl EntryKind {
+    pub fn rank(self) -> i64 {
+        match self {
+            EntryKind::Device => 0,
+            EntryKind::Container => 1,
+        }
+    }
+}
+
+/// Ключ строки смешанного списка: вид и id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntryKey {
+    pub kind: EntryKind,
+    pub id: i64,
+}
+
+/// Строка контейнера (АРМ) в списке «Устройства». `device_count` — живые
+/// физические устройства с вложенными группами на любую глубину.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerRow {
+    pub id: i64,
+    pub name: String,
+    pub place_id: Option<i64>,
+    pub place_full_path: Option<String>,
+    pub device_count: i64,
+}
+
 /// Разбиение на слова: границы — любые не буквенно-цифровые символы (так же
 /// режет unicode61-токенайзер FTS5), регистр сворачивается в Rust.
 fn name_tokens(text: &str) -> Vec<String> {

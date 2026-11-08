@@ -14,7 +14,8 @@
 
 use rusqlite::{Connection, OptionalExtension};
 use trackly_core::domain::devices::{
-    AutocompleteField, DeviceFilter, DeviceGroupRow, DeviceNew, DevicePatch, DeviceRow, Pagination,
+    AutocompleteField, ContainerRow, DeviceFilter, DeviceGroupRow, DeviceNew, DevicePatch,
+    DeviceRow, EntryKey, EntryKind, Pagination,
 };
 use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
@@ -150,6 +151,99 @@ const LIST_FILTER_PREDICATES: &str = concat!(
     ")) AND (?11 IS NULL OR tr_norm(d.condition) = tr_norm(?11)) \
      AND (?12 IS NULL OR d.id IN (SELECT rowid FROM devices_fts WHERE devices_fts MATCH ?12))"
 );
+
+/// Общий предикат устройств списка (`?1..?3`, флаги `?6..?9`/`?13`, фильтры
+/// `?10..?12`). Один текст для COUNT, SELECT и ключей смешанного списка (Phase
+/// 41.9, D-04): расхождение предикатов развело бы `total` и строки.
+static DEVICE_LIST_WHERE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "(?1 = 1 OR d.deleted_at_utc IS NULL) AND \
+         (?2 IS NULL OR d.status_id = ?2) AND \
+         (?3 IS NULL OR d.type_id = ?3) AND \
+         {LIST_FLAG_PREDICATES} AND {LIST_FILTER_PREDICATES}"
+    )
+});
+
+/// id групп, у которых в closure (сама группа и вложенные на любую глубину) есть
+/// хотя бы одно живое устройство. Некоррелированный подзапрос по образцу
+/// `tree_counts`, без `WITH RECURSIVE` внутри `EXISTS`.
+macro_rules! nonempty_group_ids_sql {
+    () => {
+        "WITH RECURSIVE closure(root, id) AS ( \
+           SELECT id, id FROM groups WHERE deleted_at_utc IS NULL \
+           UNION ALL \
+           SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id \
+           WHERE g.deleted_at_utc IS NULL) \
+         SELECT c.root FROM closure c \
+         JOIN group_devices gd ON gd.group_id = c.id \
+         JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL \
+         GROUP BY c.root HAVING COUNT(d.id) > 0"
+    };
+}
+
+/// Условие корневого непустого контейнера на алиасах `g` (groups), `t` (group_types).
+macro_rules! root_container_where_sql {
+    () => {
+        concat!(
+            "t.behavior = 'container' AND g.anchor_device_id IS NULL \
+             AND g.parent_group_id IS NULL AND g.deleted_at_utc IS NULL \
+             AND g.id IN (",
+            nonempty_group_ids_sql!(),
+            ")"
+        )
+    };
+}
+
+/// UNION ALL ключей смешанного списка: устройства (k = 0) и корневые непустые
+/// контейнеры (k = 1, только при `?14 = 1`). Общий текст для COUNT и выборки.
+fn entry_union_sql() -> String {
+    format!(
+        "SELECT 0 AS k, d.id AS id, d.name AS name FROM devices d WHERE {where_dev} \
+         UNION ALL \
+         SELECT 1, g.id, g.name FROM groups g JOIN group_types t ON t.id = g.type_id \
+         WHERE ?14 = 1 AND {where_cont}",
+        where_dev = &*DEVICE_LIST_WHERE,
+        where_cont = root_container_where_sql!()
+    )
+}
+
+/// Рекурсивная closure для подсчёта устройств контейнера; `seed` — выборка пар
+/// (root, id) корней (статический текст, id привязываются параметрами).
+fn container_count_cte(seed: &str) -> String {
+    format!(
+        "WITH RECURSIVE closure(root, id) AS ( {seed} UNION ALL \
+           SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id \
+           WHERE g.deleted_at_utc IS NULL) "
+    )
+}
+
+const CONTAINER_ROW_COLUMNS: &str = "g.id, g.name, g.place_id, pfp.full_path, \
+     (SELECT COUNT(d.id) FROM closure c \
+        JOIN group_devices gd ON gd.group_id = c.id \
+        JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL \
+        WHERE c.root = g.id)";
+
+fn entry_key_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<EntryKey> {
+    let k: i64 = r.get(0)?;
+    Ok(EntryKey {
+        kind: if k == 0 {
+            EntryKind::Device
+        } else {
+            EntryKind::Container
+        },
+        id: r.get(1)?,
+    })
+}
+
+fn container_row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<ContainerRow> {
+    Ok(ContainerRow {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        place_id: r.get(2)?,
+        place_full_path: r.get(3)?,
+        device_count: r.get(4)?,
+    })
+}
 
 /// Значения параметров `?11`/`?12` для `LIST_FILTER_PREDICATES`.
 ///
@@ -422,6 +516,187 @@ impl SqliteDeviceRepository {
             |r| r.get(0),
         )
         .map_err(map_rusqlite)
+    }
+
+    /// Ключи смешанного списка «Устройства» (Phase 41.9, D-04, D-12, D-17):
+    /// устройства по `DEVICE_LIST_WHERE` и корневые непустые контейнеры одним
+    /// `UNION ALL`, порядок `ORDER BY name, kind, id` (BINARY, как у `list`).
+    /// Строки контейнеров входят только при `hide_anchor_members && status_id IS NULL
+    /// && !anchors_only && member_of_group_id IS NULL`.
+    pub fn list_entry_keys(
+        &self,
+        conn: &Connection,
+        filter: &DeviceFilter,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<EntryKey>, u64), AppError> {
+        let Some((state, fts)) = list_text_params(filter) else {
+            return Ok((Vec::new(), 0));
+        };
+        let with_containers = filter.hide_anchor_members
+            && filter.status_id.is_none()
+            && !filter.anchors_only
+            && filter.member_of_group_id.is_none();
+        let union = entry_union_sql();
+        let total: i64 = conn
+            .query_row(
+                &format!("SELECT COUNT(*) FROM ({union})"),
+                rusqlite::params![
+                    filter.include_deleted as i64,
+                    filter.status_id,
+                    filter.type_id,
+                    0_i64,
+                    0_i64,
+                    filter.hide_anchor_members as i64,
+                    filter.anchors_only as i64,
+                    filter.exclude_anchors as i64,
+                    filter.member_of_group_id,
+                    filter.place_id,
+                    state,
+                    fts,
+                    filter.group_members_only as i64,
+                    with_containers as i64
+                ],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT k, id FROM ({union}) ORDER BY name, k, id LIMIT ?4 OFFSET ?5"
+            ))
+            .map_err(map_rusqlite)?;
+        let keys = stmt
+            .query_map(
+                rusqlite::params![
+                    filter.include_deleted as i64,
+                    filter.status_id,
+                    filter.type_id,
+                    limit,
+                    offset,
+                    filter.hide_anchor_members as i64,
+                    filter.anchors_only as i64,
+                    filter.exclude_anchors as i64,
+                    filter.member_of_group_id,
+                    filter.place_id,
+                    state,
+                    fts,
+                    filter.group_members_only as i64,
+                    with_containers as i64
+                ],
+                entry_key_from,
+            )
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok((keys, total.max(0) as u64))
+    }
+
+    /// Все корневые непустые контейнеры (D-12, D-17), `ORDER BY name, id`.
+    pub fn list_root_containers(&self, conn: &Connection) -> Result<Vec<ContainerRow>, AppError> {
+        let sql = format!(
+            "{cte} SELECT {cols} FROM groups g JOIN group_types t ON t.id = g.type_id \
+             LEFT JOIN place_full_paths pfp ON pfp.place_id = g.place_id \
+             WHERE {root_where} ORDER BY g.name, g.id",
+            cte = container_count_cte(
+                "SELECT g.id, g.id FROM groups g JOIN group_types t ON t.id = g.type_id \
+                 WHERE t.behavior = 'container' AND g.anchor_device_id IS NULL \
+                 AND g.parent_group_id IS NULL AND g.deleted_at_utc IS NULL"
+            ),
+            cols = CONTAINER_ROW_COLUMNS,
+            root_where = root_container_where_sql!(),
+        );
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], container_row_from)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Гидратация строк контейнеров по id (D-13): `device_count` — живые устройства
+    /// с вложенными группами по формуле closure `tree_counts`. Порядок результата
+    /// совпадает с порядком `ids`; удалённые и несуществующие группы пропускаются.
+    pub fn container_rows(
+        &self,
+        conn: &Connection,
+        ids: &[i64],
+    ) -> Result<Vec<ContainerRow>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Плейсхолдеры `?` и привязка каждого id (T-41.9-06).
+        let placeholders = vec!["?"; ids.len()].join(",");
+        let sql = format!(
+            "{cte} SELECT {cols} FROM groups g \
+             LEFT JOIN place_full_paths pfp ON pfp.place_id = g.place_id \
+             WHERE g.deleted_at_utc IS NULL AND g.id IN ({placeholders})",
+            cte = container_count_cte(&format!(
+                "SELECT id, id FROM groups WHERE deleted_at_utc IS NULL AND id IN ({placeholders})"
+            )),
+            cols = CONTAINER_ROW_COLUMNS,
+        );
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        // Плейсхолдеры повторены в seed и в WHERE: каждому нужна своя привязка.
+        let bound: Vec<&i64> = ids.iter().chain(ids.iter()).collect();
+        let mut rows = stmt
+            .query_map(rusqlite::params_from_iter(bound), container_row_from)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        rows.sort_by_key(|r| ids.iter().position(|i| *i == r.id).unwrap_or(usize::MAX));
+        Ok(rows)
+    }
+
+    /// Прямые дети группы одним списком (D-11, D-15, D-16, D-17): прямые живые
+    /// устройства (без якоря самой группы), якорь каждой вложенной якорной группы
+    /// как устройство и каждая вложенная НЕпустая группа без якоря как контейнер
+    /// (решение Open Question 2: любая вложенная группа без якоря рисуется
+    /// контейнером). Фильтра по типу устройства нет: принтер-член идёт как обычный.
+    pub fn group_children_keys(
+        &self,
+        conn: &Connection,
+        group_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<EntryKey>, u64), AppError> {
+        let union = concat!(
+            "SELECT 0 AS k, d.id AS id, d.name AS name \
+               FROM group_devices gd \
+               JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL \
+               WHERE gd.group_id = ?1 \
+                 AND d.id IS NOT (SELECT anchor_device_id FROM groups WHERE id = ?1) \
+             UNION ALL \
+             SELECT 0, d.id, d.name FROM groups c \
+               JOIN devices d ON d.id = c.anchor_device_id AND d.deleted_at_utc IS NULL \
+               WHERE c.parent_group_id = ?1 AND c.deleted_at_utc IS NULL \
+                 AND c.anchor_device_id IS NOT NULL \
+                 AND d.id NOT IN (SELECT device_id FROM group_devices WHERE group_id = ?1) \
+             UNION ALL \
+             SELECT 1, g.id, g.name FROM groups g \
+               WHERE g.parent_group_id = ?1 AND g.deleted_at_utc IS NULL \
+                 AND g.anchor_device_id IS NULL AND g.id IN (",
+            nonempty_group_ids_sql!(),
+            ")"
+        );
+        let total: i64 = conn
+            .query_row(
+                &format!("SELECT COUNT(*) FROM ({union})"),
+                rusqlite::params![group_id],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT k, id FROM ({union}) ORDER BY name, k, id LIMIT ?2 OFFSET ?3"
+            ))
+            .map_err(map_rusqlite)?;
+        let keys = stmt
+            .query_map(rusqlite::params![group_id, limit, offset], entry_key_from)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok((keys, total.max(0) as u64))
     }
 
     /// INSERT в пределах транзакции. Возвращает новый `id`.
@@ -887,12 +1162,8 @@ fn count_list_rows(conn: &Connection, filter: &DeviceFilter) -> Result<i64, AppE
     // чтобы предикат был общим.
     conn.query_row(
         &format!(
-            "SELECT COUNT(*) FROM devices d WHERE
-                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
-                   (?2 IS NULL OR d.status_id = ?2) AND
-                   (?3 IS NULL OR d.type_id = ?3) AND
-                   {LIST_FLAG_PREDICATES} AND
-                   {LIST_FILTER_PREDICATES}"
+            "SELECT COUNT(*) FROM devices d WHERE {where_dev}",
+            where_dev = &*DEVICE_LIST_WHERE
         ),
         rusqlite::params![
             filter.include_deleted as i64,
@@ -931,14 +1202,10 @@ fn select_list_rows(
     let members_only = filter.group_members_only as i64;
     let mut stmt = conn
         .prepare(&format!(
-            "{SELECT_DEVICES} WHERE
-                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
-                   (?2 IS NULL OR d.status_id = ?2) AND
-                   (?3 IS NULL OR d.type_id = ?3) AND
-                   {LIST_FLAG_PREDICATES} AND
-                   {LIST_FILTER_PREDICATES}
+            "{SELECT_DEVICES} WHERE {where_dev}
                  ORDER BY d.name, d.id
-                 LIMIT ?4 OFFSET ?5"
+                 LIMIT ?4 OFFSET ?5",
+            where_dev = &*DEVICE_LIST_WHERE
         ))
         .map_err(map_rusqlite)?;
 
