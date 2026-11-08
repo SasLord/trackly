@@ -40,18 +40,23 @@ macro_rules! anchor_ids_sql {
     };
 }
 
-/// id устройств — членов якорных групп (включая вложенные группы), кроме самого
-/// якоря. `UNION` (не `UNION ALL`) защищает рекурсию от цикла.
+/// id устройств — членов якорных групп и корневых контейнерных групп (включая
+/// вложенные группы), кроме самого якоря. Корневой контейнер (behavior 'container',
+/// без якоря) засевается с якорем NULL: `IS NOT` (не `<>`), иначе при NULL скрытия нет. `UNION` (не `UNION ALL`) защищает рекурсию от цикла.
 macro_rules! anchor_members_sql {
     () => {
         "WITH RECURSIVE a(gid, anchor) AS ( \
            SELECT id, anchor_device_id FROM groups \
            WHERE anchor_device_id IS NOT NULL AND deleted_at_utc IS NULL \
            UNION \
+           SELECT g.id, NULL FROM groups g JOIN group_types t ON t.id = g.type_id \
+           WHERE t.behavior = 'container' AND g.anchor_device_id IS NULL \
+           AND g.parent_group_id IS NULL AND g.deleted_at_utc IS NULL \
+           UNION \
            SELECT g.id, a.anchor FROM groups g JOIN a ON g.parent_group_id = a.gid \
            WHERE g.deleted_at_utc IS NULL) \
          SELECT gd.device_id FROM group_devices gd JOIN a ON a.gid = gd.group_id \
-         WHERE gd.device_id <> a.anchor"
+         WHERE gd.device_id IS NOT a.anchor"
     };
 }
 
