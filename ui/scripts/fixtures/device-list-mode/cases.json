@@ -148,7 +148,7 @@
     }
   },
   {
-    "name": "deviceListFlags anchors: скрытие включено",
+    "name": "deviceListFlags anchors: скрытие включено (якорь внутри АРМ в блок не попадает)",
     "fn": "deviceListFlags",
     "input": {
       "kind": "anchors",
@@ -159,7 +159,7 @@
       }
     },
     "expected": {
-      "hide_anchor_members": false,
+      "hide_anchor_members": true,
       "anchors_only": true,
       "exclude_anchors": false
     }
@@ -576,5 +576,557 @@
         "id": 2
       }
     ]
+  },
+  {
+    "name": "deviceListFlags containers: как flat, скрытие включено",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "containers",
+      "ctx": {
+        "searchActive": false,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": true,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "deviceListFlags containers: как flat, поиск",
+    "fn": "deviceListFlags",
+    "input": {
+      "kind": "containers",
+      "ctx": {
+        "searchActive": true,
+        "statusFilter": null,
+        "focusId": null
+      }
+    },
+    "expected": {
+      "hide_anchor_members": false,
+      "anchors_only": false,
+      "exclude_anchors": false
+    }
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=False, вкладка=None, focusId=None -> True",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": false,
+      "statusFilter": null,
+      "focusId": null
+    },
+    "expected": true
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=False, вкладка=None, focusId=42 -> False",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": false,
+      "statusFilter": null,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=False, вкладка=5, focusId=None -> False",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": false,
+      "statusFilter": 5,
+      "focusId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=False, вкладка=5, focusId=42 -> False",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": false,
+      "statusFilter": 5,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=True, вкладка=None, focusId=None -> True",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": true,
+      "statusFilter": null,
+      "focusId": null
+    },
+    "expected": true
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=True, вкладка=None, focusId=42 -> False",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": true,
+      "statusFilter": null,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=True, вкладка=5, focusId=None -> False",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": true,
+      "statusFilter": 5,
+      "focusId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldShowContainerRows: поиск=True, вкладка=5, focusId=42 -> False",
+    "fn": "shouldShowContainerRows",
+    "input": {
+      "searchActive": true,
+      "statusFilter": 5,
+      "focusId": 42
+    },
+    "expected": false
+  },
+  {
+    "name": "mergeHeadBlock: пустые входы",
+    "fn": "mergeHeadBlock",
+    "input": {
+      "devices": [],
+      "containers": []
+    },
+    "expected": []
+  },
+  {
+    "name": "mergeHeadBlock: по имени, АРМ и якоря вместе",
+    "fn": "mergeHeadBlock",
+    "input": {
+      "devices": [
+        {
+          "id": 1,
+          "name": "Гамма"
+        },
+        {
+          "id": 2,
+          "name": "Альфа"
+        }
+      ],
+      "containers": [
+        {
+          "id": 3,
+          "name": "Бета"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "device": {
+          "id": 2,
+          "name": "Альфа"
+        }
+      },
+      {
+        "kind": "container",
+        "container": {
+          "id": 3,
+          "name": "Бета"
+        }
+      },
+      {
+        "kind": "device",
+        "device": {
+          "id": 1,
+          "name": "Гамма"
+        }
+      }
+    ]
+  },
+  {
+    "name": "mergeHeadBlock: равные имена — устройство раньше контейнера, хотя id больше",
+    "fn": "mergeHeadBlock",
+    "input": {
+      "devices": [
+        {
+          "id": 9,
+          "name": "Стенд"
+        }
+      ],
+      "containers": [
+        {
+          "id": 1,
+          "name": "Стенд"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "device": {
+          "id": 9,
+          "name": "Стенд"
+        }
+      },
+      {
+        "kind": "container",
+        "container": {
+          "id": 1,
+          "name": "Стенд"
+        }
+      }
+    ]
+  },
+  {
+    "name": "mergeHeadBlock: равные имена и вид — по id",
+    "fn": "mergeHeadBlock",
+    "input": {
+      "devices": [
+        {
+          "id": 7,
+          "name": "Узел"
+        },
+        {
+          "id": 3,
+          "name": "Узел"
+        }
+      ],
+      "containers": [
+        {
+          "id": 8,
+          "name": "Узел"
+        },
+        {
+          "id": 2,
+          "name": "Узел"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "kind": "device",
+        "device": {
+          "id": 3,
+          "name": "Узел"
+        }
+      },
+      {
+        "kind": "device",
+        "device": {
+          "id": 7,
+          "name": "Узел"
+        }
+      },
+      {
+        "kind": "container",
+        "container": {
+          "id": 2,
+          "name": "Узел"
+        }
+      },
+      {
+        "kind": "container",
+        "container": {
+          "id": 8,
+          "name": "Узел"
+        }
+      }
+    ]
+  },
+  {
+    "name": "mergeHeadBlock: заглавная раньше строчной (кодовые единицы)",
+    "fn": "mergeHeadBlock",
+    "input": {
+      "devices": [
+        {
+          "id": 1,
+          "name": "арм"
+        }
+      ],
+      "containers": [
+        {
+          "id": 2,
+          "name": "Арм"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "kind": "container",
+        "container": {
+          "id": 2,
+          "name": "Арм"
+        }
+      },
+      {
+        "kind": "device",
+        "device": {
+          "id": 1,
+          "name": "арм"
+        }
+      }
+    ]
+  },
+  {
+    "name": "trimPortion: лишняя строка -> hasMore",
+    "fn": "trimPortion",
+    "input": {
+      "rows": [1, 2, 3],
+      "limit": 2
+    },
+    "expected": {
+      "rows": [1, 2],
+      "hasMore": true
+    }
+  },
+  {
+    "name": "trimPortion: ровно limit -> без продолжения",
+    "fn": "trimPortion",
+    "input": {
+      "rows": [1, 2],
+      "limit": 2
+    },
+    "expected": {
+      "rows": [1, 2],
+      "hasMore": false
+    }
+  },
+  {
+    "name": "trimPortion: пусто",
+    "fn": "trimPortion",
+    "input": {
+      "rows": [],
+      "limit": 50
+    },
+    "expected": {
+      "rows": [],
+      "hasMore": false
+    }
+  },
+  {
+    "name": "rangeChunks: пустой состав — одна порция PAGE_SIZE",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 0,
+      "max": 200
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 50
+      }
+    ]
+  },
+  {
+    "name": "rangeChunks: 120 из 200 — одна порция",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 120,
+      "max": 200
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 120
+      }
+    ]
+  },
+  {
+    "name": "rangeChunks: 450 по 200",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 450,
+      "max": 200
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 200
+      },
+      {
+        "offset": 200,
+        "limit": 200
+      },
+      {
+        "offset": 400,
+        "limit": 50
+      }
+    ]
+  },
+  {
+    "name": "rangeChunks: ровно 400 по 200",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 400,
+      "max": 200
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 200
+      },
+      {
+        "offset": 200,
+        "limit": 200
+      }
+    ]
+  },
+  {
+    "name": "shouldLoadMore: всё готово, 100px",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": true,
+      "loadingMore": false,
+      "moreError": false,
+      "loading": false,
+      "remainingPx": 100
+    },
+    "expected": true
+  },
+  {
+    "name": "shouldLoadMore: ровно порог 240px",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": true,
+      "loadingMore": false,
+      "moreError": false,
+      "loading": false,
+      "remainingPx": 240
+    },
+    "expected": true
+  },
+  {
+    "name": "shouldLoadMore: 241px — рано",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": true,
+      "loadingMore": false,
+      "moreError": false,
+      "loading": false,
+      "remainingPx": 241
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldLoadMore: короткое содержимое (отрицательный остаток)",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": true,
+      "loadingMore": false,
+      "moreError": false,
+      "loading": false,
+      "remainingPx": -30
+    },
+    "expected": true
+  },
+  {
+    "name": "shouldLoadMore: нет продолжения",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": false,
+      "loadingMore": false,
+      "moreError": false,
+      "loading": false,
+      "remainingPx": 100
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldLoadMore: порция уже в полёте",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": true,
+      "loadingMore": true,
+      "moreError": false,
+      "loading": false,
+      "remainingPx": 100
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldLoadMore: после ошибки само не повторяется",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": true,
+      "loadingMore": false,
+      "moreError": true,
+      "loading": false,
+      "remainingPx": 100
+    },
+    "expected": false
+  },
+  {
+    "name": "shouldLoadMore: идёт первая загрузка",
+    "fn": "shouldLoadMore",
+    "input": {
+      "hasMore": true,
+      "loadingMore": false,
+      "moreError": false,
+      "loading": true,
+      "remainingPx": 100
+    },
+    "expected": false
+  },
+  {
+    "name": "footerText свёртка: без скрытия",
+    "fn": "footerText",
+    "input": {
+      "shown": 12,
+      "total": 40,
+      "hidden": 0,
+      "hideActive": false,
+      "groupedMode": true
+    },
+    "expected": "Свёрнуто: 12"
+  },
+  {
+    "name": "footerText свёртка: скрытие включено, K=3",
+    "fn": "footerText",
+    "input": {
+      "shown": 12,
+      "total": 40,
+      "hidden": 3,
+      "hideActive": true,
+      "groupedMode": true
+    },
+    "expected": "Свёрнуто: 12 (+3 в составе групп)"
+  },
+  {
+    "name": "footerText свёртка: скрытие выключено, K не печатается",
+    "fn": "footerText",
+    "input": {
+      "shown": 12,
+      "total": 40,
+      "hidden": 3,
+      "hideActive": false,
+      "groupedMode": true
+    },
+    "expected": "Свёрнуто: 12"
+  },
+  {
+    "name": "footerText свёртка: K=0 при включённом скрытии",
+    "fn": "footerText",
+    "input": {
+      "shown": 5,
+      "total": 40,
+      "hidden": 0,
+      "hideActive": true,
+      "groupedMode": true
+    },
+    "expected": "Свёрнуто: 5"
+  },
+  {
+    "name": "footerText плоский: groupedMode=false — формула прежняя",
+    "fn": "footerText",
+    "input": {
+      "shown": 5,
+      "total": 40,
+      "hidden": 2,
+      "hideActive": true,
+      "groupedMode": false
+    },
+    "expected": "Показано 5 из 40 (+2 в составе групп)"
   }
 ]

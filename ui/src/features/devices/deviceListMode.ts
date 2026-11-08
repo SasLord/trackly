@@ -22,7 +22,7 @@ export interface ListModeContext {
 }
 
 /** Какой запрос собирается: плоский список, свёртка одинаковых, якоря рядом со свёрткой, состав якоря. */
-export type ListKind = 'flat' | 'grouped' | 'anchors' | 'members';
+export type ListKind = 'flat' | 'grouped' | 'anchors' | 'members' | 'containers';
 
 /** Флаги `DeviceFilter`, которые ставит страница. */
 export interface ListFlags {
@@ -45,11 +45,14 @@ export function shouldHideAnchorMembers(ctx: ListModeContext): boolean {
  * Флаги запроса по виду списка.
  * - flat: скрытие по правилу; якоря остаются в списке.
  * - grouped: скрытие по правилу и якоря исключены из свёртки (D-11).
- * - anchors: только якоря (выводятся отдельно рядом со свёрткой).
+ * - anchors: только якоря; скрытие по правилу, чтобы якорь вложенной группы внутри АРМ
+ *   в блок якорей не попадал (D-12).
+ * - containers: строки АРМ; флаги как у flat (показ решает shouldShowContainerRows).
  * - members: состав якоря — без каких-либо флагов, `member_of_group_id` задаёт вызывающий.
  */
 export function deviceListFlags(kind: ListKind, ctx: ListModeContext): ListFlags {
   switch (kind) {
+    case 'containers':
     case 'flat':
       return {
         hide_anchor_members: shouldHideAnchorMembers(ctx),
@@ -63,7 +66,11 @@ export function deviceListFlags(kind: ListKind, ctx: ListModeContext): ListFlags
         exclude_anchors: true,
       };
     case 'anchors':
-      return { hide_anchor_members: false, anchors_only: true, exclude_anchors: false };
+      return {
+        hide_anchor_members: shouldHideAnchorMembers(ctx),
+        anchors_only: true,
+        exclude_anchors: false,
+      };
     case 'members':
       return { hide_anchor_members: false, anchors_only: false, exclude_anchors: false };
   }
@@ -77,6 +84,8 @@ export interface FooterInput {
   hidden: number;
   /** Скрытие сейчас включено. */
   hideActive: boolean;
+  /** Режим свёртки одинаковых: подпись «Свёрнуто: N» (D-13). */
+  groupedMode?: boolean;
 }
 
 /**
@@ -85,9 +94,95 @@ export interface FooterInput {
  * включают скрытых членов, хвост объясняет расхождение чисел.
  */
 export function footerText(input: FooterInput): string {
+  if (input.groupedMode === true) {
+    const head = `Свёрнуто: ${input.shown}`;
+    if (input.hidden > 0 && input.hideActive)
+      return head + ' (+' + input.hidden + ' в составе групп)';
+    return head;
+  }
   const base = `Показано ${input.shown} из ${input.total}`;
   if (input.hideActive && input.hidden > 0) return `${base} (+${input.hidden} в составе групп)`;
   return base;
+}
+
+/** Показ строк АРМ в списке (D-14): вкладка статуса и focusId сильнее поискового запроса. */
+export function shouldShowContainerRows(ctx: ListModeContext): boolean {
+  if (!ctx.searchActive) return shouldHideAnchorMembers(ctx);
+  return [ctx.statusFilter, ctx.focusId].every((v) => v === null);
+}
+
+/** Размер порции автоподгрузки и состава (D-07). */
+export const PAGE_SIZE = 50;
+/** Наибольшая порция запроса состава группы (серверный предел). */
+export const GROUP_MEMBERS_PAGE_MAX = 200;
+/** Расстояние до конца прокрутки, с которого грузится следующая порция, px. */
+export const AUTOLOAD_THRESHOLD_PX = 240;
+
+/** Строка блока над свёртками: устройство-якорь или АРМ. */
+export type HeadRow<D, C> = { kind: 'device'; device: D } | { kind: 'container'; container: C };
+
+/**
+ * Блок над свёртками (D-05): якоря и АРМ вместе, по имени (посимвольно по кодовым
+ * единицам, как BINARY в SQLite), при равных именах устройство раньше контейнера, затем по id.
+ */
+export function mergeHeadBlock<
+  D extends { id: number; name: string },
+  C extends { id: number; name: string },
+>(devices: D[], containers: C[]): HeadRow<D, C>[] {
+  const rows: HeadRow<D, C>[] = [
+    ...devices.map((device): HeadRow<D, C> => ({ kind: 'device', device })),
+    ...containers.map((container): HeadRow<D, C> => ({ kind: 'container', container })),
+  ];
+  const key = (r: HeadRow<D, C>) => (r.kind === 'device' ? r.device : r.container);
+  const rank = (r: HeadRow<D, C>) => (r.kind === 'device' ? 0 : 1);
+  return rows.sort((a, b) => {
+    const x = key(a);
+    const y = key(b);
+    if (x.name !== y.name) return x.name < y.name ? -1 : 1;
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    return x.id - y.id;
+  });
+}
+
+/** Порция, запрошенная с запасом в одну строку (limit + 1): лишняя строка = есть продолжение. */
+export function trimPortion<T>(rows: T[], limit: number): { rows: T[]; hasMore: boolean } {
+  if (rows.length > limit) return { rows: rows.slice(0, limit), hasMore: true };
+  return { rows, hasMore: false };
+}
+
+/** Разбиение дочитывания состава на запросы не крупнее max; минимум одна порция PAGE_SIZE. */
+export function rangeChunks(count: number, max: number): { offset: number; limit: number }[] {
+  if (count <= 0) return [{ offset: 0, limit: PAGE_SIZE }];
+  const chunks: { offset: number; limit: number }[] = [];
+  for (let offset = 0; offset < count; offset += max) {
+    chunks.push({ offset, limit: Math.min(max, count - offset) });
+  }
+  return chunks;
+}
+
+/** Состояние, от которого зависит автоподгрузка следующей порции. */
+export interface LoadMoreInput {
+  hasMore: boolean;
+  loadingMore: boolean;
+  moreError: boolean;
+  loading: boolean;
+  /** Сколько px прокрутки осталось до конца (scrollHeight - scrollTop - clientHeight). */
+  remainingPx: number;
+}
+
+/** Грузить ли следующую порцию: одна в полёте, после ошибки не повторять само. */
+export function shouldLoadMore(s: LoadMoreInput): boolean {
+  if (!s.hasMore || s.loadingMore || s.moreError || s.loading) return false;
+  return s.remainingPx <= AUTOLOAD_THRESHOLD_PX;
+}
+
+/** Состав раскрытой группы по порциям (D-07, D-09): строки произвольной формы. */
+export interface GroupMembersState<E> {
+  loading: boolean;
+  entries: E[];
+  total: number;
+  loadedAll: boolean;
+  loadingRest: boolean;
 }
 
 /** Состав раскрытого якоря (D-12): грузит DevicesPage, кеш по group_id. */

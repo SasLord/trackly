@@ -212,7 +212,21 @@ const FUNCTIONS = [
   'footerText',
   'groupIdsKey',
   'visibleChildren',
+  'shouldShowContainerRows',
+  'mergeHeadBlock',
+  'trimPortion',
+  'rangeChunks',
+  'shouldLoadMore',
 ];
+// Фаза 41.9, план 02: сколько кейсов каждой новой функции обязана держать фикстура.
+const MIN_CASES_PER_FN = {
+  shouldShowContainerRows: 8,
+  mergeHeadBlock: 4,
+  trimPortion: 3,
+  rangeChunks: 3,
+  shouldLoadMore: 6,
+};
+const CLONE = (v) => JSON.parse(JSON.stringify(v));
 
 /** Возвращает список текстов провалов (пустой — всё в порядке). */
 function runCases(mod, cases) {
@@ -263,6 +277,14 @@ function runCases(mod, cases) {
           JSON.parse(JSON.stringify(c.input.ids)),
         );
         if (c.expected.length < c.input.children.length) shrinkingChildrenCase = true;
+      } else if (c.fn === 'shouldShowContainerRows' || c.fn === 'shouldLoadMore') {
+        got = mod[c.fn](CLONE(c.input));
+      } else if (c.fn === 'mergeHeadBlock') {
+        got = mod.mergeHeadBlock(CLONE(c.input.devices), CLONE(c.input.containers));
+      } else if (c.fn === 'trimPortion') {
+        got = mod.trimPortion(CLONE(c.input.rows), c.input.limit);
+      } else if (c.fn === 'rangeChunks') {
+        got = mod.rangeChunks(c.input.count, c.input.max);
       } else {
         failures.push(`${c.name}: неизвестная функция «${c.fn}» в фикстуре`);
         continue;
@@ -276,6 +298,10 @@ function runCases(mod, cases) {
   }
   for (const fn of FUNCTIONS) {
     if (!covered.has(fn)) failures.push(`в фикстуре нет ни одного кейса для ${fn}`);
+  }
+  for (const [fn, min] of Object.entries(MIN_CASES_PER_FN)) {
+    const n = cases.filter((c) => c.fn === fn).length;
+    if (n < min) failures.push(`в фикстуре ${n} кейсов ${fn}, нужно не меньше ${min}`);
   }
   if (!hideOutcomes.has(true) || !hideOutcomes.has(false)) {
     failures.push('в фикстуре shouldHideAnchorMembers нет обоих исходов (true и false)');
@@ -1171,8 +1197,84 @@ const SOURCE_MUTANTS = [
   },
   {
     name: "'anchors' без anchors_only",
-    from: 'return { hide_anchor_members: false, anchors_only: true, exclude_anchors: false };',
-    to: 'return { hide_anchor_members: false, anchors_only: false, exclude_anchors: false };',
+    from: `        anchors_only: true,
+        exclude_anchors: false,`,
+    to: `        anchors_only: false,
+        exclude_anchors: false,`,
+  },
+  {
+    name: "'anchors' не скрывает членов (D-12)",
+    from: `    case 'anchors':
+      return {
+        hide_anchor_members: shouldHideAnchorMembers(ctx),`,
+    to: `    case 'anchors':
+      return {
+        hide_anchor_members: false,`,
+  },
+  {
+    name: "'containers' без флагов flat",
+    from: "    case 'containers':\n",
+    to: '',
+  },
+  {
+    name: 'shouldShowContainerRows без focusId (фаза 41.9)',
+    from: '[ctx.statusFilter, ctx.focusId].every',
+    to: '[ctx.statusFilter].every',
+  },
+  {
+    name: 'shouldShowContainerRows без statusFilter (фаза 41.9)',
+    from: '[ctx.statusFilter, ctx.focusId].every',
+    to: '[ctx.focusId].every',
+  },
+  {
+    name: 'mergeHeadBlock: контейнер раньше устройства (фаза 41.9)',
+    from: "r.kind === 'device' ? 0 : 1",
+    to: "r.kind === 'device' ? 1 : 0",
+  },
+  {
+    name: 'mergeHeadBlock: без тай-брейка по id (фаза 41.9)',
+    from: 'return x.id - y.id;',
+    to: 'return 0;',
+  },
+  {
+    name: 'trimPortion: > на >= (фаза 41.9)',
+    from: 'rows.length > limit',
+    to: 'rows.length >= limit',
+  },
+  {
+    name: 'rangeChunks: хвост без min (фаза 41.9)',
+    from: 'limit: Math.min(max, count - offset)',
+    to: 'limit: max',
+  },
+  {
+    name: 'rangeChunks: пустой состав без порции (фаза 41.9)',
+    from: 'if (count <= 0) return [{ offset: 0, limit: PAGE_SIZE }];',
+    to: 'if (count <= 0) return [];',
+  },
+  {
+    name: 'shouldLoadMore без moreError (фаза 41.9)',
+    from: ' || s.moreError',
+    to: '',
+  },
+  {
+    name: 'shouldLoadMore без loadingMore (фаза 41.9)',
+    from: ' || s.loadingMore',
+    to: '',
+  },
+  {
+    name: 'shouldLoadMore: порог строго меньше (фаза 41.9)',
+    from: 's.remainingPx <= AUTOLOAD_THRESHOLD_PX',
+    to: 's.remainingPx < AUTOLOAD_THRESHOLD_PX',
+  },
+  {
+    name: 'footerText свёртки без хвоста K (фаза 41.9)',
+    from: 'input.hidden > 0 && input.hideActive',
+    to: 'false',
+  },
+  {
+    name: 'footerText свёртки: хвост без условия hideActive (фаза 41.9)',
+    from: 'input.hidden > 0 && input.hideActive',
+    to: 'input.hidden > 0',
   },
   {
     name: "'members' с hide_anchor_members",
@@ -1916,6 +2018,7 @@ async function selftest(cases) {
       console.error(`${TAG} SELFTEST FAIL — мутант «${m.name}» прошёл фикстуру: гейт его не ловит`);
       process.exit(1);
     }
+    if (m.name.includes('фаза 41.9')) console.log(`${TAG} мутант «${m.name}»: пойман`);
   }
   // 3. Структурные правила: чистая карта зелёная, мутанты красные нужным кодом.
   const clean = scanStructural(fixtureMap(), SELFTEST_OPTS);
