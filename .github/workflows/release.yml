@@ -159,6 +159,39 @@ jobs:
           fetch linuxdeploy-plugin-appimage.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
           ls -la "$T"
 
+      # Same 504 problem for the NSIS toolchain on Windows. The bundler skips the
+      # download when %LOCALAPPDATA%\tauri\NSIS has its required files and
+      # nsis_tauri_utils.dll matches the expected SHA1. URLs and hashes follow
+      # @tauri-apps/cli 2.11.2 (tauri-bundler windows/nsis/mod.rs) — update them
+      # together with the CLI version in ui/package.json.
+      - name: Pre-fetch NSIS toolchain with retries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $T = Join-Path $env:LOCALAPPDATA 'tauri'
+          New-Item -ItemType Directory -Force -Path $T | Out-Null
+          function Fetch($url, $out, $sha1) {
+            foreach ($attempt in 1..8) {
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $out -TimeoutSec 300
+                $h = (Get-FileHash -Algorithm SHA1 $out).Hash
+                if ($h -eq $sha1) { return }
+                Write-Host "SHA1 mismatch for $url ($h), retrying"
+              } catch { Write-Host "download of $url failed (attempt $attempt): $_" }
+              Start-Sleep -Seconds 20
+            }
+            Write-Error "could not fetch $url"; exit 1
+          }
+          $zip = Join-Path $env:RUNNER_TEMP 'nsis-3.11.zip'
+          Fetch 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip' $zip 'EF7FF767E5CBD9EDD22ADD3A32C9B8F4500BB10D'
+          Expand-Archive -Path $zip -DestinationPath $T -Force
+          if (Test-Path "$T\NSIS") { Remove-Item -Recurse -Force "$T\NSIS" }
+          Rename-Item "$T\nsis-3.11" 'NSIS'
+          $add = "$T\NSIS\Plugins\x86-unicode\additional"
+          New-Item -ItemType Directory -Force -Path $add | Out-Null
+          Fetch 'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll' "$add\nsis_tauri_utils.dll" '75197FEE3C6A814FE035788D1C34EAD39349B860'
+          Get-ChildItem "$T\NSIS" | Select-Object -First 10
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -253,6 +286,11 @@ jobs:
           retryAttempts: 1
           projectPath: crates/trackly-app
           args: ${{ matrix.args }}
+          # Pin the CLI to the lockfile version (ui/node_modules) instead of the
+          # action's floating `npm i -g @tauri-apps/cli@v2`: the bundler tools it
+          # downloads (NSIS) depend on the CLI version, and the pre-fetch step
+          # below seeds exactly the versions this CLI expects.
+          tauriScript: node ${{ github.workspace }}/ui/node_modules/@tauri-apps/cli/tauri.js
 
       # D-10: the portable exe must not need heif.dll / libde265.dll next to it.
       - name: Check trackly.exe has no external heif DLL (Windows)
