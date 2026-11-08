@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
@@ -17,18 +17,42 @@
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
   import { devices } from './api';
   import {
+    GROUP_MEMBERS_PAGE_MAX,
+    PAGE_SIZE,
     deviceListFlags,
+    mergeHeadBlock,
+    rangeChunks,
     shouldHideAnchorMembers,
-    type AnchorMembersState,
+    shouldLoadMore,
+    shouldShowContainerRows,
+    trimPortion,
+    type GroupMembersState,
+    type ListModeContext,
   } from './deviceListMode';
-  import type { DeviceDto, DeviceFilter, DeviceGroup, Pagination } from '../../bindings';
+  import type {
+    ContainerRowDto,
+    DeviceDto,
+    DeviceEntryDto,
+    DeviceFilter,
+    DeviceGroup,
+  } from '../../bindings';
 
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
-  let items = $state<DeviceDto[]>([]);
+  // Строки верхнего уровня плоского списка и поиска: устройства и строки АРМ (D-04).
+  let rows = $state<DeviceEntryDto[]>([]);
   let groups = $state<DeviceGroup[]>([]);
+  // Блок якорей и АРМ над свёртками (D-05).
+  let headRows = $state<DeviceEntryDto[]>([]);
   let total = $state(0);
+  let hasMore = $state(false);
+  let loadingMore = $state(false);
+  let moreError = $state(false);
+  // Сколько серверных строк уже получено (rows.length в плоском, число устройств
+  // в поиске, groups.length в свёртке): смещение следующей порции.
+  let portionOffset = $state(0);
+  let scrollEl = $state<HTMLDivElement | null>(null);
   let loading = $state(false);
   let modalOpen = $state(false);
   let editTarget = $state<DeviceDto | null>(null);
@@ -54,6 +78,9 @@
   // DeviceListRow instead of being hidden inside a collapsed multi-device
   // group.
   const initialFocusId = parseIdFromHash();
+  // Первая загрузка при переходе по `#/devices?id=…` догружает порции, пока строка
+  // устройства не появится; после этого флаг ставится и не сбрасывается.
+  let focusResolved = initialFocusId === null;
 
   // Filters state (Plan 04).
   let searchQuery = $state('');
@@ -66,15 +93,14 @@
   // DeviceGroupRow reports its key on toggle; keys survive list refreshes.
   let expandedGroups = $state(new Set<string>());
 
-  const pagination = $state<Pagination>({ offset: 0, limit: 50 });
-
   const searchActive = $derived(searchQuery.trim().length > 0);
 
-  // type_id=1 ("Устройство") hardcoded — /devices section shows only Устройства.
-  // group_by_condition: false — DevicesPage схлопывает разные condition в одну группу (ITEM-1).
-  // Без флагов якорных групп: флаги дописывает ТОЛЬКО deviceListFlags (ниже).
+  // Список показывает устройства всех типов, включая принтеры (D-18): тип не задан.
+  // Раздел «Принтеры» не затронут. group_by_condition: false — DevicesPage схлопывает
+  // разные condition в одну группу (ITEM-1). Без флагов якорных групп: флаги
+  // дописывает ТОЛЬКО deviceListFlags (ниже).
   const rawFilter = $derived<DeviceFilter>({
-    type_id: 1,
+    type_id: null,
     place_id: null,
     status_id: statusFilter,
     state: null,
@@ -98,24 +124,24 @@
       : { ...rawFilter, ...deviceListFlags('flat', listCtx) },
   );
 
-  // D-11/D-34: якоря отдельным вызовом рядом со свёрткой; K для футера плоского списка.
-  let anchorItems = $state<DeviceDto[]>([]);
+  // K для футера «(+K в составе групп)» (D-34).
   let hiddenMemberCount = $state(0);
 
-  // D-12: раскрытие состава якоря. Живёт здесь (а не в строке), по group_id,
+  // D-12: раскрытие состава якоря и АРМ. Живёт здесь (а не в строке), по group_id,
   // и переживает перезагрузку списка. Set переприсваивается — иначе нет реактивности.
   let expandedAnchors = $state(new Set<number>());
-  let anchorMembers = $state<Record<number, AnchorMembersState>>({});
-  const ANCHOR_MEMBERS_LIMIT = 200;
+  let anchorMembers = $state<Record<number, GroupMembersState<DeviceEntryDto>>>({});
+  // Вид раскрытой группы: от него зависит источник состава (D-11).
+  const groupKinds = new Map<number, 'anchor' | 'container'>();
 
   // ---------------------------------------------------------------------------
   // Data loading
   // ---------------------------------------------------------------------------
   // Номер поколения refresh(): «последний пришедший» ответ не равен «последнему
   // запрошенному». refresh() зовут $effect (смена фильтра/свёртки), onMount, поиск,
-  // onSaved и onDelete, а режим свёртки удвоил запросы (listGrouped + anchors), так что
+  // onSaved и onDelete, а режим свёртки удвоил запросы (listGrouped + блок якорей), так что
   // медленный ответ старого запроса мог перезаписать список нового. Устаревший ответ
-  // отбрасывается ДО записи состояния.
+  // отбрасывается ДО записи состояния. Тот же номер охраняет loadMore().
   let refreshSeq = 0;
   // Номер поколения списка: растёт на каждом успешном refresh() (правка, удаление,
   // действие из меню, смена фильтра, WS-инвалидация). Ключ кеша детей раскрытой
@@ -123,13 +149,13 @@
   // группировки перечитывает детей. Пишется только в продолжении после await, после
   // охраны refreshSeq: устаревший ответ не должен поднимать номер.
   let listGen = $state(0);
-  // То же для перечитывания состава раскрытых якорей (reloadExpandedAnchors).
+  // То же для перечитывания состава раскрытых групп (reloadExpandedAnchors).
   let anchorsSeq = 0;
   // T-41.1-G29-01: одиночная загрузка состава (loadAnchorMembers) идёт по той же
   // границе и тоже может вернуться не в порядке запросов — быстрый повтор
-  // «раскрыть/свернуть/раскрыть» на одном якоре даёт два ответа на один ключ.
-  // Поколение на якорь: пишет только тот ответ, чьё поколение ещё текущее.
-  // reloadExpandedAnchors двигает его для всех перечитанных якорей, чтобы
+  // «раскрыть/свернуть/раскрыть» на одной группе даёт два ответа на один ключ.
+  // Поколение на группу: пишет только тот ответ, чьё поколение ещё текущее.
+  // reloadExpandedAnchors двигает его для всех перечитанных групп, чтобы
   // отставший одиночный ответ не лёг поверх свежего состава.
   const anchorLoadSeq = new Map<number, number>();
 
@@ -139,69 +165,215 @@
     return next;
   }
 
-  interface ListSnapshot {
-    items: DeviceDto[];
-    groups: typeof groups;
-    total: number;
-    anchorItems: DeviceDto[];
-    hiddenMemberCount: number;
+  /** Снимок режима на момент запроса: порции одного списка не смешивают фильтры. */
+  interface Mode {
+    searchActive: boolean;
+    grouped: boolean;
+    query: string;
+    base: DeviceFilter;
+    raw: DeviceFilter;
+    ctx: ListModeContext;
   }
 
-  /** Только запросы, без записи состояния: запись делает refresh() после проверки поколения. */
-  async function fetchList(): Promise<ListSnapshot> {
-    if (searchActive) {
-      // Search mode — FTS5 (overrides grouping).
-      const resp = await devices.search(searchQuery, pagination);
-      return {
-        items: resp.items,
-        groups: [],
-        total: resp.total,
-        anchorItems: [],
-        hiddenMemberCount: 0,
-      };
-    }
-    if (grouped) {
-      // Grouped mode — show non-unique devices as collapsible groups. Якоря не
-      // участвуют в свёртке (exclude_anchors) и выводятся отдельным вызовом (D-11).
-      const [grouping, anchors] = await Promise.all([
-        devices.listGrouped(baseFilter, pagination),
-        devices.list(
-          { ...rawFilter, ...deviceListFlags('anchors', listCtx) },
-          { offset: 0, limit: ANCHOR_MEMBERS_LIMIT },
-        ),
-      ]);
-      return {
-        items: [],
-        groups: grouping,
-        total: 0,
-        anchorItems: anchors.items,
-        hiddenMemberCount: 0,
-      };
-    }
-    // Flat list mode.
-    const resp = await devices.list(baseFilter, pagination);
+  function snapMode(): Mode {
     return {
-      items: resp.items,
-      groups: [],
-      total: resp.total,
-      anchorItems: [],
-      hiddenMemberCount: resp.hidden_member_count ?? 0,
+      searchActive,
+      grouped,
+      query: searchQuery,
+      base: baseFilter,
+      raw: rawFilter,
+      ctx: listCtx,
     };
   }
 
-  async function refresh() {
+  interface Portion {
+    rows: DeviceEntryDto[];
+    groups: DeviceGroup[];
+    total: number;
+    hasMore: boolean;
+    hiddenMemberCount: number;
+    /** Сколько серверных строк в порции (смещение следующей). */
+    step: number;
+  }
+
+  interface ListSnapshot extends Portion {
+    headRows: DeviceEntryDto[];
+    truncated: boolean;
+    portionOffset: number;
+  }
+
+  const asDevice = (device: DeviceDto): DeviceEntryDto => ({ kind: 'device', device });
+
+  /** Одна порция основного списка по режиму; ничего не записывает. */
+  async function fetchPortion(mode: Mode, offset: number, limit: number): Promise<Portion> {
+    if (mode.searchActive) {
+      // Search mode — FTS5 (overrides grouping).
+      const resp = await devices.search(mode.query, { offset, limit });
+      return {
+        rows: resp.items.map(asDevice),
+        groups: [],
+        total: resp.total,
+        hasMore: offset + resp.items.length < resp.total,
+        hiddenMemberCount: 0,
+        step: resp.items.length,
+      };
+    }
+    if (mode.grouped) {
+      // Grouped mode — show non-unique devices as collapsible groups. Якоря и АРМ не
+      // участвуют в свёртке (exclude_anchors) и выводятся блоком над ней (D-05).
+      const grouping = await devices.listGrouped(mode.base, { offset, limit: limit + 1 });
+      const cut = trimPortion(grouping, limit);
+      return {
+        rows: [],
+        groups: cut.rows,
+        total: 0,
+        hasMore: cut.hasMore,
+        hiddenMemberCount: 0,
+        step: cut.rows.length,
+      };
+    }
+    // Flat list mode: устройства и строки АРМ вперемешку по общему порядку сервера.
+    const resp = await devices.listEntries(mode.base, { offset, limit });
+    return {
+      rows: resp.rows,
+      groups: [],
+      total: resp.total,
+      hasMore: resp.has_more,
+      hiddenMemberCount: resp.hidden_member_count ?? 0,
+      step: resp.rows.length,
+    };
+  }
+
+  /** mergeHeadBlock требует `id`: у строки АРМ порядковым ключом служит group_id. */
+  function mergeHead(anchors: DeviceDto[], containers: ContainerRowDto[]): DeviceEntryDto[] {
+    return mergeHeadBlock(
+      anchors,
+      containers.map((c) => ({ id: c.group_id, name: c.name, row: c })),
+    ).map(
+      (r): DeviceEntryDto =>
+        r.kind === 'device' ? r : { kind: 'container', container: r.container.row },
+    );
+  }
+
+  /** Блок над свёртками: все якоря (страницами по 200) и АРМ (D-05). */
+  async function fetchHead(
+    mode: Mode,
+  ): Promise<{ rows: DeviceEntryDto[]; hidden: number; truncated: boolean }> {
+    const anchors: DeviceDto[] = [];
+    for (;;) {
+      const resp = await devices.list(
+        { ...mode.raw, ...deviceListFlags('anchors', mode.ctx) },
+        { offset: anchors.length, limit: GROUP_MEMBERS_PAGE_MAX },
+      );
+      anchors.push(...resp.items);
+      if (resp.items.length === 0 || anchors.length >= resp.total) break;
+    }
+    if (!shouldShowContainerRows(mode.ctx)) {
+      return { rows: mergeHead(anchors, []), hidden: 0, truncated: false };
+    }
+    const conts = await devices.listContainers({
+      ...mode.raw,
+      ...deviceListFlags('containers', mode.ctx),
+    });
+    return {
+      rows: mergeHead(anchors, conts.containers),
+      hidden: conts.hidden_member_count,
+      truncated: conts.truncated,
+    };
+  }
+
+  /** АРМ, совпавшие с поисковым запросом по имени (D-14). */
+  async function fetchSearchContainers(mode: Mode): Promise<DeviceEntryDto[]> {
+    if (!shouldShowContainerRows(mode.ctx)) return [];
+    const conts = await devices.listContainers(
+      { ...mode.raw, ...deviceListFlags('containers', mode.ctx) },
+      mode.query,
+    );
+    return conts.containers.map((container) => ({ kind: 'container', container }));
+  }
+
+  /**
+   * Только запросы, без записи состояния: запись делает refresh() после проверки
+   * поколения. `count` — сколько серверных строк перечитать (чанками по 200).
+   */
+  async function fetchList(
+    mode: Mode,
+    count: number,
+    focusDeviceId: number | null,
+  ): Promise<ListSnapshot> {
+    const acc: ListSnapshot = {
+      rows: [],
+      groups: [],
+      total: 0,
+      hasMore: false,
+      hiddenMemberCount: 0,
+      step: 0,
+      headRows: [],
+      truncated: false,
+      portionOffset: 0,
+    };
+    const take = (p: Portion) => {
+      acc.rows = [...acc.rows, ...p.rows];
+      acc.groups = [...acc.groups, ...p.groups];
+      acc.total = p.total;
+      acc.hasMore = p.hasMore;
+      acc.hiddenMemberCount = p.hiddenMemberCount;
+      acc.portionOffset += p.step;
+    };
+    for (const chunk of rangeChunks(count, GROUP_MEMBERS_PAGE_MAX)) {
+      take(await fetchPortion(mode, acc.portionOffset, chunk.limit));
+      if (!acc.hasMore) break;
+    }
+    // Переход «Перейти к устройству»: догружаем порции, пока строка не появится.
+    if (focusDeviceId !== null) {
+      const present = () =>
+        acc.rows.some((r) => r.kind === 'device' && r.device.id === focusDeviceId);
+      while (!present() && acc.hasMore) {
+        take(await fetchPortion(mode, acc.portionOffset, GROUP_MEMBERS_PAGE_MAX));
+      }
+    }
+    if (mode.searchActive) {
+      const found = await fetchSearchContainers(mode);
+      acc.rows = [...found, ...acc.rows];
+      acc.total += found.length;
+    } else if (mode.grouped) {
+      const head = await fetchHead(mode);
+      acc.headRows = head.rows;
+      acc.hiddenMemberCount = head.hidden;
+      acc.truncated = head.truncated;
+    }
+    return acc;
+  }
+
+  async function refresh(opts: { reset?: boolean } = {}) {
     const seq = ++refreshSeq;
+    const reset = opts.reset === true;
+    const count = reset ? PAGE_SIZE : Math.max(PAGE_SIZE, portionOffset);
+    const focusId = focusResolved ? null : highlightId;
     loading = true;
+    // Порция в полёте принадлежит прошлому поколению: её ответ отбросит охрана.
+    loadingMore = false;
+    if (reset) moreError = false;
     try {
-      const snap = await fetchList();
+      const snap = await fetchList(snapMode(), count, focusId);
       if (seq !== refreshSeq) return;
-      items = snap.items;
+      rows = snap.rows;
       groups = snap.groups;
+      headRows = snap.headRows;
       total = snap.total;
-      anchorItems = snap.anchorItems;
+      hasMore = snap.hasMore;
       hiddenMemberCount = snap.hiddenMemberCount;
+      portionOffset = snap.portionOffset;
+      if (focusId !== null) focusResolved = true;
       listGen += 1;
+      if (snap.truncated) {
+        pushToast('error', 'Показаны не все АРМ: список ограничен 1000 записей.');
+      }
       void reloadExpandedAnchors();
+      if (reset && focusId === null) {
+        await tick();
+        scrollEl?.scrollTo({ top: 0 });
+      }
     } catch (e: unknown) {
       if (seq !== refreshSeq) return;
       const msg =
@@ -214,10 +386,49 @@
     }
   }
 
+  /** Следующая порция (D-07): одна в полёте, ошибка без тоста и без автоповторов. */
+  async function loadMore() {
+    if (!shouldLoadMore({ hasMore, loadingMore, moreError, loading, remainingPx: 0 })) return;
+    const seq = refreshSeq;
+    const mode = snapMode();
+    const offset = portionOffset;
+    loadingMore = true;
+    try {
+      const p = await fetchPortion(mode, offset, PAGE_SIZE);
+      if (seq !== refreshSeq) return;
+      const extra = mode.searchActive ? rows.filter((r) => r.kind === 'container').length : 0;
+      rows = [...rows, ...p.rows];
+      groups = [...groups, ...p.groups];
+      if (!mode.grouped) total = p.total + extra;
+      hasMore = p.hasMore;
+      portionOffset = offset + p.step;
+    } catch {
+      if (seq !== refreshSeq) return;
+      moreError = true;
+    } finally {
+      if (seq === refreshSeq) loadingMore = false;
+    }
+  }
+
+  function retryMore() {
+    moreError = false;
+    void loadMore();
+  }
+
   // ---------------------------------------------------------------------------
-  // Раскрытие состава якоря (D-12)
+  // Раскрытие состава группы (D-11, D-12)
   // ---------------------------------------------------------------------------
-  async function fetchAnchorMembers(groupId: number): Promise<AnchorMembersState> {
+  /** Страница состава: АРМ — прямые дети, якорная группа — плоский список членов. */
+  async function fetchMembers(
+    groupId: number,
+    kind: 'anchor' | 'container',
+    offset: number,
+    limit: number,
+  ): Promise<{ entries: DeviceEntryDto[]; total: number }> {
+    if (kind === 'container') {
+      const resp = await devices.groupChildren(groupId, { offset, limit });
+      return { entries: resp.rows, total: resp.total };
+    }
     const resp = await devices.list(
       {
         type_id: null,
@@ -230,14 +441,32 @@
         ...deviceListFlags('members', listCtx),
         member_of_group_id: groupId,
       },
-      { offset: 0, limit: ANCHOR_MEMBERS_LIMIT },
+      { offset, limit },
     );
-    return { loading: false, items: resp.items, total: resp.total };
+    return { entries: resp.items.map(asDevice), total: resp.total };
+  }
+
+  async function fetchMembersState(
+    groupId: number,
+    kind: 'anchor' | 'container',
+    loadedAll: boolean,
+  ): Promise<GroupMembersState<DeviceEntryDto>> {
+    const first = await fetchMembers(groupId, kind, 0, GROUP_MEMBERS_PAGE_MAX);
+    const entries = [...first.entries];
+    let totalCount = first.total;
+    // Перечитывание уже догруженной группы берёт весь состав (D-10).
+    while (loadedAll && entries.length < totalCount) {
+      const next = await fetchMembers(groupId, kind, entries.length, GROUP_MEMBERS_PAGE_MAX);
+      if (next.entries.length === 0) break;
+      entries.push(...next.entries);
+      totalCount = next.total;
+    }
+    return { loading: false, entries, total: totalCount, loadedAll, loadingRest: false };
   }
 
   /** Ошибка загрузки состава: тост и сворачивание строки назад. */
   function failAnchor(groupIds: number[]) {
-    pushToast('error', 'Не удалось загрузить состав группы.');
+    pushToast('error', 'Не удалось загрузить состав группы. Раскройте строку ещё раз.');
     const next = new Set(expandedAnchors);
     const cache = { ...anchorMembers };
     for (const id of groupIds) {
@@ -248,17 +477,20 @@
     anchorMembers = cache;
   }
 
-  async function loadAnchorMembers(groupId: number) {
+  async function loadAnchorMembers(groupId: number, kind: 'anchor' | 'container') {
     // T-41.1-G29-01: поколения снимаются ДО await; ответ пишется, только если
-    // с тех пор не стартовали ни новая загрузка этого якоря, ни перечитывание
-    // всех раскрытых, и якорь всё ещё раскрыт.
+    // с тех пор не стартовали ни новая загрузка этой группы, ни перечитывание
+    // всех раскрытых, и группа всё ещё раскрыта.
     const myGen = bumpAnchorLoad(groupId);
     const aSeq = anchorsSeq;
     const current = () =>
       anchorLoadSeq.get(groupId) === myGen && aSeq === anchorsSeq && expandedAnchors.has(groupId);
-    anchorMembers = { ...anchorMembers, [groupId]: { loading: true, items: [], total: 0 } };
+    anchorMembers = {
+      ...anchorMembers,
+      [groupId]: { loading: true, entries: [], total: 0, loadedAll: false, loadingRest: false },
+    };
     try {
-      const state = await fetchAnchorMembers(groupId);
+      const state = await fetchMembersState(groupId, kind, false);
       if (!current()) return;
       anchorMembers = { ...anchorMembers, [groupId]: state };
     } catch {
@@ -268,33 +500,37 @@
   }
 
   /**
-   * После перезагрузки списка состав раскрытых якорей перечитывается; кеш свёрнутых
+   * После перезагрузки списка состав раскрытых групп перечитывается; кеш свёрнутых
    * отбрасывается (иначе при следующем раскрытии он был бы устаревшим). Старый
    * состав остаётся на экране до прихода нового: строка не мигает «Загрузкой».
    */
   async function reloadExpandedAnchors() {
     const aSeq = ++anchorsSeq;
     const ids = [...expandedAnchors];
-    // T-41.1-G29-01: одиночные загрузки этих якорей, стартовавшие раньше,
+    // T-41.1-G29-01: одиночные загрузки этих групп, стартовавшие раньше,
     // становятся устаревшими — их ответы уже не лягут поверх нашего.
     for (const id of ids) bumpAnchorLoad(id);
     const results = await Promise.all(
       ids.map((id) =>
-        fetchAnchorMembers(id).then(
+        fetchMembersState(
+          id,
+          groupKinds.get(id) ?? 'anchor',
+          anchorMembers[id]?.loadedAll ?? false,
+        ).then(
           (state) => [id, state] as const,
           () => [id, null] as const,
         ),
       ),
     );
     if (aSeq !== anchorsSeq) return;
-    const fresh: Record<number, AnchorMembersState> = {};
+    const fresh: Record<number, GroupMembersState<DeviceEntryDto>> = {};
     const failed: number[] = [];
     for (const [id, state] of results) {
       if (state) fresh[id] = state;
       else failed.push(id);
     }
-    // Якорь, раскрытый, пока шла перезагрузка, не теряет свою запись (иначе он
-    // остался бы с «Загрузкой…» навсегда).
+    // Группа, раскрытая, пока шла перезагрузка, не теряет свою запись (иначе она
+    // осталась бы с «Загрузкой…» навсегда).
     for (const id of expandedAnchors) {
       if (!(id in fresh) && !failed.includes(id) && anchorMembers[id]) {
         fresh[id] = anchorMembers[id];
@@ -304,7 +540,8 @@
     if (failed.length > 0) failAnchor(failed);
   }
 
-  function toggleAnchor(groupId: number) {
+  function toggleGroup(groupId: number, kind: 'anchor' | 'container') {
+    groupKinds.set(groupId, kind);
     const next = new Set(expandedAnchors);
     if (next.has(groupId)) {
       next.delete(groupId);
@@ -313,7 +550,67 @@
     }
     next.add(groupId);
     expandedAnchors = next;
-    if (!anchorMembers[groupId]) void loadAnchorMembers(groupId);
+    if (!anchorMembers[groupId]) void loadAnchorMembers(groupId, kind);
+  }
+
+  /** id устройства-якоря группы: нужен, чтобы вернуть фокус на шеврон якорной строки. */
+  function anchorDeviceId(groupId: number): number | null {
+    const entries = [
+      ...rows,
+      ...headRows,
+      ...Object.values(anchorMembers).flatMap((m) => m.entries),
+    ];
+    for (const e of entries) {
+      if (e.kind === 'device' && e.device.anchor_group_id === groupId) return e.device.id;
+    }
+    for (const g of groups) if (g.repr.anchor_group_id === groupId) return g.repr.id;
+    return null;
+  }
+
+  /** Догрузка остатка состава (D-09): страницами по 200 до актуального total. */
+  async function loadRest(groupId: number) {
+    const st = anchorMembers[groupId];
+    if (!st || st.loadingRest) return;
+    const kind = groupKinds.get(groupId) ?? 'anchor';
+    const myGen = bumpAnchorLoad(groupId);
+    const aSeq = anchorsSeq;
+    // Раскрытость не проверяется: свёрнутая группа может спокойно принять состав в кеш.
+    const current = () => anchorLoadSeq.get(groupId) === myGen && aSeq === anchorsSeq;
+    anchorMembers = { ...anchorMembers, [groupId]: { ...st, loadingRest: true } };
+    try {
+      const entries = [...st.entries];
+      let totalCount = st.total;
+      while (entries.length < totalCount) {
+        const next = await fetchMembers(groupId, kind, entries.length, GROUP_MEMBERS_PAGE_MAX);
+        if (!current()) return;
+        if (next.entries.length === 0) break;
+        entries.push(...next.entries);
+        totalCount = next.total;
+      }
+      anchorMembers = {
+        ...anchorMembers,
+        [groupId]: {
+          loading: false,
+          entries,
+          total: totalCount,
+          loadedAll: true,
+          loadingRest: false,
+        },
+      };
+      await tick();
+      const rowId =
+        kind === 'container' ? `group-row-${groupId}` : `device-row-${anchorDeviceId(groupId)}`;
+      document
+        .getElementById(rowId)
+        ?.closest('tr')
+        ?.querySelector<HTMLElement>('button.tr-row-chevron')
+        ?.focus();
+    } catch {
+      if (!current()) return;
+      pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');
+      const cur = anchorMembers[groupId] ?? st;
+      anchorMembers = { ...anchorMembers, [groupId]: { ...cur, loadingRest: false } };
+    }
   }
 
   async function refreshCounts() {
@@ -325,20 +622,24 @@
     }
   }
 
-  // Re-run refresh when filter/grouping changes.
+  // Re-run refresh when filter/grouping changes. refresh() читает состояние страницы
+  // до первого await (portionOffset и др.): без untrack эффект подписался бы на них
+  // и перезапускался на каждой порции.
   $effect(() => {
     // Access reactive deps: statusFilter, grouped — triggers re-run.
     // searchQuery is handled separately via debounce in DeviceFilters.
     void statusFilter;
     void grouped;
-    refresh();
-    refreshCounts();
+    untrack(() => {
+      void refresh({ reset: true });
+      void refreshCounts();
+    });
   });
 
   onMount(() => {
     void ensureStatusesLoaded();
-    refresh();
-    refreshCounts();
+    void refresh({ reset: true });
+    void refreshCounts();
   });
 
   // ---------------------------------------------------------------------------
@@ -346,7 +647,7 @@
   // ---------------------------------------------------------------------------
   function handleSearchChange(q: string) {
     searchQuery = q;
-    refresh();
+    void refresh({ reset: true });
     if (!q) refreshCounts();
   }
 
@@ -416,7 +717,7 @@
   async function exportCsv() {
     try {
       const csvContent = await devices.exportCsv({
-        type_id: 1,
+        type_id: null,
         place_id: null,
         status_id: statusFilter,
         state: null,
@@ -493,7 +794,7 @@
 
     <DeviceList
       {listGen}
-      {items}
+      {rows}
       {groups}
       {total}
       {loading}
@@ -501,10 +802,16 @@
       {searchActive}
       {expandedGroups}
       {highlightId}
-      {anchorItems}
+      {headRows}
+      {loadingMore}
+      {moreError}
+      onNearEnd={loadMore}
+      onRetryMore={retryMore}
+      bind:scrollEl
+      onLoadRest={loadRest}
       {expandedAnchors}
       {anchorMembers}
-      onToggleAnchor={toggleAnchor}
+      onToggleGroup={toggleGroup}
       {hiddenMemberCount}
       {hideActive}
       onExpandToggle={(key, isExpanded) => {
