@@ -141,7 +141,7 @@ const SELFTEST_MIN_SCANNED_FILES = 1;
 // Задача 3 плана 19 подключила страницу: после этого SKIP для [A]/[B] недопустим.
 const PAGE_MANDATORY = true;
 
-const KINDS = ['flat', 'grouped', 'anchors', 'members'];
+const KINDS = ['flat', 'grouped', 'anchors', 'members', 'containers'];
 const CTX_KEYS = ['searchActive', 'statusFilter', 'focusId'];
 const FLAG_RE = /\b(?:hide_anchor_members|anchors_only|exclude_anchors)\b/;
 const MEMBER_RE = /\bmember_of_group_id\b/;
@@ -439,7 +439,11 @@ function checkCtxArg(arg, text, where) {
     return out;
   }
   let literal = null;
-  if (arg.startsWith('{')) literal = arg;
+  // Снимок режима (фаза 41.9): `mode.ctx` берётся из `ctx: listCtx` в snapMode();
+  // listCtx — литерал с обязательными ключами, тип ListModeContext держит их же.
+  if (/^[A-Za-z_$][\w$]*\.ctx$/.test(arg) && /\bctx\s*:\s*listCtx\b/.test(text)) {
+    literal = objectLiteralOf('listCtx', text);
+  } else if (arg.startsWith('{')) literal = arg;
   else if (/^[A-Za-z_$][\w$]*$/.test(arg)) literal = objectLiteralOf(arg, text);
   if (literal === null) {
     out.push({
@@ -506,13 +510,32 @@ export function checkPage(src) {
     });
   }
   // K и признак скрытия доходят до DeviceList (иначе футер молча остаётся прежним).
-  for (const prop of ['hideActive', 'hiddenMemberCount', 'anchorItems']) {
-    if (!new RegExp(`\\{${prop}\\}|\\b${prop}\\s*=\\s*\\{`).test(text)) {
-      out.push({ code: 'A', msg: `DeviceList не получает ${prop} ({${prop}} или ${prop}={...})` });
+  for (const prop of ['hideActive', 'hiddenMemberCount', 'headRows|anchorItems']) {
+    if (!new RegExp(`\\{(?:${prop})\\}|\\b(?:${prop})\\s*=\\s*\\{`).test(text)) {
+      out.push({ code: 'A', msg: `DeviceList не получает ${prop} ({...} или ${prop}={...})` });
     }
   }
   if (!MEMBER_RE.test(text)) {
     out.push({ code: 'A', msg: 'нет member_of_group_id: раскрытие состава якоря не загружается' });
+  }
+  // [I] (фаза 41.9, D-18/D-19): список показывает принтеры, поэтому фильтр страницы
+  // не задаёт тип. Правило включается признаком новой страницы (devices.listEntries(),
+  // как и [H8]); комментарии вырезаны, так что слова в них не считаются.
+  if (/\bdevices\.listEntries\s*\(/.test(text)) {
+    const raw = objectLiteralOf('rawFilter', text);
+    if (raw === null || !/\btype_id\s*:\s*null\b/.test(raw)) {
+      out.push({
+        code: 'I',
+        msg: 'rawFilter не задаёт `type_id: null` (принтеры исчезают из списка)',
+      });
+    }
+    const hard = /\btype_id\s*:\s*1\b/.exec(text);
+    if (hard) {
+      out.push({
+        code: 'I',
+        msg: `строка ${lineOf(text, hard.index)}: в коде страницы остался \`type_id: 1\` (список и экспорт показывают все типы)`,
+      });
+    }
   }
   return out;
 }
@@ -531,7 +554,8 @@ function functionBody(text, name) {
   return text.slice(open, close + 1);
 }
 
-const STATE_ASSIGN_RE = /(?<![\w.])(?:items|groups|total|anchorItems|hiddenMemberCount)\s*=(?!=)/;
+const STATE_ASSIGN_RE =
+  /(?<![\w.])(?:items|rows|groups|total|anchorItems|headRows|hasMore|hiddenMemberCount|portionOffset)\s*=(?!=)/;
 const REFRESH_GUARD_RE = /if\s*\(\s*seq\s*!==\s*refreshSeq\s*\)\s*return\b/;
 const ANCHORS_GUARD_RE = /if\s*\(\s*aSeq\s*!==\s*anchorsSeq\s*\)\s*return\b/;
 
@@ -541,6 +565,83 @@ function lastIndexOfRe(text, re) {
   let m;
   while ((m = g.exec(text)) !== null) idx = m.index;
   return idx;
+}
+
+/**
+ * Правило [H8] (фаза 41.9, D-07; порядковое): подгрузка порции loadMore() держит то же
+ * поколение, что refresh(). Включается, когда страница передаёт onNearEnd=: функция
+ * тогда обязательна (удалённая загрузка не должна давать молчаливый «зелёный»).
+ *  - `const seq = refreshSeq` (без ++) стоит раньше первого await;
+ *  - после await охрана `if (seq !== refreshSeq) return` раньше первого присваивания
+ *    состояния списка;
+ *  - первый оператор catch — та же охрана; loadingMore в finally сбрасывается под
+ *    условием seq === refreshSeq.
+ */
+function checkLoadMore(text) {
+  const out = [];
+  if (!/\bonNearEnd\s*=/.test(text)) return out;
+  const body = functionBody(text, 'loadMore');
+  if (body === null) {
+    out.push({ code: 'H8', msg: 'нет функции loadMore() (подгрузка порций не проверяется)' });
+    return out;
+  }
+  const firstAwait = body.search(/\bawait\b/);
+  const seq = /\bconst\s+seq\s*=\s*refreshSeq\b(?!\s*\+\+)/.exec(body);
+  if (!seq) {
+    out.push({
+      code: 'H8',
+      msg: 'loadMore(): нет `const seq = refreshSeq` (поколение не снимается)',
+    });
+  } else if (firstAwait !== -1 && seq.index > firstAwait) {
+    out.push({ code: 'H8', msg: 'loadMore(): поколение снимается ПОСЛЕ первого await' });
+  }
+  if (firstAwait === -1) {
+    out.push({ code: 'H8', msg: 'loadMore(): нет await (порция не ждёт ответа)' });
+  } else {
+    const tail = body.slice(firstAwait);
+    const guardAt = tail.search(REFRESH_GUARD_RE);
+    const assign = STATE_ASSIGN_RE.exec(tail);
+    if (guardAt === -1) {
+      out.push({
+        code: 'H8',
+        msg: 'loadMore(): после await нет `if (seq !== refreshSeq) return` (устаревшая порция дописывается)',
+      });
+    } else if (!assign) {
+      out.push({ code: 'H8', msg: 'loadMore(): нет присваиваний состояния списка' });
+    } else if (guardAt > assign.index) {
+      out.push({
+        code: 'H8',
+        msg: `loadMore(): охрана поколения стоит ПОСЛЕ присваивания «${assign[0]}»`,
+      });
+    }
+  }
+  const catchM = /\bcatch\b\s*(?:\([^)]*\))?\s*\{/.exec(body);
+  if (!catchM) {
+    out.push({ code: 'H8', msg: 'loadMore(): нет блока catch' });
+  } else {
+    const open = catchM.index + catchM[0].length - 1;
+    const close = readBalanced(body, open, '{', '}');
+    const inner = close === -1 ? body.slice(open + 1) : body.slice(open + 1, close);
+    if (!new RegExp(`^\\s*${REFRESH_GUARD_RE.source}`).test(inner)) {
+      out.push({ code: 'H8', msg: 'loadMore(): первым оператором catch нет охраны поколения' });
+    }
+  }
+  const finM = /\bfinally\s*\{/.exec(body);
+  if (!finM) {
+    out.push({ code: 'H8', msg: 'loadMore(): нет блока finally' });
+  } else {
+    const open = finM.index + finM[0].length - 1;
+    const close = readBalanced(body, open, '{', '}');
+    const inner = close === -1 ? body.slice(open + 1) : body.slice(open + 1, close);
+    const cond = /if\s*\(\s*seq\s*===\s*refreshSeq\s*\)\s*loadingMore\s*=\s*false\b/;
+    if (!cond.test(inner) || /(?<![\w.])loadingMore\s*=(?!=)/.test(inner.replace(cond, ''))) {
+      out.push({
+        code: 'H8',
+        msg: 'loadMore(): в finally loadingMore сбрасывается не под условием seq === refreshSeq',
+      });
+    }
+  }
+  return out;
 }
 
 /** Правило [H]: DevicesPage.svelte, защита поколения refresh() и reloadExpandedAnchors(). */
@@ -667,6 +768,7 @@ export function checkPageRace(src) {
     }
   }
   out.push(...checkAnchorMembersLoad(text));
+  out.push(...checkLoadMore(text));
   return out;
 }
 
@@ -1349,6 +1451,9 @@ const CLEAN_PAGE = `<script lang="ts">
   async function m(groupId) {
     await devices.list({ type_id: null, ...deviceListFlags('members', listCtx), member_of_group_id: groupId }, p);
   }
+  async function c() {
+    await devices.listContainers({ ...baseFilter, ...deviceListFlags('containers', listCtx) });
+  }
 </script>
 <DeviceList {listGen} {anchorItems} {hiddenMemberCount} {hideActive} />
 `.replace(
@@ -1493,6 +1598,13 @@ function structuralMutants() {
       name: "[A] нет вызова deviceListFlags('members'",
       files: fixtureMap({
         [PAGE_FILE]: page("...deviceListFlags('members', listCtx), ", '', 'members'),
+      }),
+      expect: ['A'],
+    },
+    {
+      name: "[A] нет вызова deviceListFlags('containers'",
+      files: fixtureMap({
+        [PAGE_FILE]: page("...deviceListFlags('containers', listCtx)", '...{}', 'containers'),
       }),
       expect: ['A'],
     },
@@ -2164,10 +2276,44 @@ async function selftest(cases) {
   // (голая `if (seq !== refreshSeq) return;` встречается дважды и не используется).
   const realPageMutants = [
     {
-      name: '[H2] присваивание items раньше охраны (реальный файл)',
-      from: '      if (seq !== refreshSeq) return;\n      items = snap.items;\n',
-      to: '      items = snap.items;\n      if (seq !== refreshSeq) return;\n',
+      name: '[H2] присваивание rows раньше охраны (реальный файл)',
+      from: '      if (seq !== refreshSeq) return;\n      rows = snap.rows;\n',
+      to: '      rows = snap.rows;\n      if (seq !== refreshSeq) return;\n',
       expect: 'H2',
+    },
+    {
+      name: '[H8] охрана в loadMore() перенесена ПОСЛЕ дописывания rows (перестановка, реальный файл)',
+      two: [
+        [
+          '      if (seq !== refreshSeq) return;\n      const extra = mode.searchActive',
+          '      const extra = mode.searchActive',
+        ],
+        [
+          '      rows = [...rows, ...p.rows];\n',
+          '      rows = [...rows, ...p.rows];\n      if (seq !== refreshSeq) return;\n',
+        ],
+      ],
+      expect: 'H8',
+    },
+    {
+      name: '[H8] loadMore() не снимает поколение (реальный файл)',
+      from: '    const seq = refreshSeq;\n    const mode = snapMode();',
+      to: '    const seq = 0;\n    const mode = snapMode();',
+      expect: 'H8',
+    },
+    {
+      name: '[I] rawFilter возвращает type_id: 1 (реальный файл)',
+      from: 'const rawFilter = $derived<DeviceFilter>({\n    type_id: null,',
+      to: 'const rawFilter = $derived<DeviceFilter>({\n    type_id: 1,',
+      expect: 'I',
+      fn: 'page',
+    },
+    {
+      name: '[I] литерал type_id: 1 в выгрузке CSV (реальный файл)',
+      from: 'await devices.exportCsv({\n        type_id: null,',
+      to: 'await devices.exportCsv({\n        type_id: 1,',
+      expect: 'I',
+      fn: 'page',
     },
     {
       name: '[H1] refresh() не поднимает refreshSeq (реальный файл)',
@@ -2183,8 +2329,11 @@ async function selftest(cases) {
     },
   ];
   for (const m of realPageMutants) {
-    const mutated = mutate(realPage, m.from, m.to, m.name);
-    const codes = new Set(checkPageRace(mutated).map((v) => v.code));
+    const mutated = m.two
+      ? m.two.reduce((acc, [f, t], i) => mutate(acc, f, t, `${m.name}#${i}`), realPage)
+      : mutate(realPage, m.from, m.to, m.name);
+    const found = (m.fn === 'page' ? checkPage : checkPageRace)(mutated);
+    const codes = new Set(found.map((v) => v.code));
     if (!codes.has(m.expect)) {
       console.error(
         `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [${m.expect}], получено [${[...codes].join(',') || 'ничего'}]`,
@@ -2210,20 +2359,15 @@ async function selftest(cases) {
     );
     process.exit(1);
   }
-  const GUARD_ITEMS = '      if (seq !== refreshSeq) return;\n      items = snap.items;\n';
-  const INC_AFTER_ASSIGN =
-    '      hiddenMemberCount = snap.hiddenMemberCount;\n      listGen += 1;\n      void reloadExpandedAnchors();\n';
+  const GUARD_ITEMS = '      if (seq !== refreshSeq) return;\n      rows = snap.rows;\n';
+  const LIST_GEN_INC = '      listGen += 1;\n';
+  const RELOAD_CALL = '      void reloadExpandedAnchors();\n';
   const h7Mutants = [
     {
       name: '[H7] listGen += 1 перенесён ДО охраны поколения (перестановка, реальные файлы)',
       page: (t) =>
         mutate(
-          mutate(
-            t,
-            INC_AFTER_ASSIGN,
-            '      hiddenMemberCount = snap.hiddenMemberCount;\n      void reloadExpandedAnchors();\n',
-            'h7-reorder-remove',
-          ),
+          mutate(t, LIST_GEN_INC, '', 'h7-reorder-remove'),
           GUARD_ITEMS,
           '      listGen += 1;\n' + GUARD_ITEMS,
           'h7-reorder-insert',
@@ -2233,9 +2377,9 @@ async function selftest(cases) {
       name: '[H7] listGen += 1 перенесён ПОСЛЕ void reloadExpandedAnchors( (реальные файлы)',
       page: (t) =>
         mutate(
-          t,
-          INC_AFTER_ASSIGN,
-          '      hiddenMemberCount = snap.hiddenMemberCount;\n      void reloadExpandedAnchors();\n      listGen += 1;\n',
+          mutate(t, LIST_GEN_INC, '', 'h7-after-reload-remove'),
+          RELOAD_CALL,
+          RELOAD_CALL + LIST_GEN_INC,
           'h7-after-reload',
         ),
     },

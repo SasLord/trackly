@@ -140,7 +140,11 @@ const ALLOWLIST = [
   {
     // 41.1-19: тост ошибки загрузки состава группы при раскрытии якоря.
     file: 'src/features/devices/DevicesPage.svelte',
-    markers: ['Не удалось загрузить состав группы.'],
+    // 41.9-07: тост догрузки остатка состава (D-09) и текст ошибки раскрытия.
+    markers: [
+      'Не удалось загрузить состав группы. Раскройте строку ещё раз.',
+      'Не удалось загрузить весь состав группы. Повторите попытку.',
+    ],
   },
   {
     // 41.2-10 (D-01, D-03): пикер позиции акта. Пять узких маркеров, реально
@@ -542,10 +546,22 @@ function runSelfTest() {
       expectViolations: 0,
     },
     {
-      name: 'позитив (41.1-19): тост состава группы в DevicesPage',
+      name: 'позитив (41.1-19, 41.9-07): тост состава группы в DevicesPage',
+      file: 'src/features/devices/DevicesPage.svelte',
+      src: "pushToast('error', 'Не удалось загрузить состав группы. Раскройте строку ещё раз.');",
+      expectViolations: 0,
+    },
+    {
+      name: 'позитив (41.9-07): тост догрузки всего состава в DevicesPage',
+      file: 'src/features/devices/DevicesPage.svelte',
+      src: "pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.9-07): прежний текст без маркера краснит',
       file: 'src/features/devices/DevicesPage.svelte',
       src: "pushToast('error', 'Не удалось загрузить состав группы.');",
-      expectViolations: 0,
+      expectViolations: 1,
     },
     {
       name: 'негатив (41.1-19): прочая надпись про группу в DevicesPage (маркер узкий)',

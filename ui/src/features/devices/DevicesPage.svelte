@@ -370,10 +370,9 @@
         pushToast('error', 'Показаны не все АРМ: список ограничен 1000 записей.');
       }
       void reloadExpandedAnchors();
-      if (reset && focusId === null) {
-        await tick();
-        scrollEl?.scrollTo({ top: 0 });
-      }
+      // Сброс прокрутки после отрисовки новой первой порции (без await: охрана
+      // поколения в refresh() идёт после последнего await, см. check-device-list-mode).
+      if (reset && focusId === null) void tick().then(() => scrollEl?.scrollTo({ top: 0 }));
     } catch (e: unknown) {
       if (seq !== refreshSeq) return;
       const msg =
