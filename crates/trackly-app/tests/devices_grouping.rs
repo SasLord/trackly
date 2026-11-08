@@ -1283,3 +1283,59 @@ async fn grouping_place_distinct_count_true_branch() {
     .await
     .expect("grouping_place_distinct_count_true_branch exceeded 30s");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.9 Plan 04: тип входит в ключ свёртки (D-18)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_does_not_merge_printers_with_same_name_device() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // Два принтера без номеров и одноимённое устройство типа 1.
+        for _ in 0..2 {
+            let mut printer = non_unique_device("Принтер #5", 1);
+            printer.type_id = 2;
+            svc.create(printer).await.expect("create printer");
+        }
+        svc.create(non_unique_device("Принтер #5", 1))
+            .await
+            .expect("create device");
+
+        let groups = svc
+            .list_grouped(
+                DeviceFilter {
+                    type_id: None,
+                    ..Default::default()
+                },
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
+            )
+            .await
+            .expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            2,
+            "тип в ключе: набор принтеров и устройство отдельно"
+        );
+        let printers = groups
+            .iter()
+            .find(|g| g.repr.type_id == 2)
+            .expect("набор принтеров");
+        assert_eq!(printers.count, 2);
+        let device = groups
+            .iter()
+            .find(|g| g.repr.type_id == 1)
+            .expect("устройство типа 1");
+        assert_eq!(
+            device.count, 1,
+            "одноимённое устройство не вошло в набор принтеров"
+        );
+    })
+    .await
+    .expect("grouping_does_not_merge_printers_with_same_name_device exceeded 30s");
+}
