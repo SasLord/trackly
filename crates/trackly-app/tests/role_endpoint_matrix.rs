@@ -47,6 +47,10 @@
 //! request_printer_options gating) were added by later quick-tasks/plans
 //! without updating this header — see their inline `// Case N` comments below.
 //!
+//! Phase 41.9 Plan 05 adds `devices_container_reads_role_matrix` (devices_list_entries,
+//! devices_list_containers, devices_group_children): без сессии 401, Employee 403,
+//! Manager/Admin 200 с JSON-массивом rows/containers.
+//!
 //! Phase 41.13 Plan 04 adds Case 87 (запись USB-хоста принтера): Employee -> 403
 //! на devices_update / devices_create_single_with_number_check с хостом;
 //! Manager -> 400 с JSON-телом VALIDATION / usb_host_device_id (проверка тела).
@@ -5411,4 +5415,68 @@ async fn attachments_role_matrix_http() {
     })
     .await
     .expect("attachments_role_matrix_http exceeded 60s");
+}
+
+/// Три чтения списка «Устройства» с контейнерами (Phase 41.9 plan 05, T-41.9-13/14/15):
+/// без сессии 401, Employee 403, Manager/Admin получают JSON нужной формы (а не
+/// index.html от `spa_fallback`, тоже отдающий 200). Отдельная функция: фильтр cargo
+/// по имени не видит кейсов внутри монолита.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn devices_container_reads_role_matrix() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let filter =
+            serde_json::to_value(trackly_app::dto::device::DeviceFilter::default()).unwrap();
+        let cases = [
+            (
+                "devices_list_entries",
+                json!({ "filter": filter, "pagination": { "limit": 10, "offset": 0 } }),
+                "rows",
+            ),
+            (
+                "devices_list_containers",
+                json!({ "filter": filter, "query": null }),
+                "containers",
+            ),
+            (
+                "devices_group_children",
+                json!({ "groupId": 999999, "pagination": { "limit": 10, "offset": 0 } }),
+                "rows",
+            ),
+        ];
+        for (name, payload, field) in cases {
+            let status = post_with_cookie(
+                gt_app(&env.ctx),
+                &format!("/api/v1/{name}"),
+                payload.clone(),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{name} без сессии");
+
+            let (status, _) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "employee -> {name} -> ожидался 403, получен {status}"
+            );
+
+            for (who, cookie) in [
+                ("manager", &env.manager_cookie),
+                ("admin", &env.admin_cookie),
+            ] {
+                let (status, body) = gt_post(&env, cookie, name, payload.clone()).await;
+                assert_ne!(status, StatusCode::UNAUTHORIZED, "{who} -> {name}");
+                assert_ne!(status, StatusCode::FORBIDDEN, "{who} -> {name}");
+                assert_eq!(status, StatusCode::OK, "{who} -> {name}: {body}");
+                assert!(
+                    body.get(field).and_then(|v| v.as_array()).is_some(),
+                    "{who} -> {name}: нет массива {field} (spa_fallback вместо роута?): {body}"
+                );
+            }
+        }
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("devices_container_reads_role_matrix exceeded 60s");
 }

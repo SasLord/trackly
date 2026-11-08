@@ -1003,3 +1003,65 @@ async fn list_total_equals_row_count_for_every_narrowing_field() {
     })
     .await;
 }
+
+/// Phase 41.9 plan 05 (D-18, D-14): новые чтения без флагов видят всех. Серверного
+/// умолчания по `type_id` нет (принтер среди строк), члены групп видны, строк АРМ нет,
+/// блок АРМ без hide-флага пуст (K = 0). Контраст: явный `type_id` сужает, так что
+/// «видят всех» не вакуумно.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn container_reads_without_flags_see_everyone() {
+    timed(async {
+        let fx = fixture().await;
+        let big = Pagination {
+            offset: 0,
+            limit: 100,
+        };
+
+        let entries = fx
+            .svc
+            .list_entries(DeviceFilter::default(), big)
+            .await
+            .expect("list_entries");
+        let mut invs = BTreeSet::new();
+        for row in &entries.rows {
+            match row {
+                trackly_app::dto::device::DeviceEntryDto::Device { device } => {
+                    invs.insert(device.inventory_no.clone().expect("inv"));
+                }
+                other => panic!("без флагов строк АРМ быть не должно: {other:?}"),
+            }
+        }
+        assert_eq!(invs, all_live(), "без флагов видны все живые устройства");
+        assert!(
+            invs.contains(D),
+            "принтер (тип 2) виден без умолчания по типу"
+        );
+        assert!(
+            invs.contains(G),
+            "член группы виден без hide_anchor_members"
+        );
+        assert_eq!(entries.hidden_member_count, 0);
+
+        let narrowed = fx
+            .svc
+            .list_entries(
+                DeviceFilter {
+                    type_id: Some(2),
+                    ..Default::default()
+                },
+                big,
+            )
+            .await
+            .expect("list_entries type");
+        assert_eq!(narrowed.rows.len(), 1, "явный type_id сужает (контраст)");
+
+        let containers = fx
+            .svc
+            .list_containers(DeviceFilter::default(), None)
+            .await
+            .expect("list_containers");
+        assert!(containers.containers.is_empty(), "без hide-флага блок пуст");
+        assert_eq!(containers.hidden_member_count, 0, "K = 0 без флага");
+    })
+    .await;
+}
