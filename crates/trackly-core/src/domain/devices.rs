@@ -254,3 +254,60 @@ impl AutocompleteField {
         }
     }
 }
+
+/// Разбиение на слова: границы — любые не буквенно-цифровые символы (так же
+/// режет unicode61-токенайзер FTS5), регистр сворачивается в Rust.
+fn name_tokens(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Совпадение имени группы (АРМ) с поисковым вводом (Phase 41.9, GRD-07, D-14).
+///
+/// Те же правила, что у поиска устройств (`build_fts_query` + FTS5 unicode61):
+/// каждый токен запроса — ПРЕФИКС какого-либо слова имени, порядок токенов не
+/// важен, регистр (в т.ч. кириллицы) не важен. Запрос без токенов (пусто, пробелы,
+/// одни разделители) не совпадает ни с чем. Свёртка регистра выполняется здесь,
+/// а не в SQL: SQLite `lower()`/`LIKE` кириллицу не сворачивают.
+pub fn container_name_matches(name: &str, query: &str) -> bool {
+    let q = name_tokens(query);
+    if q.is_empty() {
+        return false;
+    }
+    let words = name_tokens(name);
+    q.iter()
+        .all(|t| words.iter().any(|w| w.starts_with(t.as_str())))
+}
+
+#[cfg(test)]
+mod container_name_tests {
+    use super::container_name_matches as m;
+
+    #[test]
+    fn container_name_match_case_insensitive_cyrillic() {
+        assert!(m("АРМ #3", "арм"));
+    }
+    #[test]
+    fn container_name_match_number_token() {
+        assert!(m("АРМ #3", "АРМ 3"));
+    }
+    #[test]
+    fn container_name_match_prefix_not_substring() {
+        assert!(!m("АРМ #3", "рм"));
+    }
+    #[test]
+    fn container_name_match_token_order_free() {
+        assert!(m("Системный блок #4", "блок сист"));
+    }
+    #[test]
+    fn container_name_match_all_tokens_required() {
+        assert!(!m("АРМ #3", "арм 4"));
+    }
+    #[test]
+    fn container_name_match_empty_query() {
+        assert!(!m("АРМ #3", ""));
+        assert!(!m("АРМ #3", "  # "));
+    }
+}
