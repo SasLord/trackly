@@ -94,6 +94,7 @@
 
 <TableRow
   class={isLastInGroup ? 'group-last-child' : undefined}
+  indent={depth >= 1}
   {depth}
   oncontextmenu={handleContextMenu}
   ondblclick={handleDblClick}
