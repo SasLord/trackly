@@ -4,7 +4,7 @@ milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
 last_updated: "2026-11-08T15:44:27.296Z"
-last_activity: 2026-11-09 -- Completed 41.9-06-PLAN.md
+last_activity: 2026-11-09 -- Completed 41.9-07-PLAN.md
 progress:
   total_phases: 27
   completed_phases: 17
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.9 (container-groups-devices) — EXECUTING
-Plan: 7 of 8 (06 выполнен)
+Plan: 8 of 8 (07 выполнен)
 Status: Executing Phase 41.9
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
@@ -1667,8 +1667,8 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-08
-Stopped at: Completed 41.9-05-PLAN.md
-Resume file: .planning/phases/41.9-container-groups-devices/41.9-06-PLAN.md
+Stopped at: Completed 41.9-07-PLAN.md
+Resume file: .planning/phases/41.9-container-groups-devices/41.9-08-PLAN.md
 
 None
 
