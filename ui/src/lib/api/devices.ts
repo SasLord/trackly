@@ -1,5 +1,7 @@
 import { apiCall } from './client';
 import type {
+  ContainerListResponse,
+  DeviceEntriesResponse,
   CsvImportPreviewResponse,
   CsvImportReport,
   DeviceDto,
@@ -80,6 +82,16 @@ export const devices = {
 
   listGrouped: (filter: DeviceFilter, pagination: Pagination) =>
     apiCall<DeviceGroup[]>('devices_list_grouped', { filter, pagination }),
+
+  // Фаза 41.9: смешанный список, блок АРМ и состав группы.
+  listEntries: (filter: DeviceFilter, pagination: Pagination) =>
+    apiCall<DeviceEntriesResponse>('devices_list_entries', { filter, pagination }),
+
+  listContainers: (filter: DeviceFilter, query: string | null = null) =>
+    apiCall<ContainerListResponse>('devices_list_containers', { filter, query }),
+
+  groupChildren: (groupId: number, pagination: Pagination) =>
+    apiCall<DeviceEntriesResponse>('devices_group_children', { groupId, pagination }),
 
   statusCounts: () => apiCall<StatusCount[]>('devices_status_counts'),
 

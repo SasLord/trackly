@@ -28,9 +28,11 @@ use crate::tauri_cmds::devices::{
     build_device_statuses_list, build_device_types_list, build_devices_autocomplete,
     build_devices_bulk_create, build_devices_create, build_devices_create_single_with_number_check,
     build_devices_delete, build_devices_export_csv, build_devices_get,
-    build_devices_import_csv_commit, build_devices_import_csv_preview, build_devices_list,
-    build_devices_list_by_ids, build_devices_list_grouped, build_devices_search,
-    build_devices_state_hints, build_devices_status_counts, build_devices_update,
+    build_devices_group_children, build_devices_import_csv_commit,
+    build_devices_import_csv_preview, build_devices_list, build_devices_list_by_ids,
+    build_devices_list_containers, build_devices_list_entries, build_devices_list_grouped,
+    build_devices_search, build_devices_state_hints, build_devices_status_counts,
+    build_devices_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,27 @@ pub struct AutocompletePayload {
 #[serde(rename_all = "camelCase")]
 pub struct ListGroupedPayload {
     pub filter: DeviceFilter,
+    pub pagination: Pagination,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListEntriesPayload {
+    pub filter: DeviceFilter,
+    pub pagination: Pagination,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListContainersPayload {
+    pub filter: DeviceFilter,
+    pub query: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupChildrenPayload {
+    pub group_id: i64,
     pub pagination: Pagination,
 }
 
@@ -314,6 +337,51 @@ pub async fn handler_list_grouped(
     ))
 }
 
+pub async fn handler_list_entries(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<ListEntriesPayload>,
+) -> Result<Json<crate::dto::device::DeviceEntriesResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_devices_list_entries(&ctx, &identity, payload.filter, payload.pagination)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_list_containers(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<ListContainersPayload>,
+) -> Result<Json<crate::dto::device::ContainerListResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_devices_list_containers(&ctx, &identity, payload.filter, payload.query)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_group_children(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<GroupChildrenPayload>,
+) -> Result<Json<crate::dto::device::DeviceEntriesResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_devices_group_children(&ctx, &identity, payload.group_id, payload.pagination)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_status_counts(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -456,6 +524,15 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/devices_search", post(handler_search))
         .route("/api/v1/devices_autocomplete", post(handler_autocomplete))
         .route("/api/v1/devices_list_grouped", post(handler_list_grouped))
+        .route("/api/v1/devices_list_entries", post(handler_list_entries))
+        .route(
+            "/api/v1/devices_list_containers",
+            post(handler_list_containers),
+        )
+        .route(
+            "/api/v1/devices_group_children",
+            post(handler_group_children),
+        )
         .route("/api/v1/devices_status_counts", post(handler_status_counts))
         .route(
             "/api/v1/device_statuses_list",

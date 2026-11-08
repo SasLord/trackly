@@ -14,8 +14,9 @@ use crate::tauri_cmds::users::resolve_tauri_identity;
 use std::collections::HashMap;
 
 use crate::dto::device::{
-    CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
-    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
+    ContainerListResponse, CsvImportPreviewResponse, CsvImportReport, DeviceDto,
+    DeviceEntriesResponse, DeviceFilter, DeviceGroup, DeviceListResponse, DeviceNew, DevicePatch,
+    DeviceSaveOutcome, Pagination, StatusCount,
 };
 use crate::dto::device_status::DeviceStatusDto;
 use crate::dto::device_type::DeviceTypeDto;
@@ -442,4 +443,67 @@ pub async fn devices_export_csv(
 ) -> Result<String, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_export_csv(state.inner(), &caller, filter).await
+}
+
+pub async fn build_devices_list_entries(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: DeviceFilter,
+    pagination: Pagination,
+) -> Result<DeviceEntriesResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.devices.list_entries(filter, pagination).await
+}
+
+pub async fn build_devices_list_containers(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: DeviceFilter,
+    query: Option<String>,
+) -> Result<ContainerListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.devices.list_containers(filter, query).await
+}
+
+pub async fn build_devices_group_children(
+    ctx: &AppCtx,
+    caller: &Identity,
+    group_id: i64,
+    pagination: Pagination,
+) -> Result<DeviceEntriesResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.devices.group_children(group_id, pagination).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_list_entries(
+    state: tauri::State<'_, AppCtx>,
+    filter: DeviceFilter,
+    pagination: Pagination,
+) -> Result<DeviceEntriesResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_list_entries(state.inner(), &caller, filter, pagination).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_list_containers(
+    state: tauri::State<'_, AppCtx>,
+    filter: DeviceFilter,
+    query: Option<String>,
+) -> Result<ContainerListResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_list_containers(state.inner(), &caller, filter, query).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_group_children(
+    state: tauri::State<'_, AppCtx>,
+    group_id: i32,
+    pagination: Pagination,
+) -> Result<DeviceEntriesResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_group_children(state.inner(), &caller, group_id as i64, pagination).await
 }
