@@ -12,6 +12,7 @@ pub mod place_movements_sqlite;
 pub mod place_path_settings;
 pub mod places_sqlite;
 pub mod printers_sqlite;
+pub mod repairs_sqlite;
 pub mod requests_sqlite;
 
 pub use acts_sqlite::SqliteActRepository;
@@ -25,4 +26,5 @@ pub use number_templates_sqlite::SqliteNumberTemplateRepository;
 pub use place_movements_sqlite::SqlitePlaceMovementsRepository;
 pub use places_sqlite::SqlitePlaceRepository;
 pub use printers_sqlite::SqlitePrinterRepository;
+pub use repairs_sqlite::SqliteRepairRepository;
 pub use requests_sqlite::SqliteRequestRepository;
