@@ -1,5 +1,5 @@
 <script module lang="ts">
-  import { groupTypes } from '$lib/api/groups';
+  import { groupTypes, groups } from '$lib/api/groups';
   import type { GroupTypeDto } from '../../bindings';
 
   // Типы групп общие для всех строк: меню порождает быстрые действия из них
@@ -51,6 +51,7 @@
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { ensureLoaded, statusLabel } from '$lib/stores/deviceStatuses.svelte';
   import { devices } from './api';
@@ -59,6 +60,7 @@
   import GroupFormModal from '../groups/GroupFormModal.svelte';
   import {
     buildMenuSections,
+    canRemoveFromGroup,
     isGroupActionAllowed,
     quickActionsForDevice,
     type MenuItemSpec,
@@ -108,6 +110,7 @@
   let refuseOpen = $state(false);
   let confirmOpen = $state(false);
   let deleting = $state(false);
+  let removing = false;
 
   const sections = $derived(
     buildMenuSections({
@@ -121,6 +124,13 @@
           isAnchor: dev.anchor_group_id != null,
         }),
       quickActions: dev === null ? [] : quickActionsForDevice(typesCache.items ?? [], dev.type_id),
+      removeFromGroup:
+        dev !== null &&
+        canRemoveFromGroup({
+          role: authStore.user?.role ?? null,
+          groupId: dev.group_id,
+          anchorGroupId: dev.anchor_group_id,
+        }),
     }),
   );
 
@@ -231,6 +241,9 @@
       case 'quick':
         quickTypeId = item.typeId ?? null;
         break;
+      case 'removeFromGroup':
+        void removeFromGroup();
+        break;
       case 'delete':
         // Якорь не скрывается и не блокируется: ведёт в модалку отказа (D-14).
         if (dev?.anchor_group_id != null) refuseOpen = true;
@@ -253,6 +266,26 @@
     const groupId = dev?.anchor_group_id;
     refuseOpen = false;
     if (groupId != null) window.location.hash = '#/groups?id=' + groupId;
+  }
+
+  // GRD-12: вывод без подтверждения, как в разделе «Группы» (D-02 фазы 41).
+  // Группа и устройство захватываются ДО await: `dev` может смениться при
+  // перечитывании списка. Место не меняется, поэтому notifyPlaceContentChanged
+  // не нужен; остальные клиенты получают WS-событие entities_changed.
+  async function removeFromGroup() {
+    const target = dev;
+    const ownerGroupId = target?.group_id;
+    if (!target || ownerGroupId == null || removing) return;
+    removing = true;
+    try {
+      await groups.removeDevices({ group_id: ownerGroupId, device_ids: [target.id] });
+      pushToast('success', 'Устройство выведено из состава');
+      onChanged();
+    } catch (e: unknown) {
+      pushToast('error', errorMessage(e, 'Не удалось вывести устройство из состава.'));
+    } finally {
+      removing = false;
+    }
   }
 
   async function handleDelete() {

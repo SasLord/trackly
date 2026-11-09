@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::params;
-use trackly_app::dto::device::{DeviceEntryDto, DeviceFilter, Pagination};
+use trackly_app::dto::device::{DeviceDto, DeviceEntryDto, DeviceFilter, Pagination};
 use trackly_app::services::DeviceService;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
@@ -450,5 +450,85 @@ async fn container_rows_limit_over_200_is_validation_error() {
         let f = fixture().await;
         let err = f.svc.list_entries(hide(), page(0, 201)).await.unwrap_err();
         assert!(matches!(err, AppError::Validation { .. }));
+    })
+}
+
+fn by_name<'a>(items: &'a [DeviceDto], name: &str, path: &str) -> &'a DeviceDto {
+    items
+        .iter()
+        .find(|d| d.name == name)
+        .unwrap_or_else(|| panic!("{path}: нет устройства «{name}»"))
+}
+
+fn entry_devices(rows: &[DeviceEntryDto]) -> Vec<DeviceDto> {
+    rows.iter()
+        .filter_map(|e| match e {
+            DeviceEntryDto::Device { device } => Some((**device).clone()),
+            DeviceEntryDto::Container { .. } => None,
+        })
+        .collect()
+}
+
+/// GRD-12 (G-6): меню устройства в «Устройствах» решает по `group_id` и
+/// `anchor_group_id` самого DeviceDto. Тест закрепляет посылку правила
+/// `canRemoveFromGroup`: оба поля заполняются на всех путях чтения списка.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn container_rows_member_dto_carries_group_id() {
+    timed!(async {
+        let f = fixture().await;
+        let all = DeviceFilter::default();
+
+        // Каждый путь отдаёт набор DeviceDto; в нём проверяются три устройства:
+        // член АРМ, якорь якорной группы, устройство вне групп.
+        let check = |path: &str, items: &[DeviceDto]| {
+            let member = by_name(items, "Монитор #2", path);
+            assert_eq!(member.group_id, Some(f.c1), "{path}: group_id члена");
+            assert_eq!(member.group_name.as_deref(), Some("АРМ #3"), "{path}");
+            assert_eq!(member.anchor_group_id, None, "{path}: член не якорь");
+            let anchor = by_name(items, "Корпус #5", path);
+            assert!(anchor.group_id.is_some(), "{path}: якорь состоит в группе");
+            assert_eq!(
+                anchor.group_id, anchor.anchor_group_id,
+                "{path}: у якоря group_id == anchor_group_id"
+            );
+            let plain = by_name(items, "Мышь #2", path);
+            assert_eq!(plain.group_id, None, "{path}: вне групп");
+            assert_eq!(plain.group_name, None, "{path}");
+        };
+
+        let list = f.svc.list(all.clone(), page(0, 50)).await.unwrap();
+        check("list", &list.items);
+
+        let entries = f.svc.list_entries(all.clone(), page(0, 50)).await.unwrap();
+        check("list_entries", &entry_devices(&entries.rows));
+
+        let grouped = f.svc.list_grouped(all.clone(), page(0, 50)).await.unwrap();
+        let reprs: Vec<DeviceDto> = grouped.into_iter().map(|g| g.repr).collect();
+        check("list_grouped", &reprs);
+
+        let ids: Vec<i64> = list.items.iter().map(|d| d.id).collect();
+        let by_ids = f.svc.list_by_ids(ids).await.unwrap();
+        check("list_by_ids", &by_ids);
+
+        // search и group_children отдают подмножества: проверяются те, что есть.
+        let found = f.svc.search("Монитор".into(), page(0, 50)).await.unwrap();
+        assert_eq!(
+            by_name(&found.items, "Монитор #2", "search").group_id,
+            Some(f.c1)
+        );
+        let anchor_found = f.svc.search("Корпус".into(), page(0, 50)).await.unwrap();
+        let a = by_name(&anchor_found.items, "Корпус #5", "search");
+        assert!(a.group_id.is_some() && a.group_id == a.anchor_group_id);
+
+        let children = f.svc.group_children(f.c1, page(0, 50)).await.unwrap();
+        let kids = entry_devices(&children.rows);
+        assert_eq!(
+            by_name(&kids, "ИБП #1", "group_children").group_id,
+            Some(f.c1)
+        );
+        assert_eq!(
+            by_name(&kids, "Монитор #2", "group_children").group_id,
+            Some(f.c1)
+        );
     })
 }
