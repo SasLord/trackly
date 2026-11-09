@@ -554,7 +554,10 @@
     }
     next.add(groupId);
     expandedAnchors = next;
-    if (!anchorMembers[groupId]) void loadAnchorMembers(groupId, kind);
+    // Незавершённая запись ({ loading: true }) от свёрнутой до ответа группы не считается
+    // загруженной: загрузка стартует заново, устаревший ответ отсечёт поколение.
+    const cached = anchorMembers[groupId];
+    if (!cached || cached.loading) void loadAnchorMembers(groupId, kind);
   }
 
   /** id устройства-якоря группы: нужен, чтобы вернуть фокус на шеврон якорной строки. */

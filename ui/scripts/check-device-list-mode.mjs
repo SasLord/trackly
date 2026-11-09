@@ -1018,6 +1018,23 @@ function checkAnchorMembersLoad(text) {
       });
     }
   }
+  // WR-02 (41.9): незавершённая запись { loading: true } от свёрнутой до ответа группы
+  // не считается загруженной: раскрытие перезапускает загрузку, а не показывает вечную
+  // «Загрузку…». Голая проверка `!anchorMembers[groupId]` — красная.
+  const toggle = functionBody(text, 'toggleGroup');
+  if (toggle === null) {
+    out.push({ code: 'H6', msg: 'нет функции toggleGroup()' });
+  } else if (
+    !/\bconst\s+cached\s*=\s*anchorMembers\[\s*groupId\s*\]/.test(toggle) ||
+    !/if\s*\(\s*!\s*cached\s*\|\|\s*cached\.loading\s*\)\s*void\s+loadAnchorMembers\s*\(/.test(
+      toggle,
+    )
+  ) {
+    out.push({
+      code: 'H6',
+      msg: 'toggleGroup(): раскрытие не перезапускает загрузку для незавершённой записи (`!cached || cached.loading`)',
+    });
+  }
   return out;
 }
 
@@ -1025,6 +1042,28 @@ function checkAnchorMembersLoad(text) {
 export function checkList(src) {
   const text = stripComments(src);
   const out = [];
+  // WR-03 (41.9, D-11): плоский состав якорной группы не раскрывается рекурсивно,
+  // иначе вложенный якорь повторяет уже показанные строки и дублирует id строк.
+  if (/\{#snippet\s+entryRows\s*\(/.test(text)) {
+    if (!/\{#snippet\s+entryRows\s*\([^)]*\bflat\s*:\s*boolean\s*\)/.test(text)) {
+      out.push({
+        code: 'B',
+        msg: 'entryRows: нет параметра `flat: boolean` (плоский состав якоря)',
+      });
+    }
+    if (!/\{@const\s+groupId\s*=\s*flat\s*\?\s*null\b/.test(text)) {
+      out.push({
+        code: 'B',
+        msg: 'entryRows: groupId не равен null для строк плоского состава (flat)',
+      });
+    }
+    if (!/onToggleExpand=\{flat\s*\?\s*undefined\s*:/.test(text)) {
+      out.push({ code: 'B', msg: 'entryRows: строка плоского состава получает onToggleExpand' });
+    }
+    if (!/entry\.kind\s*===\s*'device'\s*,?\s*\)\}/.test(text)) {
+      out.push({ code: 'B', msg: 'entryRows: дети устройства-якоря не помечены flat' });
+    }
+  }
   if (!/\bfooterText\s*\(/.test(text)) {
     out.push({ code: 'B', msg: 'подпись футера не берётся из footerText(' });
   }
@@ -1555,6 +1594,13 @@ const CLEAN_PAGE = `<script lang="ts">
       if (!current()) return;
       failAnchor([groupId]);
     }
+  }
+  function toggleGroup(groupId, kind) {
+    const next = new Set(expandedAnchors);
+    next.add(groupId);
+    expandedAnchors = next;
+    const cached = anchorMembers[groupId];
+    if (!cached || cached.loading) void loadAnchorMembers(groupId, kind);
   }
   async function reloadExpandedAnchors() {
     const aSeq = ++anchorsSeq;
@@ -2382,6 +2428,12 @@ async function selftest(cases) {
       fn: 'page',
     },
     {
+      name: '[H6] toggleGroup() считает { loading: true } загруженной записью (реальный файл)',
+      from: 'if (!cached || cached.loading) void loadAnchorMembers(groupId, kind);',
+      to: 'if (!cached) void loadAnchorMembers(groupId, kind);',
+      expect: 'H6',
+    },
+    {
       name: '[H1] refresh() не поднимает refreshSeq (реальный файл)',
       from: 'const seq = ++refreshSeq;',
       to: 'const seq = refreshSeq;',
@@ -2404,6 +2456,41 @@ async function selftest(cases) {
       console.error(
         `${TAG} SELFTEST FAIL — «${m.name}»: ожидалось [${m.expect}], получено [${[...codes].join(',') || 'ничего'}]`,
       );
+      process.exit(1);
+    }
+  }
+  // 3д. WR-03 (41.9, D-11): плоский состав якорной группы на РЕАЛЬНОМ DeviceList.
+  const listForFlat = fs.readFileSync(path.join(UI_ROOT, LIST_FILE), 'utf8');
+  if (checkList(listForFlat).length) {
+    console.error(`${TAG} SELFTEST FAIL — реальный DeviceList краснеет по правилу [B]`);
+    process.exit(1);
+  }
+  const flatMutants = [
+    [
+      'entryRows без параметра flat',
+      'depth: number, closing: boolean, flat: boolean)',
+      'depth: number, closing: boolean)',
+    ],
+    [
+      'groupId не гасится для flat',
+      '{@const groupId = flat\n    ? null\n    : entry.kind',
+      '{@const groupId = false\n    ? null\n    : entry.kind',
+    ],
+    [
+      'плоская строка получает onToggleExpand',
+      'onToggleExpand={flat ? undefined : (id)',
+      'onToggleExpand={false ? undefined : (id)',
+    ],
+    [
+      'дети якоря не помечены flat',
+      "          entry.kind === 'device',\n        )}",
+      '          false,\n        )}',
+    ],
+  ];
+  for (const [name, from, to] of flatMutants) {
+    const found = checkList(mutate(listForFlat, from, to, name));
+    if (!found.some((v) => v.code === 'B')) {
+      console.error(`${TAG} SELFTEST FAIL — «[B] ${name}»: не пойман`);
       process.exit(1);
     }
   }

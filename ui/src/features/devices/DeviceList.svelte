@@ -187,10 +187,15 @@
 
 <!-- Строка верхнего уровня или вложенная: устройство, якорь или АРМ. Под раскрытой
      строкой рекурсивно рисуются её дети (D-11); `closing` — строка лежит на
-     «закрывающем» пути корневого раскрытия (UI-SPEC 9.3). -->
-{#snippet entryRows(entry: DeviceEntryDto, depth: number, closing: boolean)}
-  {@const groupId =
-    entry.kind === 'container' ? entry.container.group_id : (entry.device.anchor_group_id ?? null)}
+     «закрывающем» пути корневого раскрытия (UI-SPEC 9.3). `flat` — строка лежит в плоском
+     составе якорной группы (D-11: вид якорных групп не меняется): без раскрытия, чтобы
+     вложенный якорь не повторял уже показанные строки состава. -->
+{#snippet entryRows(entry: DeviceEntryDto, depth: number, closing: boolean, flat: boolean)}
+  {@const groupId = flat
+    ? null
+    : entry.kind === 'container'
+      ? entry.container.group_id
+      : (entry.device.anchor_group_id ?? null)}
   {@const isOpen = groupId !== null && expandedAnchors.has(groupId)}
   {@const st = groupId !== null && isOpen ? (anchorMembers[groupId] ?? EMPTY_STATE) : null}
   {@const hasKids = st !== null && !st.loading && st.entries.length > 0}
@@ -223,7 +228,7 @@
       {showStatus}
       {highlightId}
       expanded={isOpen}
-      onToggleExpand={(id) => onToggleGroup?.(id, 'anchor')}
+      onToggleExpand={flat ? undefined : (id) => onToggleGroup?.(id, 'anchor')}
       indent={depth >= 1}
       {depth}
       isLastInGroup={lastBorder}
@@ -255,6 +260,7 @@
             : depth === 0
               ? i === st.entries.length - 1
               : closing && i === st.entries.length - 1,
+          entry.kind === 'device',
         )}
       {/each}
       {#if loadRest !== null}
@@ -304,7 +310,7 @@
 >
   {#if showGroups}
     {#each headRows as entry (entry.kind === 'container' ? 'c' + entry.container.group_id : 'd' + entry.device.id)}
-      {@render entryRows(entry, 0, false)}
+      {@render entryRows(entry, 0, false, false)}
     {/each}
     {#each groups as group (group.repr.id)}
       {#if group.count > 1}
@@ -321,12 +327,12 @@
         />
       {:else}
         <!-- Singleton group (count == 1): render as plain row, no chevron -->
-        {@render entryRows({ kind: 'device', device: group.repr }, 0, false)}
+        {@render entryRows({ kind: 'device', device: group.repr }, 0, false, false)}
       {/if}
     {/each}
   {:else}
     {#each rows as entry (entry.kind === 'container' ? 'c' + entry.container.group_id : 'd' + entry.device.id)}
-      {@render entryRows(entry, 0, false)}
+      {@render entryRows(entry, 0, false, false)}
     {/each}
   {/if}
 </Table>
