@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-11-09T13:17:59.960Z
-last_activity: 2026-11-09 -- Completed 41.9-12-PLAN.md
+status: planning
+last_updated: "2026-11-09T17:17:09.615Z"
+last_activity: "2026-11-09 - Completed quick task 261109-wa5: исправить зависание loadingRest и устаревший total в loadRest"
 progress:
   total_phases: 27
-  completed_phases: 17
-  total_plans: 287
-  completed_plans: 554
-  percent: 63
-stopped_at: Phase 41.9 complete (12/12) — ready to discuss Phase 41.11
+  completed_phases: 18
+  total_plans: 291
+  completed_plans: 291
+  percent: 67
 ---
 
 # Project State
@@ -1670,9 +1669,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-08
-Stopped at: Completed 41.9-09-PLAN.md
-Resume file: .planning/phases/41.9-container-groups-devices/41.9-08-PLAN.md
+Last session: 2026-11-09T17:17:09.603Z
+Stopped at: Phase 41.4 context gathered
+Resume file: .planning/phases/41.4-repair-requests/41.4-CONTEXT.md
 
 None
 
