@@ -140,11 +140,12 @@ const MANDATORY_ROW_FILES = [
 // привязки), ни F0 (привязки есть, пока осталась хоть одна), и двойной клик молча
 // переставал открывать просмотр). Запись обязательна для КАЖДОГО файла из
 // MANDATORY_ROW_FILES: отсутствие записи — нарушение [F0] (самоинвалидация).
-// У DeviceGroupRow контекстного меню и клавиатурной привязки нет по построению
-// (плана 17: у свёртки нет сущности для меню, D-26).
+// У DeviceGroupRow собственное короткое меню (G-4, фаза 41.9, план 10): правый
+// клик не должен отдавать меню браузера; клавиатурной привязки у свёртки нет
+// (Shift+F10 на шевроне порождает то же contextmenu).
 const REQUIRED_BINDINGS = {
   'src/features/devices/DeviceListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
-  'src/features/devices/DeviceGroupRow.svelte': ['ondblclick'],
+  'src/features/devices/DeviceGroupRow.svelte': ['oncontextmenu', 'ondblclick'],
   // Строка АРМ (фаза 41.9): меню, двойной клик и клавиатура, как у DeviceListRow.
   'src/features/devices/DeviceContainerRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
   'src/features/printers/PrinterListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
@@ -1936,6 +1937,63 @@ async function selftest(cases) {
       process.exit(1);
     }
     console.log(`${TAG} selftest: мутант строки АРМ ПОЙМАН — ${m.name}`);
+  }
+  // 5e. Реальный исходник строки свёртки (G-4, фаза 41.9, план 10): чистый зелёный;
+  // перестановка охраны, удалённая охрана и снятая привязка oncontextmenu краснят.
+  const GROUP_PATH = 'src/features/devices/DeviceGroupRow.svelte';
+  let groupSrc;
+  try {
+    groupSrc = fs.readFileSync(path.join(UI_ROOT, GROUP_PATH), 'utf8');
+  } catch {
+    console.error(`${TAG} SELFTEST FAIL — нет реального исходника ${GROUP_PATH}`);
+    process.exit(1);
+  }
+  const groupOpts = {
+    ...SELFTEST_OPTS,
+    mandatory: [GROUP_PATH],
+    rowFiles: [GROUP_PATH],
+    requiredBindings: { [GROUP_PATH]: ['oncontextmenu', 'ondblclick'] },
+  };
+  const cleanGroup = scanStructural(fixtureMap({ [GROUP_PATH]: groupSrc }), groupOpts);
+  if (cleanGroup.violations.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — реальная строка свёртки красная:\n  - ${cleanGroup.violations.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
+  }
+  const groupCtxHead =
+    'function handleContextMenu(e: MouseEvent) {\n    if (isRowOverlayEvent(e.target)) return;\n    e.preventDefault();';
+  const groupMutants = [
+    {
+      name: 'перестановка охраны contextmenu (preventDefault раньше охраны)',
+      src: mutate(
+        groupSrc,
+        groupCtxHead,
+        'function handleContextMenu(e: MouseEvent) {\n    e.preventDefault();\n    if (isRowOverlayEvent(e.target)) return;',
+        'group-ctx-swap',
+      ),
+    },
+    {
+      name: 'удалена охрана contextmenu',
+      src: mutate(
+        groupSrc,
+        groupCtxHead,
+        'function handleContextMenu(e: MouseEvent) {\n    e.preventDefault();',
+        'group-ctx-drop',
+      ),
+    },
+    {
+      name: 'снята привязка oncontextmenu',
+      src: mutate(groupSrc, '  oncontextmenu={handleContextMenu}\n', '', 'group-ctx-unbind'),
+    },
+  ];
+  for (const m of groupMutants) {
+    const r = scanStructural(fixtureMap({ [GROUP_PATH]: m.src }), groupOpts);
+    if (!r.violations.some((v) => v.file === GROUP_PATH)) {
+      console.error(`${TAG} SELFTEST FAIL — мутант строки свёртки НЕ пойман: ${m.name}`);
+      process.exit(1);
+    }
+    console.log(`${TAG} selftest: мутант строки свёртки ПОЙМАН — ${m.name}`);
   }
   const noFile = scanStructural(fixtureMap({ [ROW_PATH]: null }), mandatoryOpts);
   if (!noFile.violations.some((v) => v.code === 'F0')) {

@@ -3,6 +3,7 @@
   // Per UI-SPEC §DeviceGroupRow, DEV-11.
   // On expand: fetches full DeviceDto list via devices.listByIds().
 
+  import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
@@ -145,6 +146,23 @@
     if (!expanded) void toggleExpand();
   }
 
+  // Правый клик по свёртке (G-4): собственное короткое меню из одного пункта
+  // «Раскрыть»/«Свернуть» вместо меню браузера. Охрана первым оператором: событие
+  // из модалки внутри строки не наше. Shift+F10 с фокусом на шевроне и клавиша
+  // контекстного меню дают contextmenu без координат: точка берётся от строки.
+  let menuRef = $state<ReturnType<typeof ActionMenu> | null>(null);
+
+  function handleContextMenu(e: MouseEvent) {
+    if (isRowOverlayEvent(e.target)) return;
+    e.preventDefault();
+    if (e.clientX === 0 && e.clientY === 0) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      menuRef?.openAt(rect.left, rect.bottom);
+    } else {
+      menuRef?.openAt(e.clientX, e.clientY);
+    }
+  }
+
   // После мутации (правка/удаление/действие из меню) родитель вызывает refresh() в
   // DevicesPage, тот поднимает listGen, эффект перечитывает детей. Старые строки
   // остаются на экране до прихода новых, а ушедший из group.ids ребёнок отсекается
@@ -168,6 +186,7 @@
   groupColspan={4}
   onToggleGroup={toggleExpand}
   ondblclick={handleGroupDblClick}
+  oncontextmenu={handleContextMenu}
   groupLead={printerLead}
 >
   <!-- groupColspan={4} merges Наименование + Инв.№ + Серийный № + Модель columns;
@@ -187,6 +206,11 @@
   <!-- Actions column: count badge for multi-device groups -->
   <td class="cell cell-actions cell-count">
     <Badge variant="accent" appearance="count">{group.count} шт.</Badge>
+    <ActionMenu bind:this={menuRef} trigger="none" label={'Действия: ' + group.repr.name}>
+      <button type="button" role="menuitem" onclick={toggleExpand}>
+        {expanded ? 'Свернуть' : 'Раскрыть'}
+      </button>
+    </ActionMenu>
   </td>
 </TableRow>
 
