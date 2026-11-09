@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-11-08T15:44:27.296Z"
+status: ready_to_plan
+last_updated: 2026-11-09T13:17:59.960Z
 last_activity: 2026-11-09 -- Completed 41.9-12-PLAN.md
 progress:
   total_phases: 27
   completed_phases: 17
   total_plans: 287
-  completed_plans: 281
+  completed_plans: 554
   percent: 63
+stopped_at: Phase 41.9 complete (12/12) — ready to discuss Phase 41.11
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.9 — container-groups-devices
+**Current focus:** Phase 41.11 — phase 41 1 debt
 
 ## Current Position
 
-Phase: 41.9 (container-groups-devices) — EXECUTING
-Plan: 8 of 8 (07 выполнен)
-Status: Executing Phase 41.9
+Phase: 41.11
+Plan: Not started
+Status: Ready to plan
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
 показаны так, как остальные группы (нет строки с шевроном и раскрытием состава), — это сбивает с
@@ -186,7 +187,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-09 -- Completed 41.9-05-PLAN.md
+Last activity: 2026-11-09
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -200,7 +201,7 @@ Last activity: 2026-11-09 -- Completed 41.9-05-PLAN.md
 
 **Velocity:**
 
-- Total plans completed: 333
+- Total plans completed: 345
 - Average duration: —
 - Total execution time: —
 
@@ -247,6 +248,7 @@ Last activity: 2026-11-09 -- Completed 41.9-05-PLAN.md
 | 41.1 | 33 | - | - |
 | 41.12 | 7 | - | - |
 | 41.3 | 15 | - | - |
+| 41.9 | 12 | - | - |
 
 **Recent Trend:**
 
