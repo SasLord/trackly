@@ -12,4 +12,5 @@ pub mod number_templates;
 pub mod place_movements;
 pub mod places;
 pub mod printers;
+pub mod repairs;
 pub mod requests;
