@@ -4,7 +4,7 @@ milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
 last_updated: "2026-11-08T15:44:27.296Z"
-last_activity: 2026-11-09 -- Completed 41.9-07-PLAN.md
+last_activity: 2026-11-09 -- Completed 41.9-09-PLAN.md
 progress:
   total_phases: 27
   completed_phases: 17
@@ -1667,7 +1667,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-08
-Stopped at: Completed 41.9-07-PLAN.md
+Stopped at: Completed 41.9-09-PLAN.md
 Resume file: .planning/phases/41.9-container-groups-devices/41.9-08-PLAN.md
 
 None
