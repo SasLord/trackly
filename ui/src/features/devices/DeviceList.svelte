@@ -3,6 +3,7 @@
   import Table from '$lib/components/Table.svelte';
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import RowReload from '$lib/components/icons/RowReload.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
   import DeviceContainerRow from './DeviceContainerRow.svelte';
   import DeviceGroupRow from './DeviceGroupRow.svelte';
@@ -249,9 +250,41 @@
         {@render entryRows(
           child,
           depth + 1,
-          depth === 0 ? i === st.entries.length - 1 : closing && i === st.entries.length - 1,
+          loadRest !== null
+            ? false
+            : depth === 0
+              ? i === st.entries.length - 1
+              : closing && i === st.entries.length - 1,
         )}
       {/each}
+      {#if loadRest !== null}
+        {@const groupName =
+          entry.kind === 'container'
+            ? entry.container.name
+            : (entry.device.anchor_group_name ?? '')}
+        <tr class="members-row" class:members-row-last={depth === 0 || closing}>
+          <td colspan={memberColspan} class="members-note" style={noteIndent(depth + 1)}>
+            <span
+              >{footerText({
+                shown: loadRest.shown,
+                total: loadRest.total,
+                hidden: 0,
+                hideActive: false,
+              })}</span
+            >
+            <span class="members-link">
+              <Button
+                variant="link"
+                loading={loadRest.loading}
+                onclick={loadRest.onclick}
+                ariaLabel={'Загрузить весь состав группы «' + groupName + '»'}
+              >
+                <RowReload /> Загрузить ещё
+              </Button>
+            </span>
+          </td>
+        </tr>
+      {/if}
     {/if}
   {/if}
 {/snippet}
@@ -325,6 +358,10 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     border-bottom: 1px solid var(--tr-border);
+  }
+
+  .members-row-last .members-note {
+    border-bottom: 2px solid var(--tr-border-strong);
   }
 
   .members-link {
