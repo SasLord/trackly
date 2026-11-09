@@ -4,7 +4,7 @@ milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
 last_updated: "2026-11-08T15:44:27.296Z"
-last_activity: 2026-11-09 -- Completed 41.9-09-PLAN.md
+last_activity: 2026-11-09 -- Completed 41.9-10-PLAN.md
 progress:
   total_phases: 27
   completed_phases: 17
