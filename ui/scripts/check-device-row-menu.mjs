@@ -264,6 +264,7 @@ const FUNCTIONS = [
   'quickActionsForDevice',
   'isRowOverlayEvent',
   'isOwnKeyEvent',
+  'canRemoveFromGroup',
 ];
 
 /** Возвращает список текстов провалов (пустой — всё в порядке). */
@@ -317,6 +318,8 @@ function runCases(mod, cases) {
         if (c.input.target.kind === 'closest-hit-token' && c.expected === true) {
           hitTokens.add(c.input.target.token);
         }
+      } else if (c.fn === 'canRemoveFromGroup') {
+        got = mod.canRemoveFromGroup(c.input);
       } else if (c.fn === 'isOwnKeyEvent') {
         const objs = { A: { id: 'A' }, B: { id: 'B' } };
         const pick = (k) => (k === null ? null : objs[k]);
@@ -1122,6 +1125,27 @@ const SOURCE_MUTANTS = [
     name: 'isOwnKeyEvent без защиты от пустой цели',
     from: 'if (target === null || target === undefined) return false;',
     to: '',
+  },
+  // GRD-12 (G-6): правило видимости «Вывести из состава».
+  {
+    name: 'canRemoveFromGroup: убрать условие anchorGroupId === null',
+    from: 'input.anchorGroupId === null',
+    to: 'true',
+  },
+  {
+    name: 'canRemoveFromGroup: сотрудник среди разрешённых ролей',
+    from: "['admin', 'manager']",
+    to: "['admin', 'manager', 'employee']",
+  },
+  {
+    name: 'canRemoveFromGroup: убрать условие groupId !== null',
+    from: 'input.groupId !== null',
+    to: 'true',
+  },
+  {
+    name: 'buildMenuSections: «Вывести из состава» раньше «Добавить в группу»',
+    from: "group.push({ kind: 'removeFromGroup'",
+    to: "group.unshift({ kind: 'removeFromGroup'",
   },
 ];
 

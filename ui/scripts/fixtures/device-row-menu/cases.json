@@ -1004,5 +1004,201 @@
       "currentTarget": null
     },
     "expected": false
+  },
+  {
+    "name": "canRemoveFromGroup: администратор, участник группы, не якорь",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": "admin",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": true
+  },
+  {
+    "name": "canRemoveFromGroup: специалист, участник группы, не якорь",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": "manager",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": true
+  },
+  {
+    "name": "canRemoveFromGroup: сотрудник не видит пункта",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": "employee",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "canRemoveFromGroup: роль не определена",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": null,
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "canRemoveFromGroup: устройство вне групп",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": "admin",
+      "groupId": null,
+      "anchorGroupId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "canRemoveFromGroup: якорь собственной группы",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": "admin",
+      "groupId": 5,
+      "anchorGroupId": 5
+    },
+    "expected": false
+  },
+  {
+    "name": "canRemoveFromGroup: якорь другой группы, состоящий в группе 5: сервер откажет, пункта нет",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": "admin",
+      "groupId": 5,
+      "anchorGroupId": 9
+    },
+    "expected": false
+  },
+  {
+    "name": "canRemoveFromGroup: специалист, устройство вне групп",
+    "fn": "canRemoveFromGroup",
+    "input": {
+      "role": "manager",
+      "groupId": null,
+      "anchorGroupId": null
+    },
+    "expected": false
+  },
+  {
+    "name": "buildMenuSections: removeFromGroup без групповых пунктов: свой раздел между правкой и удалением",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "removeFromGroup": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "removeFromGroup",
+          "label": "Вывести из состава"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: removeFromGroup идёт после «Добавить в группу» и быстрых действий",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": true,
+      "quickActions": [
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        }
+      ],
+      "removeFromGroup": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        },
+        {
+          "kind": "quick",
+          "label": "Действие А",
+          "typeId": 7
+        },
+        {
+          "kind": "removeFromGroup",
+          "label": "Вывести из состава"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: removeFromGroup=false не добавляет пункт",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "removeFromGroup": false
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
   }
 ]

@@ -15,7 +15,15 @@
 // прячет то, что сервер всё равно отклонит. Сервер остаётся границей
 // безопасности; общей фикстуры с Rust у этого модуля нет.
 
-export type MenuItemKind = 'poll' | 'view' | 'edit' | 'print' | 'addToGroup' | 'quick' | 'delete';
+export type MenuItemKind =
+  | 'poll'
+  | 'view'
+  | 'edit'
+  | 'print'
+  | 'addToGroup'
+  | 'quick'
+  | 'removeFromGroup'
+  | 'delete';
 
 export interface MenuItemSpec {
   kind: MenuItemKind;
@@ -43,6 +51,8 @@ export interface MenuInput {
   hasPrint: boolean;
   groupActionsVisible: boolean;
   quickActions: QuickAction[];
+  /** Показать «Вывести из состава» (результат canRemoveFromGroup); без поля — не показывать. */
+  removeFromGroup?: boolean;
 }
 
 export interface GroupActionInput {
@@ -62,6 +72,7 @@ const LABEL_VIEW = 'Просмотр';
 const LABEL_EDIT = 'Редактировать';
 const LABEL_PRINT = 'Печать документа приёма';
 const LABEL_ADD_TO_GROUP = 'Добавить в группу';
+const LABEL_REMOVE_FROM_GROUP = 'Вывести из состава';
 const LABEL_DELETE = 'Удалить';
 
 /** Машинные коды статусов (не подписи), при которых групповые действия бессмысленны. */
@@ -88,6 +99,9 @@ export function buildMenuSections(input: MenuInput): MenuItemSpec[][] {
         ),
       ]
     : [];
+  if (input.removeFromGroup === true) {
+    group.push({ kind: 'removeFromGroup', label: LABEL_REMOVE_FROM_GROUP });
+  }
   const del: MenuItemSpec[] = [{ kind: 'delete', label: LABEL_DELETE, danger: true }];
   return [poll, main, group, del].filter((s) => s.length > 0);
 }
@@ -99,6 +113,25 @@ export function buildMenuSections(input: MenuInput): MenuItemSpec[][] {
 export function isGroupActionAllowed(input: GroupActionInput): boolean {
   if (input.isMember || input.isAnchor) return false;
   return !BLOCKED_STATUS_CODES.includes(input.statusCode);
+}
+
+/**
+ * Показывать ли «Вывести из состава» (GRD-12): роль admin или manager (право
+ * MutateGroups), устройство состоит в группе и не является якорем ЛЮБОЙ группы.
+ * Зеркалит отказ сервера: `release_inner` отказывает для якоря любой группы
+ * (D-14 фазы 41.1). Сервер остаётся границей безопасности, UI заранее прячет пункт.
+ */
+export function canRemoveFromGroup(input: {
+  role: string | null;
+  groupId: number | null;
+  anchorGroupId: number | null;
+}): boolean {
+  return (
+    input.role !== null &&
+    ['admin', 'manager'].includes(input.role) &&
+    input.groupId !== null &&
+    input.anchorGroupId === null
+  );
 }
 
 /**
