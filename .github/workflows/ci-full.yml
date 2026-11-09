@@ -39,6 +39,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Только Linux: см. одноимённый шаг и причину в ci-fast.yml. Windows и macOS
+      # умещаются и остаются без изменений.
+      - name: Free runner disk + drop debuginfo
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          echo "CARGO_PROFILE_DEV_DEBUG=0" >> "$GITHUB_ENV"
+          df -h /
+
       - name: Install Rust toolchain (1.88)
         uses: dtolnay/rust-toolchain@stable
         with:

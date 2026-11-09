@@ -30,6 +30,17 @@ jobs:
       - name: Privacy gate (organization requisites / ФИО / infra identifiers)
         run: node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256
 
+      # На ubuntu-latest кончалось место: ~214 тестовых бинарников, каждый статически
+      # линкует весь стек Tauri (прогон 42624283151: «No space left on device»,
+      # затем «ld terminated with signal 7 [Bus error]»). Debuginfo выключен до шага
+      # rust-cache намеренно: кеш учитывает CARGO_*-переменные в ключе. Место и строка
+      # паники в тестах сохраняются — их даёт Location, а не debuginfo.
+      - name: Free runner disk + drop debuginfo
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          echo "CARGO_PROFILE_DEV_DEBUG=0" >> "$GITHUB_ENV"
+          df -h /
+
       - name: Install Rust toolchain (1.88)
         uses: dtolnay/rust-toolchain@stable
         with:
