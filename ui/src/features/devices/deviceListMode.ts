@@ -113,6 +113,16 @@ export function shouldShowContainerRows(ctx: ListModeContext): boolean {
 export const PAGE_SIZE = 50;
 /** Наибольшая порция запроса состава группы (серверный предел). */
 export const GROUP_MEMBERS_PAGE_MAX = 200;
+/** Пробная строка порции в режиме свёртки: `listGrouped` просит `limit + PORTION_PROBE`. */
+export const PORTION_PROBE = 1;
+
+/**
+ * Наибольший `limit` порции списка (G-1). Серверный предел страницы 200, а в режиме
+ * свёртки запрос уходит с `limit + PORTION_PROBE`, поэтому порция не больше 199.
+ */
+export function portionLimitMax(grouped: boolean): number {
+  return grouped ? GROUP_MEMBERS_PAGE_MAX - PORTION_PROBE : GROUP_MEMBERS_PAGE_MAX;
+}
 /** Расстояние до конца прокрутки, с которого грузится следующая порция, px. */
 export const AUTOLOAD_THRESHOLD_PX = 240;
 

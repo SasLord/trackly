@@ -1128,5 +1128,93 @@
       "groupedMode": false
     },
     "expected": "Показано 5 из 40 (+2 в составе групп)"
+  },
+  {
+    "name": "portionLimitMax: свёртка оставляет место пробной строке",
+    "fn": "portionLimitMax",
+    "input": {
+      "grouped": true
+    },
+    "expected": 199
+  },
+  {
+    "name": "portionLimitMax: плоский режим — полный предел",
+    "fn": "portionLimitMax",
+    "input": {
+      "grouped": false
+    },
+    "expected": 200
+  },
+  {
+    "name": "rangeChunks: 450 по 199 (свёртка, G-1)",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 450,
+      "max": 199
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 199
+      },
+      {
+        "offset": 199,
+        "limit": 199
+      },
+      {
+        "offset": 398,
+        "limit": 52
+      }
+    ]
+  },
+  {
+    "name": "rangeChunks: 398 по 199 — два полных чанка (G-1)",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 398,
+      "max": 199
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 199
+      },
+      {
+        "offset": 199,
+        "limit": 199
+      }
+    ]
+  },
+  {
+    "name": "rangeChunks: 200 по 199 — хвост из одной строки (G-1)",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 200,
+      "max": 199
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 199
+      },
+      {
+        "offset": 199,
+        "limit": 1
+      }
+    ]
+  },
+  {
+    "name": "rangeChunks: 1 по 199",
+    "fn": "rangeChunks",
+    "input": {
+      "count": 1,
+      "max": 199
+    },
+    "expected": [
+      {
+        "offset": 0,
+        "limit": 1
+      }
+    ]
   }
 ]

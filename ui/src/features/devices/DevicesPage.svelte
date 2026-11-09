@@ -18,6 +18,8 @@
   import { devices } from './api';
   import {
     GROUP_MEMBERS_PAGE_MAX,
+    PORTION_PROBE,
+    portionLimitMax,
     PAGE_SIZE,
     deviceListFlags,
     mergeHeadBlock,
@@ -221,7 +223,10 @@
     if (mode.grouped) {
       // Grouped mode — show non-unique devices as collapsible groups. Якоря и АРМ не
       // участвуют в свёртке (exclude_anchors) и выводятся блоком над ней (D-05).
-      const grouping = await devices.listGrouped(mode.base, { offset, limit: limit + 1 });
+      const grouping = await devices.listGrouped(mode.base, {
+        offset,
+        limit: limit + PORTION_PROBE,
+      });
       const cut = trimPortion(grouping, limit);
       return {
         rows: [],
@@ -320,7 +325,7 @@
       acc.hiddenMemberCount = p.hiddenMemberCount;
       acc.portionOffset += p.step;
     };
-    for (const chunk of rangeChunks(count, GROUP_MEMBERS_PAGE_MAX)) {
+    for (const chunk of rangeChunks(count, portionLimitMax(mode.grouped))) {
       take(await fetchPortion(mode, acc.portionOffset, chunk.limit));
       if (!acc.hasMore) break;
     }
@@ -329,7 +334,7 @@
       const present = () =>
         acc.rows.some((r) => r.kind === 'device' && r.device.id === focusDeviceId);
       while (!present() && acc.hasMore) {
-        take(await fetchPortion(mode, acc.portionOffset, GROUP_MEMBERS_PAGE_MAX));
+        take(await fetchPortion(mode, acc.portionOffset, portionLimitMax(mode.grouped)));
       }
     }
     if (mode.searchActive) {

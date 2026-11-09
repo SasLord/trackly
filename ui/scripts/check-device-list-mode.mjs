@@ -216,6 +216,7 @@ const FUNCTIONS = [
   'mergeHeadBlock',
   'trimPortion',
   'rangeChunks',
+  'portionLimitMax',
   'shouldLoadMore',
 ];
 // Фаза 41.9, план 02: сколько кейсов каждой новой функции обязана держать фикстура.
@@ -224,6 +225,7 @@ const MIN_CASES_PER_FN = {
   mergeHeadBlock: 4,
   trimPortion: 3,
   rangeChunks: 3,
+  portionLimitMax: 2,
   shouldLoadMore: 6,
 };
 const CLONE = (v) => JSON.parse(JSON.stringify(v));
@@ -285,6 +287,8 @@ function runCases(mod, cases) {
         got = mod.trimPortion(CLONE(c.input.rows), c.input.limit);
       } else if (c.fn === 'rangeChunks') {
         got = mod.rangeChunks(c.input.count, c.input.max);
+      } else if (c.fn === 'portionLimitMax') {
+        got = mod.portionLimitMax(c.input.grouped);
       } else {
         failures.push(`${c.name}: неизвестная функция «${c.fn}» в фикстуре`);
         continue;
@@ -534,6 +538,44 @@ export function checkPage(src) {
       out.push({
         code: 'I',
         msg: `строка ${lineOf(text, hard.index)}: в коде страницы остался \`type_id: 1\` (список и экспорт показывают все типы)`,
+      });
+    }
+  }
+  // [J] (фаза 41.9, G-1): запрос порции в режиме свёртки не превышает серверный предел
+  // 200 с учётом пробной строки. Включается тем же признаком новой страницы.
+  if (/\bdevices\.listEntries\s*\(/.test(text)) {
+    const rc = /\brangeChunks\s*\(/g;
+    let r;
+    while ((r = rc.exec(text)) !== null) {
+      const args = splitArgs(text, r.index + r[0].length - 1);
+      if (args && !/^portionLimitMax\(/.test(args[1] ?? '')) {
+        out.push({
+          code: 'J',
+          msg: `строка ${lineOf(text, r.index)}: rangeChunks( с пределом не из portionLimitMax( (порция свёртки уйдёт с limit 201)`,
+        });
+      }
+    }
+    const fp = /\bfetchPortion\s*\(/g;
+    let f;
+    while ((f = fp.exec(text)) !== null) {
+      if (/^\s*(async\s+)?function\s*$/.test(text.slice(Math.max(0, f.index - 20), f.index)))
+        continue;
+      const args = splitArgs(text, f.index + f[0].length - 1);
+      if (args && args[2] !== undefined && /^GROUP_MEMBERS_PAGE_MAX$/.test(args[2])) {
+        out.push({
+          code: 'J',
+          msg: `строка ${lineOf(text, f.index)}: fetchPortion( с пределом GROUP_MEMBERS_PAGE_MAX напрямую (нужен portionLimitMax)`,
+        });
+      }
+    }
+    const body = functionBody(text, 'fetchPortion');
+    if (
+      body !== null &&
+      (/\blimit\s*\+\s*1\b/.test(body) || !/\blimit\s*\+\s*PORTION_PROBE\b/.test(body))
+    ) {
+      out.push({
+        code: 'J',
+        msg: 'fetchPortion: пробная строка не через `limit + PORTION_PROBE`',
       });
     }
   }
@@ -1352,6 +1394,16 @@ const SOURCE_MUTANTS = [
     name: 'rangeChunks: пустой состав без порции (фаза 41.9)',
     from: 'if (count <= 0) return [{ offset: 0, limit: PAGE_SIZE }];',
     to: 'if (count <= 0) return [];',
+  },
+  {
+    name: 'portionLimitMax: без места пробной строке (фаза 41.9, G-1)',
+    from: 'GROUP_MEMBERS_PAGE_MAX - PORTION_PROBE',
+    to: 'GROUP_MEMBERS_PAGE_MAX',
+  },
+  {
+    name: 'PORTION_PROBE = 0 (фаза 41.9, G-1)',
+    from: 'PORTION_PROBE = 1',
+    to: 'PORTION_PROBE = 0',
   },
   {
     name: 'shouldLoadMore без moreError (фаза 41.9)',
@@ -2313,6 +2365,20 @@ async function selftest(cases) {
       from: 'await devices.exportCsv({\n        type_id: null,',
       to: 'await devices.exportCsv({\n        type_id: 1,',
       expect: 'I',
+      fn: 'page',
+    },
+    {
+      name: '[J] rangeChunks с GROUP_MEMBERS_PAGE_MAX (реальный файл)',
+      from: 'rangeChunks(count, portionLimitMax(mode.grouped))',
+      to: 'rangeChunks(count, GROUP_MEMBERS_PAGE_MAX)',
+      expect: 'J',
+      fn: 'page',
+    },
+    {
+      name: '[J] цикл focus с GROUP_MEMBERS_PAGE_MAX (реальный файл)',
+      from: 'fetchPortion(mode, acc.portionOffset, portionLimitMax(mode.grouped))',
+      to: 'fetchPortion(mode, acc.portionOffset, GROUP_MEMBERS_PAGE_MAX)',
+      expect: 'J',
       fn: 'page',
     },
     {
