@@ -1,7 +1,7 @@
 <script lang="ts">
   import { link } from 'svelte-spa-router';
   import active from 'svelte-spa-router/active';
-  import { getVisibleItems } from './sidebar-config';
+  import { getVisibleItems, sidebarActivePattern } from './sidebar-config';
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserRole } from '$lib/stores/auth.svelte';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
@@ -52,7 +52,7 @@
           <a
             href={entry.route}
             use:link
-            use:active={{ path: entry.route, className: 'is-active' }}
+            use:active={{ path: sidebarActivePattern(entry.route), className: 'is-active' }}
             class="nav-link"
           >
             {entry.label}

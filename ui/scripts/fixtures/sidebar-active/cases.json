@@ -1,0 +1,116 @@
+[
+  {
+    "name": "точный путь",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/groups" },
+    "expected": true
+  },
+  {
+    "name": "слеш в конце",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/groups/" },
+    "expected": true
+  },
+  {
+    "name": "querystring id (G-2)",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/groups?id=5" },
+    "expected": true
+  },
+  {
+    "name": "querystring type",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/groups?type=3" },
+    "expected": true
+  },
+  {
+    "name": "регистр как у regexparam",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/GROUPS?id=5" },
+    "expected": true
+  },
+  {
+    "name": "суффикс без границы сегмента",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/groupsx" },
+    "expected": false
+  },
+  {
+    "name": "вложенный сегмент",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/groups/5" },
+    "expected": false
+  },
+  {
+    "name": "соседний раздел с querystring",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/devices?id=5" },
+    "expected": false
+  },
+  {
+    "name": "другой раздел",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/printers" },
+    "expected": false
+  },
+  {
+    "name": "префикс маршрута",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/groups", "location": "/group" },
+    "expected": false
+  },
+  {
+    "name": "корень на корне",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/", "location": "/" },
+    "expected": true
+  },
+  {
+    "name": "корень с querystring",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/", "location": "/?x=1" },
+    "expected": true
+  },
+  {
+    "name": "корень не подсвечивается на /groups",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/", "location": "/groups" },
+    "expected": false
+  },
+  {
+    "name": "корень не подсвечивается на /devices?id=5",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/", "location": "/devices?id=5" },
+    "expected": false
+  },
+  {
+    "name": "спецсимвол экранируется: точка не любой символ",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/a.b", "location": "/axb" },
+    "expected": false
+  },
+  {
+    "name": "спецсимвол экранируется: буквальная точка",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/a.b", "location": "/a.b?id=1" },
+    "expected": true
+  },
+  {
+    "name": "places строго по сегменту",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/places", "location": "/placesx" },
+    "expected": false
+  },
+  {
+    "name": "places с querystring",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/places", "location": "/places?id=2" },
+    "expected": true
+  },
+  {
+    "name": "devices с querystring (Перейти к устройству)",
+    "fn": "sidebarActivePattern",
+    "input": { "route": "/devices", "location": "/devices?id=7" },
+    "expected": true
+  }
+]

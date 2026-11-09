@@ -46,3 +46,15 @@ export function getVisibleItems(role: UserRole | null): SidebarEntry[] {
     return entry.roles.includes(role);
   });
 }
+
+/**
+ * Шаблон активного пункта сайдбара для `use:active` svelte-spa-router.
+ * Причина: `use:active` сверяет шаблон с `location + '?' + querystring`, а
+ * шаблон строкового пути (regexparam) querystring не допускает, из-за чего
+ * любой переход `#/<раздел>?id=N` снимал подсветку пункта. Здесь хвост `?...`
+ * допускается; сопоставление остаётся строгим по сегменту.
+ */
+export function sidebarActivePattern(route: string): RegExp {
+  const base = route.replace(/\/+$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('^' + base + '/?(?:\\?.*)?$', 'i');
+}
