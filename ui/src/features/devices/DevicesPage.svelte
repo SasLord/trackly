@@ -584,15 +584,25 @@
     // Раскрытость не проверяется: свёрнутая группа может спокойно принять состав в кеш.
     const current = () => anchorLoadSeq.get(groupId) === myGen && aSeq === anchorsSeq;
     anchorMembers = { ...anchorMembers, [groupId]: { ...st, loadingRest: true } };
+    // Устарел только anchorsSeq (перезагрузка раскрытых перенесла запись с loadingRest: true),
+    // а запись этой группы не принадлежит другой загрузке: флаг осиротел, иначе догрузка
+    // заблокирована навсегда. Если поколение ушло вперёд, запись чужая и не трогается.
+    const releaseStale = () => {
+      if (anchorLoadSeq.get(groupId) !== myGen) return;
+      const stale = anchorMembers[groupId];
+      if (stale?.loadingRest) {
+        anchorMembers = { ...anchorMembers, [groupId]: { ...stale, loadingRest: false } };
+      }
+    };
     try {
       const entries = [...st.entries];
       let totalCount = st.total;
       while (entries.length < totalCount) {
         const next = await fetchMembers(groupId, kind, entries.length, GROUP_MEMBERS_PAGE_MAX);
-        if (!current()) return;
+        if (!current()) return releaseStale();
+        totalCount = next.total;
         if (next.entries.length === 0) break;
         entries.push(...next.entries);
-        totalCount = next.total;
       }
       anchorMembers = {
         ...anchorMembers,
@@ -613,7 +623,7 @@
         ?.querySelector<HTMLElement>('button.tr-row-chevron')
         ?.focus({ preventScroll: true });
     } catch {
-      if (!current()) return;
+      if (!current()) return releaseStale();
       pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');
       const cur = anchorMembers[groupId] ?? st;
       anchorMembers = { ...anchorMembers, [groupId]: { ...cur, loadingRest: false } };

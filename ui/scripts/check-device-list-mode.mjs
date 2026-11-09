@@ -691,7 +691,8 @@ function checkLoadMore(text) {
   return out;
 }
 
-const LOAD_REST_GUARD_RE = /if\s*\(\s*!\s*current\s*\(\s*\)\s*\)\s*return\b/;
+const LOAD_REST_STALE_GUARD_RE =
+  /if\s*\(\s*!\s*current\s*\(\s*\)\s*\)\s*return\s+releaseStale\s*\(\s*\)/;
 const LOAD_REST_WRITE_RE = /(?<![\w.])anchorMembers\s*=(?!=)/g;
 
 /**
@@ -703,13 +704,19 @@ const LOAD_REST_WRITE_RE = /(?<![\w.])anchorMembers\s*=(?!=)/g;
  *       - `const myGen = bumpAnchorLoad(groupId)` и `const aSeq = anchorsSeq` раньше
  *         первого await; current() сверяет оба и НЕ сверяет раскрытость: охрана выходит
  *         без сброса loadingRest, и у свёрнутой группы запись осталась бы в загрузке;
- *       - первый оператор после КАЖДОГО ответа страницы — `if (!current()) return`;
+ *       - первый оператор после КАЖДОГО ответа страницы — `if (!current()) return releaseStale()`:
+ *         охрана без сброса оставляет запись в loadingRest навсегда (перезагрузка раскрытых
+ *         переносит запись, устаревает только anchorsSeq), а сброс без проверки поколения
+ *         снимает индикатор чужой живой загрузки; поэтому хелпер releaseStale объявлен после
+ *         первой записи и до try, первым оператором сверяет anchorLoadSeq.get(groupId) !== myGen,
+ *         снимает loadingRest и не трогает состав (entries/total/loadedAll) и current();
  *       - между ответом и записью итога нет другого await (охрана бы устарела);
  *       - первый оператор catch — та же охрана, затем сброс loadingRest.
  *  [L2] порции: один вызов fetchMembers(groupId, kind, entries.length,
  *       GROUP_MEMBERS_PAGE_MAX) внутри `while (entries.length < totalCount)`, старт от уже
  *       загруженного состава, выход на пустой странице, total перечитывается каждой
- *       страницей; страница передаёт onLoadRest={loadRest}. Значение предела 200 держит
+ *       страницей, причём `totalCount = next.total` стоит ВЫШЕ выхода на пустой странице
+ *       (иначе итог пишется со старым total); страница передаёт onLoadRest={loadRest}. Значение предела 200 держит
  *       golden-слой (portionLimitMax).
  *  [L3] фокус (G-7): ровно один .focus( с `{ preventScroll: true }`, на шеврон строки,
  *       порядок: запись итога, await tick(), фокус.
@@ -782,8 +789,11 @@ export function checkLoadRest(src) {
   if (args[3] !== 'GROUP_MEMBERS_PAGE_MAX') {
     fail('L2', `предел страницы «${args[3]}», нужен GROUP_MEMBERS_PAGE_MAX`);
   }
-  if (!new RegExp(`^\\s*;\\s*${LOAD_REST_GUARD_RE.source}`).test(body.slice(callClose + 1))) {
-    fail('L1', 'первый оператор после ответа страницы не `if (!current()) return`');
+  if (!new RegExp(`^\\s*;\\s*${LOAD_REST_STALE_GUARD_RE.source}`).test(body.slice(callClose + 1))) {
+    fail(
+      'L1',
+      'первый оператор после ответа страницы не `if (!current()) return releaseStale()` (охрана без сброса оставит loadingRest навсегда)',
+    );
   }
 
   const whileM = /\bwhile\s*\(\s*entries\.length\s*<\s*totalCount\s*\)\s*\{/.exec(body);
@@ -799,8 +809,14 @@ export function checkLoadRest(src) {
     if (!/\bentries\.push\s*\(\s*\.\.\.next\.entries\s*\)/.test(loop)) {
       fail('L2', 'страница не дописывается в entries');
     }
-    if (!/(?<![\w.])totalCount\s*=\s*next\.total\b/.test(loop)) {
+    const totalM = /(?<![\w.])totalCount\s*=\s*next\.total\b/.exec(loop);
+    if (!totalM) {
       fail('L2', 'total не перечитывается каждой страницей');
+    } else {
+      const brk = loop.search(/if\s*\(\s*next\.entries\.length\s*===\s*0\s*\)\s*break\b/);
+      if (brk !== -1 && totalM.index > brk) {
+        fail('L2', 'total присваивается ПОСЛЕ выхода на пустой странице (итог со старым total)');
+      }
     }
   }
   if (!/\bconst\s+entries\s*=\s*\[\s*\.\.\.st\.entries\s*\]/.test(body)) {
@@ -818,8 +834,11 @@ export function checkLoadRest(src) {
     const open = catchM.index + catchM[0].length - 1;
     const close = readBalanced(body, open, '{', '}');
     const inner = close === -1 ? body.slice(open + 1) : body.slice(open + 1, close);
-    if (!new RegExp(`^\\s*${LOAD_REST_GUARD_RE.source}`).test(inner)) {
-      fail('L1', 'первым оператором catch нет охраны `if (!current()) return`');
+    if (!new RegExp(`^\\s*${LOAD_REST_STALE_GUARD_RE.source}`).test(inner)) {
+      fail(
+        'L1',
+        'первым оператором catch нет `if (!current()) return releaseStale()` (охрана без сброса оставит loadingRest навсегда)',
+      );
     }
     if (!/\bloadingRest\s*:\s*false\b/.test(inner)) {
       fail('L1', 'catch не сбрасывает loadingRest (кнопка останется в загрузке)');
@@ -829,6 +848,39 @@ export function checkLoadRest(src) {
     fail('L1', 'нет записи `loadingRest: true` до запроса');
   } else if (!/^[^;]*\bloadingRest\s*:\s*true\b/.test(body.slice(writes[0]))) {
     fail('L1', 'первая запись не ставит loadingRest: true');
+  }
+  const helperM = /\bconst\s+releaseStale\s*=\s*\(\s*\)\s*=>\s*\{/.exec(body);
+  const tryAt = body.search(/\btry\s*\{/);
+  if (!helperM) {
+    fail('L1', 'нет хелпера `const releaseStale = () => {` (устаревший выход оставит loadingRest)');
+  } else {
+    const hOpen = helperM.index + helperM[0].length - 1;
+    const hClose = readBalanced(body, hOpen, '{', '}');
+    const h = hClose === -1 ? body.slice(hOpen + 1) : body.slice(hOpen + 1, hClose);
+    if (
+      writes.length === 0 ||
+      helperM.index < writes[0] ||
+      (tryAt !== -1 && helperM.index > tryAt)
+    ) {
+      fail('L1', 'releaseStale объявлен не после первой записи loadingRest и до try');
+    }
+    if (
+      !/^\s*if\s*\(\s*anchorLoadSeq\.get\(\s*groupId\s*\)\s*!==\s*myGen\s*\)\s*return\s*;/.test(h)
+    ) {
+      fail(
+        'L1',
+        'releaseStale первым оператором не сверяет поколение anchorLoadSeq.get(groupId) !== myGen',
+      );
+    }
+    if (!/\bloadingRest\s*:\s*false\b/.test(h)) {
+      fail('L1', 'releaseStale не снимает loadingRest');
+    }
+    if (/\bcurrent\b|\bexpandedAnchors\b/.test(h)) {
+      fail('L1', 'releaseStale обращается к current/expandedAnchors');
+    }
+    if (/\b(?:entries|total|loadedAll)\s*:/.test(h)) {
+      fail('L1', 'releaseStale трогает состав группы (entries/total/loadedAll)');
+    }
   }
   const success = writes.find((w) => w > fetchAt && w < catchAt);
   const tickM = /\bawait\s+tick\s*\(\s*\)/.exec(body);
@@ -2677,11 +2729,15 @@ async function selftest(cases) {
   const LR_CURRENT =
     'const current = () => anchorLoadSeq.get(groupId) === myGen && aSeq === anchorsSeq;';
   const LR_GUARD_PUSH =
-    '        if (!current()) return;\n        if (next.entries.length === 0) break;\n        entries.push(...next.entries);\n';
+    '        if (!current()) return releaseStale();\n        totalCount = next.total;\n        if (next.entries.length === 0) break;\n        entries.push(...next.entries);\n';
+  const LR_GUARD = '        if (!current()) return releaseStale();\n';
+  const LR_HELPER_GEN =
+    '      if (anchorLoadSeq.get(groupId) !== myGen) return;\n      const stale = anchorMembers[groupId];\n';
+  const LR_HELPER_DECL = 'const releaseStale = () => {';
   const LR_FETCH =
-    'fetchMembers(groupId, kind, entries.length, GROUP_MEMBERS_PAGE_MAX);\n        if (!current()) return;\n';
+    'fetchMembers(groupId, kind, entries.length, GROUP_MEMBERS_PAGE_MAX);\n        if (!current()) return releaseStale();\n';
   const LR_CATCH =
-    "      if (!current()) return;\n      pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');\n";
+    "      if (!current()) return releaseStale();\n      pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');\n";
   const LR_TOAST =
     "      pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');\n";
   const LR_WRITE =
@@ -2719,7 +2775,7 @@ async function selftest(cases) {
     [
       'L1',
       'нет охраны после ответа страницы',
-      [[LR_GUARD_PUSH, LR_GUARD_PUSH.replace('        if (!current()) return;\n', '')]],
+      [[LR_GUARD_PUSH, LR_GUARD_PUSH.replace(LR_GUARD, '')]],
     ],
     [
       'L1',
@@ -2727,7 +2783,7 @@ async function selftest(cases) {
       [
         [
           LR_GUARD_PUSH,
-          '        if (next.entries.length === 0) break;\n        entries.push(...next.entries);\n        if (!current()) return;\n',
+          '        totalCount = next.total;\n        if (next.entries.length === 0) break;\n        entries.push(...next.entries);\n        if (!current()) return releaseStale();\n',
         ],
       ],
     ],
@@ -2735,8 +2791,8 @@ async function selftest(cases) {
       'L1',
       'охрана вынесена за цикл перед записью итога (перестановка)',
       [
-        [LR_GUARD_PUSH, LR_GUARD_PUSH.replace('        if (!current()) return;\n', '')],
-        [LR_WRITE, `      if (!current()) return;\n${LR_WRITE}`],
+        [LR_GUARD_PUSH, LR_GUARD_PUSH.replace(LR_GUARD, '')],
+        [LR_WRITE, `      if (!current()) return releaseStale();\n${LR_WRITE}`],
       ],
     ],
     ['L1', 'myGen без bumpAnchorLoad', [[LR_GEN, LR_GEN.replace('bumpAnchorLoad(groupId)', '0')]]],
@@ -2771,7 +2827,7 @@ async function selftest(cases) {
     [
       'L1',
       'тост в catch ДО охраны (перестановка)',
-      [[LR_CATCH, `${LR_TOAST}      if (!current()) return;\n`]],
+      [[LR_CATCH, `${LR_TOAST}      if (!current()) return releaseStale();\n`]],
     ],
     ['L1', 'catch не сбрасывает loadingRest', [['{ ...cur, loadingRest: false }', '{ ...cur }']]],
     [
@@ -2809,12 +2865,38 @@ async function selftest(cases) {
     [
       'L2',
       'total не перечитывается',
+      [[LR_GUARD_PUSH, LR_GUARD_PUSH.replace('        totalCount = next.total;\n', '')]],
+    ],
+    [
+      'L2',
+      'total после break (перестановка)',
       [
         [
-          '        totalCount = next.total;\n      }\n      anchorMembers = {',
-          '      }\n      anchorMembers = {',
+          LR_GUARD_PUSH,
+          LR_GUARD_PUSH.replace('        totalCount = next.total;\n', '') +
+            '        totalCount = next.total;\n',
         ],
       ],
+    ],
+    [
+      'L1',
+      'хелпер снимает флаг без проверки поколения',
+      [[LR_HELPER_GEN, '      const stale = anchorMembers[groupId];\n']],
+    ],
+    [
+      'L1',
+      'выход после ответа без сброса',
+      [[LR_FETCH, LR_FETCH.replace('return releaseStale();', 'return;')]],
+    ],
+    [
+      'L1',
+      'выход в catch без сброса',
+      [[LR_CATCH, LR_CATCH.replace('return releaseStale();', 'return;')]],
+    ],
+    [
+      'L1',
+      'пустой хелпер',
+      [[LR_HELPER_DECL, 'const releaseStale = () => {};\n    const unused = () => {']],
     ],
     [
       'L2',
