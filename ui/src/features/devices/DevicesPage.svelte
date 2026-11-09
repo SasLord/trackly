@@ -608,7 +608,7 @@
         .getElementById(rowId)
         ?.closest('tr')
         ?.querySelector<HTMLElement>('button.tr-row-chevron')
-        ?.focus();
+        ?.focus({ preventScroll: true });
     } catch {
       if (!current()) return;
       pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');
