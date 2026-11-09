@@ -91,6 +91,11 @@
 //        - в Props DeviceList и DeviceGroupRow `listGen: number` ОБЯЗАТЕЛЕН (без `?`
 //          и без значения по умолчанию: необязательный проп молча возвращает CR-02).
 //
+//    [L1]/[L2]/[L3] (фаза 41.9, GRD-10, G-7; порядковые): loadRest() в DevicesPage —
+//        охрана поколения после каждого ответа, порции в пределах серверного лимита,
+//        `.focus({ preventScroll: true })`. Подробности у checkLoadRest(). Пропавшая
+//        функция — нарушение, а не SKIP. Гонки в рантайме гейт не проверяет.
+//
 //    Правила [A] и [B] при PAGE_MANDATORY = false дают явный SKIP для страницы,
 //    которая модуль ещё не подключила (так было в задаче 1 плана 19). Задача 3
 //    подключила страницу и перевела константу в true: отсутствие файла или
@@ -686,6 +691,188 @@ function checkLoadMore(text) {
   return out;
 }
 
+const LOAD_REST_GUARD_RE = /if\s*\(\s*!\s*current\s*\(\s*\)\s*\)\s*return\b/;
+const LOAD_REST_WRITE_RE = /(?<![\w.])anchorMembers\s*=(?!=)/g;
+
+/**
+ * Правила [L] (фаза 41.9, GRD-10, D-09, G-7): догрузка остатка состава loadRest().
+ * Обязательны всегда: страница без функции краснеет [L1], SKIP нет. Порядковые, мутанты
+ * селфтеста включают перестановки, а не только удаления.
+ *  [L1] поколение и применение ответа:
+ *       - вход отсекается `if (!st || st.loadingRest) return` раньше первой записи;
+ *       - `const myGen = bumpAnchorLoad(groupId)` и `const aSeq = anchorsSeq` раньше
+ *         первого await; current() сверяет оба и НЕ сверяет раскрытость: охрана выходит
+ *         без сброса loadingRest, и у свёрнутой группы запись осталась бы в загрузке;
+ *       - первый оператор после КАЖДОГО ответа страницы — `if (!current()) return`;
+ *       - между ответом и записью итога нет другого await (охрана бы устарела);
+ *       - первый оператор catch — та же охрана, затем сброс loadingRest.
+ *  [L2] порции: один вызов fetchMembers(groupId, kind, entries.length,
+ *       GROUP_MEMBERS_PAGE_MAX) внутри `while (entries.length < totalCount)`, старт от уже
+ *       загруженного состава, выход на пустой странице, total перечитывается каждой
+ *       страницей; страница передаёт onLoadRest={loadRest}. Значение предела 200 держит
+ *       golden-слой (portionLimitMax).
+ *  [L3] фокус (G-7): ровно один .focus( с `{ preventScroll: true }`, на шеврон строки,
+ *       порядок: запись итога, await tick(), фокус.
+ * Гонки в рантайме правила не проверяют: только форму кода.
+ */
+export function checkLoadRest(src) {
+  const text = stripComments(src);
+  const out = [];
+  const fail = (code, msg) => out.push({ code, msg: `loadRest(): ${msg}` });
+  const body = functionBody(text, 'loadRest');
+  if (body === null) {
+    out.push({ code: 'L1', msg: 'нет функции loadRest() (догрузка состава не проверяется)' });
+    return out;
+  }
+  if (!/\bonLoadRest\s*=\s*\{\s*loadRest\s*\}/.test(text)) {
+    fail('L2', 'не передана в DeviceList как onLoadRest={loadRest}');
+  }
+
+  const firstAwait = body.search(/\bawait\b/);
+  const writes = [...body.matchAll(LOAD_REST_WRITE_RE)].map((m) => m.index);
+  const before = (re) => {
+    const m = re.exec(body);
+    return m !== null && firstAwait !== -1 && m.index < firstAwait ? m : null;
+  };
+  const entry = before(/if\s*\(\s*!\s*st\s*\|\|\s*st\.loadingRest\s*\)\s*return\b/);
+  if (!entry || (writes.length > 0 && entry.index > writes[0])) {
+    fail('L1', 'вход не отсекается `if (!st || st.loadingRest) return` раньше первой записи');
+  }
+  if (!before(/\bconst\s+myGen\s*=\s*bumpAnchorLoad\s*\(\s*groupId\s*\)/)) {
+    fail('L1', 'нет `const myGen = bumpAnchorLoad(groupId)` раньше первого await');
+  }
+  if (!before(/\bconst\s+aSeq\s*=\s*anchorsSeq\b/)) {
+    fail('L1', 'нет `const aSeq = anchorsSeq` раньше первого await');
+  }
+  const currentFn = /\bconst\s+current\s*=\s*\(\s*\)\s*=>([\s\S]*?);/.exec(body);
+  if (!currentFn) {
+    fail('L1', 'нет охраны `const current = () =>`');
+  } else {
+    const c = currentFn[1];
+    if (!/anchorLoadSeq\.get\(\s*groupId\s*\)\s*===\s*myGen/.test(c)) {
+      fail('L1', 'current() не сверяет anchorLoadSeq.get(groupId) === myGen');
+    }
+    if (!/\baSeq\s*===\s*anchorsSeq\b/.test(c)) {
+      fail('L1', 'current() не сверяет aSeq === anchorsSeq');
+    }
+    if (/\bexpandedAnchors\b/.test(c)) {
+      fail('L1', 'current() сверяет раскрытость (свёрнутая группа останется в loadingRest)');
+    }
+  }
+
+  const fetchCalls = [...body.matchAll(/\bfetchMembers\s*\(/g)];
+  if (fetchCalls.length !== 1) {
+    fail('L2', `вызовов fetchMembers( ${fetchCalls.length}, нужен ровно один`);
+    return out;
+  }
+  const callOpen = fetchCalls[0].index + fetchCalls[0][0].length - 1;
+  const callClose = readBalanced(body, callOpen, '(', ')');
+  const fetchAt = body.lastIndexOf('await', fetchCalls[0].index);
+  if (fetchAt === -1 || !/^await\s+$/.test(body.slice(fetchAt, fetchCalls[0].index))) {
+    fail('L2', 'fetchMembers( вызван без await');
+    return out;
+  }
+  const args = splitArgs(body, callOpen) ?? [];
+  if (args[0] !== 'groupId' || args[1] !== 'kind') {
+    fail('L2', 'fetchMembers( не с (groupId, kind, ...)');
+  }
+  if (args[2] !== 'entries.length') {
+    fail('L2', 'смещение страницы не entries.length (страницы повторятся или пропадут)');
+  }
+  if (args[3] !== 'GROUP_MEMBERS_PAGE_MAX') {
+    fail('L2', `предел страницы «${args[3]}», нужен GROUP_MEMBERS_PAGE_MAX`);
+  }
+  if (!new RegExp(`^\\s*;\\s*${LOAD_REST_GUARD_RE.source}`).test(body.slice(callClose + 1))) {
+    fail('L1', 'первый оператор после ответа страницы не `if (!current()) return`');
+  }
+
+  const whileM = /\bwhile\s*\(\s*entries\.length\s*<\s*totalCount\s*\)\s*\{/.exec(body);
+  const whileOpen = whileM ? whileM.index + whileM[0].length - 1 : -1;
+  const whileClose = whileM ? readBalanced(body, whileOpen, '{', '}') : -1;
+  if (whileClose === -1 || fetchAt < whileOpen || fetchAt > whileClose) {
+    fail('L2', 'запрос страницы не внутри `while (entries.length < totalCount)`');
+  } else {
+    const loop = body.slice(whileOpen, whileClose + 1);
+    if (!/if\s*\(\s*next\.entries\.length\s*===\s*0\s*\)\s*break\b/.test(loop)) {
+      fail('L2', 'нет выхода на пустой странице (бесконечный цикл запросов)');
+    }
+    if (!/\bentries\.push\s*\(\s*\.\.\.next\.entries\s*\)/.test(loop)) {
+      fail('L2', 'страница не дописывается в entries');
+    }
+    if (!/(?<![\w.])totalCount\s*=\s*next\.total\b/.test(loop)) {
+      fail('L2', 'total не перечитывается каждой страницей');
+    }
+  }
+  if (!/\bconst\s+entries\s*=\s*\[\s*\.\.\.st\.entries\s*\]/.test(body)) {
+    fail('L2', 'догрузка не начинается с уже загруженного состава');
+  }
+  if (!/\blet\s+totalCount\s*=\s*st\.total\b/.test(body)) {
+    fail('L2', 'нет `let totalCount = st.total`');
+  }
+
+  const catchM = /\bcatch\b\s*(?:\([^)]*\))?\s*\{/.exec(body);
+  const catchAt = catchM ? catchM.index : body.length;
+  if (!catchM) {
+    fail('L1', 'нет блока catch');
+  } else {
+    const open = catchM.index + catchM[0].length - 1;
+    const close = readBalanced(body, open, '{', '}');
+    const inner = close === -1 ? body.slice(open + 1) : body.slice(open + 1, close);
+    if (!new RegExp(`^\\s*${LOAD_REST_GUARD_RE.source}`).test(inner)) {
+      fail('L1', 'первым оператором catch нет охраны `if (!current()) return`');
+    }
+    if (!/\bloadingRest\s*:\s*false\b/.test(inner)) {
+      fail('L1', 'catch не сбрасывает loadingRest (кнопка останется в загрузке)');
+    }
+  }
+  if (writes.length === 0 || writes[0] > fetchAt) {
+    fail('L1', 'нет записи `loadingRest: true` до запроса');
+  } else if (!/^[^;]*\bloadingRest\s*:\s*true\b/.test(body.slice(writes[0]))) {
+    fail('L1', 'первая запись не ставит loadingRest: true');
+  }
+  const success = writes.find((w) => w > fetchAt && w < catchAt);
+  const tickM = /\bawait\s+tick\s*\(\s*\)/.exec(body);
+  if (success === undefined) {
+    fail('L1', 'нет записи итога после цикла');
+  } else {
+    const afterFetch = callClose;
+    const between = body.slice(afterFetch, success);
+    if (/\bawait\b/.test(between)) {
+      fail('L1', 'между ответом страницы и записью итога есть другой await');
+    }
+    const tail = body.slice(success, tickM && tickM.index > success ? tickM.index : catchAt);
+    for (const [re, what] of [
+      [/\bloadedAll\s*:\s*true\b/, 'loadedAll: true'],
+      [/\bloadingRest\s*:\s*false\b/, 'loadingRest: false'],
+      [/\btotal\s*:\s*totalCount\b/, 'total: totalCount'],
+    ]) {
+      if (!re.test(tail)) fail('L1', `запись итога без ${what}`);
+    }
+  }
+
+  const focusCalls = [...body.matchAll(/\.focus\s*\(/g)];
+  if (focusCalls.length !== 1) {
+    fail('L3', `вызовов .focus( ${focusCalls.length}, нужен ровно один (с preventScroll)`);
+  } else {
+    const fm = focusCalls[0];
+    const fArgs = splitArgs(body, fm.index + fm[0].length - 1) ?? [];
+    if (fArgs.length !== 1 || !/^\{\s*preventScroll\s*:\s*true\s*,?\s*\}$/.test(fArgs[0])) {
+      fail('L3', '.focus( без `{ preventScroll: true }` (экран уходит к началу списка, G-7)');
+    }
+    if (!/querySelector[^;]*button\.tr-row-chevron/.test(body)) {
+      fail('L3', 'фокус переводится не на шеврон строки группы');
+    }
+    if (!tickM) {
+      fail('L3', 'нет await tick() перед фокусом');
+    } else if (fm.index < tickM.index) {
+      fail('L3', '.focus( стоит ДО await tick() (строка ещё не перерисована)');
+    } else if (success !== undefined && tickM.index < success) {
+      fail('L3', 'await tick() стоит ДО записи итога');
+    }
+  }
+  return out;
+}
+
 /** Правило [H]: DevicesPage.svelte, защита поколения refresh() и reloadExpandedAnchors(). */
 export function checkPageRace(src) {
   const text = stripComments(src);
@@ -1265,6 +1452,11 @@ export function scanStructural(files, opts = {}) {
     for (const v of check(src)) violations.push({ ...v, file: rel });
     if (rel === PAGE_FILE && (pageMandatory || used)) {
       for (const v of checkPageRace(src)) violations.push({ ...v, file: rel });
+      // [L]: выключается только синтетическими фикстурами селфтеста; реальный запуск
+      // опций не передаёт, поэтому пропавшая loadRest() — нарушение, а не SKIP.
+      if (opts.loadRestMandatory ?? true) {
+        for (const v of checkLoadRest(src)) violations.push({ ...v, file: rel });
+      }
     }
   }
   // [G]: файл обязателен всегда (SKIP-able файл молчал бы вечно).
@@ -1438,6 +1630,11 @@ const SOURCE_MUTANTS = [
     name: 'portionLimitMax: без места пробной строке (фаза 41.9, G-1)',
     from: 'GROUP_MEMBERS_PAGE_MAX - PORTION_PROBE',
     to: 'GROUP_MEMBERS_PAGE_MAX',
+  },
+  {
+    name: 'GROUP_MEMBERS_PAGE_MAX выше серверного предела (фаза 41.9, GRD-10)',
+    from: 'GROUP_MEMBERS_PAGE_MAX = 200',
+    to: 'GROUP_MEMBERS_PAGE_MAX = 500',
   },
   {
     name: 'PORTION_PROBE = 0 (фаза 41.9, G-1)',
@@ -1675,7 +1872,11 @@ function fixtureMap(extra = {}) {
   return m;
 }
 
-const SELFTEST_OPTS = { minScanned: SELFTEST_MIN_SCANNED_FILES, pageMandatory: true };
+const SELFTEST_OPTS = {
+  minScanned: SELFTEST_MIN_SCANNED_FILES,
+  pageMandatory: true,
+  loadRestMandatory: false,
+};
 
 /** Структурные мутанты: у каждого «до» зелёная, «после» красная с кодами expect. */
 function structuralMutants() {
@@ -2458,6 +2659,194 @@ async function selftest(cases) {
       );
       process.exit(1);
     }
+  }
+  // 3д-L. Правила [L] (GRD-10, G-7) на РЕАЛЬНОМ DevicesPage. Голая охрана
+  // `if (!current()) return;` и строка запроса страницы встречаются в файле не раз,
+  // поэтому якоря многострочные: mutate() требует ровно одно вхождение.
+  const realLoadRest = checkLoadRest(realPage);
+  if (realLoadRest.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — реальная loadRest() краснеет:\n  - ${realLoadRest.map(formatViolation).join('\n  - ')}`,
+    );
+    process.exit(1);
+  }
+  const LR_FOCUS = '?.focus({ preventScroll: true });\n';
+  const LR_TICK = '      await tick();\n      const rowId =';
+  const LR_GEN =
+    '    const myGen = bumpAnchorLoad(groupId);\n    const aSeq = anchorsSeq;\n    // Раскрытость';
+  const LR_CURRENT =
+    'const current = () => anchorLoadSeq.get(groupId) === myGen && aSeq === anchorsSeq;';
+  const LR_GUARD_PUSH =
+    '        if (!current()) return;\n        if (next.entries.length === 0) break;\n        entries.push(...next.entries);\n';
+  const LR_FETCH =
+    'fetchMembers(groupId, kind, entries.length, GROUP_MEMBERS_PAGE_MAX);\n        if (!current()) return;\n';
+  const LR_CATCH =
+    "      if (!current()) return;\n      pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');\n";
+  const LR_TOAST =
+    "      pushToast('error', 'Не удалось загрузить весь состав группы. Повторите попытку.');\n";
+  const LR_WRITE =
+    '      anchorMembers = {\n        ...anchorMembers,\n        [groupId]: {\n          loading: false,\n';
+  const loadRestMutants = [
+    ['L3', 'фокус без preventScroll', [[LR_FOCUS, '?.focus();\n']]],
+    ['L3', 'preventScroll: false', [[LR_FOCUS, '?.focus({ preventScroll: false });\n']]],
+    ['L3', 'второй фокус без флага', [[LR_FOCUS, `${LR_FOCUS}      document.body.focus();\n`]]],
+    [
+      'L3',
+      'фокус не на шеврон',
+      [
+        [
+          "querySelector<HTMLElement>('button.tr-row-chevron')",
+          "querySelector<HTMLElement>('button')",
+        ],
+      ],
+    ],
+    [
+      'L3',
+      'фокус ДО await tick() (перестановка)',
+      [
+        [LR_TICK, '      const rowId ='],
+        [LR_FOCUS, `${LR_FOCUS}      await tick();\n`],
+      ],
+    ],
+    [
+      'L1',
+      'await tick() ДО записи итога (перестановка)',
+      [
+        [LR_TICK, '      const rowId ='],
+        [LR_WRITE, `      await tick();\n${LR_WRITE}`],
+      ],
+    ],
+    [
+      'L1',
+      'нет охраны после ответа страницы',
+      [[LR_GUARD_PUSH, LR_GUARD_PUSH.replace('        if (!current()) return;\n', '')]],
+    ],
+    [
+      'L1',
+      'охрана ПОСЛЕ дописывания страницы (перестановка)',
+      [
+        [
+          LR_GUARD_PUSH,
+          '        if (next.entries.length === 0) break;\n        entries.push(...next.entries);\n        if (!current()) return;\n',
+        ],
+      ],
+    ],
+    [
+      'L1',
+      'охрана вынесена за цикл перед записью итога (перестановка)',
+      [
+        [LR_GUARD_PUSH, LR_GUARD_PUSH.replace('        if (!current()) return;\n', '')],
+        [LR_WRITE, `      if (!current()) return;\n${LR_WRITE}`],
+      ],
+    ],
+    ['L1', 'myGen без bumpAnchorLoad', [[LR_GEN, LR_GEN.replace('bumpAnchorLoad(groupId)', '0')]]],
+    [
+      'L1',
+      'aSeq поднимает anchorsSeq',
+      [[LR_GEN, LR_GEN.replace('= anchorsSeq', '= ++anchorsSeq')]],
+    ],
+    [
+      'L1',
+      'поколение снимается ПОСЛЕ await (перестановка)',
+      [
+        [LR_GEN, '    // Раскрытость'],
+        [
+          LR_GUARD_PUSH,
+          `        const myGen = bumpAnchorLoad(groupId);\n        const aSeq = anchorsSeq;\n${LR_GUARD_PUSH}`,
+        ],
+      ],
+    ],
+    ['L1', 'current() без myGen', [[LR_CURRENT, 'const current = () => aSeq === anchorsSeq;']]],
+    [
+      'L1',
+      'current() без aSeq',
+      [[LR_CURRENT, 'const current = () => anchorLoadSeq.get(groupId) === myGen;']],
+    ],
+    [
+      'L1',
+      'current() сверяет раскрытость',
+      [[LR_CURRENT, `${LR_CURRENT.slice(0, -1)} && expandedAnchors.has(groupId);`]],
+    ],
+    ['L1', 'catch без охраны', [[LR_CATCH, LR_TOAST]]],
+    [
+      'L1',
+      'тост в catch ДО охраны (перестановка)',
+      [[LR_CATCH, `${LR_TOAST}      if (!current()) return;\n`]],
+    ],
+    ['L1', 'catch не сбрасывает loadingRest', [['{ ...cur, loadingRest: false }', '{ ...cur }']]],
+    [
+      'L1',
+      'нет отсечения повторного входа',
+      [['if (!st || st.loadingRest) return;', 'if (!st) return;']],
+    ],
+    [
+      'L1',
+      'итог без loadedAll: true',
+      [['          loadedAll: true,\n', '          loadedAll: false,\n']],
+    ],
+    [
+      'L1',
+      'функция loadRest удалена (переименована)',
+      [
+        [
+          'async function loadRest(groupId: number) {',
+          'async function restLoad(groupId: number) {',
+        ],
+      ],
+    ],
+    ['L2', 'предел страницы 500', [[LR_FETCH, LR_FETCH.replace('GROUP_MEMBERS_PAGE_MAX', '500')]]],
+    ['L2', 'смещение страницы 0', [[LR_FETCH, LR_FETCH.replace('entries.length', '0')]]],
+    [
+      'L2',
+      'нет выхода на пустой странице',
+      [
+        [
+          LR_GUARD_PUSH,
+          LR_GUARD_PUSH.replace('        if (next.entries.length === 0) break;\n', ''),
+        ],
+      ],
+    ],
+    [
+      'L2',
+      'total не перечитывается',
+      [
+        [
+          '        totalCount = next.total;\n      }\n      anchorMembers = {',
+          '      }\n      anchorMembers = {',
+        ],
+      ],
+    ],
+    [
+      'L2',
+      'одна страница вместо цикла',
+      [
+        [
+          'while (entries.length < totalCount) {\n        const next',
+          'if (entries.length < totalCount) {\n        const next',
+        ],
+      ],
+    ],
+    ['L2', 'onLoadRest не подключён', [['onLoadRest={loadRest}', 'onLoadRest={() => {}}']]],
+  ];
+  for (const [code, name, steps] of loadRestMutants) {
+    const label = `[${code}] ${name} (реальный файл)`;
+    const mutated = steps.reduce((acc, [f, t], i) => mutate(acc, f, t, `${label}#${i}`), realPage);
+    const found = new Set(checkLoadRest(mutated).map((v) => v.code));
+    if (!found.has(code)) {
+      console.error(
+        `${TAG} SELFTEST FAIL — «${label}»: ожидалось [${code}], получено [${[...found].join(',') || 'ничего'}]`,
+      );
+      process.exit(1);
+    }
+  }
+  // Пропавшая loadRest() в реальном режиме сканирования — ошибка, а не SKIP.
+  const noLoadRest = scanStructural(fixtureMap(), {
+    ...SELFTEST_OPTS,
+    loadRestMandatory: undefined,
+  });
+  if (!noLoadRest.violations.some((v) => v.code === 'L1' && v.file === PAGE_FILE)) {
+    console.error(`${TAG} SELFTEST FAIL — страница без loadRest() не краснит [L1]`);
+    process.exit(1);
   }
   // 3д. WR-03 (41.9, D-11): плоский состав якорной группы на РЕАЛЬНОМ DeviceList.
   const listForFlat = fs.readFileSync(path.join(UI_ROOT, LIST_FILE), 'utf8');
