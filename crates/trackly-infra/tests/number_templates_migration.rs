@@ -20,7 +20,7 @@ fn fresh_migrated_db(dir: &TempDir, file_name: &str) -> Connection {
     conn
 }
 
-/// Test 1: fresh DB seeds exactly the prescribed 3 templates and 5 contexts.
+/// Test 1: fresh DB seeds exactly the prescribed 4 templates and 6 contexts.
 #[test]
 fn v041_seeds_expected_templates_and_contexts() {
     let dir = TempDir::new().expect("tempdir");
@@ -40,8 +40,9 @@ fn v041_seeds_expected_templates_and_contexts() {
             ("act_number".to_string(), "[X]".to_string()),
             ("cartridge_code".to_string(), "C-[XXXX]".to_string()),
             ("drum_code".to_string(), "D-[XXXX]".to_string()),
+            ("repair_act".to_string(), "РЕМ-[XXXXXX]".to_string()),
         ],
-        "number_templates must contain exactly the 3 seeded rows (D-16)"
+        "number_templates must contain exactly the 4 seeded rows (D-16, D-28)"
     );
 
     let mut ctx_stmt = conn
@@ -83,6 +84,11 @@ fn v041_seeds_expected_templates_and_contexts() {
                 Some("D-[XXXX]".to_string())
             ),
             ("printer_create".to_string(), None, None),
+            (
+                "repair_act_create".to_string(),
+                Some("repair_act".to_string()),
+                Some("РЕМ-[XXXXXX]".to_string())
+            ),
         ],
         "number_template_contexts must map exactly as prescribed by D-13/D-16"
     );
@@ -173,7 +179,7 @@ fn v041_migration_reruns_idempotently() {
         .query_row("SELECT COUNT(*) FROM number_templates", [], |r| r.get(0))
         .expect("count number_templates rows");
     assert_eq!(
-        template_count, 3,
-        "number_templates must still contain exactly 3 rows after idempotent re-run"
+        template_count, 4,
+        "number_templates must still contain exactly 4 rows after idempotent re-run"
     );
 }
