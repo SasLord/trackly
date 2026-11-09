@@ -371,6 +371,79 @@ async fn container_rows_block_is_truncated_with_flag() {
     })
 }
 
+/// Фильтр ровно в том виде, в каком его шлёт клиент в режиме поиска
+/// (кейс `deviceListFlags containers: как flat, поиск` в фикстуре device-list-mode).
+fn client_search_filter(overrides: serde_json::Value) -> DeviceFilter {
+    let mut v = serde_json::json!({
+        "type_id": null,
+        "place_id": null,
+        "status_id": null,
+        "state": null,
+        "name_prefix": null,
+        "include_deleted": false,
+        "group_by_condition": false,
+        "hide_anchor_members": false,
+        "anchors_only": false,
+        "exclude_anchors": false
+    });
+    for (k, val) in overrides.as_object().unwrap() {
+        v[k] = val.clone();
+    }
+    serde_json::from_value(v).expect("фильтр клиента")
+}
+
+/// G-3 (D-14): поиск шлёт hide_anchor_members=false, но строки АРМ по имени нужны.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn container_rows_search_with_client_flags() {
+    timed!(async {
+        let f = fixture().await;
+        let flt = || client_search_filter(serde_json::json!({}));
+        let arm = f
+            .svc
+            .list_containers(flt(), Some("арм".into()))
+            .await
+            .unwrap();
+        assert_eq!(arm.containers.len(), 1);
+        assert_eq!(arm.containers[0].name, "АРМ #3");
+        assert_eq!(arm.hidden_member_count, 0, "в поиске K не включается");
+
+        let block = f
+            .svc
+            .list_containers(flt(), Some("блок".into()))
+            .await
+            .unwrap();
+        assert_eq!(block.containers.len(), 1);
+        assert_eq!(block.containers[0].name, "Системный блок #4");
+
+        let none = f
+            .svc
+            .list_containers(flt(), Some("#".into()))
+            .await
+            .unwrap();
+        assert!(none.containers.is_empty());
+
+        // Без запроса (или пробелы) при hide=false строк АРМ нет.
+        for q in [None, Some("   ".to_string())] {
+            let r = f.svc.list_containers(flt(), q).await.unwrap();
+            assert!(r.containers.is_empty());
+        }
+
+        // Вкладка статуса, якорный запрос и «состав группы» строк АРМ не дают.
+        for o in [
+            serde_json::json!({"status_id": 1}),
+            serde_json::json!({"anchors_only": true}),
+            serde_json::json!({"member_of_group_id": f.c1}),
+        ] {
+            let r = f
+                .svc
+                .list_containers(client_search_filter(o), Some("арм".into()))
+                .await
+                .unwrap();
+            assert!(r.containers.is_empty());
+        }
+    })
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn container_rows_limit_over_200_is_validation_error() {
     timed!(async {

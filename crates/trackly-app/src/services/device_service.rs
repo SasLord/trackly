@@ -1173,7 +1173,9 @@ impl DeviceService {
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             let hide = domain_filter.hide_anchor_members;
-            let show_containers = hide
+            // D-14 / G-3: поиск шлёт hide_anchor_members=false (члены показаны обычными
+            // строками), но строки АРМ по имени нужны; отличить поиск можно только по query.
+            let show_containers = (hide || query.is_some())
                 && domain_filter.status_id.is_none()
                 && !domain_filter.anchors_only
                 && domain_filter.member_of_group_id.is_none();
