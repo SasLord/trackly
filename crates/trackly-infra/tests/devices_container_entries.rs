@@ -356,3 +356,32 @@ fn container_entries_rows_order_and_counts() {
     let got: Vec<(i64, i64)> = rows.iter().map(|r| (r.id, r.device_count)).collect();
     assert_eq!(got, vec![(fx.arm_nested, 1), (fx.arm, 5)]);
 }
+
+/// Цикл в `parent_group_id` (испорченные данные) не зацикливает рекурсию closure:
+/// `UNION` вместо `UNION ALL` в `nonempty_group_ids_sql!` и `container_count_cte`.
+#[test]
+fn container_entries_parent_cycle_terminates() {
+    let (mut conn, _dir) = test_db();
+    let t_cont = add_type(&conn, "t_cycle", "container");
+    let dev_a = add_device(&mut conn, 1, "Монитор #21", "ИНВ-000021");
+    let dev_b = add_device(&mut conn, 1, "Мышь #22", "ИНВ-000022");
+    let a = add_group(&conn, t_cont, "Цикл A", 1, None, None, false);
+    let b = add_group(&conn, t_cont, "Цикл B", 2, Some(a), None, false);
+    join(&conn, dev_a, a);
+    join(&conn, dev_b, b);
+    // Замыкаем цикл a -> b -> a в обход проверок записи.
+    conn.execute(
+        "UPDATE groups SET parent_group_id = ?1 WHERE id = ?2",
+        params![b, a],
+    )
+    .unwrap();
+    let repo = SqliteDeviceRepository;
+    // nonempty_group_ids_sql!: непустой вложенный контейнер b среди детей a.
+    let (keys, total) = repo.group_children_keys(&conn, a, 100, 0).unwrap();
+    assert_eq!(total as usize, keys.len());
+    assert!(keys.contains(&cont(b)));
+    // container_count_cte: closure цикла {a, b} даёт оба устройства, без повторов.
+    let rows = repo.container_rows(&conn, &[a, b]).unwrap();
+    let got: Vec<(i64, i64)> = rows.iter().map(|r| (r.id, r.device_count)).collect();
+    assert_eq!(got, vec![(a, 2), (b, 2)]);
+}

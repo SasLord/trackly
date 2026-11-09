@@ -165,13 +165,14 @@ static DEVICE_LIST_WHERE: std::sync::LazyLock<String> = std::sync::LazyLock::new
 });
 
 /// id групп, у которых в closure (сама группа и вложенные на любую глубину) есть
-/// хотя бы одно живое устройство. Некоррелированный подзапрос по образцу
+/// хотя бы одно живое устройство. `UNION` (не `UNION ALL`) защищает рекурсию от цикла
+/// в `parent_group_id`. Некоррелированный подзапрос по образцу
 /// `tree_counts`, без `WITH RECURSIVE` внутри `EXISTS`.
 macro_rules! nonempty_group_ids_sql {
     () => {
         "WITH RECURSIVE closure(root, id) AS ( \
            SELECT id, id FROM groups WHERE deleted_at_utc IS NULL \
-           UNION ALL \
+           UNION \
            SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id \
            WHERE g.deleted_at_utc IS NULL) \
          SELECT c.root FROM closure c \
@@ -211,7 +212,7 @@ fn entry_union_sql() -> String {
 /// (root, id) корней (статический текст, id привязываются параметрами).
 fn container_count_cte(seed: &str) -> String {
     format!(
-        "WITH RECURSIVE closure(root, id) AS ( {seed} UNION ALL \
+        "WITH RECURSIVE closure(root, id) AS ( {seed} UNION \
            SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id \
            WHERE g.deleted_at_utc IS NULL) "
     )
