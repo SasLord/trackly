@@ -21,6 +21,7 @@ pub mod organization;
 pub mod place;
 pub mod place_movements;
 pub mod printer;
+pub mod repair;
 pub mod reports;
 pub mod request;
 pub mod suggest;

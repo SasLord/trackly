@@ -153,6 +153,11 @@ mod tests {
             )
             .with_ws_tx(ws_broadcast.clone()),
         );
+        let repairs = Arc::new(crate::services::RepairService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -178,6 +183,7 @@ mod tests {
             templates,
             pdf,
             cartridges,
+            repairs,
             auth,
             server_ctl: Arc::new(tokio::sync::Mutex::new(None)),
             printers,
