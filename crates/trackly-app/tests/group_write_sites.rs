@@ -2902,3 +2902,102 @@ fn write_site_gate_act_restore_release_adjacent() {
         "вызов без режима следа обязан краснеть"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.4 (D-14/D-15): вердикт «исключение по статусу».
+//
+// Сайты записи устройства, которые ИСКЛЮЧЕНИЕ обходят сознательно (устройство в статусе
+// на_ремонте / в_ремонте / на_списание не стягивается в место группы), не относятся ни к
+// ReleaseRequired, ни к BirthExempt: счётный реестр их не видит, поэтому условие по
+// статусу проверяется по тексту исходника (только код, комментарии отброшены).
+// ---------------------------------------------------------------------------
+
+/// (файл, needle условия по статусу, needle сайта записи, перед которым оно обязано стоять).
+const STATUS_EXEMPTION_VERDICTS: [(&str, &str, Option<&str>); 3] = [
+    (
+        "../src/services/group_place.rs",
+        "is_repair_exempt_status_code(&before.status_code) && !rides_with_group",
+        Some("update_status_and_place_in_tx("),
+    ),
+    (
+        "../src/services/device_service.rs",
+        "new_place != before_place_id && !status_is_exempt",
+        None,
+    ),
+    (
+        "../src/services/place_service.rs",
+        "is_repair_exempt_status_code(&dev.status_code)",
+        Some("update_status_and_place_in_tx("),
+    ),
+];
+
+/// Код (без комментариев) до первого `#[cfg(test)]`.
+fn production_code(src: &str) -> String {
+    src.split("#[cfg(test)]")
+        .next()
+        .unwrap_or(src)
+        .lines()
+        .map(code_of)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Нарушения вердикта: условия нет в коде либо оно стоит ПОСЛЕ сайта записи.
+fn status_exemption_violations(src: &str, needle: &str, site: Option<&str>) -> Vec<String> {
+    let code = production_code(src);
+    let Some(at) = code.find(needle) else {
+        return vec![format!(
+            "условие по статусу `{needle}` отсутствует в исходнике"
+        )];
+    };
+    match site.and_then(|s| code.find(s)) {
+        Some(site_at) if site_at < at => {
+            vec![format!("условие `{needle}` стоит после сайта записи")]
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn exemption_source(rel: &str) -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join(rel),
+    )
+    .unwrap_or_else(|e| panic!("не прочитан {rel}: {e}"))
+}
+
+#[test]
+fn write_site_gate_status_exemption_present_in_source() {
+    for (rel, needle, site) in STATUS_EXEMPTION_VERDICTS {
+        let src = exemption_source(rel);
+        let v = status_exemption_violations(&src, needle, site);
+        assert!(v.is_empty(), "{rel}: {v:?}");
+    }
+}
+
+/// Мутации реального исходника: снятие условия краснит вердикт; якорь уникален.
+#[test]
+fn write_site_gate_mutation_status_exemption_removed() {
+    for (rel, needle, site) in STATUS_EXEMPTION_VERDICTS {
+        let src = exemption_source(rel);
+        assert_eq!(
+            src.matches(needle).count(),
+            1,
+            "{rel}: якорь мутации должен быть уникален"
+        );
+        let mutated = src.replace(needle, "true /* условие снято */");
+        assert!(
+            !status_exemption_violations(&mutated, needle, site).is_empty(),
+            "{rel}: снятое условие по статусу не покраснило гейт"
+        );
+    }
+    // условие, оставленное только в комментарии, не считается
+    let commented = "// is_repair_exempt_status_code(&x) && !y\nfn f() {}\n";
+    assert!(!status_exemption_violations(
+        commented,
+        "is_repair_exempt_status_code(&x) && !y",
+        None
+    )
+    .is_empty());
+}

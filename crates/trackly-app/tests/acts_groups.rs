@@ -4872,3 +4872,138 @@ async fn update_return_rejoin_with_different_place_is_rejected_without_writes() 
     })
     .await;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.4 (D-22): открытая ремонтная заявка не пускает устройство в акт
+// ---------------------------------------------------------------------------
+
+async fn open_repair_for(ctx: &AppCtx, device: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO users (login, full_name, password_hash, role, ad_user, \
+                 is_active, created_at_utc, updated_at_utc, version) \
+                 VALUES ('petrov.pp', 'Петров П.П.', NULL, 'employee', 0, 1, 1700000000, 1700000000, 1)",
+                [],
+            )
+            .map_err(map_rusqlite)?;
+            conn.execute(
+                "INSERT INTO requests (request_type, status, requested_by_user_id, printer_device_id, \
+                 created_at_utc, updated_at_utc) \
+                 VALUES ('repair', 'open', (SELECT MIN(id) FROM users), ?1, 1700000000, 1700000000)",
+                params![device],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("open repair request");
+}
+
+fn conflict_reason(err: AppError) -> String {
+    match err {
+        AppError::Conflict { reason } => reason,
+        other => panic!("ожидался Conflict, получено {other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn create_rejects_member_with_open_repair_request() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let group = seed_group(&ctx, "АРМ #3", Some(a), None).await;
+        let member = seed_device(&ctx, dev("Монитор #2", Some(a), Some(group))).await;
+        open_repair_for(&ctx, member).await;
+
+        let err = ctx
+            .acts
+            .create(&admin(), dto("R-D22-1", &[member], Some(b), false))
+            .await
+            .expect_err("устройство с открытой заявкой не включить");
+        assert_eq!(
+            conflict_reason(err),
+            "Открыта заявка на ремонт — в акт не включить."
+        );
+        assert_eq!(device_place(&ctx, member).await, Some(a));
+    })
+    .await;
+}
+
+// Расширение группы: в акт идёт другой член, а группа целиком переезжает и тянет за собой
+// устройство с открытой заявкой — отказ всего акта, не молча неполный акт.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn create_group_expansion_rejects_when_other_member_has_open_repair() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let arm = seed_arm(&ctx, a).await;
+        let all: Vec<i64> = arm.devices.clone();
+        open_repair_for(&ctx, all[1]).await;
+
+        let err = ctx
+            .acts
+            .create(&admin(), dto("R-D22-2", &all, Some(b), false))
+            .await
+            .expect_err("группа с блокированным членом не едет");
+        let _ = conflict_reason(err);
+        for d in &all {
+            assert_eq!(device_place(&ctx, *d).await, Some(a));
+        }
+        let _ = arm.group;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn return_and_rollback_refused_when_device_has_open_repair() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let group = seed_group(&ctx, "АРМ #3", Some(a), None).await;
+        let member = seed_device(&ctx, dev("Монитор #2", Some(a), Some(group))).await;
+        let act = create_ok(&ctx, dto("R-D22-3", &[member], Some(b), false)).await;
+        open_repair_for(&ctx, member).await;
+
+        let items = ctx.acts.get(act).await.expect("get").items;
+        let item_id = items[0].id;
+        let err = ctx
+            .acts
+            .do_return(
+                &admin(),
+                act,
+                ActReturnDto {
+                    bulk_condition: None,
+                    bulk_place_id: Some(a),
+                    apply_to_all: true,
+                    items: vec![ActReturnItemDto {
+                        act_item_id: item_id,
+                        device_id: member,
+                        device_ids: vec![member],
+                        quantity: 1,
+                        condition_override: Some("Исправно".into()),
+                        place_id_override: None,
+                    }],
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
+                },
+            )
+            .await
+            .expect_err("возврат отказан");
+        assert!(conflict_reason(err).contains("открыта заявка на ремонт"));
+
+        let version = act_version(&ctx, act).await;
+        let err = ctx
+            .acts
+            .delete_soft(act, version)
+            .await
+            .expect_err("откат отказан");
+        assert!(conflict_reason(err).contains("открыта заявка на ремонт"));
+        assert_eq!(device_place(&ctx, member).await, Some(b));
+    })
+    .await;
+}
