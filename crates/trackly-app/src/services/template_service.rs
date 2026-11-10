@@ -479,6 +479,26 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
                 "date_human": "17 июня 2026"
             }
         }),
+        // Phase 41.4 (D-28): repair_transfer_act.html reads repair.* and
+        // device.* under strict-undefined — every variable must be present.
+        "repair_transfer_act" => serde_json::json!({
+            "org": org,
+            "repair": {
+                "number": "РЕМ-000001",
+                "date_human": "17 июня 2026 г.",
+                "giver_name": "Иванов И.И.",
+                "receiver_name": "Петров П.П.",
+                "fault": "Не включается, при нажатии кнопки питания нет реакции",
+                "service_place": "Сервис-центр №1"
+            },
+            "device": {
+                "name": "ПК-00014",
+                "inventory_no": "ИНВ-001",
+                "serial_no": "SN-001",
+                "type": "Системный блок",
+                "place_from": "Офис 101"
+            }
+        }),
         "report" => serde_json::json!({
             "org": org,
             "report_name": "Демо-отчёт: Акты приёма-передачи",
@@ -701,6 +721,28 @@ mod tests {
         }
     }
 
+    /// repair_transfer_act branch of demo_context_for_kind supplies every
+    /// variable the template reads (strict-undefined, Phase 41.4 D-28).
+    #[tokio::test]
+    async fn validate_preview_repair_transfer_act_returns_html() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+
+        let body = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "repair_transfer_act.html")
+            .map(|(_, body)| *body)
+            .expect("repair_transfer_act.html must exist in DEFAULT_HTML_TEMPLATES");
+
+        let result = svc.validate_preview("repair_transfer_act", body).await;
+        match result {
+            Ok(html) => {
+                assert!(html.contains("РЕМ-000001"));
+                assert!(html.contains("Сервис-центр №1"));
+            }
+            Err(e) => panic!("validate_preview failed for repair_transfer_act: {e:?}"),
+        }
+    }
+
     /// R3-3 / CR-02 (Phase 17 retarget): update_body on a kind not in the
     /// fixed DEFAULT_HTML_TEMPLATES allowlist must return AppError::NotFound
     /// — T-17-02-01 mitigation, unrecognized kind never reaches the
@@ -830,11 +872,12 @@ mod tests {
         let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
 
         let items = svc.list_all_for_editor().await.unwrap();
-        assert_eq!(items.len(), 3, "must return exactly 3 known kinds");
+        assert_eq!(items.len(), 4, "must return exactly 4 known kinds");
         let kinds: Vec<&str> = items.iter().map(|i| i.kind.as_str()).collect();
         assert!(kinds.contains(&"act_handover"));
         assert!(kinds.contains(&"act_acceptance"));
         assert!(kinds.contains(&"report"));
+        assert!(kinds.contains(&"repair_transfer_act"));
         // No templates written to the fresh tempdir yet — every item must
         // report is_default = true (body equals the embedded default).
         assert!(items.iter().all(|i| i.is_default));

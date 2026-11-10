@@ -38,6 +38,10 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
     ),
     ("report.html", include_str!("../../templates/report.html")),
     ("_header.html", include_str!("../../templates/_header.html")),
+    (
+        "repair_transfer_act.html",
+        include_str!("../../templates/repair_transfer_act.html"),
+    ),
 ];
 
 /// Registry of previously-shipped default bodies, keyed by filename (D-12).
@@ -131,6 +135,9 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
     // phase, snapshot THIS body into `_legacy_defaults/vNN/_header.html` and
     // add it here, or existing installs will never receive the new header.
     ("_header.html", &[]),
+    // Phase 41.4 introduced `repair_transfer_act.html`; its CURRENT body is the
+    // first one ever shipped (empty-but-present, WR-06).
+    ("repair_transfer_act.html", &[]),
 ];
 
 /// Resolves the templates directory: `TRACKLY_TEMPLATES_DIR` env var wins

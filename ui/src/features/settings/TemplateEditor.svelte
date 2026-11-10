@@ -21,6 +21,7 @@
     act_handover: 'Акт приёма-передачи',
     act_acceptance: 'Документ приёмки товара',
     report: 'Отчёт',
+    repair_transfer_act: 'Акт передачи в ремонт',
   };
 
   interface VariableEntry {
@@ -116,6 +117,20 @@
       { code: 'device.serial_no', desc: 'серийный номер' },
       { code: 'device.model', desc: 'модель' },
       { code: 'device.condition', desc: 'состояние' },
+    ],
+    repair_transfer_act: [
+      ...ORG_VARIABLES,
+      { code: 'repair.number', desc: 'номер акта передачи в ремонт' },
+      { code: 'repair.date_human', desc: 'дата отправки (человекочитаемая)' },
+      { code: 'repair.giver_name', desc: 'кто выдал' },
+      { code: 'repair.receiver_name', desc: 'кому выдал' },
+      { code: 'repair.fault', desc: 'описание неисправности' },
+      { code: 'repair.service_place', desc: 'сервис' },
+      { code: 'device.name', desc: 'наименование устройства' },
+      { code: 'device.inventory_no', desc: 'инвентарный номер' },
+      { code: 'device.serial_no', desc: 'серийный номер' },
+      { code: 'device.type', desc: 'тип устройства' },
+      { code: 'device.place_from', desc: 'место до отправки' },
     ],
     report: [
       ...ORG_VARIABLES,
