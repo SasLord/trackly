@@ -123,7 +123,7 @@ pub fn format_kopecks(kopecks: i64) -> String {
     let frac = abs % 100;
     let mut grouped = String::new();
     for (i, ch) in whole.chars().enumerate() {
-        if i > 0 && (whole.len() - i) % 3 == 0 {
+        if i > 0 && (whole.len() - i).is_multiple_of(3) {
             grouped.push('\u{a0}');
         }
         grouped.push(ch);
