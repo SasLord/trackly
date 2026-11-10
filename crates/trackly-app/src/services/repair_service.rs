@@ -669,6 +669,9 @@ impl RepairService {
                         remember_first_move(&tx, &repo, request_id, &out, now)?;
                         repo.upsert_setting(&tx, SETTING_LAST_MOVE_PLACE, &place.to_string(), now)?;
                         payload["moved_to"] = serde_json::json!(place);
+                        if let Some(path) = place_path(&tx, Some(place))? {
+                            payload["notes"] = serde_json::json!(path);
+                        }
                     }
                     ids = (out.places, out.devices, out.groups);
                 }
@@ -706,6 +709,7 @@ impl RepairService {
         authorize(caller, &Action::TransitionRequests)?;
         let user_id = caller.user_id;
         let now = self.clock.unix_seconds();
+        let audit_repo = self.audit_repo.clone();
         let repo = self.repo.clone();
         let request_repo = self.request_repo.clone();
 
@@ -755,6 +759,27 @@ impl RepairService {
                 )?;
                 remember_first_move(&tx, &repo, request_id, &out, now)?;
                 repo.upsert_setting(&tx, SETTING_LAST_MOVE_PLACE, &place_id.to_string(), now)?;
+                // Строка в истории самой заявки (REP-07): перемещение устройства
+                // иначе записано только на сущности «устройство».
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:repair_move",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({
+                                "to": place_id,
+                                "notes": place_path(&tx, Some(place_id))?,
+                            })
+                            .to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
                 tx.commit().map_err(map_rusqlite)?;
                 Ok((out.places, out.devices, out.groups))
             })
@@ -883,6 +908,7 @@ impl RepairService {
                                 "visit_id": visit_id,
                                 "service_place_id": service_place,
                                 "act_number": act_number,
+                                "notes": place_path(&tx, Some(service_place))?,
                             })
                             .to_string(),
                         ),
@@ -1538,7 +1564,8 @@ fn try_create(
                     before_json: None,
                     after_json: None,
                     payload_json: Some(
-                        serde_json::json!({ "description": description }).to_string(),
+                        serde_json::json!({ "description": description, "notes": description })
+                            .to_string(),
                     ),
                     created_at_utc: now,
                 },
