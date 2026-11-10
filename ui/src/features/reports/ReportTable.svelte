@@ -10,6 +10,8 @@
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
+  import Button from '$lib/components/Button.svelte';
+  import { push } from 'svelte-spa-router';
   import { pluralizeRu } from '$lib/utils/pluralize';
 
   interface ReportRow {
@@ -122,6 +124,56 @@
     return String(val);
   }
 
+  // D-30: отчёт «Ремонты». Даты — дд.мм.гггг по локальным часам (тот же
+  // принцип единой таймзоны, что и у handover_date_utc выше), стоимость — как
+  // на сервере «1 500,50» (неразрывный пробел тысяч, копейки только если есть).
+  function formatRepairDate(ts: number): string {
+    const d = new Date(ts * 1000);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}.${month}.${d.getFullYear()}`;
+  }
+
+  function formatRepairCost(kopecks: number): string {
+    const sign = kopecks < 0 ? '-' : '';
+    const abs = Math.abs(kopecks);
+    const whole = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+    const frac = abs % 100;
+    return frac === 0 ? `${sign}${whole}` : `${sign}${whole},${String(frac).padStart(2, '0')}`;
+  }
+
+  function formatRepairCell(row: ReportRow, key: string): string | null {
+    switch (key) {
+      case 'repair_sent_at': {
+        const v = row.repair_sent_at;
+        return typeof v === 'number' ? formatRepairDate(v) : '—';
+      }
+      case 'repair_returned_at': {
+        const v = row.repair_returned_at;
+        return typeof v === 'number' ? formatRepairDate(v) : 'в сервисе';
+      }
+      case 'repair_cost_kopecks': {
+        const v = row.repair_cost_kopecks;
+        return typeof v === 'number' ? formatRepairCost(v) : '—';
+      }
+      case 'repair_has_scan':
+        return row.repair_has_scan === true ? 'есть' : 'нет';
+      case 'repair_request_id':
+        return typeof row.repair_request_id === 'number' ? `№${row.repair_request_id}` : '—';
+      case 'repair_device_label':
+      case 'repair_fault':
+      case 'repair_service_place':
+      case 'repair_works': {
+        const v = row[key];
+        return typeof v === 'string' && v !== '' ? v : '—';
+      }
+      default:
+        return null;
+    }
+  }
+
+  const REPAIR_ELLIPSIS_KEYS = ['repair_fault', 'repair_works'];
+
   // Phase 39.1: place_path cells arrive already shortened from the backend
   // (row.place_path_short, per the organization/place display-variant setting —
   // PLC-07/PLC-08) — no local shortening formula on the frontend anymore. The
@@ -164,6 +216,8 @@
   // place_path/from_place_path — every other column keeps formatCellValue's
   // plain title=text convention.
   function formatCellTitle(row: ReportRow, col: Column): string {
+    const repair = formatRepairCell(row, col.key);
+    if (repair !== null) return repair;
     if (col.key === 'place_path') {
       return formatPlaceCell(row, col, (p) => p);
     }
@@ -174,6 +228,8 @@
   }
 
   function formatCellDisplay(row: ReportRow, col: Column): string {
+    const repair = formatRepairCell(row, col.key);
+    if (repair !== null) return repair;
     if (col.key === 'place_path') {
       return formatPlaceCell(row, col, () => row.place_path_short ?? '');
     }
@@ -330,8 +386,12 @@
       columns={columns.length}
       {loading}
       empty={rows.length === 0 && !loading}
-      emptyTitle="Нет данных за выбранный период"
-      emptyBody="Измените диапазон дат или выберите другой тип отчёта."
+      emptyTitle={reportType === 'repairs'
+        ? 'Ремонтов за период нет'
+        : 'Нет данных за выбранный период'}
+      emptyBody={reportType === 'repairs'
+        ? 'Измените период или выберите другой отчёт.'
+        : 'Измените диапазон дат или выберите другой тип отчёта.'}
       head={tableHead}
       fillHeight
     >
@@ -402,12 +462,31 @@
           {@const row = item as ReportRow}
           <TableRow>
             {#each columns as col}
-              <td title={formatCellTitle(row, col)}>
-                {formatCellDisplay(row, col)}
-                {#if showDeletedBadge(row, col)}
-                  <span class="deleted-badge"><Badge variant="default">Удалено</Badge></span>
-                {/if}
-              </td>
+              {#if col.key === 'repair_request_id' && typeof row.repair_request_id === 'number'}
+                {@const requestId = row.repair_request_id}
+                <td>
+                  <Button variant="link" onclick={() => push(`#/requests?id=${requestId}`)}>
+                    {formatCellDisplay(row, col)}
+                  </Button>
+                </td>
+              {:else if col.key.startsWith('repair_')}
+                <td
+                  title={formatCellTitle(row, col)}
+                  class:repair-cost={col.key === 'repair_cost_kopecks'}
+                  class:repair-ellipsis={REPAIR_ELLIPSIS_KEYS.includes(col.key)}
+                  class:repair-muted={col.key === 'repair_returned_at' &&
+                    typeof row.repair_returned_at !== 'number'}
+                >
+                  {formatCellDisplay(row, col)}
+                </td>
+              {:else}
+                <td title={formatCellTitle(row, col)}>
+                  {formatCellDisplay(row, col)}
+                  {#if showDeletedBadge(row, col)}
+                    <span class="deleted-badge"><Badge variant="default">Удалено</Badge></span>
+                  {/if}
+                </td>
+              {/if}
             {/each}
           </TableRow>
         {/if}
@@ -478,6 +557,23 @@
       outline: none;
       box-shadow: inset 0 0 0 2px var(--tr-focus-ring);
     }
+  }
+
+  // D-30: колонки отчёта «Ремонты».
+  .repair-cost {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .repair-ellipsis {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .repair-muted {
+    color: var(--tr-text-tertiary);
   }
 
   .batch-name {

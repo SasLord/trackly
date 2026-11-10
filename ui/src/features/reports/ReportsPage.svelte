@@ -141,6 +141,7 @@
       temporal: true,
       cmd: 'reports_list_requests_completed',
     },
+    { key: 'repairs', label: 'Ремонты', temporal: true, cmd: 'reports_list_repairs' },
   ] as const;
 
   // Plan 40-18 (D-22): mirrors ReportSubNav.svelte's own MOVEMENT_REPORTS
@@ -214,6 +215,18 @@
     open: REQUEST_COLUMNS,
     in_progress: REQUEST_COLUMNS,
     completed: REQUEST_COLUMNS,
+    // D-30: порядок совпадает с columns_for("repairs") в tauri_cmds/reports.rs.
+    repairs: [
+      { key: 'repair_device_label', label: 'Устройство' },
+      { key: 'repair_fault', label: 'Неисправность' },
+      { key: 'repair_service_place', label: 'Сервис' },
+      { key: 'repair_sent_at', label: 'Ушло' },
+      { key: 'repair_returned_at', label: 'Вернулось' },
+      { key: 'repair_works', label: 'Работы' },
+      { key: 'repair_cost_kopecks', label: 'Стоимость, ₽' },
+      { key: 'repair_has_scan', label: 'Скан' },
+      { key: 'repair_request_id', label: 'Заявка' },
+    ],
     // Plan 40-18 (D-23) — order matches columns_for("movements") in
     // tauri_cmds/reports.rs exactly (Дата/Предмет/Тип/Откуда/Куда/Кем/Причина).
     // Own key 'movements', not 'all' — the movements domain's single report
@@ -365,6 +378,8 @@
           return 'requests_in_progress';
         case 'completed':
           return 'requests_completed';
+        case 'repairs':
+          return 'repairs';
       }
     } else if (activeDomain === 'movements') {
       return 'movements';
@@ -548,10 +563,25 @@
   // читает именно `rows.total` (не длину массива) — гейт check-report-truncation.
   // Только $derived: ничего читаемого не записывается (effect_update_depth_exceeded).
   const truncationNotice = $derived(
-    reportTypeKey() === 'movements' && rows
+    (reportTypeKey() === 'movements' || reportTypeKey() === 'repairs') && rows
       ? movementsTruncationNotice(rows.rows.length, rows.total)
       : null,
   );
+
+  // D-31: итог отчёта «Ремонты» — число заходов (`total` сервера) и сумма
+  // стоимости по полученным строкам; заход без стоимости в сумму не входит.
+  const repairsTotal = $derived.by((): string | null => {
+    if (reportTypeKey() !== 'repairs' || !rows) return null;
+    let sum = 0;
+    for (const r of rows.rows) {
+      const k = (r as { repair_cost_kopecks?: number | null }).repair_cost_kopecks;
+      if (typeof k === 'number') sum += k;
+    }
+    const whole = String(Math.floor(sum / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+    const frac = sum % 100;
+    const money = frac === 0 ? whole : `${whole},${String(frac).padStart(2, '0')}`;
+    return `Итого заходов: ${rows.total} · ${money} ₽`;
+  });
 </script>
 
 <div class="reports-page">
@@ -631,6 +661,10 @@
       reportType={reportTypeKey()}
       isSnapshot={isSnapshot()}
     />
+
+    {#if repairsTotal}
+      <div class="repairs-total" role="status">{repairsTotal}</div>
+    {/if}
   </div>
 
   <PdfPreviewModal
@@ -682,6 +716,14 @@
     gap: var(--tr-space-md);
     flex-wrap: wrap;
     padding: var(--tr-space-2xs) 0;
+  }
+
+  .repairs-total {
+    flex-shrink: 0;
+    padding: var(--tr-space-xs) var(--tr-space-md);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
+    color: var(--tr-text-primary);
   }
 
   // W-B03: banner is a non-shrinking block in the .reports-content flex column,

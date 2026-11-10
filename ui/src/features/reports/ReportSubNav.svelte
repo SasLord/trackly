@@ -65,6 +65,7 @@
       temporal: true,
       cmd: 'reports_list_requests_completed',
     },
+    { key: 'repairs', label: 'Ремонты', temporal: true, cmd: 'reports_list_repairs' },
   ];
 
   // Plan 40-18 (D-22): «Перемещения» is its own 4th domain, not nested under
