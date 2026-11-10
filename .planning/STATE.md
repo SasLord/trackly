@@ -1670,7 +1670,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-10T03:56:37.081Z
-Stopped at: Completed 41.4-07-PLAN.md (отчёт «Ремонты»: сервис, команда, маршрут, подпункт UI)
+Stopped at: Completed 41.4-08-PLAN.md (участники в WS-событиях, вложениях и дашборде)
 Resume file: None
 
 None
