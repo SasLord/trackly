@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-11-10T03:56:37.097Z"
+last_updated: "2026-11-10T05:13:46.895Z"
 last_activity: 2026-11-09
 progress:
   total_phases: 27
   completed_phases: 18
   total_plans: 312
-  completed_plans: 298
+  completed_plans: 300
   percent: 67
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.4 (repair-requests) — EXECUTING
-Plan: 4 of 21
+Plan: 9 of 21
 Status: Ready to execute
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
@@ -1669,7 +1669,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-10T03:56:37.081Z
+Last session: 2026-11-10T05:13:46.884Z
 Stopped at: Completed 41.4-08-PLAN.md (участники в WS-событиях, вложениях и дашборде)
 Resume file: None
 
