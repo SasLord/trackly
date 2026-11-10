@@ -11,6 +11,8 @@
     id?: string;
     'aria-describedby'?: string;
     autocomplete?: HTMLInputAttributes['autocomplete'];
+    /** Подсказка экранной клавиатуре (например, `decimal` для суммы). */
+    inputmode?: HTMLInputAttributes['inputmode'];
     oninput?: (_value: string) => void;
     /** Optional left icon; absent by default — no layout change when omitted. */
     iconLeft?: Snippet;
@@ -29,6 +31,7 @@
     id,
     'aria-describedby': ariaDescribedby,
     autocomplete,
+    inputmode,
     oninput,
     iconLeft,
     mono = false,
@@ -50,6 +53,7 @@
     class:has-icon={!!iconLeft}
     {value}
     {autocomplete}
+    {inputmode}
     aria-describedby={ariaDescribedby}
     aria-invalid={invalid || undefined}
     oninput={(e) => {

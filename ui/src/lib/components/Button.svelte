@@ -15,6 +15,8 @@
     /** Обязателен вместе с iconOnly (иконка без текста — UI-SPEC §8). */
     ariaLabel?: string;
     title?: string;
+    /** Кнопка-переключатель: состояние нажатия для скринридера. */
+    ariaPressed?: boolean;
     onclick?: () => void;
     children?: Snippet;
   }
@@ -28,6 +30,7 @@
     iconOnly = false,
     ariaLabel,
     title,
+    ariaPressed,
     onclick,
     children,
   }: Props = $props();
@@ -54,6 +57,7 @@
   class:tr-btn-ghost-icon={ghostIcon}
   disabled={isDisabled}
   aria-label={ariaLabel}
+  aria-pressed={ariaPressed}
   {title}
   {onclick}
 >
