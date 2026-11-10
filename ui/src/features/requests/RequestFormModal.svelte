@@ -12,9 +12,11 @@
   import Dropdown from '$lib/components/Dropdown.svelte';
   import GroupedPrinterSelect from '$lib/components/GroupedPrinterSelect.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
+  import Badge from '$lib/components/Badge.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { requests } from './api';
+  import { requests, repairs } from './api';
   import type { RequestCategoryDto, RequestPrinterOptionDto } from '../../bindings-phase6';
+  import type { RepairDeviceOptionDto } from '../../bindings';
 
   interface Props {
     open: boolean;
@@ -24,7 +26,7 @@
 
   const { open, onClose, onSuccess }: Props = $props();
 
-  type RequestType = 'cartridge_replace' | 'free_form';
+  type RequestType = 'cartridge_replace' | 'repair' | 'free_form';
 
   // Form state
   let requestType = $state<RequestType>('cartridge_replace');
@@ -36,6 +38,62 @@
   // Validation errors
   let printerError = $state('');
   let descError = $state('');
+
+  // Раздел «Ремонт» (REP-01, D-20): устройство из repairs.deviceOptions().
+  // OTHER_DEVICE_KEY — вариант «Другое» (заявка без устройства, D-24).
+  const OTHER_DEVICE_KEY = 'other';
+  let repairDevices = $state<RepairDeviceOptionDto[]>([]);
+  let repairDevicesLoading = $state(false);
+  // null — ничего не выбрано; OTHER_DEVICE_KEY — «Другое»; иначе id устройства строкой.
+  let repairChoice = $state<string | null>(null);
+  let repairQuery = $state('');
+  let repairDeviceError = $state('');
+  let repairDescError = $state('');
+
+  interface RepairPickOption {
+    id: string;
+    label: string;
+    sub?: string;
+    meta?: string;
+    section?: string;
+  }
+
+  const repairOptions = $derived.by<RepairPickOption[]>(() => {
+    const q = repairQuery.trim().toLowerCase();
+    const matched = repairDevices.filter(
+      (d) =>
+        !q ||
+        d.name.toLowerCase().includes(q) ||
+        (d.inventoryNo ?? '').toLowerCase().includes(q) ||
+        d.typeName.toLowerCase().includes(q),
+    );
+    const sorted = [...matched].sort(
+      (a, b) => a.typeName.localeCompare(b.typeName, 'ru') || a.name.localeCompare(b.name, 'ru'),
+    );
+    return [
+      ...sorted.map((d) => ({
+        id: String(d.id),
+        label: d.name,
+        sub: d.inventoryNo ?? undefined,
+        meta: d.inRepair ? 'уже в ремонте' : undefined,
+        section: d.typeName,
+      })),
+      { id: OTHER_DEVICE_KEY, label: 'Другое' },
+    ];
+  });
+  const selectedRepairDevice = $derived(
+    repairChoice !== null && repairChoice !== OTHER_DEVICE_KEY
+      ? (repairDevices.find((d) => String(d.id) === repairChoice) ?? null)
+      : null,
+  );
+  const selectedRepairLabel = $derived(
+    repairChoice === OTHER_DEVICE_KEY ? 'Другое' : (selectedRepairDevice?.name ?? ''),
+  );
+  // D-20: выбранное устройство уже в ремонте → отправка присоединяет к общей заявке.
+  const joining = $derived(selectedRepairDevice?.inRepair === true);
+  function noExpandRepair(): RepairPickOption[] {
+    return [];
+  }
 
   // Available printers list — minimal {id,name,location} DTO from the
   // CreateRequest-gated request_printer_options endpoint (D-PRN-01). This
@@ -84,6 +142,10 @@
       categoryId = null;
       printerError = '';
       descError = '';
+      repairChoice = null;
+      repairQuery = '';
+      repairDeviceError = '';
+      repairDescError = '';
       // Load printers + categories list.
       loadPrinters();
       loadCategories();
@@ -105,6 +167,17 @@
     }
   }
 
+  async function loadRepairDevices() {
+    repairDevicesLoading = true;
+    try {
+      repairDevices = await repairs.deviceOptions();
+    } catch {
+      // Non-fatal — список устройств остаётся пустым, доступно «Другое».
+    } finally {
+      repairDevicesLoading = false;
+    }
+  }
+
   async function loadCategories() {
     // D-CAT-01: server-driven {id, name} list — no hardcoded array.
     categoriesLoading = true;
@@ -121,6 +194,20 @@
     let valid = true;
     printerError = '';
     descError = '';
+    repairDeviceError = '';
+    repairDescError = '';
+
+    if (requestType === 'repair') {
+      if (repairChoice === null) {
+        repairDeviceError = 'Выберите устройство.';
+        valid = false;
+      }
+      if (!description.trim()) {
+        repairDescError = 'Опишите неисправность.';
+        valid = false;
+      }
+      return valid;
+    }
 
     if (requestType === 'cartridge_replace') {
       if (printerDeviceId === null) {
@@ -151,12 +238,37 @@
     }
   }
 
+  function selectType(t: RequestType) {
+    requestType = t;
+    printerError = '';
+    descError = '';
+    repairDeviceError = '';
+    repairDescError = '';
+    if (t === 'repair' && repairDevices.length === 0 && !repairDevicesLoading) {
+      void loadRepairDevices();
+    }
+  }
+
   async function handleSubmit() {
     if (submitting) return;
     if (!validate()) return;
 
     submitting = true;
     try {
+      if (requestType === 'repair') {
+        const res = await repairs.create({
+          deviceId: selectedRepairDevice ? selectedRepairDevice.id : null,
+          description: description.trim(),
+        });
+        pushToast(
+          'success',
+          res.joined ? 'Вы присоединились к заявке на ремонт' : 'Заявка отправлена',
+        );
+        maybeRequestNotifyPermission();
+        onSuccess();
+        onClose();
+        return;
+      }
       await requests.create({
         requestType,
         printerDeviceId: requestType === 'cartridge_replace' ? printerDeviceId : null,
@@ -197,11 +309,7 @@
             type="button"
             class="type-btn"
             class:active={requestType === 'cartridge_replace'}
-            onclick={() => {
-              requestType = 'cartridge_replace';
-              printerError = '';
-              descError = '';
-            }}
+            onclick={() => selectType('cartridge_replace')}
             aria-pressed={requestType === 'cartridge_replace'}
           >
             Замена картриджа
@@ -209,12 +317,17 @@
           <button
             type="button"
             class="type-btn"
+            class:active={requestType === 'repair'}
+            onclick={() => selectType('repair')}
+            aria-pressed={requestType === 'repair'}
+          >
+            Ремонт
+          </button>
+          <button
+            type="button"
+            class="type-btn"
             class:active={requestType === 'free_form'}
-            onclick={() => {
-              requestType = 'free_form';
-              printerError = '';
-              descError = '';
-            }}
+            onclick={() => selectType('free_form')}
             aria-pressed={requestType === 'free_form'}
           >
             Свободная форма
@@ -253,6 +366,70 @@
             id="req-comment"
             oninput={(v) => (description = v)}
           />
+        </div>
+      {:else if requestType === 'repair'}
+        <!-- Устройство (обязательно; «Другое» — допустимый выбор) -->
+        <div class="field">
+          <label class="label dropdown-label">
+            <span class="label-text">Устройство</span>
+            <Dropdown
+              variant="select"
+              flat={true}
+              value={selectedRepairLabel}
+              placeholder="Выберите устройство"
+              searchPlaceholder="Название или инв. номер"
+              invalid={!!repairDeviceError}
+              loading={repairDevicesLoading}
+              groups={repairOptions}
+              getGroupId={(o) => o.id}
+              getGroupName={(o) => o.label}
+              getGroupSub={(o) => o.sub}
+              getGroupMeta={(o) => o.meta}
+              getGroupSection={(o) => o.section}
+              getGroupCount={() => 0}
+              isGroupExpandable={() => false}
+              isGroupSelected={(o) => o.id === repairChoice}
+              onExpandGroup={noExpandRepair}
+              getMemberId={(o) => o.id}
+              getMemberName={(o) => o.label}
+              onSearch={(q) => (repairQuery = q)}
+              onPickGroup={(o) => {
+                repairChoice = o.id;
+                repairDeviceError = '';
+                repairQuery = '';
+              }}
+              onPickMember={() => {}}
+            />
+          </label>
+          {#if repairDeviceError}
+            <span class="field-error" role="alert">{repairDeviceError}</span>
+          {/if}
+          {#if joining}
+            <span class="field-hint join-hint">
+              <Badge variant="warning" size="sm">уже в ремонте</Badge>
+              По этому устройству уже есть заявка на ремонт. Ваше описание добавится в неё, и вы будете
+              видеть её у себя.
+            </span>
+          {/if}
+        </div>
+
+        <!-- Описание неисправности (обязательно) -->
+        <div class="field">
+          <label class="label" for="req-repair-desc">Описание неисправности</label>
+          <Textarea
+            value={description}
+            placeholder="Что случилось с устройством"
+            id="req-repair-desc"
+            rows={4}
+            invalid={!!repairDescError}
+            oninput={(v) => {
+              description = v;
+              repairDescError = '';
+            }}
+          />
+          {#if repairDescError}
+            <span class="field-error" role="alert">{repairDescError}</span>
+          {/if}
         </div>
       {:else}
         <!-- Категория (опционально) -->
@@ -310,7 +487,13 @@
 
   {#snippet footer()}
     <Button variant="secondary" onclick={onClose}>Отмена</Button>
-    <Button variant="primary" loading={submitting} onclick={handleSubmit}>Отправить заявку</Button>
+    <Button variant="primary" loading={submitting} onclick={handleSubmit}>
+      {requestType === 'repair'
+        ? joining
+          ? 'Присоединиться к заявке'
+          : 'Создать заявку'
+        : 'Отправить заявку'}
+    </Button>
   {/snippet}
 </Modal>
 
@@ -391,6 +574,14 @@
 
   .field-error {
     font-size: var(--tr-font-size-label);
-    color: var(--tr-danger);
+    color: var(--tr-danger-text);
+  }
+
+  .join-hint {
+    color: var(--tr-text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--tr-space-2xs);
   }
 </style>

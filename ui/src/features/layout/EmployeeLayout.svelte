@@ -33,6 +33,8 @@
     switch (newStatus) {
       case 'in_progress':
         return 'Ваша заявка принята в работу';
+      case 'in_repair':
+        return 'Ваша заявка: устройство в ремонте';
       case 'completed':
         return 'Ваша заявка выполнена';
       case 'rejected':
