@@ -25,9 +25,11 @@ fn csv_safe(value: &str) -> String {
         value.to_string()
     }
 }
+use crate::services::group_place::{apply_group_place_to_device_in_tx, GroupMoveCause};
 use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateContext, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::printers::{normalize_printer_ip, PrinterNew};
+use trackly_core::domain::repairs::is_repair_exempt_status_code;
 use trackly_core::ports::devices::DeviceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -35,7 +37,7 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::{
     SqliteAuditLogRepository, SqliteCartridgeRepository, SqliteDeviceRepository,
     SqliteGroupRepository, SqlitePlaceMovementsRepository, SqlitePlaceRepository,
-    SqlitePrinterRepository,
+    SqlitePrinterRepository, SqliteRepairRepository,
 };
 
 use std::collections::HashMap;
@@ -1363,14 +1365,53 @@ impl DeviceService {
                     })?;
                 let before_place_id = before.as_ref().and_then(|b| b.place_id);
 
+                // Phase 41.4 (D-21): пока по устройству открыта ремонтная заявка, ручная
+                // смена статуса и места запрещена. Конфликт возникает только если значение
+                // в патче РЕАЛЬНО отличается от текущего: форма шлёт status_id и place_id
+                // при каждом сохранении, правка имени с прежними значениями проходит.
+                if let Some(b) = before.as_ref() {
+                    let status_changes = domain_patch.status_id.is_some_and(|s| s != b.status_id);
+                    let place_changes = domain_patch.place_id.is_some_and(|p| p != b.place_id);
+                    if (status_changes || place_changes)
+                        && SqliteRepairRepository
+                            .open_repair_request_id(&tx, id)?
+                            .is_some()
+                    {
+                        return Err(AppError::Conflict {
+                            reason: "Нельзя изменить устройство: по нему открыта заявка на ремонт."
+                                .to_string(),
+                        });
+                    }
+                }
+
+                // Phase 41.4 (D-14): эффективный статус (из патча, иначе текущий) по КОДУ
+                // справочника, не по id.
+                let prior_status_code: Option<String> =
+                    before.as_ref().map(|b| b.status_code.clone());
+                let effective_status_code: Option<String> = match domain_patch.status_id {
+                    Some(sid) => tx
+                        .query_row(
+                            "SELECT code FROM device_statuses WHERE id = ?1",
+                            rusqlite::params![sid],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .ok(),
+                    None => prior_status_code.clone(),
+                };
+
                 // Phase 41 (GRP-07, SPEC 11, S1): устройство в группе С МЕСТОМ нельзя
                 // переместить по одному — место задаёт группа. Сравниваем с ТЕКУЩИМ
                 // значением в этом же замыкании: форма шлёт place_id при каждом
                 // сохранении, повтор текущего места (и правка прочих полей) проходит.
                 // Группа без места не «запирает» (D-21) — запрос возвращает None.
+                // Phase 41.4 (D-14): устройство в исключённом статусе (на ремонте, в
+                // ремонте, на списание) место менять МОЖЕТ, членство сохраняется.
                 // Источник истины — сервер; блокировка PlacePicker в UI (D-19) не замена.
+                let status_is_exempt = effective_status_code
+                    .as_deref()
+                    .is_some_and(is_repair_exempt_status_code);
                 if let Some(new_place) = domain_patch.place_id {
-                    if new_place != before_place_id {
+                    if new_place != before_place_id && !status_is_exempt {
                         if let Some(g) = groups.locked_group_for_device_in_tx(&tx, id)? {
                             return Err(AppError::Validation {
                                 field: "place_id".to_string(),
@@ -1383,7 +1424,40 @@ impl DeviceService {
                     }
                 }
 
-                let after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
+                let mut after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
+                // Phase 41.4 (D-17): исключённый статус сменён на обычный, а место
+                // устройства разошлось с местом группы — переносим на место группы той же
+                // транзакцией (журнал перемещений Manual и аудит пишет примитив).
+                let was_exempt = prior_status_code
+                    .as_deref()
+                    .is_some_and(is_repair_exempt_status_code);
+                let mut group_moved = false;
+                if was_exempt && !status_is_exempt {
+                    if let Some(g) = groups.group_of_device_in_tx(&tx, id)? {
+                        if let Some(group_place) = g.place_id {
+                            if after.place_id != Some(group_place) {
+                                let deps = crate::services::group_place::GroupMoveDeps::new();
+                                apply_group_place_to_device_in_tx(
+                                    &tx,
+                                    &deps,
+                                    id,
+                                    group_place,
+                                    None,
+                                    Some(&after.name),
+                                    g.id,
+                                    user_id_opt,
+                                    now,
+                                    GroupMoveCause {
+                                        source: MovementSource::Manual,
+                                        act_id: None,
+                                    },
+                                )?;
+                                after = repo.get_in_tx(&tx, id)?;
+                                group_moved = true;
+                            }
+                        }
+                    }
+                }
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now, None)?;
                 // Phase 41.13 Plan 09 (D-13): запись сети принтера при РЕДАКТИРОВАНИИ —
                 // отдельная операция ПОСЛЕ sync_printer_row_in_tx и мимо его exists-гарда
@@ -1445,19 +1519,23 @@ impl DeviceService {
 
                 // HST-01: запись перемещения (D-04/D-06 guard внутри record_movement_if_applicable).
                 // `source` жёстко задан сервером — клиент не может его подменить (T-40-15).
-                place_movements_repo.record_movement_if_applicable(
-                    &tx,
-                    place_repo.as_ref(),
-                    MovementEntityKind::Device,
-                    id,
-                    before_place_id,
-                    after.place_id,
-                    MovementSource::Manual,
-                    None,
-                    None,
-                    user_id_opt,
-                    now,
-                )?;
+                // D-17: при переносе на место группы запись журнала уже написана
+                // примитивом apply_group_place_to_device_in_tx — второй не пишем.
+                if !group_moved {
+                    place_movements_repo.record_movement_if_applicable(
+                        &tx,
+                        place_repo.as_ref(),
+                        MovementEntityKind::Device,
+                        id,
+                        before_place_id,
+                        after.place_id,
+                        MovementSource::Manual,
+                        None,
+                        None,
+                        user_id_opt,
+                        now,
+                    )?;
+                }
 
                 // Phase 40-21 (UAT-40 «cartridge-does-not-follow-printer», вариант B):
                 // когда меняется место принтера, каскадим место на все прикреплённые
@@ -1544,6 +1622,17 @@ impl DeviceService {
                         source_chain: format!("audit_log before-json (delete): {e}"),
                     })?;
                 let before_place_id = before.as_ref().and_then(|b| b.place_id);
+
+                // Phase 41.4 (D-21): устройство с открытой ремонтной заявкой не удаляется.
+                if SqliteRepairRepository
+                    .open_repair_request_id(&tx, id)?
+                    .is_some()
+                {
+                    return Err(AppError::Conflict {
+                        reason: "Нельзя удалить устройство: по нему открыта заявка на ремонт."
+                            .to_string(),
+                    });
+                }
 
                 // Phase 41.1 (GRP-10, D-14): якорь группы не удаляется, пока группа
                 // существует. FK `ON DELETE RESTRICT` мягкое удаление (UPDATE
