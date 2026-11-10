@@ -153,3 +153,42 @@ pub struct RepairTransitionResultDto {
     pub request: RequestDto,
     pub state: RepairStateDto,
 }
+
+/// Вход «Отправить в ремонт» (D-04, D-05): заход в сервис с номером акта.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairSendDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    /// Дата отправки, unix-секунды UTC.
+    #[specta(type = i32)]
+    pub date_utc: i64,
+    pub giver_name: String,
+    pub receiver_name: String,
+    #[specta(type = i32)]
+    pub service_place_id: i64,
+    pub fault_description: String,
+}
+
+/// Вход «Забрать из ремонта» (D-07, D-08, D-29).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairReceiveDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    /// Дата возврата, unix-секунды UTC.
+    #[specta(type = i32)]
+    pub date_utc: i64,
+    pub received_by_name: String,
+    #[specta(type = i32)]
+    pub place_id: i64,
+    /// D-08: вернуть на рабочее место и сразу завершить заявку.
+    pub return_to_workplace: bool,
+    pub works_done: Option<String>,
+    /// Стоимость строкой («1 500,50»); разбирается на сервере.
+    pub cost: Option<String>,
+}

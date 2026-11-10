@@ -14,7 +14,9 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trackly_core::auth::{authorize, Action, Identity, Role};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::repairs::{
-    format_kopecks, DEVICE_STATUS_CODE_AWAITING_REPAIR, REPAIR_REQUEST_TYPE,
+    format_kopecks, parse_cost_kopecks, RepairVisitNew, DEVICE_STATUS_CODE_AWAITING_REPAIR,
+    DEVICE_STATUS_CODE_IN_REPAIR, DEVICE_STATUS_CODE_IN_STORAGE, DEVICE_STATUS_CODE_IN_USE,
+    REPAIR_REQUEST_TYPE,
 };
 use trackly_core::domain::requests::RequestNew;
 use trackly_core::error::AppError;
@@ -29,11 +31,12 @@ use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 use crate::dto::printer::WsEvent;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMoveChoiceDto, RepairStateDto, RepairTransitionResultDto,
-    RepairVisitDto,
+    RepairLastPlacesDto, RepairMoveChoiceDto, RepairReceiveDto, RepairSendDto, RepairStateDto,
+    RepairTransitionResultDto, RepairVisitDto,
 };
 use crate::dto::request::RequestDto;
 use crate::services::group_place::{move_group_in_tx, GroupMoveDeps};
+use crate::services::number_template_service::issue_repair_act_number_in_tx;
 
 /// Ключи `app_settings` для последних выбранных мест (D-25).
 const SETTING_LAST_MOVE_PLACE: &str = "repair_last_move_place_id";
@@ -41,6 +44,8 @@ const SETTING_LAST_SERVICE_PLACE: &str = "repair_last_service_place_id";
 
 /// Предел длины описания (символов).
 const MAX_DESCRIPTION_CHARS: usize = 4000;
+/// Предел длины имени (символов) в актах захода.
+const MAX_NAME_CHARS: usize = 200;
 
 fn is_staff(caller: &Identity) -> bool {
     matches!(caller.role, Role::Admin | Role::Manager)
@@ -756,6 +761,323 @@ impl RepairService {
         self.broadcast_entities("move_to_storage", place_ids, device_ids, group_ids);
         self.finish_transition(request_id, caller).await
     }
+
+    // -----------------------------------------------------------------------
+    // Заход в сервис: отправка, забор, сканы
+    // -----------------------------------------------------------------------
+
+    /// «Отправить в ремонт» (REP-04, D-04, D-05, D-13): заход со своим номером акта.
+    pub async fn send(
+        &self,
+        dto: RepairSendDto,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let giver = required_text(&dto.giver_name, "giver_name", "Укажите, кто передал.")?;
+        let receiver = required_text(&dto.receiver_name, "receiver_name", "Укажите, кто принял.")?;
+        let fault = required_text(
+            &dto.fault_description,
+            "fault_description",
+            "Опишите неисправность.",
+        )?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        check_date(dto.date_utc, now)?;
+        let (request_id, version, date, service_place) = (
+            dto.request_id,
+            dto.version,
+            dto.date_utc,
+            dto.service_place_id,
+        );
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Отправить в ремонт можно только заявку в работе.".into(),
+                    });
+                }
+                let Some(dev) = row.printer_device_id else {
+                    return Err(AppError::Validation {
+                        field: "device_id".into(),
+                        message: "Сначала укажите устройство.".into(),
+                    });
+                };
+                if repo.open_visit_for_request(&tx, request_id)?.is_some() {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Устройство уже находится в сервисе.".into(),
+                    });
+                }
+                if !place_is_live(&tx, service_place)? {
+                    return Err(AppError::Validation {
+                        field: "service_place_id".into(),
+                        message: "Место сервиса не найдено или в архиве: выберите другое.".into(),
+                    });
+                }
+                let from_place: Option<i64> = tx
+                    .query_row(
+                        "SELECT place_id FROM devices WHERE id = ?1",
+                        params![dev],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                let act_number = issue_repair_act_number_in_tx(&tx, now)?;
+                let visit_id = repo.insert_visit_in_tx(
+                    &tx,
+                    &RepairVisitNew {
+                        request_id,
+                        device_id: dev,
+                        service_place_id: service_place,
+                        from_place_id: from_place,
+                        sent_at_utc: date,
+                        giver_name: giver,
+                        receiver_name: receiver,
+                        fault_description: fault,
+                        act_number: act_number.clone(),
+                        created_by_user_id: user_id,
+                    },
+                    now,
+                )?;
+                let deps = GroupMoveDeps::new();
+                let out = apply_device_state_in_tx(
+                    &tx,
+                    &deps,
+                    &repo,
+                    dev,
+                    Some(DEVICE_STATUS_CODE_IN_REPAIR),
+                    Some(service_place),
+                    request_id,
+                    user_id,
+                    now,
+                )?;
+                remember_first_move(&tx, &repo, request_id, &out, now)?;
+                repo.set_request_status_in_tx(&tx, request_id, version, "in_repair", user_id, now)?;
+                repo.upsert_setting(
+                    &tx,
+                    SETTING_LAST_SERVICE_PLACE,
+                    &service_place.to_string(),
+                    now,
+                )?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:repair_send",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({
+                                "visit_id": visit_id,
+                                "service_place_id": service_place,
+                                "act_number": act_number,
+                            })
+                            .to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok((out.places, out.devices, out.groups))
+            })
+            .await?;
+
+        self.broadcast_entities("send", place_ids, device_ids, group_ids);
+        self.broadcast_number_space_changed();
+        self.finish_transition(request_id, caller).await
+    }
+
+    /// Номер акта выдан в транзакции `send`: открытые формы с превью номера обновляются.
+    fn broadcast_number_space_changed(&self) {
+        if let Some(ws) = &self.ws_tx {
+            let _ = ws.send(WsEvent::NumberSpaceChanged {
+                contexts: vec!["repair_act_create".to_string()],
+            });
+        }
+    }
+
+    /// «Забрать из ремонта» (REP-05, D-07, D-08, D-09, D-29).
+    ///
+    /// С отметкой `return_to_workplace` забор и завершение заявки выполняются одной
+    /// транзакцией writer: сбой на любом шаге ничего не оставляет.
+    pub async fn receive(
+        &self,
+        dto: RepairReceiveDto,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let received_by = required_text(
+            &dto.received_by_name,
+            "received_by_name",
+            "Укажите, кто принял.",
+        )?;
+        let works_done = optional_text(dto.works_done.as_deref(), "works_done")?;
+        let cost = parse_cost_kopecks(dto.cost.as_deref().unwrap_or("")).map_err(|message| {
+            AppError::Validation {
+                field: "cost".into(),
+                message,
+            }
+        })?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        check_date(dto.date_utc, now)?;
+        let (request_id, version, date, place_id, to_workplace) = (
+            dto.request_id,
+            dto.version,
+            dto.date_utc,
+            dto.place_id,
+            dto.return_to_workplace,
+        );
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.status != "in_repair" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Забрать из ремонта можно только заявку «В ремонте».".into(),
+                    });
+                }
+                let Some(visit) = repo.open_visit_for_request(&tx, request_id)? else {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "У заявки нет открытого захода в сервис.".into(),
+                    });
+                };
+                if date < visit.sent_at_utc {
+                    return Err(AppError::Validation {
+                        field: "date_utc".into(),
+                        message: "Дата возврата раньше даты отправки.".into(),
+                    });
+                }
+                repo.close_visit_in_tx(
+                    &tx,
+                    visit.id,
+                    visit.version,
+                    date,
+                    Some(place_id),
+                    Some(&received_by),
+                    works_done.as_deref(),
+                    cost,
+                    now,
+                )?;
+                let status_code = if to_workplace {
+                    status_code_for_place(&tx, place_id)?
+                } else {
+                    DEVICE_STATUS_CODE_AWAITING_REPAIR
+                };
+                let deps = GroupMoveDeps::new();
+                let out = apply_device_state_in_tx(
+                    &tx,
+                    &deps,
+                    &repo,
+                    visit.device_id,
+                    Some(status_code),
+                    Some(place_id),
+                    request_id,
+                    user_id,
+                    now,
+                )?;
+                let new_status = if to_workplace {
+                    "completed"
+                } else {
+                    "in_progress"
+                };
+                repo.set_request_status_in_tx(&tx, request_id, version, new_status, user_id, now)?;
+                if !to_workplace {
+                    repo.upsert_setting(&tx, SETTING_LAST_MOVE_PLACE, &place_id.to_string(), now)?;
+                }
+                let mut entry = AuditEntry {
+                    entity_type: "request",
+                    entity_id: request_id,
+                    action: "custom:repair_receive",
+                    user_id,
+                    before_json: None,
+                    after_json: None,
+                    payload_json: Some(
+                        serde_json::json!({
+                            "visit_id": visit.id,
+                            "returned_to_place_id": place_id,
+                            "return_to_workplace": to_workplace,
+                        })
+                        .to_string(),
+                    ),
+                    created_at_utc: now,
+                };
+                audit_repo.insert(&tx, entry.clone())?;
+                if to_workplace {
+                    entry.action = "custom:repair_complete";
+                    audit_repo.insert(&tx, entry)?;
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                Ok((out.places, out.devices, out.groups))
+            })
+            .await?;
+
+        self.broadcast_entities("receive", place_ids, device_ids, group_ids);
+        self.finish_transition(request_id, caller).await
+    }
+
+    /// D-06: связать вложения заявки с заходом явной записью. Всё или ничего.
+    pub async fn link_scans(
+        &self,
+        visit_id: i64,
+        attachment_ids: Vec<i64>,
+        caller: &Identity,
+    ) -> Result<RepairStateDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let now = self.clock.unix_seconds();
+        let repo = self.repo.clone();
+        let request_id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let Some(visit) = repo.get_visit(&tx, visit_id)? else {
+                    return Err(AppError::NotFound {
+                        entity: "repair_visit",
+                        id: visit_id,
+                    });
+                };
+                for att in &attachment_ids {
+                    let ok: i64 = tx
+                        .query_row(
+                            "SELECT COUNT(*) FROM attachments WHERE id = ?1 \
+                             AND parent_kind = 'request' AND parent_id = ?2 \
+                             AND deleted_at_utc IS NULL",
+                            params![att, visit.request_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    if ok == 0 {
+                        return Err(AppError::Validation {
+                            field: "attachment_ids".into(),
+                            message: "Файл не относится к этой заявке или удалён.".into(),
+                        });
+                    }
+                    repo.link_scan_in_tx(&tx, visit_id, *att, now)?;
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(visit.request_id)
+            })
+            .await?;
+        self.get_state(request_id, caller).await
+    }
 }
 
 /// Одна транзакция «присоединиться или создать». `allow_insert = false` — повтор после
@@ -1037,4 +1359,78 @@ fn apply_device_state_in_tx(
         )?;
     }
     Ok(out)
+}
+
+/// Обязательный текст: обрезка, непустота, предел длины.
+fn required_text(raw: &str, field: &str, empty_msg: &str) -> Result<String, AppError> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err(AppError::Validation {
+            field: field.into(),
+            message: empty_msg.into(),
+        });
+    }
+    let limit = if field == "fault_description" {
+        MAX_DESCRIPTION_CHARS
+    } else {
+        MAX_NAME_CHARS
+    };
+    if t.chars().count() > limit {
+        return Err(AppError::Validation {
+            field: field.into(),
+            message: format!("Текст длиннее {limit} символов."),
+        });
+    }
+    Ok(t.to_string())
+}
+
+/// Необязательный текст (D-29): пусто даёт `None`.
+fn optional_text(raw: Option<&str>, field: &str) -> Result<Option<String>, AppError> {
+    let t = raw.map(str::trim).unwrap_or("");
+    if t.is_empty() {
+        return Ok(None);
+    }
+    if t.chars().count() > MAX_DESCRIPTION_CHARS {
+        return Err(AppError::Validation {
+            field: field.into(),
+            message: format!("Текст длиннее {MAX_DESCRIPTION_CHARS} символов."),
+        });
+    }
+    Ok(Some(t.to_string()))
+}
+
+/// Дата захода: положительная и не позже «сейчас плюс сутки».
+fn check_date(date_utc: i64, now: i64) -> Result<(), AppError> {
+    if date_utc <= 0 || date_utc > now + 86_400 {
+        return Err(AppError::Validation {
+            field: "date_utc".into(),
+            message: "Укажите корректную дату, не позже сегодняшней.".into(),
+        });
+    }
+    Ok(())
+}
+
+/// D-09: статус устройства при возврате по месту считается на сервере. Складское
+/// место (оно само или любой предок с `is_storage`) даёт «На складе», остальное
+/// «В работе».
+fn status_code_for_place(conn: &Connection, place_id: i64) -> Result<&'static str, AppError> {
+    let n: i64 = conn
+        .query_row(
+            "WITH RECURSIVE anc(id) AS ( \
+                 SELECT id FROM places WHERE id = ?1 \
+                 UNION ALL \
+                 SELECT p.parent_id FROM places p JOIN anc a ON p.id = a.id \
+                 WHERE p.parent_id IS NOT NULL \
+             ) \
+             SELECT COUNT(*) FROM places p2 JOIN anc ON p2.id = anc.id \
+             WHERE p2.is_storage = 1 AND p2.deleted_at_utc IS NULL",
+            params![place_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)?;
+    Ok(if n > 0 {
+        DEVICE_STATUS_CODE_IN_STORAGE
+    } else {
+        DEVICE_STATUS_CODE_IN_USE
+    })
 }
