@@ -23,7 +23,10 @@ use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
 use trackly_app::dto::device::DeviceNew;
 use trackly_app::dto::number_template::{NumberFieldInput, TemplateContextDto, TemplateTypeDto};
 use trackly_app::dto::printer::WsEvent;
-use trackly_app::services::{ActService, CartridgeService, DeviceService, NumberTemplateService};
+use trackly_app::dto::repair::{RepairCreateDto, RepairMoveChoiceDto, RepairSendDto};
+use trackly_app::services::{
+    ActService, CartridgeService, DeviceService, NumberTemplateService, RepairService,
+};
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -34,6 +37,7 @@ struct Fixture {
     devices: DeviceService,
     cartridges: CartridgeService,
     acts: ActService,
+    repairs: RepairService,
     rx: broadcast::Receiver<WsEvent>,
     _dir: tempfile::TempDir,
 }
@@ -49,6 +53,8 @@ fn fixture() -> Fixture {
         devices: DeviceService::new(writer.clone(), readers.clone(), clock.clone())
             .with_ws_tx(tx.clone()),
         cartridges: CartridgeService::new(writer.clone(), readers.clone(), clock.clone())
+            .with_ws_tx(tx.clone()),
+        repairs: RepairService::new(writer.clone(), readers.clone(), clock.clone())
             .with_ws_tx(tx.clone()),
         acts: ActService::new(writer, readers, clock).with_ws_tx(tx),
         rx,
@@ -287,6 +293,89 @@ async fn every_number_space_mutation_broadcasts() {
             .await
             .expect("act delete");
         assert_broadcast(&mut f.rx, "act_create", "act delete_soft");
+
+        // --- repair send (Phase 41.4, план 12): номер акта ремонта выдаётся в
+        // транзакции send, открытые формы с превью номера обязаны обновиться.
+        let rdev = match f
+            .devices
+            .create(device_new(None))
+            .await
+            .expect("device for repair")
+        {
+            trackly_app::dto::device::DeviceSaveOutcome::Created(d) => *d,
+            other => panic!("unexpected {other:?}"),
+        };
+        let user_id = f
+            .repairs
+            .writer
+            .execute(|conn| {
+                conn.execute(
+                    "INSERT INTO users (login, full_name, role, created_at_utc, updated_at_utc) \
+                     VALUES ('rep_admin', 'Сидоров С.С.', 'admin', 1700000000, 1700000000)",
+                    [],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("repair user");
+        let caller = Identity {
+            user_id: Some(user_id),
+            role: trackly_core::auth::Role::Admin,
+        };
+        let created = f
+            .repairs
+            .create(
+                RepairCreateDto {
+                    device_id: Some(rdev.id),
+                    description: "Не включается".into(),
+                },
+                &caller,
+            )
+            .await
+            .expect("repair create");
+        let accepted = f
+            .repairs
+            .accept(
+                created.request.id,
+                created.request.version,
+                RepairMoveChoiceDto::Stay,
+                &caller,
+            )
+            .await
+            .expect("repair accept");
+        let service_place = f
+            .repairs
+            .writer
+            .execute(|conn| {
+                conn.execute(
+                    "INSERT INTO places (kind, name, parent_id, is_storage, created_at_utc, \
+                     updated_at_utc, version) VALUES ('room', 'Сервис Альфа', NULL, 0, \
+                     1700000000, 1700000000, 1)",
+                    [],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("service place");
+        drain(&mut f.rx);
+        f.repairs
+            .send(
+                RepairSendDto {
+                    request_id: created.request.id,
+                    version: accepted.request.version,
+                    date_utc: 1_700_000_000,
+                    giver_name: "Иванов И.И.".into(),
+                    receiver_name: "Петров П.П.".into(),
+                    service_place_id: service_place,
+                    fault_description: "Не включается".into(),
+                },
+                &caller,
+            )
+            .await
+            .expect("repair send");
+        assert_broadcast(&mut f.rx, "repair_act_create", "RepairService::send");
     })
     .await
     .expect("budget");
