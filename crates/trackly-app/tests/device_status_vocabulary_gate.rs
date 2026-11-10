@@ -82,6 +82,22 @@ const DEVICE_SVC: &str = "crates/trackly-app/src/services/device_service.rs";
 
 const EXEMPT: &[Exempt] = &[
     Exempt {
+        file: DEVICE_SVC,
+        rule: "R2",
+        matched: "match domain_patch.status_id",
+        context: "let effective_status_code: Option<String> = match domain_patch.status_id {",
+        count: 1,
+        reason: "разбор Option патча (Some(id) -> код запросом к device_statuses), не сопоставление по числу статуса",
+    },
+    Exempt {
+        file: REPORT,
+        rule: "R1",
+        matched: "В ремонте",
+        context: "\"in_repair\" =>",
+        count: 1,
+        reason: "translate_request_status: подпись статуса ЗАЯВКИ, не устройства",
+    },
+    Exempt {
         file: REPORT,
         rule: "R1",
         matched: "В работе",

@@ -164,6 +164,28 @@ pub struct ReportRow {
     /// Имя группы (снимок `place_movements.entity_label`) — одинаково в каждой
     /// строке пакета.
     pub batch_label: Option<String>,
+    /// D-30: отчёт «Ремонты» — устройство с инв. номером одной строкой.
+    pub repair_device_label: Option<String>,
+    /// D-30: неисправность, записанная при уходе в сервис.
+    pub repair_fault: Option<String>,
+    /// D-30: сервис (место-сервис захода).
+    pub repair_service_place: Option<String>,
+    /// D-30: дата ухода (Unix seconds UTC, `sent_at_utc`).
+    #[specta(type = Option<i32>)]
+    pub repair_sent_at: Option<i64>,
+    /// D-30: дата возврата; `None` — устройство ещё в сервисе.
+    #[specta(type = Option<i32>)]
+    pub repair_returned_at: Option<i64>,
+    /// D-30: выполненные работы.
+    pub repair_works: Option<String>,
+    /// D-30/D-31: стоимость в копейках; `None` — не указана (в итог не входит).
+    #[specta(type = Option<i32>)]
+    pub repair_cost_kopecks: Option<i64>,
+    /// D-30: есть ли у захода скан акта (живое вложение).
+    pub repair_has_scan: Option<bool>,
+    /// D-30: заявка, к которой относится заход.
+    #[specta(type = Option<i32>)]
+    pub repair_request_id: Option<i64>,
 }
 
 /// Paged response wrapper for report queries.

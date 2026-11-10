@@ -70,6 +70,15 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
             batch_role: None,
             batch_size: None,
             batch_label: None,
+            repair_device_label: None,
+            repair_fault: None,
+            repair_service_place: None,
+            repair_sent_at: None,
+            repair_returned_at: None,
+            repair_works: None,
+            repair_cost_kopecks: None,
+            repair_has_scan: None,
+            repair_request_id: None,
         }],
     };
     let columns = &[
@@ -164,6 +173,15 @@ async fn csv_export_guards_formula_injection() {
             batch_role: None,
             batch_size: None,
             batch_label: None,
+            repair_device_label: None,
+            repair_fault: None,
+            repair_service_place: None,
+            repair_sent_at: None,
+            repair_returned_at: None,
+            repair_works: None,
+            repair_cost_kopecks: None,
+            repair_has_scan: None,
+            repair_request_id: None,
         }],
     };
     let columns = &["device_name", "model_label"];

@@ -280,6 +280,7 @@ fn translate_request_type(raw: &str) -> String {
         "cartridge_replace" => "Замена картриджа".to_string(),
         "free_form" => "Произвольная".to_string(),
         "ad_register" => "Учётная запись AD".to_string(),
+        "repair" => "Ремонт".to_string(),
         other => other.to_string(),
     }
 }
@@ -295,6 +296,7 @@ fn translate_request_status(raw: &str) -> String {
         "completed" => "Выполнена".to_string(),
         "rejected" => "Отклонена".to_string(),
         "cancelled" => "Отменена".to_string(),
+        "in_repair" => "В ремонте".to_string(),
         other => other.to_string(),
     }
 }
@@ -754,6 +756,27 @@ impl ReportService {
         })?
     }
 
+    /// D-30/D-31: отчёт «Ремонты» — одна строка на заход в сервис, период по
+    /// дате ухода `sent_at_utc`. Источник — только `repair_visits`: отменённый
+    /// ремонт (D-12) заходов не имеет и в отчёт не попадает по построению.
+    pub async fn list_repairs(
+        &self,
+        filter: ReportFilter,
+        period: PeriodDto,
+    ) -> Result<ReportResponse, AppError> {
+        let tz = self.get_tz_offset();
+        let (ts_from, ts_to) = compute_period_utc(&period, tz);
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            query_repairs_inner(&conn, &filter, ts_from, ts_to)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_repairs: {e}"),
+        })?
+    }
+
     // -----------------------------------------------------------------------
     // Per-tab count query (G2-5b)
     // -----------------------------------------------------------------------
@@ -886,6 +909,14 @@ impl ReportService {
                             filter.place_id,
                         )
                         .unwrap_or(0),
+                    },
+                    // D-30: тот же запрос, что и `list_repairs` (формула
+                    // бейджа не расходится со списком), счёт — по `total`.
+                    ReportCountEntry {
+                        key: "repairs".into(),
+                        count: query_repairs_inner(&conn, &filter, ts_from, ts_to)
+                            .map(|resp| resp.total)
+                            .unwrap_or(0),
                     },
                 ]
             } else if domain == "movements" {
@@ -1221,8 +1252,206 @@ fn row_field(row: &ReportRow, col: &str, tz: UtcOffset, shorten: bool) -> String
         "actor_name" => row.actor_name.as_deref().unwrap_or("").to_string(),
         "reason" => row.reason.as_deref().unwrap_or("").to_string(),
         "entity_type_label" => row.entity_type_label.as_deref().unwrap_or("").to_string(),
+        // D-30: отчёт «Ремонты».
+        "repair_device_label" => row.repair_device_label.as_deref().unwrap_or("").to_string(),
+        "repair_fault" => row.repair_fault.as_deref().unwrap_or("").to_string(),
+        "repair_service_place" => row
+            .repair_service_place
+            .as_deref()
+            .unwrap_or("")
+            .to_string(),
+        "repair_sent_at" => row
+            .repair_sent_at
+            .map(|ts| format_repair_date(ts, tz))
+            .unwrap_or_default(),
+        // Заход без возврата: устройство ещё в сервисе.
+        "repair_returned_at" => match row.repair_returned_at {
+            Some(ts) => format_repair_date(ts, tz),
+            None => "в сервисе".to_string(),
+        },
+        "repair_works" => row.repair_works.as_deref().unwrap_or("").to_string(),
+        // Экран/печать: «1 500,50» (format_kopecks); CSV (shorten == false):
+        // число с запятой без пробела тысяч, «1500,50».
+        "repair_cost_kopecks" => match row.repair_cost_kopecks {
+            None => String::new(),
+            Some(k) if shorten => trackly_core::domain::repairs::format_kopecks(k),
+            Some(k) => csv_kopecks(k),
+        },
+        "repair_has_scan" => match row.repair_has_scan {
+            Some(true) => "есть".to_string(),
+            Some(false) => "нет".to_string(),
+            None => String::new(),
+        },
+        "repair_request_id" => row
+            .repair_request_id
+            .map(|id| format!("№{id}"))
+            .unwrap_or_default(),
         _ => String::new(),
     }
+}
+
+/// «27.08.2026» — дата захода в таймзоне организации (D-30).
+fn format_repair_date(unix_seconds: i64, tz: UtcOffset) -> String {
+    match time::OffsetDateTime::from_unix_timestamp(unix_seconds) {
+        Ok(odt) => {
+            let local = odt.to_offset(tz);
+            format!(
+                "{:02}.{:02}.{:04}",
+                local.day(),
+                local.month() as u8,
+                local.year()
+            )
+        }
+        Err(_) => String::new(),
+    }
+}
+
+/// Стоимость для CSV: `150050` -> `1500,50`, `150000` -> `1500` (без пробела тысяч).
+fn csv_kopecks(kopecks: i64) -> String {
+    let sign = if kopecks < 0 { "-" } else { "" };
+    let abs = kopecks.unsigned_abs();
+    let (whole, frac) = (abs / 100, abs % 100);
+    if frac == 0 {
+        format!("{sign}{whole}")
+    } else {
+        format!("{sign}{whole},{frac:02}")
+    }
+}
+
+/// Итог отчёта «Ремонты» (D-31): «Итого заходов: N · сумма ₽». Заход без
+/// стоимости в сумму не входит. Единственный источник строки (печать).
+pub fn repairs_total_label(rows: &[ReportRow], total: i64) -> String {
+    let sum: i64 = rows.iter().filter_map(|r| r.repair_cost_kopecks).sum();
+    format!(
+        "Итого заходов: {total} · {} ₽",
+        if sum == 0 {
+            "0".to_string()
+        } else {
+            trackly_core::domain::repairs::format_kopecks(sum)
+        }
+    )
+}
+
+/// D-30/D-31: заходы в сервис за период (по `sent_at_utc`).
+fn query_repairs_inner(
+    conn: &rusqlite::Connection,
+    filter: &ReportFilter,
+    ts_from: Option<i64>,
+    ts_to: Option<i64>,
+) -> Result<ReportResponse, AppError> {
+    let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
+    if let Some(from) = ts_from {
+        clauses.push(format!("v.sent_at_utc >= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(from));
+    }
+    if let Some(to) = ts_to {
+        clauses.push(format!("v.sent_at_utc <= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(to));
+    }
+    // Место — сервис захода, с поддеревом (как у остальных отчётов).
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        with_prefix = format!(
+            "WITH RECURSIVE subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        );
+        clauses.push("v.service_place_id IN (SELECT id FROM subtree)".to_string());
+    }
+    let where_clause = clauses.join(" AND ");
+    let from_sql = format!(
+        "FROM repair_visits v \
+         JOIN requests r ON r.id = v.request_id \
+         JOIN devices d ON d.id = v.device_id \
+         LEFT JOIN place_full_paths spf ON spf.place_id = v.service_place_id \
+         WHERE {where_clause}"
+    );
+    let sql = format!(
+        "{with_prefix}SELECT v.id, \
+               strftime('%Y-%m', datetime(v.sent_at_utc, 'unixepoch', '+3 hours')) AS month_key, \
+               d.name, d.inventory_number, v.fault_description, spf.full_path, \
+               v.sent_at_utc, v.returned_at_utc, v.works_done, v.cost_kopecks, \
+               EXISTS (SELECT 1 FROM repair_visit_scans s \
+                       JOIN attachments a ON a.id = s.attachment_id AND a.deleted_at_utc IS NULL \
+                       WHERE s.visit_id = v.id) AS has_scan, \
+               v.request_id \
+         {from_sql} \
+         ORDER BY v.sent_at_utc DESC, v.id DESC \
+         LIMIT {MOVEMENTS_REPORT_LIMIT}"
+    );
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+    let row_iter = stmt
+        .query_map(param_refs.as_slice(), |r| {
+            let id: i64 = r.get(0)?;
+            let name: Option<String> = r.get(2)?;
+            let inv: Option<String> = r.get(3)?;
+            let label = match (name, inv) {
+                (Some(n), Some(i)) if !i.is_empty() => format!("{n} ({i})"),
+                (Some(n), _) => n,
+                (None, Some(i)) => i,
+                (None, None) => String::new(),
+            };
+            let request_id: i64 = r.get(11)?;
+            Ok(ReportRow {
+                id,
+                month_key: r.get(1)?,
+                number: None,
+                sub_number: None,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
+                place_path: None,
+                place_path_short: None,
+                act_type: None,
+                device_name: None,
+                quantity: None,
+                code: None,
+                model_label: None,
+                status_name: None,
+                request_type_label: None,
+                from_place_path: None,
+                from_place_path_short: None,
+                actor_name: None,
+                reason: None,
+                entity_type_label: None,
+                is_deleted: None,
+                batch_id: None,
+                batch_role: None,
+                batch_size: None,
+                batch_label: None,
+                repair_device_label: Some(label),
+                repair_fault: r.get(4)?,
+                repair_service_place: r.get(5)?,
+                repair_sent_at: r.get(6)?,
+                repair_returned_at: r.get(7)?,
+                repair_works: r.get(8)?,
+                repair_cost_kopecks: r.get(9)?,
+                repair_has_scan: Some(r.get::<_, i64>(10)? != 0),
+                repair_request_id: Some(request_id),
+            })
+        })
+        .map_err(map_rusqlite)?;
+    let mut rows = Vec::new();
+    for row in row_iter {
+        rows.push(row.map_err(map_rusqlite)?);
+    }
+    // Потолок достигнут — истинное число заходов отдельным COUNT (как у
+    // «Перемещений»), чтобы truncationNotice не лгал.
+    let total = if rows.len() as i64 >= MOVEMENTS_REPORT_LIMIT {
+        let count_sql = format!("{with_prefix}SELECT COUNT(*) {from_sql}");
+        conn.query_row(&count_sql, param_refs.as_slice(), |r| r.get(0))
+            .map_err(map_rusqlite)?
+    } else {
+        rows.len() as i64
+    };
+    Ok(ReportResponse { rows, total })
 }
 
 /// «27.08.26, 14:35» — читаемая дата+время колонки `handover_date_utc` в
@@ -1419,6 +1648,15 @@ fn query_acts_inner(
                 batch_role: None,
                 batch_size: None,
                 batch_label: None,
+                repair_device_label: None,
+                repair_fault: None,
+                repair_service_place: None,
+                repair_sent_at: None,
+                repair_returned_at: None,
+                repair_works: None,
+                repair_cost_kopecks: None,
+                repair_has_scan: None,
+                repair_request_id: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1728,6 +1966,15 @@ fn query_movements_inner(
             batch_role,
             batch_size,
             batch_label,
+            repair_device_label: None,
+            repair_fault: None,
+            repair_service_place: None,
+            repair_sent_at: None,
+            repair_returned_at: None,
+            repair_works: None,
+            repair_cost_kopecks: None,
+            repair_has_scan: None,
+            repair_request_id: None,
         });
     }
     // W-B03: ceiling reached -> the true count with the same conditions.
@@ -1866,6 +2113,15 @@ fn query_device_snapshot(
                 batch_role: None,
                 batch_size: None,
                 batch_label: None,
+                repair_device_label: None,
+                repair_fault: None,
+                repair_service_place: None,
+                repair_sent_at: None,
+                repair_returned_at: None,
+                repair_works: None,
+                repair_cost_kopecks: None,
+                repair_has_scan: None,
+                repair_request_id: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -2029,6 +2285,15 @@ fn query_cartridge_audit(
                 batch_role: None,
                 batch_size: None,
                 batch_label: None,
+                repair_device_label: None,
+                repair_fault: None,
+                repair_service_place: None,
+                repair_sent_at: None,
+                repair_returned_at: None,
+                repair_works: None,
+                repair_cost_kopecks: None,
+                repair_has_scan: None,
+                repair_request_id: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -2172,6 +2437,15 @@ fn query_cartridge_snapshot(
                 batch_role: None,
                 batch_size: None,
                 batch_label: None,
+                repair_device_label: None,
+                repair_fault: None,
+                repair_service_place: None,
+                repair_sent_at: None,
+                repair_returned_at: None,
+                repair_works: None,
+                repair_cost_kopecks: None,
+                repair_has_scan: None,
+                repair_request_id: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -2328,6 +2602,15 @@ fn query_requests_inner(
                 batch_role: None,
                 batch_size: None,
                 batch_label: None,
+                repair_device_label: None,
+                repair_fault: None,
+                repair_service_place: None,
+                repair_sent_at: None,
+                repair_returned_at: None,
+                repair_works: None,
+                repair_cost_kopecks: None,
+                repair_has_scan: None,
+                repair_request_id: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -2847,6 +3130,7 @@ mod tests {
         );
         assert_eq!(translate_request_type("free_form"), "Произвольная");
         assert_eq!(translate_request_type("ad_register"), "Учётная запись AD");
+        assert_eq!(translate_request_type("repair"), "Ремонт");
     }
 
     #[test]
@@ -2861,6 +3145,14 @@ mod tests {
         assert_eq!(translate_request_status("completed"), "Выполнена");
         assert_eq!(translate_request_status("rejected"), "Отклонена");
         assert_eq!(translate_request_status("cancelled"), "Отменена");
+        assert_eq!(translate_request_status("in_repair"), "В ремонте");
+    }
+
+    #[test]
+    fn csv_kopecks_has_comma_and_no_thousands_space() {
+        assert_eq!(csv_kopecks(150050), "1500,50");
+        assert_eq!(csv_kopecks(150000), "1500");
+        assert_eq!(csv_kopecks(123456789), "1234567,89");
     }
 
     #[test]
@@ -3291,6 +3583,15 @@ mod tests {
             batch_role: None,
             batch_size: None,
             batch_label: None,
+            repair_device_label: None,
+            repair_fault: None,
+            repair_service_place: None,
+            repair_sent_at: None,
+            repair_returned_at: None,
+            repair_works: None,
+            repair_cost_kopecks: None,
+            repair_has_scan: None,
+            repair_request_id: None,
         }
     }
 
