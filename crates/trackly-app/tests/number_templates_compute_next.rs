@@ -434,3 +434,127 @@ async fn context_memory_and_peek_reject_template_of_another_type() {
         .await
         .expect("same-type context is fine");
 }
+
+// ---------------------------------------------------------------------------
+// D-28: номер акта передачи в ремонт (Plan 41.4-03)
+// ---------------------------------------------------------------------------
+
+/// Вставка занятого номера акта ремонта прямым SQL (внешние ключи на время
+/// вставки отключаются: тест проверяет только пространство номеров).
+async fn seed_repair_visit_number(writer: &Arc<WriterHandle>, request_id: i64, act_number: &str) {
+    let act_number = act_number.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute_batch("PRAGMA foreign_keys = OFF;")
+                .map_err(map_rusqlite)?;
+            conn.execute(
+                "INSERT INTO repair_visits \
+                 (request_id, device_id, seq, service_place_id, sent_at_utc, \
+                  giver_name, receiver_name, fault_description, act_number, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, 1, 1, 1, 1700000000, 'Иванов И.И.', 'Петров П.П.', \
+                         'Не включается', ?2, 1700000000, 1700000000, 1)",
+                params![request_id, act_number],
+            )
+            .map_err(map_rusqlite)?;
+            conn.execute_batch("PRAGMA foreign_keys = ON;")
+                .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("seed_repair_visit_number");
+}
+
+async fn issue(writer: &Arc<WriterHandle>) -> Result<String, trackly_core::error::AppError> {
+    writer
+        .execute(|conn| trackly_app::services::issue_repair_act_number_in_tx(conn, 1_700_000_000))
+        .await
+}
+
+#[tokio::test]
+async fn repair_act_number_starts_at_one_then_skips_taken() {
+    let (writer, readers, _dir) = test_writer_and_readers();
+    let _svc = NumberTemplateService::new(writer.clone(), readers, Arc::new(SystemClock));
+
+    assert_eq!(issue(&writer).await.expect("first"), "РЕМ-000001");
+    seed_repair_visit_number(&writer, 1, "РЕМ-000001").await;
+    assert_eq!(issue(&writer).await.expect("second"), "РЕМ-000002");
+}
+
+#[tokio::test]
+async fn repair_act_number_not_issued_when_taken_up_to_case_and_spaces() {
+    let (writer, _readers, _dir) = test_writer_and_readers();
+    seed_repair_visit_number(&writer, 1, " рем-000001 ").await;
+    let res = issue(&writer).await;
+    assert!(
+        !matches!(res.as_deref(), Ok("РЕМ-000001")),
+        "занятый (с точностью до регистра/пробелов) номер выдан: {res:?}"
+    );
+}
+
+#[tokio::test]
+async fn repair_act_number_space_is_separate_from_handover_acts() {
+    let (writer, _readers, _dir) = test_writer_and_readers();
+    // Акт приёма-передачи с «похожим» номером не занимает счётчик ремонта.
+    writer
+        .execute(|conn| {
+            conn.execute(
+                "INSERT INTO acts (number, act_type, giver_name, receiver_name, \
+                                   created_at_utc, updated_at_utc, version) \
+                 VALUES ('РЕМ-000001', 'handover', 'Иванов И.И.', 'Петров П.П.', \
+                         1700000000, 1700000000, 1)",
+                [],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .ok();
+    assert_eq!(issue(&writer).await.expect("issue"), "РЕМ-000001");
+}
+
+#[tokio::test]
+async fn repair_act_number_without_template_is_conflict() {
+    let (writer, _readers, _dir) = test_writer_and_readers();
+    writer
+        .execute(|conn| {
+            conn.execute(
+                "UPDATE number_template_contexts SET template_id = NULL \
+                 WHERE context = 'repair_act_create'",
+                [],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("clear ctx");
+    let err = issue(&writer).await.expect_err("must fail");
+    assert!(
+        matches!(err, trackly_core::error::AppError::Conflict { .. }),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn repair_act_number_mask_overflow_is_conflict() {
+    let (writer, _readers, _dir) = test_writer_and_readers();
+    writer
+        .execute(|conn| {
+            conn.execute(
+                "UPDATE number_templates SET mask = 'РЕМ-[XX]' WHERE type = 'repair_act'",
+                [],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("mask");
+    for n in 1..=99 {
+        seed_repair_visit_number(&writer, n, &format!("РЕМ-{n:02}")).await;
+    }
+    let err = issue(&writer).await.expect_err("overflow");
+    assert!(
+        matches!(err, trackly_core::error::AppError::Conflict { .. }),
+        "{err:?}"
+    );
+}

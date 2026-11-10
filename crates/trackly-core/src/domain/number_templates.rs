@@ -30,6 +30,8 @@ pub enum TemplateType {
     CartridgeCode,
     /// Коды фотобарабанов.
     DrumCode,
+    /// Номера актов передачи в ремонт.
+    RepairAct,
 }
 
 impl TemplateType {
@@ -41,6 +43,7 @@ impl TemplateType {
             Self::ActNumber => "act_number",
             Self::CartridgeCode => "cartridge_code",
             Self::DrumCode => "drum_code",
+            Self::RepairAct => "repair_act",
         }
     }
 
@@ -53,6 +56,7 @@ impl TemplateType {
             "act_number" => Ok(Self::ActNumber),
             "cartridge_code" => Ok(Self::CartridgeCode),
             "drum_code" => Ok(Self::DrumCode),
+            "repair_act" => Ok(Self::RepairAct),
             other => Err(AppError::Validation {
                 field: "template_type".to_string(),
                 message: format!("unknown template type: {other}"),
@@ -69,6 +73,7 @@ impl TemplateType {
             Self::ActNumber => "Акты",
             Self::CartridgeCode => "Картриджи",
             Self::DrumCode => "Фотобарабаны",
+            Self::RepairAct => "Акты ремонта",
         }
     }
 }
@@ -94,6 +99,8 @@ pub enum TemplateContext {
     CartridgeCreate,
     /// Форма создания фотобарабана.
     DrumCreate,
+    /// Форма создания акта передачи в ремонт.
+    RepairActCreate,
 }
 
 impl TemplateContext {
@@ -106,6 +113,7 @@ impl TemplateContext {
             Self::ActCreate => "act_create",
             Self::CartridgeCreate => "cartridge_create",
             Self::DrumCreate => "drum_create",
+            Self::RepairActCreate => "repair_act_create",
         }
     }
 
@@ -119,6 +127,7 @@ impl TemplateContext {
             "act_create" => Ok(Self::ActCreate),
             "cartridge_create" => Ok(Self::CartridgeCreate),
             "drum_create" => Ok(Self::DrumCreate),
+            "repair_act_create" => Ok(Self::RepairActCreate),
             other => Err(AppError::Validation {
                 field: "template_context".to_string(),
                 message: format!("unknown template context: {other}"),
@@ -136,6 +145,7 @@ impl TemplateContext {
             Self::ActCreate => TemplateType::ActNumber,
             Self::CartridgeCreate => TemplateType::CartridgeCode,
             Self::DrumCreate => TemplateType::DrumCode,
+            Self::RepairActCreate => TemplateType::RepairAct,
         }
     }
 }
@@ -198,6 +208,7 @@ mod tests {
             TemplateType::ActNumber,
             TemplateType::CartridgeCode,
             TemplateType::DrumCode,
+            TemplateType::RepairAct,
         ] {
             let s = t.as_str();
             assert_eq!(TemplateType::from_str(s).expect("round-trip"), t);
@@ -222,6 +233,7 @@ mod tests {
         assert_eq!(TemplateType::ActNumber.display_name_ru(), "Акты");
         assert_eq!(TemplateType::CartridgeCode.display_name_ru(), "Картриджи");
         assert_eq!(TemplateType::DrumCode.display_name_ru(), "Фотобарабаны");
+        assert_eq!(TemplateType::RepairAct.display_name_ru(), "Акты ремонта");
     }
 
     #[test]
@@ -232,6 +244,7 @@ mod tests {
             TemplateContext::ActCreate,
             TemplateContext::CartridgeCreate,
             TemplateContext::DrumCreate,
+            TemplateContext::RepairActCreate,
         ] {
             let s = c.as_str();
             assert_eq!(TemplateContext::from_str(s).expect("round-trip"), c);
@@ -268,6 +281,10 @@ mod tests {
         assert_eq!(
             TemplateContext::DrumCreate.template_type(),
             TemplateType::DrumCode
+        );
+        assert_eq!(
+            TemplateContext::RepairActCreate.template_type(),
+            TemplateType::RepairAct
         );
     }
 

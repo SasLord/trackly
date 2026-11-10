@@ -104,6 +104,7 @@ impl NumberTemplateService {
             TemplateContext::ActCreate,
             TemplateContext::CartridgeCreate,
             TemplateContext::DrumCreate,
+            TemplateContext::RepairActCreate,
         ]
         .into_iter()
         .filter(|c| &c.template_type() == t)
@@ -912,8 +913,76 @@ pub(crate) fn fetch_candidate_rows(
                 out.push(row.map_err(map_rusqlite)?);
             }
         }
+        TemplateType::RepairAct => {
+            // D-28: отдельное пространство — только `repair_visits.act_number`,
+            // с номерами актов приёма-передачи не пересекается.
+            let mut stmt = conn
+                .prepare(
+                    "SELECT v.id, v.act_number, d.name, v.fault_description \
+                       FROM repair_visits v \
+                       LEFT JOIN devices d ON d.id = v.device_id",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let id: i64 = r.get(0)?;
+                    let raw_value: String = r.get(1)?;
+                    let device_name: Option<String> = r.get(2)?;
+                    let fault: String = r.get(3)?;
+                    let shown_number = raw_value.trim().to_string();
+                    Ok(CandidateRow {
+                        id,
+                        family: id,
+                        raw_value,
+                        record: OccupyingRecordDto {
+                            kind: "repair_act".to_string(),
+                            number: shown_number,
+                            title: "Акт передачи в ремонт".to_string(),
+                            subtitle: Some(match device_name {
+                                Some(n) => format!("{n} · {fault}"),
+                                None => fault,
+                            }),
+                            place: None,
+                            status: None,
+                        },
+                    })
+                })
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                out.push(row.map_err(map_rusqlite)?);
+            }
+        }
     }
     Ok(out)
+}
+
+/// D-28: выдать номер акта передачи в ремонт. Вызывается ВНУТРИ транзакции
+/// writer (единственный писатель): первый свободный номер по шаблону
+/// контекста `repair_act_create`, затем финальная проверка занятости
+/// (регистр и пробелы). Контекст не запоминается — это автономер.
+pub fn issue_repair_act_number_in_tx(conn: &Connection, now: i64) -> Result<String, AppError> {
+    let repo = SqliteNumberTemplateRepository;
+    let template_id = repo
+        .get_context_template_id(conn, TemplateContext::RepairActCreate)?
+        .ok_or_else(|| AppError::Conflict {
+            reason: "Для актов ремонта не настроен шаблон номеров. \
+                     Задайте его в настройках организации."
+                .to_string(),
+        })?;
+    let row = repo.get(conn, template_id)?;
+    let parsed = mask::parse_and_expand(&row.mask, now)?;
+    let next = repo.compute_next_for_template(conn, &row, now)?;
+    if next.overflowed {
+        return Err(AppError::Conflict {
+            reason: "Шаблон номеров актов ремонта исчерпан: свободных номеров по маске нет."
+                .to_string(),
+        });
+    }
+    let number = mask::render_number(&parsed, next.first_free);
+    ensure_number_free_in_tx(conn, TemplateType::RepairAct, &number, None, || {
+        format!("Номер акта ремонта «{number}» уже занят.")
+    })?;
+    Ok(number)
 }
 
 /// `is_occupied`'s worker: `.trim()`ed, case-insensitive exact match against

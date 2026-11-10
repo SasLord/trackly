@@ -47,7 +47,7 @@ pub use dashboard_service::DashboardService;
 pub use device_service::DeviceService;
 pub use group_service::GroupService;
 pub use group_type_service::GroupTypeService;
-pub use number_template_service::NumberTemplateService;
+pub use number_template_service::{issue_repair_act_number_in_tx, NumberTemplateService};
 pub use org_db_service::OrgDbService;
 pub use organization_service::{OrgData, OrganizationService};
 pub use place_movement_service::PlaceMovementService;

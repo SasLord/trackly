@@ -17,7 +17,7 @@
 //! the gate is derived from a `context: TemplateContextDto` parameter via
 //! [`action_for_context`] — `DeviceCreate|PrinterCreate` → `MutateDevices`,
 //! `ActCreate` → `MutateActs`, `CartridgeCreate|DrumCreate` →
-//! `MutateCartridges`. This is the SAME `Action` the popup itself is already
+//! `MutateCartridges`, `RepairActCreate` → `TransitionRequests`. This is the SAME `Action` the popup itself is already
 //! gated on (Admin|Manager) — conflating this with `ManageSettings` would
 //! either lock a Manager out of autofill in their own popup, or hand them a
 //! backdoor into template CRUD.
@@ -47,6 +47,8 @@ pub fn action_for_context(context: TemplateContext) -> Action {
         TemplateContext::DeviceCreate | TemplateContext::PrinterCreate => Action::MutateDevices,
         TemplateContext::ActCreate => Action::MutateActs,
         TemplateContext::CartridgeCreate | TemplateContext::DrumCreate => Action::MutateCartridges,
+        // D-28: документ заявки на ремонт, не журнал «Акты».
+        TemplateContext::RepairActCreate => Action::TransitionRequests,
     }
 }
 

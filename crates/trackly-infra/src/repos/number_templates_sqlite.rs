@@ -166,6 +166,9 @@ impl NumberTemplateRepository for SqliteNumberTemplateRepository {
             TemplateType::CartridgeCode | TemplateType::DrumCode => {
                 "SELECT code FROM cartridges WHERE deleted_at_utc IS NULL"
             }
+            TemplateType::RepairAct => {
+                "SELECT act_number FROM repair_visits WHERE act_number IS NOT NULL"
+            }
         };
 
         // All three columns are TEXT since V042 (`acts.number` was INTEGER

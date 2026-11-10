@@ -55,6 +55,7 @@ pub enum TemplateTypeDto {
     ActNumber,
     CartridgeCode,
     DrumCode,
+    RepairAct,
 }
 
 impl From<TemplateType> for TemplateTypeDto {
@@ -64,6 +65,7 @@ impl From<TemplateType> for TemplateTypeDto {
             TemplateType::ActNumber => Self::ActNumber,
             TemplateType::CartridgeCode => Self::CartridgeCode,
             TemplateType::DrumCode => Self::DrumCode,
+            TemplateType::RepairAct => Self::RepairAct,
         }
     }
 }
@@ -75,6 +77,7 @@ impl From<TemplateTypeDto> for TemplateType {
             TemplateTypeDto::ActNumber => Self::ActNumber,
             TemplateTypeDto::CartridgeCode => Self::CartridgeCode,
             TemplateTypeDto::DrumCode => Self::DrumCode,
+            TemplateTypeDto::RepairAct => Self::RepairAct,
         }
     }
 }
@@ -95,6 +98,7 @@ pub enum TemplateContextDto {
     ActCreate,
     CartridgeCreate,
     DrumCreate,
+    RepairActCreate,
 }
 
 impl From<TemplateContext> for TemplateContextDto {
@@ -105,6 +109,7 @@ impl From<TemplateContext> for TemplateContextDto {
             TemplateContext::ActCreate => Self::ActCreate,
             TemplateContext::CartridgeCreate => Self::CartridgeCreate,
             TemplateContext::DrumCreate => Self::DrumCreate,
+            TemplateContext::RepairActCreate => Self::RepairActCreate,
         }
     }
 }
@@ -117,6 +122,7 @@ impl From<TemplateContextDto> for TemplateContext {
             TemplateContextDto::ActCreate => Self::ActCreate,
             TemplateContextDto::CartridgeCreate => Self::CartridgeCreate,
             TemplateContextDto::DrumCreate => Self::DrumCreate,
+            TemplateContextDto::RepairActCreate => Self::RepairActCreate,
         }
     }
 }
@@ -276,6 +282,7 @@ mod tests {
             (TemplateType::ActNumber, TemplateTypeDto::ActNumber),
             (TemplateType::CartridgeCode, TemplateTypeDto::CartridgeCode),
             (TemplateType::DrumCode, TemplateTypeDto::DrumCode),
+            (TemplateType::RepairAct, TemplateTypeDto::RepairAct),
         ] {
             assert_eq!(TemplateTypeDto::from(core.clone()), dto);
             assert_eq!(TemplateType::from(dto), core);
@@ -299,6 +306,10 @@ mod tests {
             serde_json::to_string(&TemplateTypeDto::DrumCode).unwrap(),
             "\"drum_code\""
         );
+        assert_eq!(
+            serde_json::to_string(&TemplateTypeDto::RepairAct).unwrap(),
+            "\"repair_act\""
+        );
     }
 
     #[test]
@@ -318,6 +329,10 @@ mod tests {
                 TemplateContextDto::CartridgeCreate,
             ),
             (TemplateContext::DrumCreate, TemplateContextDto::DrumCreate),
+            (
+                TemplateContext::RepairActCreate,
+                TemplateContextDto::RepairActCreate,
+            ),
         ] {
             assert_eq!(TemplateContextDto::from(core.clone()), dto);
             assert_eq!(TemplateContext::from(dto), core);
