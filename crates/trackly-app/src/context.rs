@@ -38,8 +38,8 @@ use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AttachmentService, AuthService,
     BackupService, CartridgeService, DashboardService, DeviceService, GroupService,
     GroupTypeService, NumberTemplateService, OrgDbService, OrganizationService,
-    PlaceMovementService, PlaceService, PrinterService, RepairService, ReportService,
-    RequestService, TemplateService,
+    PlaceMovementService, PlaceService, PrinterService, RepairActRenderer, RepairService,
+    ReportService, RequestService, TemplateService,
 };
 use trackly_infra::ad::{
     directory::RealAdDirectory, directory_mock::MockAdDirectory, mock::MockAdClient,
@@ -90,6 +90,8 @@ pub struct AppCtx {
     pub cartridges: Arc<CartridgeService>,
     /// Repair service — ремонтные заявки: чтение и создание/присоединение (Phase 41.4).
     pub repairs: Arc<RepairService>,
+    /// Phase 41.4: HTML акта передачи в ремонт (D-27/D-28).
+    pub repair_acts: Arc<RepairActRenderer>,
     /// Auth service — login/logout, user CRUD, argon2id hashing, RBAC authorize().
     /// Added in Phase 5 Plan 02.
     pub auth: Arc<AuthService>,
@@ -363,6 +365,12 @@ impl AppCtx {
                 .with_ws_tx(ws_broadcast.clone()),
         );
 
+        let repair_acts = Arc::new(RepairActRenderer::new(
+            readers.clone(),
+            organization.clone(),
+            org_db.clone(),
+        ));
+
         // Phase 39 Plan 05: place-tree service. No cross-entity dependencies
         // (unlike DeviceService's printer_repo), so no ordering constraint
         // beyond writer/readers/clock being available.
@@ -521,6 +529,7 @@ impl AppCtx {
             pdf,
             cartridges,
             repairs,
+            repair_acts,
             auth,
             server_ctl: Arc::new(tokio::sync::Mutex::new(None)),
             printers,
