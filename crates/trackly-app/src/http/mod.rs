@@ -22,6 +22,7 @@ pub mod organization;
 pub mod place_movements;
 pub mod places;
 pub mod printers;
+pub mod repairs;
 pub mod reports;
 pub mod requests;
 pub mod settings;
@@ -185,6 +186,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(groups::router())
         .merge(place_movements::router())
         .merge(acts::router())
+        .merge(repairs::router())
         .merge(attachments::router())
         .merge(cartridges::router())
         .merge(number_templates::router())
