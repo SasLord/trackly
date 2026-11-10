@@ -90,6 +90,7 @@ pub const BEHAVIOUR_TEST: &[(&str, &str)] = &[
     ("act_service.rs", "entities_changed_acts.rs"),
     ("device_service.rs", "entities_changed_devices.rs"),
     ("cartridge_service.rs", "entities_changed_cartridges.rs"),
+    ("repair_service.rs", "entities_changed_repairs.rs"),
 ];
 
 /// Файлы `services/*.rs` ВНЕ области, в которых есть `writer.execute` (вне
@@ -130,7 +131,7 @@ pub const OUT_OF_SCOPE_WRITERS: &[(&str, &str)] = &[
     ),
     (
         "request_service.rs",
-        "жизненный цикл заявок (requests) и одобрение AD-регистрации; привязанный картридж только читается, не меняется",
+        "жизненный цикл заявок (requests) и одобрение AD-регистрации; устройства и места он не пишет, ремонтные записи вынесены в RepairService; привязанный картридж только читается",
     ),
     (
         "supervisor.rs",
@@ -376,7 +377,10 @@ pub const REGISTRY: &[Entry] = &[
     ro(REPAIR, "open_requests_for_devices"),
     ro(REPAIR, "last_places"),
     ro(REPAIR, "get_state"),
-    // Переходы цикла (планы 10-13) добавят строки Broadcasts и поведенческий слой.
+    // ---- переходы цикла (Phase 41.4, план 10) -------------------------------
+    b(REPAIR, "accept"),
+    b(REPAIR, "move_to_storage"),
+    // Дальнейшие переходы (планы 11-13) добавят строки Broadcasts.
     ex(
         REPAIR,
         "create",

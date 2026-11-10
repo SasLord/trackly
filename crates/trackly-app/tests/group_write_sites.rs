@@ -1688,11 +1688,16 @@ const BIRTH_SCAN_SKIP_PREFIX: &str = "crates/trackly-infra/src/repos/";
 /// device_service.rs: 1 = S1 `update_in_tx`, прикрыт guard'ом (см.
 /// `uncovered_guarded_sites`). Определения методов (`pub fn ...` в
 /// devices_sqlite.rs) в счёт не входят.
-const WRITE_SITE_REGISTRY: [(&str, usize); 4] = [
+/// repair_service.rs: 1 = единая приватная `apply_device_state_in_tx` (Phase 41.4).
+/// Вердикт: release НЕ нужен. Устройство остаётся членом своей группы (якорь едет
+/// вместе с блоком через `move_group_in_tx`, перенос деталей отдельно не выводит их из
+/// состава), а исключение по статусу «на ремонте» обходится сознательно.
+const WRITE_SITE_REGISTRY: [(&str, usize); 5] = [
     ("crates/trackly-app/src/services/act_service.rs", 8),
     ("crates/trackly-app/src/services/place_service.rs", 1),
     ("crates/trackly-app/src/services/group_place.rs", 1),
     ("crates/trackly-app/src/services/device_service.rs", 1),
+    ("crates/trackly-app/src/services/repair_service.rs", 1),
 ];
 
 /// Реестр мест рождения устройства: device_service.rs 2 (одиночное создание и

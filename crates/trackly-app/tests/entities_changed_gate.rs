@@ -184,9 +184,9 @@ fn registry_shape_is_valid() {
             "{f} в BEHAVIOUR_TEST, но не имеет строки Broadcasts"
         ));
     }
-    if broadcasting.len() != 5 {
+    if broadcasting.len() != 6 {
         problems.push(format!(
-            "рассылающих файлов {}, ожидали ровно 5",
+            "рассылающих файлов {}, ожидали ровно 6",
             broadcasting.len()
         ));
     }
