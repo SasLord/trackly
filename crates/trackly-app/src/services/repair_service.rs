@@ -1580,6 +1580,9 @@ fn ensure_repair(request_type: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Затронутые места, устройства и группы для `EntitiesChanged`.
+type EntityIds = (Vec<i64>, Vec<i64>, Vec<i64>);
+
 /// Что затронула запись устройства: для рассылки и для D-16.
 struct DeviceOutcome {
     places: Vec<i64>,
@@ -1866,7 +1869,7 @@ fn release_device_in_tx(
     row: &trackly_core::domain::requests::RequestRow,
     user_id: Option<i64>,
     now: i64,
-) -> Result<(Vec<i64>, Vec<i64>, Vec<i64>), AppError> {
+) -> Result<EntityIds, AppError> {
     if row.status == "open" {
         return Ok((Vec::new(), Vec::new(), Vec::new()));
     }
