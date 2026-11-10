@@ -5,7 +5,7 @@
   // D-Req-Form-01: сотрудник не выбирает модель картриджа (только принтер).
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
-  // Plan 28-11 (GAP-1): Select (нативный <select>) заменён на кастомный
+  // Plan 28-11 (GAP-1): Select (нативный select) заменён на кастомный
   // Dropdown (flat + variant="select") — см. CartridgeFormBody.svelte
   // (Phase 27-G1) для канонического паттерна. GroupedPrinterSelect (принтер)
   // остаётся нетронутым — вне области GAP-1's 7-site list.
