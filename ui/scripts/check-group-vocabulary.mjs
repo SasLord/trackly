@@ -67,6 +67,12 @@ const ALLOWLIST = [
   { file: 'src/features/layout/sidebar-config.ts', markers: ['Группы'] },
   { file: 'src/features/devices/DeviceFormBody.svelte', markers: ['Место задаётся группой'] },
   {
+    // 41.4-16 (D-18): попап «Перемещение устройства» — подпись якоря («детали его
+    // группы») и пояснение для вложенной группы. Только эти два литерала.
+    file: 'src/features/requests/RepairMoveModal.svelte',
+    markers: ['детали его группы', 'входит в группу, место задаётся группой'],
+  },
+  {
     file: 'src/lib/components/MovementTimeline.svelte',
     markers: ['в составе группы', 'перенос группы'],
   },

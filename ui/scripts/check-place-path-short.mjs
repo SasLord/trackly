@@ -141,6 +141,18 @@ const VERDICTS = [
       'подписи складских мест для выбора места возврата: это сами места (places_get), а не колонка «Место» устройства',
   },
   {
+    path: 'src/features/requests/RepairMoveModal.svelte',
+    kind: 'FULL_BY_DESIGN',
+    reason:
+      'подписи складских мест быстрого выбора (places_get): это сами места, а не колонка «Место» устройства',
+  },
+  {
+    path: 'src/features/requests/RepairReturnModal.svelte',
+    kind: 'FULL_BY_DESIGN',
+    reason:
+      'подписи складских мест быстрого выбора (places_get): это сами места, а не колонка «Место» устройства',
+  },
+  {
     path: 'src/features/cartridges/CartridgeDetail.svelte',
     kind: 'FULL_BY_DESIGN',
     reason: 'карточка картриджа: поле «Место» показывает полный путь, это не колонка списка',
