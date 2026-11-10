@@ -3,7 +3,8 @@
   // Роль-зависимая логика: сотрудник видит только свои заявки; специалист/admin — все.
   // WS push: specialist/admin получают toast о новой заявке через onWsEvent(new_request).
   // По паттерну PrintersPage.svelte.
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { router } from 'svelte-spa-router';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
@@ -61,6 +62,18 @@
   $effect(() => {
     void filter;
     void refresh();
+  });
+
+  // Ссылка `#/requests?id=N` (отчёт «Ремонты», «Открыть заявку №…») открывает
+  // карточку заявки. Эффект читает только querystring и пишет selectedId.
+  $effect(() => {
+    const raw = new URLSearchParams(router.querystring ?? '').get('id');
+    const n = raw === null ? NaN : Number(raw);
+    if (Number.isInteger(n) && n > 0) {
+      untrack(() => {
+        selectedId = n;
+      });
+    }
   });
 
   // Load detail when selectedId changes.

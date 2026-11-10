@@ -15,6 +15,8 @@
     /** Обязателен вместе с iconOnly (иконка без текста — UI-SPEC §8). */
     ariaLabel?: string;
     title?: string;
+    /** id подсказки, поясняющей состояние кнопки (например, почему она отключена). */
+    ariaDescribedby?: string;
     /** Кнопка-переключатель: состояние нажатия для скринридера. */
     ariaPressed?: boolean;
     onclick?: () => void;
@@ -30,6 +32,7 @@
     iconOnly = false,
     ariaLabel,
     title,
+    ariaDescribedby,
     ariaPressed,
     onclick,
     children,
@@ -58,6 +61,7 @@
   disabled={isDisabled}
   aria-label={ariaLabel}
   aria-pressed={ariaPressed}
+  aria-describedby={ariaDescribedby}
   {title}
   {onclick}
 >

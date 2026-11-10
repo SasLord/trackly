@@ -13,6 +13,7 @@
   // «Выполнить» stays with its completeNotes Textarea in the body (inline
   // mini-form, unchanged). The 4 confirm-Modal blocks are untouched (D-04
   // territory, not D-01).
+  import { untrack } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
@@ -29,12 +30,24 @@
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
-  import { requests } from './api';
+  import { requests, repairs } from './api';
+  import { openRepairRequest } from './repairLocks';
+  import RepairMoveModal from './RepairMoveModal.svelte';
+  import RepairSendModal from './RepairSendModal.svelte';
+  import RepairReturnModal from './RepairReturnModal.svelte';
+  import RepairCompleteModal from './RepairCompleteModal.svelte';
+  import RepairAssignDeviceModal from './RepairAssignDeviceModal.svelte';
+  import RepairVisitsSection from './RepairVisitsSection.svelte';
+  import { parseAppError } from '$lib/api/errors';
   import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
   import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
   import { attachments } from '../attachments/api';
   import { onWsEvent } from '$lib/api/ws';
-  import type { AttachmentHistoryEventDto } from '../../bindings';
+  import type {
+    AttachmentHistoryEventDto,
+    RepairStateDto,
+    RepairTransitionResultDto,
+  } from '../../bindings';
   import type { RequestDto } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
   import type { RequestHistoryEntry } from './api';
@@ -61,6 +74,21 @@
   let historyLoading = $state(false);
   let attachmentEvents = $state<AttachmentHistoryEventDto[]>([]);
   let attachmentsBlock = $state<ReturnType<typeof AttachmentsBlock> | null>(null);
+  let attachmentsEl = $state<HTMLElement | null>(null);
+
+  // Фаза 41.4: ремонтная заявка. Состояние ремонта (RepairStateDto) грузится при
+  // открытии, после каждого действия и по WS; попапы цикла открываются флагами.
+  let repairState = $state<RepairStateDto | null>(null);
+  let repairLoadSeq = 0;
+  let repairBusy = $state(false);
+  let moveModalOpen = $state(false);
+  let moveMode = $state<'accept' | 'toStorage'>('accept');
+  let sendModalOpen = $state(false);
+  let returnModalOpen = $state(false);
+  let completeModalOpen = $state(false);
+  let assignModalOpen = $state(false);
+  let cancelRepairModalOpen = $state(false);
+  let cancelRepairSubmitting = $state(false);
 
   // ad_register approval modal state (Screen 5b, D-REG-02: role defaults to employee).
   let approveModalOpen = $state(false);
@@ -108,6 +136,108 @@
     identity !== null && request !== null && identity.id === request.requestedByUserId,
   );
 
+  const isRepair = $derived(request?.requestType === 'repair');
+  const hasDevice = $derived(
+    request?.printerDeviceId !== null && request?.printerDeviceId !== undefined,
+  );
+  // Состояние чужой заявки (прежняя карточка) не показываем.
+  const curState = $derived(
+    repairState !== null && request !== null && repairState.requestId === request.id
+      ? repairState
+      : null,
+  );
+  // Ничего не перемещалось и в сервис не ездило: доступны «Забрать на склад»,
+  // «Отклонить» и отмена автором (D-11).
+  const repairFresh = $derived(
+    curState !== null && !curState.moved && curState.visits.length === 0,
+  );
+  const canRejectRepair = $derived(
+    request !== null &&
+      (request.status === 'open' || (request.status === 'in_progress' && repairFresh)),
+  );
+
+  async function loadRepairState(id: number) {
+    const seq = ++repairLoadSeq;
+    try {
+      const st = await repairs.getState(id);
+      if (seq !== repairLoadSeq || request?.id !== id) return;
+      repairState = st;
+    } catch {
+      // Не критично: кнопки цикла остаются недоступны, пока состояние не получено.
+    }
+  }
+
+  // Читает только id/тип/версию заявки; всё остальное — через untrack, запись
+  // repairState сама эффект не перезапускает.
+  $effect(() => {
+    const id = request?.id;
+    const type = request?.requestType;
+    void request?.version;
+    untrack(() => {
+      if (type !== 'repair' || id === undefined) {
+        repairLoadSeq++;
+        repairState = null;
+        return;
+      }
+      if (repairState !== null && repairState.requestId !== id) repairState = null;
+      void loadRepairState(id);
+    });
+  });
+
+  function applyRepairResult(r: RepairTransitionResultDto) {
+    // Более ранний запрос состояния не должен затереть свежий итог действия.
+    repairLoadSeq++;
+    repairState = r.state;
+    onTransition();
+  }
+
+  function repairErrorMessage(e: unknown): string {
+    return parseAppError(e).message;
+  }
+
+  async function startAccept() {
+    if (!request || repairBusy) return;
+    if (hasDevice) {
+      if (curState === null) return;
+      moveMode = 'accept';
+      moveModalOpen = true;
+      return;
+    }
+    // D-24: «Другое» без устройства — принять без попапа перемещения.
+    repairBusy = true;
+    try {
+      const r = await repairs.accept(request.id, request.version, { kind: 'stay' });
+      pushToast('success', 'Заявка принята в работу');
+      applyRepairResult(r);
+    } catch (e: unknown) {
+      pushToast('error', repairErrorMessage(e));
+    } finally {
+      repairBusy = false;
+    }
+  }
+
+  function openMove(mode: 'accept' | 'toStorage') {
+    moveMode = mode;
+    moveModalOpen = true;
+  }
+
+  async function handleCancelRepairConfirm() {
+    if (!request || cancelRepairSubmitting) return;
+    cancelRepairSubmitting = true;
+    try {
+      const r = await repairs.cancelRepair({ requestId: request.id, version: request.version });
+      pushToast('success', 'Ремонт отменён, устройство возвращено');
+      cancelRepairModalOpen = false;
+      applyRepairResult(r);
+    } catch {
+      pushToast('error', 'Не удалось отменить ремонт. Попробуйте ещё раз.');
+    } finally {
+      cancelRepairSubmitting = false;
+    }
+  }
+
+  const CANCEL_REPAIR_HINT = 'Сначала заберите устройство из ремонта';
+
   $effect(() => {
     if (!isAdRegister) return;
     apiCall<AdSettingsDto>('settings_get_ad', {})
@@ -126,7 +256,7 @@
       ? 'default'
       : request.status === 'open'
         ? 'accent'
-        : request.status === 'in_progress'
+        : request.status === 'in_progress' || request.status === 'in_repair'
           ? 'warning'
           : request.status === 'completed'
             ? 'success'
@@ -140,11 +270,13 @@
         ? 'Создана'
         : request.status === 'in_progress'
           ? 'В работе'
-          : request.status === 'completed'
-            ? 'Выполнена'
-            : request.status === 'cancelled'
-              ? 'Отменена'
-              : 'Отклонена',
+          : request.status === 'in_repair'
+            ? 'В ремонте'
+            : request.status === 'completed'
+              ? 'Выполнена'
+              : request.status === 'cancelled'
+                ? 'Отменена'
+                : 'Отклонена',
   );
 
   const typeLabel = $derived(
@@ -154,7 +286,9 @@
         ? 'Регистрация AD'
         : request.requestType === 'cartridge_replace'
           ? 'Замена картриджа'
-          : 'Свободная форма',
+          : request.requestType === 'repair'
+            ? 'Ремонт'
+            : 'Свободная форма',
   );
 
   // D-01: DetailPanel's header title is a plain string — the two-badge +
@@ -203,6 +337,11 @@
         ev.parentKind === 'request' &&
         ev.parentId === id
       ) {
+        void loadHistory(id, true);
+      }
+      // Перемещение/статус устройства изменились (в т.ч. другим пользователем).
+      if (id !== undefined && ev.type === 'entities_changed' && request?.requestType === 'repair') {
+        void loadRepairState(id);
         void loadHistory(id, true);
       }
     });
@@ -254,6 +393,36 @@
       'custom:cancel': 'Отменена',
     };
     return labels[action] ?? action;
+  }
+
+  // REP-07: строка истории без даты. События ремонта читаемо, место/сервис/описание
+  // приходят в notes (пишутся сервером при записи события); сырые коды не показываем.
+  function entryText(e: RequestHistoryEntry): string {
+    const code = e.action.replace(/^custom:/, '');
+    const note = e.notes?.trim() ? e.notes.trim() : null;
+    const who = e.actorName ? `; ${e.actorName}` : '';
+    const q = (v: string | null) => (v ? `«${v}»` : '');
+    switch (code) {
+      case 'repair_accept':
+        return `Принята в работу${who}${note ? `; Устройство перемещено: ${q(note)}` : ''}`;
+      case 'repair_move':
+        return `Устройство перемещено${note ? `: ${q(note)}` : ''}${who}`;
+      case 'repair_send':
+        return `Устройство передано в сервис${note ? ` ${q(note)}` : ''}${who}`;
+      case 'repair_receive':
+        return `Устройство возвращено из сервиса${who}`;
+      case 'repair_cancel':
+        return `Ремонт отменён${who}`;
+      case 'repair_join':
+        return `Присоединился к заявке${who}${note ? `; ${note}` : ''}`;
+      case 'repair_assign_device':
+        return `Указано устройство${who}`;
+      default:
+        if (code.startsWith('repair_') && code !== 'repair_complete') {
+          return `Изменение заявки${who}`;
+        }
+        return `${actionLabel(e.action)}${who}${note ? `; ${note}` : ''}`;
+    }
   }
 
   // --- Lifecycle actions ---
@@ -310,6 +479,19 @@
     if (!request || rejectSubmitting) return;
     rejectSubmitting = true;
     try {
+      if (isRepair) {
+        // Сервер отклоняет requests_transition для ремонта: свой путь со снятием статуса устройства.
+        const r = await repairs.reject({
+          requestId: request.id,
+          version: request.version,
+          notes: rejectNotes.trim() || null,
+        });
+        pushToast('success', 'Заявка отклонена');
+        rejectModalOpen = false;
+        rejectNotes = '';
+        applyRepairResult(r);
+        return;
+      }
       await requests.transition({
         op: 'reject',
         requestId: request.id,
@@ -365,6 +547,13 @@
     if (!request || cancelSubmitting) return;
     cancelSubmitting = true;
     try {
+      if (isRepair) {
+        const r = await repairs.cancelByAuthor({ requestId: request.id, version: request.version });
+        pushToast('success', 'Заявка отменена');
+        cancelModalOpen = false;
+        applyRepairResult(r);
+        return;
+      }
       await requests.cancel(request.id, request.version);
       pushToast('success', 'Заявка отменена');
       cancelModalOpen = false;
@@ -529,6 +718,89 @@
               Отклонить
             </Button>
           {/if}
+        {:else if isRepair}
+          {#if isSpecialist}
+            {#if request.status === 'open'}
+              <Button
+                variant="primary"
+                loading={repairBusy}
+                disabled={hasDevice && curState === null}
+                onclick={startAccept}
+              >
+                Принять в работу
+              </Button>
+            {:else if request.status === 'in_progress'}
+              <Button
+                variant="primary"
+                disabled={curState === null}
+                onclick={() => (completeModalOpen = true)}
+              >
+                Завершить
+              </Button>
+              {#if hasDevice}
+                <Button
+                  variant="secondary"
+                  disabled={curState === null}
+                  onclick={() => (sendModalOpen = true)}
+                >
+                  Отправить в ремонт
+                </Button>
+                {#if repairFresh}
+                  <Button variant="secondary" onclick={() => openMove('toStorage')}>
+                    Забрать на склад
+                  </Button>
+                {/if}
+              {:else}
+                <Button variant="secondary" onclick={() => (assignModalOpen = true)}>
+                  Указать устройство
+                </Button>
+              {/if}
+              {#if curState?.canCancelRepair}
+                <Button variant="destructive" onclick={() => (cancelRepairModalOpen = true)}>
+                  Отменить ремонт
+                </Button>
+              {/if}
+            {:else if request.status === 'in_repair'}
+              <Button
+                variant="primary"
+                disabled={curState === null}
+                onclick={() => (returnModalOpen = true)}
+              >
+                Забрать из ремонта
+              </Button>
+              <span class="hint-wrap" title={CANCEL_REPAIR_HINT}>
+                <Button
+                  variant="destructive"
+                  disabled
+                  title={CANCEL_REPAIR_HINT}
+                  ariaDescribedby="repair-cancel-hint"
+                >
+                  Отменить ремонт
+                </Button>
+                <span id="repair-cancel-hint" class="sr-only">{CANCEL_REPAIR_HINT}</span>
+              </span>
+            {/if}
+            {#if canRejectRepair}
+              <Button
+                variant="destructive"
+                onclick={() => {
+                  rejectNotes = '';
+                  rejectModalOpen = true;
+                }}
+              >
+                Отклонить
+              </Button>
+            {/if}
+            {#if isOwnRequest && request.status === 'in_progress' && repairFresh}
+              <Button variant="destructive" onclick={() => (cancelModalOpen = true)}>
+                Отменить заявку
+              </Button>
+            {/if}
+          {:else if isOwnRequest && (request.status === 'open' || (request.status === 'in_progress' && repairFresh))}
+            <Button variant="destructive" onclick={() => (cancelModalOpen = true)}>
+              Отменить заявку
+            </Button>
+          {/if}
         {:else if isSpecialist}
           {#if request.status === 'open'}
             <Button variant="primary" onclick={handleAccept}>Принять в работу</Button>
@@ -674,8 +946,27 @@
         </DetailSection>
       {/if}
 
+      <!-- D-13: заходы в сервис между «Информацией» и вложениями -->
+      {#if isRepair && curState !== null}
+        <RepairVisitsSection
+          visits={curState.visits}
+          requestId={request.id}
+          canManage={isSpecialist}
+          onScrollToAttachments={() =>
+            attachmentsEl?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          onChanged={() => {
+            if (request) {
+              void loadRepairState(request.id);
+              void loadHistory(request.id, true);
+            }
+          }}
+        />
+      {/if}
+
       <!-- D-02: вложения для заявки любого статуса -->
-      <AttachmentsBlock parentKind="request" parentId={request.id} bind:this={attachmentsBlock} />
+      <div bind:this={attachmentsEl}>
+        <AttachmentsBlock parentKind="request" parentId={request.id} bind:this={attachmentsBlock} />
+      </div>
 
       <!-- История (REQ-07) -->
       <DetailSection heading="История">
@@ -691,10 +982,7 @@
               {#if row.kind === 'entry'}
                 <li class="history-row">
                   <span class="history-text">
-                    {formatFullDate(row.entry.createdAtUtc)} — {actionLabel(row.entry.action)}{row
-                      .entry.actorName
-                      ? `; ${row.entry.actorName}`
-                      : ''}{row.entry.notes ? `; ${row.entry.notes}` : ''}
+                    {formatFullDate(row.entry.createdAtUtc)} — {entryText(row.entry)}
                   </span>
                 </li>
               {:else}
@@ -817,6 +1105,78 @@
     onClose={() => (operationModalOpen = false)}
     onSuccess={handleInstallSuccess}
   />
+{/if}
+
+<!-- Фаза 41.4: попапы цикла ремонта. Открываются флагами; монтируются только когда
+     есть заявка и её состояние ремонта. Успех: попап сам показывает тост, здесь —
+     обновить состояние и карточку. -->
+{#if request !== null && isRepair && curState !== null}
+  <RepairMoveModal
+    open={moveModalOpen}
+    mode={moveMode}
+    {request}
+    repairState={curState}
+    onClose={() => (moveModalOpen = false)}
+    onSuccess={applyRepairResult}
+  />
+  <RepairSendModal
+    open={sendModalOpen}
+    {request}
+    repairState={curState}
+    onClose={() => (sendModalOpen = false)}
+    onSuccess={applyRepairResult}
+  />
+  <RepairReturnModal
+    open={returnModalOpen}
+    {request}
+    repairState={curState}
+    onClose={() => (returnModalOpen = false)}
+    onSuccess={applyRepairResult}
+  />
+  <RepairCompleteModal
+    open={completeModalOpen}
+    {request}
+    repairState={curState}
+    onClose={() => (completeModalOpen = false)}
+    onSuccess={applyRepairResult}
+  />
+{/if}
+{#if request !== null && isRepair}
+  <RepairAssignDeviceModal
+    open={assignModalOpen}
+    {request}
+    onClose={() => (assignModalOpen = false)}
+    onSuccess={() => onTransition()}
+    onOpenRequest={(id) => {
+      assignModalOpen = false;
+      openRepairRequest(id);
+    }}
+  />
+
+  <!-- D-12: подтверждение «Отменить ремонт» -->
+  <Modal
+    open={cancelRepairModalOpen}
+    title="Отменить ремонт?"
+    initialFocus="#repair-cancel-back button"
+    onClose={() => (cancelRepairModalOpen = false)}
+  >
+    <p class="confirm-body">
+      Устройство вернётся на прежнее место («{curState?.originPlacePath ?? 'прежнее место'}»),
+      запись о ремонте не сохранится и в отчёт не попадёт. Используйте, если ремонт не потребовался.
+    </p>
+    {#snippet footer()}
+      <span id="repair-cancel-back" class="hint-wrap">
+        <Button variant="secondary" onclick={() => (cancelRepairModalOpen = false)}>Назад</Button>
+      </span>
+      <Button
+        variant="destructive"
+        loading={cancelRepairSubmitting}
+        onclick={handleCancelRepairConfirm}
+      >
+        Отменить ремонт
+      </Button>
+    {/snippet}
+  </Modal>
 {/if}
 
 <style lang="scss">
@@ -948,6 +1308,22 @@
   .history-text {
     flex: 1;
     padding: var(--tr-space-2xs) 0;
+  }
+
+  .hint-wrap {
+    display: inline-flex;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .confirm-body {
