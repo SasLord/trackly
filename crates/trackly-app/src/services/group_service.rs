@@ -13,6 +13,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use trackly_core::domain::repairs::is_repair_exempt_status_code;
 
 use rusqlite::Connection;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -1018,7 +1019,12 @@ impl GroupService {
                     }
 
                     // D-21: место присваивает только группа С местом.
-                    if let Some(place) = group.place_id {
+                    // Phase 41.4 (D-14): устройство в исключённом статусе не стягивается
+                    // в место группы (членство оформлено выше).
+                    if let Some(place) = group
+                        .place_id
+                        .filter(|_| !is_repair_exempt_status_code(&device.status_code))
+                    {
                         let change = apply_group_place_to_device_in_tx(
                             &tx,
                             &deps,

@@ -7,6 +7,7 @@
 
 use rusqlite::{OptionalExtension, Transaction};
 use trackly_core::domain::groups::{ActGroupEffectKind, ActGroupEffectNew};
+use trackly_core::domain::repairs::is_repair_exempt_status_code;
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
@@ -318,7 +319,13 @@ pub(crate) fn restore_membership_with_policy_in_tx(
             created_at_utc: now,
         },
     )?;
-    if let Some(group_place) = move_to {
+    // Phase 41.4 (D-14): устройство в исключённом статусе не стягивается в место группы.
+    let device_exempt = deps
+        .devices
+        .get_in_tx(tx, device_id)
+        .map(|d| is_repair_exempt_status_code(&d.status_code))
+        .unwrap_or(false);
+    if let Some(group_place) = move_to.filter(|_| !device_exempt) {
         let change = apply_group_place_to_device_in_tx(
             tx,
             deps,

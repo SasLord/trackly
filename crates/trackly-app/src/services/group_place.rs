@@ -7,6 +7,7 @@
 
 use rusqlite::Transaction;
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
+use trackly_core::domain::repairs::is_repair_exempt_status_code;
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
@@ -105,6 +106,15 @@ pub(crate) fn apply_group_place_to_device_in_tx(
     cause: GroupMoveCause,
 ) -> Result<DevicePlaceChange, AppError> {
     let before = deps.devices.get_in_tx(tx, device_id)?;
+    // Phase 41.4 (D-14): устройство в исключённом статусе (на ремонте, в ремонте, на
+    // списание) не стягивается в место группы; членство при этом сохраняется. Общий
+    // примитив: правило действует и при переносе группы, и при вступлении/возврате.
+    if is_repair_exempt_status_code(&before.status_code) {
+        return Ok(DevicePlaceChange {
+            changed: false,
+            previous_place: before.place_id,
+        });
+    }
     if before.place_id == Some(target_place) {
         return Ok(DevicePlaceChange {
             changed: false,
