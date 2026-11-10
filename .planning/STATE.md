@@ -1669,8 +1669,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-10T05:13:46.884Z
-Stopped at: Completed 41.4-08-PLAN.md (участники в WS-событиях, вложениях и дашборде)
+Last session: 2026-11-10T06:00:00.000Z
+Stopped at: Completed 41.4-10-PLAN.md (принятие заявки и «Забрать на склад», реестры гейтов)
 Resume file: None
 
 None
