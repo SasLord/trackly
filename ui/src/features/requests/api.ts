@@ -14,7 +14,24 @@ import type {
   RequestPrinterOptionDto,
   RequestTransitionPayload,
 } from '../../bindings-phase6';
-import type { Pagination } from '../../bindings';
+import type {
+  OpenRepairRefDto,
+  Pagination,
+  RepairAssignDeviceDto,
+  RepairAssignResultDto,
+  RepairCancelDto,
+  RepairCompleteDto,
+  RepairCreateDto,
+  RepairCreateResultDto,
+  RepairDeviceOptionDto,
+  RepairLastPlacesDto,
+  RepairMoveChoiceDto,
+  RepairReceiveDto,
+  RepairRejectDto,
+  RepairSendDto,
+  RepairStateDto,
+  RepairTransitionResultDto,
+} from '../../bindings';
 import type { ApproveAdRegisterDto } from '../../bindings-phase9';
 
 export const requests = {
@@ -59,3 +76,48 @@ export interface RequestHistoryEntry {
   actorName: string | null;
   notes: string | null;
 }
+
+/** Phase 41.4: ремонтные заявки. Имена команд как в specta_export.rs. */
+export const repairs = {
+  deviceOptions: () => apiCall<RepairDeviceOptionDto[]>('repairs_device_options'),
+
+  create: (dto: RepairCreateDto) => apiCall<RepairCreateResultDto>('repairs_create', { dto }),
+
+  getState: (requestId: number) => apiCall<RepairStateDto>('repairs_get_state', { requestId }),
+
+  lastPlaces: () => apiCall<RepairLastPlacesDto>('repairs_last_places'),
+
+  openForDevices: (deviceIds: number[]) =>
+    apiCall<OpenRepairRefDto[]>('repairs_open_for_devices', { deviceIds }),
+
+  accept: (requestId: number, version: number, choice: RepairMoveChoiceDto) =>
+    apiCall<RepairTransitionResultDto>('repairs_accept', { requestId, version, choice }),
+
+  moveToStorage: (requestId: number, version: number, placeId: number) =>
+    apiCall<RepairTransitionResultDto>('repairs_move_to_storage', { requestId, version, placeId }),
+
+  send: (dto: RepairSendDto) => apiCall<RepairTransitionResultDto>('repairs_send', { dto }),
+
+  receive: (dto: RepairReceiveDto) =>
+    apiCall<RepairTransitionResultDto>('repairs_receive', { dto }),
+
+  complete: (dto: RepairCompleteDto) =>
+    apiCall<RepairTransitionResultDto>('repairs_complete', { dto }),
+
+  cancelRepair: (dto: RepairCancelDto) =>
+    apiCall<RepairTransitionResultDto>('repairs_cancel_repair', { dto }),
+
+  reject: (dto: RepairRejectDto) => apiCall<RepairTransitionResultDto>('repairs_reject', { dto }),
+
+  cancelByAuthor: (dto: RepairCancelDto) =>
+    apiCall<RepairTransitionResultDto>('repairs_cancel_by_author', { dto }),
+
+  assignDevice: (dto: RepairAssignDeviceDto) =>
+    apiCall<RepairAssignResultDto>('repairs_assign_device', { dto }),
+
+  linkScans: (visitId: number, attachmentIds: number[]) =>
+    apiCall<RepairStateDto>('repairs_link_scans', { visitId, attachmentIds }),
+
+  /** HTML акта для браузерной печати (text/html по LAN, строка в Tauri). */
+  renderAct: (visitId: number) => apiCall<string>('repairs_render_act', { visitId }),
+};
