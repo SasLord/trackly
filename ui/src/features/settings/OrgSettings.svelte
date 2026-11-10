@@ -188,6 +188,7 @@
     act_number: 'Акты',
     cartridge_code: 'Картриджи',
     drum_code: 'Фотобарабаны',
+    repair_act: 'Акты ремонта',
   };
   const ALL_CONTEXTS: TemplateContextDto[] = [
     'device_create',
@@ -195,6 +196,7 @@
     'act_create',
     'cartridge_create',
     'drum_create',
+    'repair_act_create',
   ];
   const CONTEXT_LABELS: Record<TemplateContextDto, string> = {
     device_create: 'Новое устройство',
@@ -202,6 +204,7 @@
     act_create: 'Новый акт',
     cartridge_create: 'Новый картридж',
     drum_create: 'Новый фотобарабан',
+    repair_act_create: 'Новый акт ремонта',
   };
 
   let templates = $state<NumberTemplateDto[]>([]);

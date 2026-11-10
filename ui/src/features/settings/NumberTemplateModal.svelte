@@ -42,13 +42,14 @@
 
   const { mode, template = null, onClose, onSaved, onStale }: Props = $props();
 
-  // Ровно 4 значения — закрытый список (dto::number_template::TemplateTypeDto),
+  // Ровно 5 значений — закрытый список (dto::number_template::TemplateTypeDto),
   // копия display_name_ru() из trackly-core, сверенная 1:1 (см. SUMMARY).
   const TEMPLATE_TYPE_OPTIONS: { id: TemplateTypeDto; label: string }[] = [
     { id: 'device_inventory', label: 'Устройства и принтеры' },
     { id: 'act_number', label: 'Акты' },
     { id: 'cartridge_code', label: 'Картриджи' },
     { id: 'drum_code', label: 'Фотобарабаны' },
+    { id: 'repair_act', label: 'Акты ремонта' },
   ];
 
   let templateType = $state<TemplateTypeDto | null>(
