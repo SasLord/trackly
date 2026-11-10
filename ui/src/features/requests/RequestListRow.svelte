@@ -26,7 +26,7 @@
   const statusVariant = $derived<BadgeVariant>(
     request.status === 'open'
       ? 'accent'
-      : request.status === 'in_progress'
+      : request.status === 'in_progress' || request.status === 'in_repair'
         ? 'warning'
         : request.status === 'completed'
           ? 'success'
@@ -38,11 +38,13 @@
       ? 'Создана'
       : request.status === 'in_progress'
         ? 'В работе'
-        : request.status === 'completed'
-          ? 'Выполнена'
-          : request.status === 'cancelled'
-            ? 'Отменена'
-            : 'Отклонена',
+        : request.status === 'in_repair'
+          ? 'В ремонте'
+          : request.status === 'completed'
+            ? 'Выполнена'
+            : request.status === 'cancelled'
+              ? 'Отменена'
+              : 'Отклонена',
   );
 
   const typeLabel = $derived(
@@ -50,7 +52,9 @@
       ? 'Регистрация AD'
       : request.requestType === 'cartridge_replace'
         ? 'Замена картриджа'
-        : 'Свободная форма',
+        : request.requestType === 'repair'
+          ? 'Ремонт'
+          : 'Свободная форма',
   );
 
   // D-REG-03: restore variant of ad_register — distinct chip from first-time register.

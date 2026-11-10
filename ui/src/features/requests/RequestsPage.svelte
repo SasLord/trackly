@@ -16,7 +16,7 @@
   import RequestFormModal from './RequestFormModal.svelte';
   import StatWidget from '../dashboard/StatWidget.svelte';
   import { requests } from './api';
-  import type { RequestDto, RequestFilter, WsEvent } from '../../bindings-phase6';
+  import type { RequestCountsDto, RequestDto, RequestFilter, WsEvent } from '../../bindings-phase6';
   import type { DashboardWidgetDto } from '../../bindings';
 
   let items = $state<RequestDto[]>([]);
@@ -25,6 +25,8 @@
   let selectedRequest = $state<RequestDto | null>(null);
   let detailLoading = $state(false);
   let formModalOpen = $state(false);
+  // D-26: счётчики вкладок; null до первой загрузки (счётчик не показываем, не 0).
+  let statusCounts = $state<RequestCountsDto | null>(null);
 
   // D-GATE-03: «Мои заявки» summary card data (employee-scoped dashboard_get_all_widgets
   // branch built in 10-03) — fetched only for the employee role, see isEmployee effect below.
@@ -92,6 +94,7 @@
     try {
       const resp = await requests.list(filter, { offset: 0, limit: 100 });
       items = resp.items;
+      void loadCounts();
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -103,17 +106,27 @@
     }
   }
 
+  async function loadCounts() {
+    try {
+      statusCounts = await requests.statusCounts();
+    } catch {
+      // Non-fatal: счётчик остаётся прежним.
+    }
+  }
+
   function handleWsEvent(event: WsEvent) {
     const role = identity?.role;
     if (event.type === 'new_request' && (role === 'admin' || role === 'manager')) {
       pushToast(
         'info',
-        `Новая заявка: ${event.requestType === 'cartridge_replace' ? 'Замена картриджа' : 'Свободная форма'} от ${event.requesterName}`,
+        `Новая заявка: ${event.requestType === 'cartridge_replace' ? 'Замена картриджа' : event.requestType === 'repair' ? 'Ремонт' : 'Свободная форма'} от ${event.requesterName}`,
       );
       void refresh();
+      void loadCounts();
     } else if (event.type === 'request_status_changed') {
       // Refresh list for anyone.
       void refresh();
+      void loadCounts();
       // Also refresh selected request detail if it's the one changed.
       if (selectedId === event.requestId) {
         detailLoading = true;
@@ -196,26 +209,33 @@
   });
 
   const emptyConfig = $derived(
-    filter.status !== null
+    filter.status === 'in_repair'
       ? {
-          heading: 'Ничего не найдено',
-          body: 'Попробуйте изменить фильтр статуса.',
+          heading: 'Нет заявок в ремонте',
+          body: 'Здесь появятся заявки, по которым устройство передано в сервис.',
           actionLabel: null as string | null,
           onAction: undefined as (() => void) | undefined,
         }
-      : isEmployee
+      : filter.status !== null
         ? {
-            heading: 'У вас пока нет заявок',
-            body: 'Создайте заявку — выберите тип и опишите проблему.',
-            actionLabel: 'Создать заявку',
-            onAction: () => (formModalOpen = true),
-          }
-        : {
-            heading: 'Заявок пока нет',
-            body: 'Новые заявки от сотрудников появятся здесь.',
+            heading: 'Ничего не найдено',
+            body: 'Попробуйте изменить фильтр статуса.',
             actionLabel: null as string | null,
             onAction: undefined as (() => void) | undefined,
-          },
+          }
+        : isEmployee
+          ? {
+              heading: 'У вас пока нет заявок',
+              body: 'Создайте заявку — выберите тип и опишите проблему.',
+              actionLabel: 'Создать заявку',
+              onAction: () => (formModalOpen = true),
+            }
+          : {
+              heading: 'Заявок пока нет',
+              body: 'Новые заявки от сотрудников появятся здесь.',
+              actionLabel: null as string | null,
+              onAction: undefined as (() => void) | undefined,
+            },
   );
 </script>
 
@@ -250,6 +270,7 @@
       onFilterChange={handleStatusFilterChange}
       onCreateClick={() => (formModalOpen = true)}
       {identity}
+      {statusCounts}
     />
 
     <RequestsMasterDetail>

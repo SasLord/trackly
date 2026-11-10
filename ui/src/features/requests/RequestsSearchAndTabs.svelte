@@ -9,7 +9,7 @@
   // DeviceFilters.svelte).
   import Button from '$lib/components/Button.svelte';
   import Tabs from '$lib/components/Tabs.svelte';
-  import type { RequestFilter } from '../../bindings-phase6';
+  import type { RequestCountsDto, RequestFilter } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
 
   interface Props {
@@ -18,14 +18,29 @@
     onCreateClick: () => void;
     /** Passed for role-based enhancements; currently used to gate «Создать заявку» visibility (all roles can create). */
     identity: CurrentUser | null;
+    /** Счётчик вкладки «В ремонте» (D-26); null до первой загрузки — счётчик не показывается. */
+    statusCounts?: RequestCountsDto | null;
   }
 
-  const { filter, onFilterChange, onCreateClick, identity: _identity }: Props = $props();
+  const {
+    filter,
+    onFilterChange,
+    onCreateClick,
+    identity: _identity,
+    statusCounts = null,
+  }: Props = $props();
 
   // «Создать заявку» visible to all roles (REQ-01). identity accepted for future role-based use.
   const canCreate = $derived(_identity !== undefined);
 
-  type StatusTab = null | 'open' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
+  type StatusTab =
+    | null
+    | 'open'
+    | 'in_progress'
+    | 'in_repair'
+    | 'completed'
+    | 'rejected'
+    | 'cancelled';
 
   interface Tab {
     key: StatusTab;
@@ -36,6 +51,7 @@
     { key: null, label: 'Все' },
     { key: 'open', label: 'Созданные' },
     { key: 'in_progress', label: 'В работе' },
+    { key: 'in_repair', label: 'В ремонте' },
     { key: 'completed', label: 'Выполненные' },
     { key: 'rejected', label: 'Отклонённые' },
     { key: 'cancelled', label: 'Отменённые' },
@@ -48,9 +64,14 @@
   // identity is accepted for future role-based tab enhancements (RBAC enforced in backend).
 
   // String-key adapter — required because Tabs' contract is `Tab.key: string`, but
-  // StatusTab includes `null` (for «Все»). No `count` — this component currently has
-  // no status counters to pass, and inventing them is out of scope (SC #4).
-  const tabItems = $derived(TABS.map((t) => ({ key: String(t.key), label: t.label })));
+  // StatusTab includes `null` (for «Все»). Счётчик — только у «В ремонте» (D-26, UI-SPEC §11).
+  const tabItems = $derived(
+    TABS.map((t) => ({
+      key: String(t.key),
+      label: t.label,
+      count: t.key === 'in_repair' && statusCounts ? statusCounts.inRepair : undefined,
+    })),
+  );
 </script>
 
 <div class="search-and-tabs">
