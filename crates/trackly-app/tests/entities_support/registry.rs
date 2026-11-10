@@ -68,7 +68,7 @@ const fn ex(file: &'static str, func: &'static str, reason: &'static str) -> Ent
     }
 }
 
-/// Восемь файлов области гейта (D-16).
+/// Девять файлов области гейта (D-16; `repair_service.rs` добавлен в Phase 41.4, план 09).
 pub const SCOPE_FILES: &[&str] = &[
     "place_service.rs",
     "group_service.rs",
@@ -78,6 +78,7 @@ pub const SCOPE_FILES: &[&str] = &[
     "act_service.rs",
     "device_service.rs",
     "cartridge_service.rs",
+    "repair_service.rs",
 ];
 
 /// Файл сервиса с хотя бы одной строкой `Broadcasts` -> файл поведенческого
@@ -148,6 +149,7 @@ const ACT: &str = "act_service.rs";
 const DEVICE: &str = "device_service.rs";
 const CART: &str = "cartridge_service.rs";
 const GPLACE: &str = "group_place.rs";
+const REPAIR: &str = "repair_service.rs";
 const GMEMB: &str = "group_membership.rs";
 
 const GTYPE_REASON: &str =
@@ -367,4 +369,17 @@ pub const REGISTRY: &[Entry] = &[
     ro(CART, "storage_place_ids"),
     ro(CART, "operation_default_place"),
     ro(CART, "to_refill_last_send"),
+    // ---- repair_service (Phase 41.4, план 09) -------------------------------
+    ro(REPAIR, "new"),
+    ro(REPAIR, "with_ws_tx"),
+    ro(REPAIR, "device_options"),
+    ro(REPAIR, "open_requests_for_devices"),
+    ro(REPAIR, "last_places"),
+    ro(REPAIR, "get_state"),
+    // Переходы цикла (планы 10-13) добавят строки Broadcasts и поведенческий слой.
+    ex(
+        REPAIR,
+        "create",
+        "создание заявки не меняет места, устройства и группы; сигнал отдельные WsEvent NewRequest и RequestStatusChanged",
+    ),
 ];

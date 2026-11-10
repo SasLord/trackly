@@ -111,25 +111,8 @@ impl RepairService {
         self
     }
 
-    /// Одно `WsEvent::EntitiesChanged` на мутацию, после коммита и вне замыкания writer.
-    /// Используется переходами цикла (планы 10-13); создание заявки места/устройства/групп
-    /// не меняет.
-    #[allow(dead_code)]
-    fn broadcast_entities(
-        &self,
-        op: &'static str,
-        place_ids: Vec<i64>,
-        device_ids: Vec<i64>,
-        group_ids: Vec<i64>,
-    ) {
-        crate::services::entities_broadcast::send_entities_changed(
-            &self.ws_tx,
-            op,
-            place_ids,
-            device_ids,
-            group_ids,
-        );
-    }
+    // `broadcast_entities` (EntitiesChanged после коммита) добавляют переходы цикла
+    // в планах 10-13: реестровый гейт запрещает держать его заглушкой с allow(dead_code).
 
     /// Участники заявки для маршрутизации WS (читается после коммита).
     async fn participants_of(&self, id: i64) -> Vec<i64> {
