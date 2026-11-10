@@ -24,7 +24,7 @@ use crate::tauri_cmds::reports::{
     build_reports_list_cartridge_in_stock, build_reports_list_cartridge_in_use,
     build_reports_list_cartridge_refills, build_reports_list_device_acts,
     build_reports_list_device_in_stock, build_reports_list_device_in_use,
-    build_reports_list_device_returns, build_reports_list_movements,
+    build_reports_list_device_returns, build_reports_list_movements, build_reports_list_repairs,
     build_reports_list_requests_all, build_reports_list_requests_completed,
     build_reports_list_requests_in_progress, build_reports_list_requests_open,
 };
@@ -238,6 +238,22 @@ pub async fn handler_list_requests_completed(
     ))
 }
 
+/// D-30/D-31: отчёт «Ремонты» (ReadData).
+pub async fn handler_list_repairs(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ListWithPeriodPayload>,
+) -> Result<Json<ReportResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_reports_list_repairs(&ctx, &identity, p.filter, p.period)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 /// HST-04. Delegates to `build_reports_list_movements`, which gates on
 /// `Action::ReadPlaces` — NOT `Action::ReadData` like every sibling handler
 /// above (D-12). Uses the same `ListWithPeriodPayload` shape as
@@ -352,6 +368,7 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/reports_list_requests_completed",
             post(handler_list_requests_completed),
         )
+        .route("/api/v1/reports_list_repairs", post(handler_list_repairs))
         .route(
             "/api/v1/reports_list_movements",
             post(handler_list_movements),

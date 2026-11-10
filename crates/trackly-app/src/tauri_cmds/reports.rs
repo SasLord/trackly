@@ -8,7 +8,9 @@
 
 use crate::context::AppCtx;
 use crate::dto::reports::{PeriodDto, ReportCountsDto, ReportFilter, ReportResponse};
-use crate::services::report_service::{format_period_label, movements_truncation_notice};
+use crate::services::report_service::{
+    format_period_label, movements_truncation_notice, repairs_total_label,
+};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use rusqlite::OptionalExtension;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -77,6 +79,18 @@ fn columns_for(report_type: &str, omit_type_column: bool) -> Vec<&'static str> {
             }
             cols
         }
+        // D-30: заходы в сервис; индексно согласовано с column_labels_for.
+        "repairs" => vec![
+            "repair_device_label",
+            "repair_fault",
+            "repair_service_place",
+            "repair_sent_at",
+            "repair_returned_at",
+            "repair_works",
+            "repair_cost_kopecks",
+            "repair_has_scan",
+            "repair_request_id",
+        ],
         _ => vec!["id"],
     }
 }
@@ -115,6 +129,17 @@ fn column_labels_for(report_type: &str, omit_type_column: bool) -> Vec<&'static 
             }
             labels
         }
+        "repairs" => vec![
+            "Устройство",
+            "Неисправность",
+            "Сервис",
+            "Ушло",
+            "Вернулось",
+            "Работы",
+            "Стоимость ₽",
+            "Скан",
+            "Заявка",
+        ],
         _ => vec!["ID"],
     }
 }
@@ -135,6 +160,7 @@ fn report_display_name(report_type: &str) -> &'static str {
         "requests_in_progress" => "Заявки в работе",
         "requests_completed" => "Выполненные заявки",
         "movements" => "Перемещения",
+        "repairs" => "Ремонты",
         _ => "Отчёт",
     }
 }
@@ -271,6 +297,17 @@ pub async fn build_reports_list_requests_completed(
         .await
 }
 
+/// D-30/D-31: отчёт «Ремонты». Гейт `ReadData` — сотрудник закрыт (T-41.4-20).
+pub async fn build_reports_list_repairs(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.reports.list_repairs(filter, period).await
+}
+
 /// HST-04 movements report. **Gate diverges from every other `build_reports_list_*`
 /// above**: `Action::ReadPlaces`, NOT `Action::ReadData` (D-12 — this is the single
 /// highest-risk copy-paste spot in the whole report clone, PATTERNS.md's own named
@@ -349,6 +386,7 @@ mod export_gate_tests {
             "requests_open",
             "requests_in_progress",
             "requests_completed",
+            "repairs",
         ] {
             assert_eq!(
                 export_gate_action(report_type),
@@ -399,7 +437,7 @@ pub async fn build_reports_export_pdf(
     // W-B03:print — a truncated movements report states it in the existing
     // `filter_summary` line (no new template variable: report.html is
     // untouched, a new variable breaks the template preview editor).
-    let filter_summary = if report_type == "movements" {
+    let filter_summary = if report_type == "movements" || report_type == "repairs" {
         match movements_truncation_notice(rows.rows.len(), rows.total) {
             Some(notice) => Some(match filter_summary {
                 Some(summary) => format!("{summary}. {notice}"),
@@ -407,6 +445,16 @@ pub async fn build_reports_export_pdf(
             }),
             None => filter_summary,
         }
+    } else {
+        filter_summary
+    };
+    // D-31: итог отчёта «Ремонты» печатается в той же строке сводки.
+    let filter_summary = if report_type == "repairs" {
+        let total = repairs_total_label(&rows.rows, rows.total);
+        Some(match filter_summary {
+            Some(summary) => format!("{summary}. {total}"),
+            None => total,
+        })
     } else {
         filter_summary
     };
@@ -537,7 +585,8 @@ async fn place_full_path_or_none(
 
 /// Report types whose query is period-scoped. For these, `period` is
 /// mandatory — see `require_period`.
-pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 9] = [
+// Длина 10: добавлен «repairs» (41.4-07, период по `sent_at_utc`).
+pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 10] = [
     "device_acts",
     "device_returns",
     "cartridge_consumption",
@@ -547,6 +596,7 @@ pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 9] = [
     "requests_in_progress",
     "requests_completed",
     "movements",
+    "repairs",
 ];
 
 /// WR-07: reject an absent `period` for a period-scoped report instead of
@@ -645,6 +695,11 @@ async fn fetch_report(
         "movements" => {
             ctx.reports
                 .list_movements(filter, require_period(report_type, period)?)
+                .await
+        }
+        "repairs" => {
+            ctx.reports
+                .list_repairs(filter, require_period(report_type, period)?)
                 .await
         }
         other => Err(AppError::Validation {
@@ -786,6 +841,18 @@ pub async fn reports_list_requests_completed(
     build_reports_list_requests_completed(state.inner(), &caller, filter, period).await
 }
 
+/// D-30/D-31. Delegates to `build_reports_list_repairs` (ReadData).
+#[tauri::command]
+#[specta::specta]
+pub async fn reports_list_repairs(
+    state: tauri::State<'_, AppCtx>,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_reports_list_repairs(state.inner(), &caller, filter, period).await
+}
+
 /// HST-04. Delegates to `build_reports_list_movements`, which gates on
 /// `Action::ReadPlaces` — NOT `Action::ReadData` like every sibling command
 /// above (D-12).
@@ -888,6 +955,7 @@ mod tests {
             "requests_in_progress",
             "requests_completed",
             "movements",
+            "repairs",
         ] {
             // User-requested deviation (plan 40.1-02): index alignment must
             // hold for BOTH values of omit_type_column, not just the
