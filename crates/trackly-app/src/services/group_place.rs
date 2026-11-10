@@ -105,11 +105,45 @@ pub(crate) fn apply_group_place_to_device_in_tx(
     now: i64,
     cause: GroupMoveCause,
 ) -> Result<DevicePlaceChange, AppError> {
+    apply_group_place_inner(
+        tx,
+        deps,
+        device_id,
+        target_place,
+        batch_id,
+        entity_label,
+        group_id,
+        user_id,
+        now,
+        cause,
+        None,
+    )
+}
+
+/// Ядро примитива. `group_old_place`: `Some(место)` — вызов из переноса группы с прежним
+/// местом группы; устройство в исключённом статусе едет с группой только если его место
+/// совпадает с ним (D-15), иначе остаётся на своём месте. `None` — вступление/возврат:
+/// исключённое устройство не стягивается никогда.
+#[allow(clippy::too_many_arguments)]
+fn apply_group_place_inner(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    device_id: i64,
+    target_place: i64,
+    batch_id: Option<&str>,
+    entity_label: Option<&str>,
+    group_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+    cause: GroupMoveCause,
+    group_old_place: Option<i64>,
+) -> Result<DevicePlaceChange, AppError> {
     let before = deps.devices.get_in_tx(tx, device_id)?;
+    let rides_with_group = group_old_place.is_some() && before.place_id == group_old_place;
     // Phase 41.4 (D-14): устройство в исключённом статусе (на ремонте, в ремонте, на
     // списание) не стягивается в место группы; членство при этом сохраняется. Общий
     // примитив: правило действует и при переносе группы, и при вступлении/возврате.
-    if is_repair_exempt_status_code(&before.status_code) {
+    if is_repair_exempt_status_code(&before.status_code) && !rides_with_group {
         return Ok(DevicePlaceChange {
             changed: false,
             previous_place: before.place_id,
@@ -334,7 +368,7 @@ pub(crate) fn propagate_group_place_in_tx(
 
     let mut moved_devices = 0;
     for device_id in &device_ids {
-        let change = apply_group_place_to_device_in_tx(
+        let change = apply_group_place_inner(
             tx,
             deps,
             *device_id,
@@ -345,6 +379,7 @@ pub(crate) fn propagate_group_place_in_tx(
             user_id,
             now,
             cause,
+            old_place,
         )?;
         if change.changed {
             moved_devices += 1;

@@ -41,6 +41,7 @@ use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::places::{
     sibling_cmp, PathDisplayVariant, PlaceContentRow, PlaceNew, PlaceRow, SubtreeStats,
 };
+use trackly_core::domain::repairs::is_repair_exempt_status_code;
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
@@ -49,6 +50,7 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::{
     SqliteDeviceRepository, SqlitePlaceMovementsRepository, SqlitePlaceRepository,
+    SqliteRepairRepository,
 };
 
 use crate::dto::place::{PlaceContentDto, PlaceDto, PlacePathDto};
@@ -831,7 +833,15 @@ impl PlaceService {
                         .groups
                         .root_group_id_in_tx(&tx, member_group.id)?;
                     let root_row = group_deps.groups.get_group_in_tx(&tx, root)?;
-                    if root_row.place_id.is_some() {
+                    // Phase 41.4 (D-14): устройство в исключённом статусе, чьё место
+                    // разошлось с местом корневой группы, с группой не едет — оно
+                    // обрабатывается как обычное устройство (а не остаётся на месте).
+                    let diverged_exempt = {
+                        let dev = SqliteDeviceRepository.get_in_tx(&tx, item.id)?;
+                        is_repair_exempt_status_code(&dev.status_code)
+                            && dev.place_id != root_row.place_id
+                    };
+                    if root_row.place_id.is_some() && !diverged_exempt {
                         devices_riding_with_group.insert(item.id);
                         if !group_roots.contains(&root) {
                             group_roots.push(root);
@@ -856,6 +866,17 @@ impl PlaceService {
                     }
                     match item.kind.as_str() {
                         "device" | "printer" => {
+                            // Phase 41.4 (D-21): устройство с открытой ремонтной заявкой
+                            // не перемещается через «Места».
+                            if SqliteRepairRepository
+                                .open_repair_request_id(&tx, item.id)?
+                                .is_some()
+                            {
+                                return Err(AppError::Conflict {
+                                    reason: "Нельзя изменить устройство: по нему открыта заявка на ремонт."
+                                        .to_string(),
+                                });
+                            }
                             let before = devices_repo.get_in_tx(&tx, item.id)?;
                             let before_place_id = before.place_id;
                             touched_places.push(before_place_id);
