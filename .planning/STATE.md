@@ -1670,7 +1670,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-09T17:17:09.603Z
-Stopped at: Completed 41.4-03-PLAN.md (repair_act number template)
+Stopped at: Completed 41.4-05-PLAN.md (перенос группы, массовый перенос мест, акты; D-14/D-15/D-21/D-22)
 Resume file: .planning/phases/41.4-repair-requests/41.4-CONTEXT.md
 
 None
