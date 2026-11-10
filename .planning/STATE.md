@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-11-10T07:40:17.712Z"
+last_updated: "2026-11-10T08:42:51.284Z"
 last_activity: 2026-11-10
 progress:
   total_phases: 27
   completed_phases: 18
   total_plans: 312
-  completed_plans: 302
+  completed_plans: 304
   percent: 67
 ---
 
@@ -1669,7 +1669,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-10T06:00:00.000Z
+Last session: 2026-11-10T08:42:51.261Z
 Stopped at: Completed 41.4-10-PLAN.md (принятие заявки и «Забрать на склад», реестры гейтов)
 Resume file: None
 
