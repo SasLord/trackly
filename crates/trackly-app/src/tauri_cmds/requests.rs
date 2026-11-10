@@ -107,7 +107,7 @@ pub async fn build_requests_list_categories(
     tokio::task::spawn_blocking(move || {
         let conn = readers.acquire();
         let mut stmt = conn
-            .prepare("SELECT id, name FROM request_categories ORDER BY name")
+            .prepare("SELECT id, name FROM request_categories WHERE is_active = 1 ORDER BY name")
             .map_err(|e| trackly_core::error::AppError::Internal {
                 source_chain: format!("prepare: {e}"),
             })?;

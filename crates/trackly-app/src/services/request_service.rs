@@ -80,10 +80,13 @@ impl RequestService {
     pub async fn get(&self, id: i64, caller: &Identity) -> Result<RequestDto, AppError> {
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
-        let dto = tokio::task::spawn_blocking(move || {
+        let (dto, participants) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             let row = repo.get(&conn, id)?;
-            Ok(RequestDto::from(row))
+            // D-20: сотрудник видит заявку, если он автор или присоединившийся участник.
+            let participants = trackly_infra::repos::repairs_sqlite::SqliteRepairRepository
+                .participant_user_ids(&conn, id)?;
+            Ok((RequestDto::from(row), participants))
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -92,6 +95,7 @@ impl RequestService {
 
         if matches!(caller.role, trackly_core::auth::Role::Employee)
             && dto.requested_by_user_id != caller.user_id.unwrap_or(-1)
+            && !participants.contains(&caller.user_id.unwrap_or(-1))
         {
             return Err(AppError::Forbidden);
         }
@@ -172,6 +176,7 @@ impl RequestService {
                 all: c.all,
                 open: c.open,
                 in_progress: c.in_progress,
+                in_repair: c.in_repair,
                 completed: c.completed,
                 rejected: c.rejected,
                 cancelled: c.cancelled,
