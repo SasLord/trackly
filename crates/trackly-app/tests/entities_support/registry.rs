@@ -388,7 +388,13 @@ pub const REGISTRY: &[Entry] = &[
         "link_scans",
         "связывает уже загруженные вложения с заходом и не меняет места, устройства и группы; вложения шлют AttachmentsChanged сами",
     ),
-    // Дальнейшие переходы (планы 13+) добавят строки Broadcasts.
+    // ---- выход из цикла (Phase 41.4, план 13) -------------------------------
+    b(REPAIR, "complete"),
+    b(REPAIR, "cancel_repair"),
+    b(REPAIR, "reject"),
+    b(REPAIR, "cancel_by_author"),
+    b(REPAIR, "assign_device"),
+    // Дальнейшие переходы (планы 14+) добавят строки Broadcasts.
     ex(
         REPAIR,
         "create",

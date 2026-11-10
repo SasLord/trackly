@@ -185,6 +185,10 @@ async fn complete_in_repair_is_rejected_without_changes() {
         .await
         .expect_err("D-10");
     assert!(validation(&err));
+    assert!(
+        format!("{err:?}").contains("заберите"),
+        "отказ именно по D-10, а не по общему статусу: {err:?}"
+    );
     assert_eq!(status_code(&ctx, dev).await, "в_ремонте");
     assert_eq!(dev_place(&ctx, dev).await, Some(service));
     let st = ctx.repairs.get_state(req, &admin()).await.expect("state");

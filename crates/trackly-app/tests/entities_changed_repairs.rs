@@ -22,7 +22,8 @@ use rusqlite::params;
 use trackly_app::context::AppCtx;
 use trackly_app::dto::printer::WsEvent;
 use trackly_app::dto::repair::{
-    RepairCreateDto, RepairMoveChoiceDto, RepairReceiveDto, RepairSendDto,
+    RepairAssignDeviceDto, RepairCancelDto, RepairCompleteDto, RepairCreateDto,
+    RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto,
 };
 use trackly_infra::error_conversions::map_rusqlite;
 
@@ -332,4 +333,225 @@ async fn scenario_receive() {
     })
     .await
     .expect("scenario_receive вышел за бюджет");
+}
+
+async fn accept_other(ctx: &AppCtx) -> (i64, i64) {
+    let requester = seed_user(ctx, "requester", "Сидоров С.С.").await;
+    let r = ctx
+        .repairs
+        .create(
+            RepairCreateDto {
+                device_id: None,
+                description: "Другое".into(),
+            },
+            &manager(requester),
+        )
+        .await
+        .expect("create");
+    let a = ctx
+        .repairs
+        .accept(
+            r.request.id,
+            r.request.version,
+            RepairMoveChoiceDto::Stay,
+            &admin(),
+        )
+        .await
+        .expect("accept");
+    (r.request.id, a.request.version)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_complete() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let room = seed_place(&ctx, "Кабинет 12").await;
+        let store = storage_place(&ctx, "Склад А").await;
+        let back = seed_place(&ctx, "Кабинет 14").await;
+        let untouched = seed_place(&ctx, "Склад Z").await;
+        let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), None).await;
+        let (req, v) = new_request(&ctx, dev).await;
+        let acc = ctx
+            .repairs
+            .accept(
+                req,
+                v,
+                RepairMoveChoiceDto::Move { place_id: store },
+                &admin(),
+            )
+            .await
+            .expect("accept");
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        ctx.repairs
+            .complete(
+                RepairCompleteDto {
+                    request_id: req,
+                    version: acc.request.version,
+                    place_id: Some(back),
+                    notes: None,
+                },
+                &admin(),
+            )
+            .await
+            .expect("complete");
+
+        let (places, devices, groups) = assert_one_entities(&mut rx, "complete");
+        assert_eq!(sorted(places.clone()), sorted(vec![store, back]));
+        assert!(!places.contains(&untouched) && !places.contains(&room));
+        assert_eq!(sorted(devices), vec![dev]);
+        assert!(groups.is_empty());
+    })
+    .await
+    .expect("scenario_complete вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_cancel_repair() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let room = seed_place(&ctx, "Кабинет 12").await;
+        let store = storage_place(&ctx, "Склад А").await;
+        let untouched = seed_place(&ctx, "Склад Z").await;
+        let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), None).await;
+        let (req, v) = new_request(&ctx, dev).await;
+        let acc = ctx
+            .repairs
+            .accept(
+                req,
+                v,
+                RepairMoveChoiceDto::Move { place_id: store },
+                &admin(),
+            )
+            .await
+            .expect("accept");
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        ctx.repairs
+            .cancel_repair(
+                RepairCancelDto {
+                    request_id: req,
+                    version: acc.request.version,
+                },
+                &admin(),
+            )
+            .await
+            .expect("cancel_repair");
+
+        let (places, devices, groups) = assert_one_entities(&mut rx, "cancel_repair");
+        assert_eq!(sorted(places.clone()), sorted(vec![room, store]));
+        assert!(!places.contains(&untouched));
+        assert_eq!(sorted(devices), vec![dev]);
+        assert!(groups.is_empty());
+    })
+    .await
+    .expect("scenario_cancel_repair вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_reject() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let room = seed_place(&ctx, "Кабинет 12").await;
+        let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), None).await;
+        let (req, v) = new_request(&ctx, dev).await;
+        let acc = ctx
+            .repairs
+            .accept(req, v, RepairMoveChoiceDto::Stay, &admin())
+            .await
+            .expect("accept");
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        ctx.repairs
+            .reject(
+                RepairRejectDto {
+                    request_id: req,
+                    version: acc.request.version,
+                    notes: None,
+                },
+                &admin(),
+            )
+            .await
+            .expect("reject");
+
+        let (places, devices, groups) = assert_one_entities(&mut rx, "reject");
+        assert!(places.is_empty(), "{places:?}");
+        assert_eq!(
+            sorted(devices),
+            vec![dev],
+            "статус менялся: устройство в событии"
+        );
+        assert!(groups.is_empty());
+    })
+    .await
+    .expect("scenario_reject вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_cancel_by_author() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let room = seed_place(&ctx, "Кабинет 12").await;
+        let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), None).await;
+        let (req, v) = new_request(&ctx, dev).await;
+        let acc = ctx
+            .repairs
+            .accept(req, v, RepairMoveChoiceDto::Stay, &admin())
+            .await
+            .expect("accept");
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        ctx.repairs
+            .cancel_by_author(
+                RepairCancelDto {
+                    request_id: req,
+                    version: acc.request.version,
+                },
+                &admin(),
+            )
+            .await
+            .expect("cancel_by_author");
+
+        let (places, devices, groups) = assert_one_entities(&mut rx, "cancel_by_author");
+        assert!(places.is_empty(), "{places:?}");
+        assert_eq!(sorted(devices), vec![dev]);
+        assert!(groups.is_empty());
+    })
+    .await
+    .expect("scenario_cancel_by_author вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_assign_device() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let room = seed_place(&ctx, "Кабинет 12").await;
+        let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), None).await;
+        let (req, v) = accept_other(&ctx).await;
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        ctx.repairs
+            .assign_device(
+                RepairAssignDeviceDto {
+                    request_id: req,
+                    version: v,
+                    device_id: dev,
+                },
+                &admin(),
+            )
+            .await
+            .expect("assign_device");
+
+        let (places, devices, groups) = assert_one_entities(&mut rx, "assign_device");
+        assert!(places.is_empty(), "{places:?}");
+        assert_eq!(sorted(devices), vec![dev]);
+        assert!(groups.is_empty());
+    })
+    .await
+    .expect("scenario_assign_device вышел за бюджет");
 }
