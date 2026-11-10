@@ -74,7 +74,7 @@ pub struct RequestFilter {
     pub request_type: Option<String>,
     /// Filter by assigned user.
     pub assigned_to_user_id: Option<i64>,
-    /// Requester user ID filter.
+    /// Фильтр «видимо пользователю» (D-20): автор или присоединившийся участник.
     pub requested_by_user_id: Option<i64>,
 }
 
@@ -84,6 +84,7 @@ pub struct RequestCounts {
     pub all: i64,
     pub open: i64,
     pub in_progress: i64,
+    pub in_repair: i64,
     pub completed: i64,
     pub rejected: i64,
     pub cancelled: i64,

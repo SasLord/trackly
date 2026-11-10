@@ -206,6 +206,7 @@ export type RequestCountsDto = {
   all: number;
   open: number;
   inProgress: number;
+  inRepair: number;
   completed: number;
   rejected: number;
   cancelled: number;

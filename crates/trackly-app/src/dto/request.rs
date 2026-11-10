@@ -282,6 +282,8 @@ pub struct RequestCountsDto {
     #[specta(type = i32)]
     pub in_progress: i64,
     #[specta(type = i32)]
+    pub in_repair: i64,
+    #[specta(type = i32)]
     pub completed: i64,
     #[specta(type = i32)]
     pub rejected: i64,
