@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.4 (repair-requests) — EXECUTING
-Plan: 2 of 21
+Plan: 3 of 21
 Status: Ready to execute
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
@@ -1670,7 +1670,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-09T17:17:09.603Z
-Stopped at: Completed 41.4-01-PLAN.md (V051 schema)
+Stopped at: Completed 41.4-03-PLAN.md (repair_act number template)
 Resume file: .planning/phases/41.4-repair-requests/41.4-CONTEXT.md
 
 None
