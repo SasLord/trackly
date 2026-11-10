@@ -287,6 +287,10 @@ pub enum WsEvent {
         new_status: String,
         #[specta(type = i32)]
         requested_by_user_id: i64,
+        /// D-20: participants of a shared repair request.
+        #[serde(default)]
+        #[specta(type = Vec<i32>)]
+        participant_user_ids: Vec<i64>,
     },
     /// A printer has an active alert (error or offline).
     #[serde(rename_all = "camelCase")]
@@ -368,6 +372,10 @@ pub enum WsEvent {
         parent_id: i64,
         #[specta(type = Option<i32>)]
         requested_by_user_id: Option<i64>,
+        /// D-20: participants of a shared repair request.
+        #[serde(default)]
+        #[specta(type = Vec<i32>)]
+        participant_user_ids: Vec<i64>,
     },
 }
 
@@ -398,10 +406,14 @@ impl WsEvent {
             }
             WsEvent::RequestStatusChanged {
                 requested_by_user_id,
+                participant_user_ids,
                 ..
             } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
                     || identity.user_id == Some(*requested_by_user_id)
+                    || identity
+                        .user_id
+                        .is_some_and(|u| participant_user_ids.contains(&u))
             }
             WsEvent::NumberSpaceChanged { .. } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
@@ -411,10 +423,14 @@ impl WsEvent {
             }
             WsEvent::AttachmentsChanged {
                 requested_by_user_id,
+                participant_user_ids,
                 ..
             } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
                     || (requested_by_user_id.is_some() && identity.user_id == *requested_by_user_id)
+                    || identity
+                        .user_id
+                        .is_some_and(|u| participant_user_ids.contains(&u))
             }
         }
     }
@@ -434,6 +450,7 @@ mod tests {
             request_id: 1,
             new_status: "in_progress".to_string(),
             requested_by_user_id: 42,
+            participant_user_ids: vec![],
         };
         assert!(event.is_visible_to(&identity(Some(42), Role::Employee)));
     }
@@ -444,6 +461,7 @@ mod tests {
             request_id: 1,
             new_status: "in_progress".to_string(),
             requested_by_user_id: 42,
+            participant_user_ids: vec![],
         };
         assert!(!event.is_visible_to(&identity(Some(7), Role::Employee)));
     }
@@ -454,9 +472,48 @@ mod tests {
             request_id: 1,
             new_status: "completed".to_string(),
             requested_by_user_id: 42,
+            participant_user_ids: vec![],
         };
         assert!(event.is_visible_to(&identity(None, Role::Admin)));
         assert!(event.is_visible_to(&identity(Some(99), Role::Manager)));
+    }
+
+    #[test]
+    fn request_status_changed_visible_to_participant_not_outsider() {
+        let event = WsEvent::RequestStatusChanged {
+            request_id: 1,
+            new_status: "in_repair".to_string(),
+            requested_by_user_id: 42,
+            participant_user_ids: vec![8],
+        };
+        assert!(event.is_visible_to(&identity(Some(8), Role::Employee)));
+        assert!(!event.is_visible_to(&identity(Some(7), Role::Employee)));
+        assert!(!event.is_visible_to(&identity(None, Role::Employee)));
+    }
+
+    #[test]
+    fn attachments_changed_visible_to_participant_not_outsider() {
+        let event = WsEvent::AttachmentsChanged {
+            parent_kind: "request".to_string(),
+            parent_id: 5,
+            requested_by_user_id: Some(42),
+            participant_user_ids: vec![8],
+        };
+        assert!(event.is_visible_to(&identity(Some(8), Role::Employee)));
+        assert!(!event.is_visible_to(&identity(Some(7), Role::Employee)));
+    }
+
+    #[test]
+    fn old_json_without_participants_defaults_empty() {
+        let v = serde_json::json!({"type":"request_status_changed","requestId":1,"newStatus":"x","requestedByUserId":2});
+        let e: WsEvent = serde_json::from_value(v).unwrap();
+        match e {
+            WsEvent::RequestStatusChanged {
+                participant_user_ids,
+                ..
+            } => assert!(participant_user_ids.is_empty()),
+            _ => panic!(),
+        }
     }
 
     #[test]
@@ -484,6 +541,7 @@ mod tests {
             request_id: 7,
             new_status: "completed".to_string(),
             requested_by_user_id: 3,
+            participant_user_ids: vec![],
         };
         let value = serde_json::to_value(&event).unwrap();
         assert_eq!(
@@ -492,7 +550,8 @@ mod tests {
                 "type": "request_status_changed",
                 "requestId": 7,
                 "newStatus": "completed",
-                "requestedByUserId": 3
+                "requestedByUserId": 3,
+                "participantUserIds": []
             })
         );
     }
@@ -503,6 +562,7 @@ mod tests {
             parent_kind: "request".to_string(),
             parent_id: 5,
             requested_by_user_id: Some(42),
+            participant_user_ids: vec![],
         };
         assert!(own.is_visible_to(&identity(None, Role::Admin)));
         assert!(own.is_visible_to(&identity(Some(9), Role::Manager)));
@@ -512,6 +572,7 @@ mod tests {
             parent_kind: "device".to_string(),
             parent_id: 5,
             requested_by_user_id: None,
+            participant_user_ids: vec![],
         };
         assert!(!none.is_visible_to(&identity(Some(42), Role::Employee)));
         assert!(!none.is_visible_to(&identity(None, Role::Employee)));
@@ -524,6 +585,7 @@ mod tests {
             parent_kind: "request".to_string(),
             parent_id: 5,
             requested_by_user_id: Some(3),
+            participant_user_ids: vec![],
         };
         assert_eq!(
             serde_json::to_value(&event).unwrap(),
@@ -531,7 +593,8 @@ mod tests {
                 "type": "attachments_changed",
                 "parentKind": "request",
                 "parentId": 5,
-                "requestedByUserId": 3
+                "requestedByUserId": 3,
+                "participantUserIds": []
             })
         );
     }

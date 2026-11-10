@@ -289,7 +289,7 @@ impl DashboardService {
                     let (status, count) = row.map_err(map_rusqlite)?;
                     match status.as_str() {
                         "open" => open += count,
-                        "in_progress" => in_progress += count,
+                        "in_progress" | "in_repair" => in_progress += count,
                         "completed" => completed += count,
                         _ => {} // 'rejected' not shown in dashboard
                     }
@@ -399,7 +399,7 @@ impl DashboardService {
             let (request_counts_open, request_counts_in_progress, request_counts_completed) = {
                 let mut clauses = vec![
                     "r.deleted_at_utc IS NULL".to_string(),
-                    "r.requested_by_user_id = ?1".to_string(),
+                    trackly_infra::repos::repairs_sqlite::request_visibility_clause("?1"),
                     trackly_infra::repos::requests_sqlite::ad_register_predicate("r."),
                 ];
                 let mut owned: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(owner_user_id)];
@@ -439,7 +439,7 @@ impl DashboardService {
                     let (status, count) = row.map_err(map_rusqlite)?;
                     match status.as_str() {
                         "open" => open += count,
-                        "in_progress" => in_progress += count,
+                        "in_progress" | "in_repair" => in_progress += count,
                         "completed" => completed += count,
                         _ => {} // 'rejected' not shown in dashboard
                     }

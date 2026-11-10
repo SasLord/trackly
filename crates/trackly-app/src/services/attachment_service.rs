@@ -239,13 +239,13 @@ impl AttachmentService {
         intent: Intent,
     ) -> Result<Perms, AppError> {
         let readers = self.readers.clone();
-        let owner = tokio::task::spawn_blocking(move || {
+        let (owner, participants) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             load_parent(&conn, parent)
         })
         .await
         .map_err(internal)??;
-        decide(parent, owner, caller, intent)
+        decide(parent, owner, &participants, caller, intent)
     }
 
     /// Parent's attachments with the caller's permissions.
@@ -542,12 +542,13 @@ impl AttachmentService {
     /// await of a mutation that changed something; the gate test
     /// `attachments_changed_gate` enforces the ordering.
     async fn notify_changed(&self, parent: ParentRef) {
-        let requested_by = self.requested_by_for_event(parent).await;
+        let (requested_by, participants) = self.parent_for_event(parent).await;
         if let Some(tx) = &self.ws_tx {
             let _ = tx.send(WsEvent::AttachmentsChanged {
                 parent_kind: parent.kind.as_str().to_string(),
                 parent_id: parent.id,
                 requested_by_user_id: requested_by,
+                participant_user_ids: participants,
             });
         }
     }
@@ -799,14 +800,18 @@ impl AttachmentService {
     /// Author id of a request parent (for `AttachmentsChanged`), `None` for
     /// device/cartridge parents.
     pub async fn requested_by_for_event(&self, parent: ParentRef) -> Option<i64> {
+        self.parent_for_event(parent).await.0
+    }
+
+    /// Author and participants (D-20) of a request parent for the WS event.
+    async fn parent_for_event(&self, parent: ParentRef) -> (Option<i64>, Vec<i64>) {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             load_parent(&conn, parent).unwrap_or_default()
         })
         .await
-        .ok()
-        .flatten()
+        .unwrap_or_default()
     }
 }
 
@@ -907,9 +912,13 @@ fn prepare(
     })
 }
 
-/// Live parent row: returns the request author (`None` for other kinds).
+/// Live parent row: returns the request author (`None` for other kinds) and
+/// the request participants (D-20, empty for other kinds).
 /// Missing or soft-deleted parent is `NotFound`.
-fn load_parent(conn: &rusqlite::Connection, parent: ParentRef) -> Result<Option<i64>, AppError> {
+fn load_parent(
+    conn: &rusqlite::Connection,
+    parent: ParentRef,
+) -> Result<(Option<i64>, Vec<i64>), AppError> {
     let (entity, sql): (&'static str, &str) = match parent.kind {
         ParentKind::Request => (
             "request",
@@ -928,16 +937,24 @@ fn load_parent(conn: &rusqlite::Connection, parent: ParentRef) -> Result<Option<
         .query_row(sql, rusqlite::params![parent.id], |r| r.get(0))
         .optional()
         .map_err(map_rusqlite)?;
-    found.ok_or(AppError::NotFound {
+    let author = found.ok_or(AppError::NotFound {
         entity,
         id: parent.id,
-    })
+    })?;
+    let participants = if parent.kind == ParentKind::Request {
+        trackly_infra::repos::repairs_sqlite::SqliteRepairRepository
+            .participant_user_ids(conn, parent.id)?
+    } else {
+        Vec::new()
+    };
+    Ok((author, participants))
 }
 
 /// Pure decision step of `authorize`.
 fn decide(
     parent: ParentRef,
     request_author: Option<i64>,
+    participants: &[i64],
     caller: &Identity,
     intent: Intent,
 ) -> Result<Perms, AppError> {
@@ -947,8 +964,11 @@ fn decide(
         true
     } else {
         match parent.kind {
-            // Author only, in any request status (D-02).
-            ParentKind::Request => request_author.is_some() && caller.user_id == request_author,
+            // Author or participant (D-20), in any request status (D-02).
+            ParentKind::Request => {
+                (request_author.is_some() && caller.user_id == request_author)
+                    || caller.user_id.is_some_and(|u| participants.contains(&u))
+            }
             ParentKind::Device => employee_can_read_device(caller, parent.kind, parent.id),
             // Cartridges are never visible to Employee.
             ParentKind::Cartridge => false,

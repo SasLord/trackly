@@ -313,7 +313,7 @@ async fn attachments_audit_and_event() {
         let events = fixture::collect_events(&mut rx);
         assert!(events.iter().any(|e| matches!(
             e,
-            WsEvent::AttachmentsChanged { parent_kind, parent_id, requested_by_user_id }
+            WsEvent::AttachmentsChanged { parent_kind, parent_id, requested_by_user_id, .. }
                 if parent_kind == "request" && *parent_id == r && *requested_by_user_id == Some(author)
         )));
 

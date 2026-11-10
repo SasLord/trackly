@@ -243,6 +243,7 @@ export type WsEvent =
       requestId: number;
       newStatus: string;
       requestedByUserId: number;
+      participantUserIds: number[];
     }
   | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string }
   | { type: 'number_space_changed'; contexts: string[] }
@@ -252,4 +253,5 @@ export type WsEvent =
       parentKind: string;
       parentId: number;
       requestedByUserId: number | null;
+      participantUserIds: number[];
     };

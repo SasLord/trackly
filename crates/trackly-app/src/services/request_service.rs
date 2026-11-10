@@ -71,6 +71,19 @@ impl RequestService {
     // Read paths
     // -----------------------------------------------------------------------
 
+    /// D-20: participant ids for WS routing (read after commit; empty on error).
+    async fn participants_of(&self, id: i64) -> Vec<i64> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            trackly_infra::repos::repairs_sqlite::SqliteRepairRepository
+                .participant_user_ids(&conn, id)
+                .unwrap_or_default()
+        })
+        .await
+        .unwrap_or_default()
+    }
+
     /// Get a single request by ID.
     ///
     /// D-REQ-01 / BOLA closure: an Employee caller may only fetch a request
@@ -580,6 +593,7 @@ impl RequestService {
             request_id,
             new_status,
             requested_by_user_id: dto.requested_by_user_id,
+            participant_user_ids: self.participants_of(dto.id).await,
         });
 
         Ok(dto)
@@ -735,6 +749,7 @@ impl RequestService {
             request_id: id,
             new_status: RequestTransitionOp::Cancel.target_status().to_string(),
             requested_by_user_id: dto.requested_by_user_id,
+            participant_user_ids: self.participants_of(dto.id).await,
         });
 
         Ok(dto)
@@ -869,6 +884,7 @@ impl RequestService {
             request_id,
             new_status: "completed".to_string(),
             requested_by_user_id: dto.requested_by_user_id,
+            participant_user_ids: self.participants_of(dto.id).await,
         });
 
         Ok(dto)
@@ -988,6 +1004,7 @@ impl RequestService {
             request_id,
             new_status: "rejected".to_string(),
             requested_by_user_id: dto.requested_by_user_id,
+            participant_user_ids: self.participants_of(dto.id).await,
         });
 
         Ok(dto)

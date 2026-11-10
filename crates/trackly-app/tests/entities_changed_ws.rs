@@ -164,6 +164,7 @@ async fn admin_and_manager_receive_entities_changed_employee_does_not() {
                 request_id: 1,
                 new_status: "accepted".to_string(),
                 requested_by_user_id: employee_id,
+                participant_user_ids: vec![],
             })
             .expect("send RequestStatusChanged");
 
@@ -224,6 +225,7 @@ async fn admin_and_manager_receive_entities_changed_employee_does_not() {
                 request_id: 2,
                 new_status: "completed".to_string(),
                 requested_by_user_id: employee_id,
+                participant_user_ids: vec![],
             })
             .expect("send trailing control");
         let tail = next_json(&mut ws_employee, "employee").await;
