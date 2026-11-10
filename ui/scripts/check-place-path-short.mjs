@@ -180,6 +180,17 @@ const VERDICTS = [
       'поле выбора места: показывает полный путь выбранного места (displayText в script — см. ограничение гейта)',
   },
   {
+    path: 'src/features/devices/DeviceFormBody.svelte',
+    kind: 'FULL_BY_DESIGN',
+    reason:
+      'предупреждение D-17 и подсказка D-14 называют место устройства и место группы полным путём; это не колонка списка',
+  },
+  {
+    path: 'src/features/requests/repairLocks.ts',
+    kind: 'FULL_BY_DESIGN',
+    reason: 'место ГРУППЫ (place_path группы) для подсказок D-14/D-17: сокращённого варианта нет',
+  },
+  {
     path: 'src/features/groups/GroupPanel.svelte',
     kind: 'FULL_BY_DESIGN',
     reason: 'место ГРУППЫ (place_path группы): у групп нет сокращённого варианта в DTO',

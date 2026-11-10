@@ -113,9 +113,21 @@
   import {
     ensureLoaded as ensureStatusesLoaded,
     orderedStatuses,
+    isRepairExemptStatusCode,
+    statusById,
     statusIdByCode,
     statusLabel,
   } from '$lib/stores/deviceStatuses.svelte';
+  import {
+    REPAIR_CONFLICT_TOAST,
+    REPAIR_STATUS_NOTE,
+    groupPlace,
+    isRepairConflict,
+    loadOpenRepairs,
+    openRepairRequest,
+    repairMoveLockTitle,
+    repairOpenLabel,
+  } from '../requests/repairLocks';
   import { groups } from '$lib/api/groups';
   import { printers } from '../printers/api';
   import {
@@ -385,6 +397,52 @@
   } | null>(null);
   // D-21: у группы БЕЗ места запрет «спит» — поле не блокируем.
   const lockedByGroup = $derived(membership !== null && membership.group_has_place);
+  // Фаза 41.4 (D-14): исключённый статус (текущий сохранённый или выбранный) снимает
+  // блокировку места группой: устройство может стоять отдельно от группы.
+  const statusExempt = $derived(
+    isRepairExemptStatusCode(target?.status_code) ||
+      (statusId !== '' && isRepairExemptStatusCode(statusById(Number(statusId))?.code)),
+  );
+  const placeLockedByGroup = $derived(lockedByGroup && !statusExempt);
+  // Фаза 41.4 (D-21): номер открытой ремонтной заявки по устройству (null — нет).
+  // Только подсказка и блокировка статуса/места; запрет авторитетно держит сервер.
+  // Пишется в async-продолжении onMount, не из $effect.
+  let openRepairId = $state<number | null>(null);
+  // Фаза 41.4 (D-17): место группы устройства (для предупреждения при выходе из
+  // исключённого статуса). null — не член группы, группа без места или запрос не удался.
+  let groupPlaceInfo = $state<{ id: number; path: string } | null>(null);
+  const placeAwayFromGroup = $derived(
+    groupPlaceInfo !== null && placeId !== null && placeId !== groupPlaceInfo.id,
+  );
+  // D-17: смена статуса с исключённого на обычный при месте, отличном от места группы.
+  const returnToGroupWarning = $derived.by(() => {
+    if (
+      !target ||
+      readonly ||
+      membership === null ||
+      !membership.group_has_place ||
+      groupPlaceInfo === null ||
+      !placeAwayFromGroup ||
+      statusId === '' ||
+      !isRepairExemptStatusCode(target.status_code)
+    ) {
+      return null;
+    }
+    if (isRepairExemptStatusCode(statusById(Number(statusId))?.code)) return null;
+    const own = placeId === target.place_id ? target.full_path : null;
+    return `Место устройства («${own ?? 'выбранное место'}») отличается от места группы («${groupPlaceInfo.path}»). При сохранении устройство будет перемещено на место группы, запись появится в журнале перемещений.`;
+  });
+  // D-14: устройство группы в исключённом статусе стоит отдельно от группы.
+  const apartFromGroupTitle = $derived(
+    target &&
+      membership !== null &&
+      membership.group_has_place &&
+      groupPlaceInfo !== null &&
+      isRepairExemptStatusCode(target.status_code) &&
+      target.place_id !== groupPlaceInfo.id
+      ? `Находится отдельно от группы: ${target.full_path ?? ''}`
+      : undefined,
+  );
   // Запрос членства завершён (успехом или ошибкой). Пока он в полёте,
   // lockedByGroup ложно-отрицателен; при создании и просмотре запроса нет.
   // Пишется только в async-продолжении onMount, не из $effect.
@@ -691,6 +749,13 @@
         // never blocks saving the device itself.
         storagePlaceIds = new Set();
       });
+    // Фаза 41.4 (D-21): открытая ремонтная заявка по устройству (только правка).
+    if (target !== null && !readonly) {
+      const deviceId = target.id;
+      void loadOpenRepairs([deviceId]).then((m) => {
+        if (!cancelled) openRepairId = m.get(deviceId) ?? null;
+      });
+    }
     // Plan 41-24: членство в группе (только правка, не просмотр). Ошибка
     // молча означает «не член» — форма не должна ломаться от недоступности
     // раздела групп. Запись состояния — после await, не из эффекта.
@@ -708,6 +773,14 @@
               }
             : null;
           membershipLoaded = true;
+          // Фаза 41.4 (D-17): место группы для предупреждения. Ошибка — без предупреждения.
+          if (row && row.group_has_place) {
+            void groupPlace(row.group_id).then((gp) => {
+              if (!cancelled && gp.id !== null && gp.path !== null) {
+                groupPlaceInfo = { id: gp.id, path: gp.path };
+              }
+            });
+          }
           // Фаза 41.13 (D-06): первая секция выбора хоста — поддерево состава
           // принтера, обход через groups.composition (рекурсивно по
           // child_groups). Ошибка обхода — секция пуста, без сообщения.
@@ -1093,6 +1166,8 @@
         } else if (err.code === 'VALIDATION' && err.details?.field) {
           fieldErrors = { ...fieldErrors, [err.details.field]: err.message ?? 'Ошибка' };
           pushToast('error', err.message ?? 'Ошибка валидации');
+        } else if (isRepairConflict(e)) {
+          pushToast('error', REPAIR_CONFLICT_TOAST);
         } else if (err.code === 'OPTIMISTIC_LOCK_MISMATCH') {
           pushToast(
             'error',
@@ -1275,7 +1350,7 @@
   </div>
 
   <!-- 8. Required: Статус -->
-  <div class="field" class:has-error={!!fieldErrors['status_id']}>
+  <div class="field" class:has-error={!!fieldErrors['status_id']} title={apartFromGroupTitle}>
     <label class="label" for="f-status">
       Статус <span class="required" aria-hidden="true">*</span>
     </label>
@@ -1288,7 +1363,7 @@
       placeholder="— выберите статус —"
       searchPlaceholder="Поиск"
       invalid={!!fieldErrors['status_id']}
-      disabled={readonly}
+      disabled={readonly || openRepairId !== null}
       loading={false}
       groups={statusOptions}
       getGroupId={(o) => o.id}
@@ -1306,6 +1381,14 @@
     {#if fieldErrors['status_id']}
       <p class="field-error">{fieldErrors['status_id']}</p>
     {/if}
+    {#if openRepairId !== null}
+      <p class="repair-lock-note" id="f-status-repair-note">
+        {REPAIR_STATUS_NOTE}
+        <Button variant="link" size="sm" onclick={() => openRepairRequest(openRepairId!)}
+          >{repairOpenLabel(openRepairId)}</Button
+        >
+      </p>
+    {/if}
   </div>
 
   <!-- 9. Required: Место (PlacePicker — единственный контрол выбора места, D-17) -->
@@ -1321,12 +1404,15 @@
       }}
       id="f-place"
       invalid={!!fieldErrors['place_id']}
-      disabled={readonly || lockedByGroup}
+      disabled={readonly || placeLockedByGroup || openRepairId !== null}
     />
     {#if fieldErrors['place_id']}
       <p class="field-error">{fieldErrors['place_id']}</p>
     {/if}
-    {#if lockedByGroup && membership}
+    {#if openRepairId !== null}
+      <p class="group-lock-note">{repairMoveLockTitle(openRepairId)}</p>
+    {/if}
+    {#if placeLockedByGroup && membership}
       <p class="group-lock-note">
         Место задаётся группой «{#if onNavigateToGroup}<Button
             variant="link"
@@ -1479,6 +1565,10 @@
       </div>
     {/if}
   </div>
+
+  {#if returnToGroupWarning}
+    <p class="return-warning" role="status">{returnToGroupWarning}</p>
+  {/if}
 </form>
 
 <style lang="scss">
@@ -1563,6 +1653,24 @@
     margin: var(--tr-space-2xs) 0 0;
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
+  }
+
+  // Фаза 41.4 (D-21): причина блокировки статуса под полем (--tr-text-caption).
+  .repair-lock-note {
+    margin: var(--tr-space-2xs) 0 0;
+    font: var(--tr-text-caption);
+    color: var(--tr-text-secondary);
+  }
+
+  // Фаза 41.4 (D-17): инлайн-предупреждение, сохранение не блокируется.
+  .return-warning {
+    margin: 0;
+    padding: var(--tr-space-xs) var(--tr-space-sm);
+    background: var(--tr-surface-sunken);
+    border: 1px solid var(--tr-warning-muted-text);
+    border-radius: var(--tr-radius-xs);
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-primary);
   }
 
   .input {

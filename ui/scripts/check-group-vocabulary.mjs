@@ -65,7 +65,15 @@ const ALLOWLIST = [
   { prefix: 'src/features/groups/', markers: null },
   { file: 'src/lib/api/groups.ts', markers: null },
   { file: 'src/features/layout/sidebar-config.ts', markers: ['Группы'] },
-  { file: 'src/features/devices/DeviceFormBody.svelte', markers: ['Место задаётся группой'] },
+  {
+    file: 'src/features/devices/DeviceFormBody.svelte',
+    markers: [
+      'Место задаётся группой',
+      'отличается от места группы',
+      'на место группы',
+      'отдельно от группы',
+    ],
+  },
   {
     // 41.4-16 (D-18): попап «Перемещение устройства» — подпись якоря («детали его
     // группы») и пояснение для вложенной группы. Только эти два литерала.
@@ -118,7 +126,7 @@ const ALLOWLIST = [
   {
     // 41.1-19: якорная строка — бейдж-ссылка на группу (aria-label/title).
     file: 'src/features/devices/DeviceListRow.svelte',
-    markers: ['Открыть группу'],
+    markers: ['Открыть группу', 'отдельно от группы'],
   },
   {
     // 41.9-06 (GRD-07, UI-SPEC §6): строка АРМ. Бейдж-ссылка «Группа», пункт и

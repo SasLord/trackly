@@ -6,7 +6,12 @@
   import PrinterMark from './PrinterMark.svelte';
   import GroupLoadRestButton from './GroupLoadRestButton.svelte';
   import { isOwnKeyEvent, isRowOverlayEvent } from './deviceRowMenu';
-  import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
+  import {
+    isRepairExemptStatusCode,
+    statusLabel,
+    statusTone,
+  } from '$lib/stores/deviceStatuses.svelte';
+  import { groupPlace } from '../requests/repairLocks';
   import type { DeviceDto } from '../../bindings';
 
   interface Props {
@@ -80,6 +85,29 @@
   // Подпись и тон статуса — из единого справочника (фаза 41.1, D-06/D-09):
   // подпись по id, тон по code. Хардкода «id -> подпись» здесь нет.
   const label = $derived(statusLabel(device.status_id));
+
+  // Фаза 41.4 (D-14): устройство группы в исключённом статусе стоит отдельно от
+  // группы, если его место не равно месту группы. Место группы подтягивается
+  // лениво и только для таких строк; запись — после await, не синхронно в эффекте.
+  let apartTitle = $state<string | undefined>(undefined);
+  $effect(() => {
+    const groupId = device.group_id;
+    const placeId = device.place_id;
+    const path = device.place_path_short ?? '';
+    if (groupId == null || !isRepairExemptStatusCode(device.status_code)) {
+      apartTitle = undefined;
+      return;
+    }
+    let cancelled = false;
+    void groupPlace(groupId).then((gp) => {
+      if (cancelled) return;
+      apartTitle =
+        gp.id !== null && gp.id !== placeId ? `Находится отдельно от группы: ${path}` : undefined;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
   const tone = $derived(statusTone(device.status_code));
 
   // Меню строки (фаза 41.1, план 17; D-21, D-25, D-26). Кебаб, правый клик и
@@ -181,7 +209,7 @@
   <td class="cell" title={device.full_path ?? ''}>{device.place_path_short ?? '—'}</td>
   <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>
   {#if showStatus}
-    <td class="cell cell-status">
+    <td class="cell cell-status" title={apartTitle}>
       <Badge variant={tone.variant} appearance={tone.appearance} muted={tone.muted}>{label}</Badge>
     </td>
   {/if}

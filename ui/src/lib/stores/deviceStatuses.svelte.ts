@@ -117,3 +117,13 @@ export function orderedStatuses(): DeviceStatusDto[] {
 export function statusTone(code: string | null | undefined): StatusTone {
   return (code ? TONES[code] : undefined) ?? FALLBACK_TONE;
 }
+
+// Фаза 41.4 (D-14/D-17): статусы, при которых устройство группы исключено из
+// «едет с группой» (ремонт и списание). Единственное в UI место со списком
+// кодов; зеркало серверного правила, сервер остаётся авторитетным.
+const REPAIR_EXEMPT_STATUS_CODES: readonly string[] = ['на_ремонте', 'в_ремонте', 'на_списание'];
+
+/** Исключённый ли статус по машинному коду; пустой или неизвестный код — нет. */
+export function isRepairExemptStatusCode(code: string | null | undefined): boolean {
+  return code != null && REPAIR_EXEMPT_STATUS_CODES.includes(code);
+}
