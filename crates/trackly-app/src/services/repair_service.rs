@@ -10,9 +10,12 @@
 
 use std::sync::Arc;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trackly_core::auth::{authorize, Action, Identity, Role};
-use trackly_core::domain::repairs::{format_kopecks, REPAIR_REQUEST_TYPE};
+use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
+use trackly_core::domain::repairs::{
+    format_kopecks, DEVICE_STATUS_CODE_AWAITING_REPAIR, REPAIR_REQUEST_TYPE,
+};
 use trackly_core::domain::requests::RequestNew;
 use trackly_core::error::AppError;
 use trackly_core::ports::requests::RequestRepository;
@@ -26,9 +29,11 @@ use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 use crate::dto::printer::WsEvent;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairStateDto, RepairVisitDto,
+    RepairLastPlacesDto, RepairMoveChoiceDto, RepairStateDto, RepairTransitionResultDto,
+    RepairVisitDto,
 };
 use crate::dto::request::RequestDto;
+use crate::services::group_place::{move_group_in_tx, GroupMoveDeps};
 
 /// Ключи `app_settings` для последних выбранных мест (D-25).
 const SETTING_LAST_MOVE_PLACE: &str = "repair_last_move_place_id";
@@ -111,8 +116,51 @@ impl RepairService {
         self
     }
 
-    // `broadcast_entities` (EntitiesChanged после коммита) добавляют переходы цикла
-    // в планах 10-13: реестровый гейт запрещает держать его заглушкой с allow(dead_code).
+    /// `EntitiesChanged` после коммита: единственный владелец правила отправки в
+    /// `entities_broadcast`; литеральная метка операции равна имени функции-мутации.
+    fn broadcast_entities(
+        &self,
+        op: &'static str,
+        place_ids: Vec<i64>,
+        device_ids: Vec<i64>,
+        group_ids: Vec<i64>,
+    ) {
+        crate::services::entities_broadcast::send_entities_changed(
+            &self.ws_tx,
+            op,
+            place_ids,
+            device_ids,
+            group_ids,
+        );
+    }
+
+    /// Итог перехода: свежая заявка и состояние ремонта; `RequestStatusChanged` участникам.
+    async fn finish_transition(
+        &self,
+        request_id: i64,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        let readers = self.readers.clone();
+        let request_repo = self.request_repo.clone();
+        let row = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            request_repo.get(&conn, request_id)
+        })
+        .await
+        .map_err(join_err)??;
+        let request = RequestDto::from(row);
+        if let Some(ws) = &self.ws_tx {
+            let participants = self.participants_of(request_id).await;
+            let _ = ws.send(WsEvent::RequestStatusChanged {
+                request_id,
+                new_status: request.status.clone(),
+                requested_by_user_id: request.requested_by_user_id,
+                participant_user_ids: participants,
+            });
+        }
+        let state = self.get_state(request_id, caller).await?;
+        Ok(RepairTransitionResultDto { request, state })
+    }
 
     /// Участники заявки для маршрутизации WS (читается после коммита).
     async fn participants_of(&self, id: i64) -> Vec<i64> {
@@ -548,6 +596,166 @@ impl RepairService {
             joined,
         })
     }
+
+    // -----------------------------------------------------------------------
+    // Переходы цикла: принятие и «Забрать на склад»
+    // -----------------------------------------------------------------------
+
+    /// Принять заявку в работу (REP-02, D-01, D-03, D-24).
+    ///
+    /// С устройством: статус «Ожидает ремонта» при любом выборе (D-23: прежний статус
+    /// не блокирует), перемещение по выбору. Без устройства: только смена статуса заявки.
+    pub async fn accept(
+        &self,
+        request_id: i64,
+        version: i64,
+        choice: RepairMoveChoiceDto,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.status != "open" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Заявка уже принята в работу.".into(),
+                    });
+                }
+                repo.set_request_status_in_tx(
+                    &tx,
+                    request_id,
+                    version,
+                    "in_progress",
+                    user_id,
+                    now,
+                )?;
+                let mut ids = (Vec::new(), Vec::new(), Vec::new());
+                let mut payload = serde_json::json!({ "device_id": row.printer_device_id });
+                if let Some(dev) = row.printer_device_id {
+                    let target = match choice {
+                        RepairMoveChoiceDto::Move { place_id } => Some(place_id),
+                        RepairMoveChoiceDto::Stay => None,
+                    };
+                    let deps = GroupMoveDeps::new();
+                    let out = apply_device_state_in_tx(
+                        &tx,
+                        &deps,
+                        &repo,
+                        dev,
+                        Some(DEVICE_STATUS_CODE_AWAITING_REPAIR),
+                        target,
+                        request_id,
+                        user_id,
+                        now,
+                    )?;
+                    if let Some(place) = target {
+                        remember_first_move(&tx, &repo, request_id, &out, now)?;
+                        repo.upsert_setting(&tx, SETTING_LAST_MOVE_PLACE, &place.to_string(), now)?;
+                        payload["moved_to"] = serde_json::json!(place);
+                    }
+                    ids = (out.places, out.devices, out.groups);
+                }
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:repair_accept",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(payload.to_string()),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(ids)
+            })
+            .await?;
+
+        self.broadcast_entities("accept", place_ids, device_ids, group_ids);
+        self.finish_transition(request_id, caller).await
+    }
+
+    /// «Забрать на склад» (REP-03): переместить устройство, пока оно не в сервисе.
+    /// Статус устройства не меняется.
+    pub async fn move_to_storage(
+        &self,
+        request_id: i64,
+        version: i64,
+        place_id: i64,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.version != version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "request",
+                        id: request_id,
+                        expected: version,
+                        actual: row.version,
+                    });
+                }
+                if row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Перемещение доступно только для заявки в работе.".into(),
+                    });
+                }
+                let Some(dev) = row.printer_device_id else {
+                    return Err(AppError::Validation {
+                        field: "device_id".into(),
+                        message: "В заявке не указано устройство.".into(),
+                    });
+                };
+                if repo.open_visit_for_request(&tx, request_id)?.is_some() {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Устройство находится в сервисе.".into(),
+                    });
+                }
+                let deps = GroupMoveDeps::new();
+                let out = apply_device_state_in_tx(
+                    &tx,
+                    &deps,
+                    &repo,
+                    dev,
+                    None,
+                    Some(place_id),
+                    request_id,
+                    user_id,
+                    now,
+                )?;
+                remember_first_move(&tx, &repo, request_id, &out, now)?;
+                repo.upsert_setting(&tx, SETTING_LAST_MOVE_PLACE, &place_id.to_string(), now)?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok((out.places, out.devices, out.groups))
+            })
+            .await?;
+
+        self.broadcast_entities("move_to_storage", place_ids, device_ids, group_ids);
+        self.finish_transition(request_id, caller).await
+    }
 }
 
 /// Одна транзакция «присоединиться или создать». `allow_insert = false` — повтор после
@@ -608,4 +816,225 @@ fn try_create(
     )?;
     tx.commit().map_err(map_rusqlite)?;
     Ok((id, false))
+}
+
+fn ensure_repair(request_type: &str) -> Result<(), AppError> {
+    if request_type != REPAIR_REQUEST_TYPE {
+        return Err(AppError::Validation {
+            field: "request_id".into(),
+            message: "Заявка не является ремонтной.".into(),
+        });
+    }
+    Ok(())
+}
+
+/// Что затронула запись устройства: для рассылки и для D-16.
+struct DeviceOutcome {
+    places: Vec<i64>,
+    devices: Vec<i64>,
+    groups: Vec<i64>,
+    /// Место устройства действительно поменялось.
+    changed: bool,
+    /// Место устройства до операции.
+    previous_place: Option<i64>,
+}
+
+fn push_unique(v: &mut Vec<i64>, id: i64) {
+    if !v.contains(&id) {
+        v.push(id);
+    }
+}
+
+/// D-16: при первом реальном перемещении сохранить место ДО в заявке; дальнейшие
+/// перемещения `repair_origin_place_id` не перезаписывают.
+fn remember_first_move(
+    tx: &Transaction<'_>,
+    repo: &SqliteRepairRepository,
+    request_id: i64,
+    out: &DeviceOutcome,
+    now: i64,
+) -> Result<(), AppError> {
+    if !out.changed {
+        return Ok(());
+    }
+    let (_, moved) = repo.get_repair_fields(tx, request_id)?;
+    if !moved {
+        repo.set_repair_fields_in_tx(tx, request_id, out.previous_place, true, now)?;
+    }
+    Ok(())
+}
+
+/// Места живых картриджей, прикреплённых к устройствам (для рассылки при каскаде).
+fn attached_cartridge_places(
+    tx: &Transaction<'_>,
+    device_ids: &[i64],
+) -> Result<Vec<i64>, AppError> {
+    let mut out = Vec::new();
+    for dev in device_ids {
+        let mut stmt = tx
+            .prepare(
+                "SELECT DISTINCT place_id FROM cartridges \
+                 WHERE current_printer_device_id = ?1 AND deleted_at_utc IS NULL \
+                 AND place_id IS NOT NULL",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![dev], |r| r.get::<_, i64>(0))
+            .map_err(map_rusqlite)?;
+        for r in rows {
+            push_unique(&mut out, r.map_err(map_rusqlite)?);
+        }
+    }
+    Ok(out)
+}
+
+/// Единственная точка записи `status_id` и `place_id` устройства сервиса.
+///
+/// `status_code`: `Some` ставит статус по коду из справочника (D-02), `None` оставляет.
+/// `target_place`: `Some` перемещает, `None` оставляет на месте. Якорное устройство
+/// перемещает весь блок через `move_group_in_tx` (D-18), статус меняется только у
+/// него; якорь вложенной группы переместить нельзя. Журнал Manual с note «по заявке №N»,
+/// аудит `custom:repair_move`, каскад места картриджей принтера (только при `Some` и
+/// смене места, CR-03) выполняются в той же транзакции.
+#[allow(clippy::too_many_arguments)]
+fn apply_device_state_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    repo: &SqliteRepairRepository,
+    device_id: i64,
+    status_code: Option<&str>,
+    target_place: Option<i64>,
+    request_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<DeviceOutcome, AppError> {
+    let before = deps.devices.get_in_tx(tx, device_id)?;
+    if before.deleted_at_utc.is_some() {
+        return Err(AppError::NotFound {
+            entity: "device",
+            id: device_id,
+        });
+    }
+    let status_id = match status_code {
+        Some(code) => repo.device_status_id_by_code(tx, code)?,
+        None => before.status_id,
+    };
+    let mut out = DeviceOutcome {
+        places: Vec::new(),
+        devices: vec![device_id],
+        groups: Vec::new(),
+        changed: false,
+        previous_place: before.place_id,
+    };
+    let mut final_place = before.place_id;
+
+    if let Some(target) = target_place {
+        if !place_is_live(tx, target)? {
+            return Err(AppError::Validation {
+                field: "place_id".into(),
+                message: "Место не найдено или в архиве: выберите другое.".into(),
+            });
+        }
+        let anchor: Option<(i64, Option<i64>)> = tx
+            .query_row(
+                "SELECT id, parent_group_id FROM groups \
+                 WHERE anchor_device_id = ?1 AND deleted_at_utc IS NULL",
+                params![device_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(map_rusqlite)?;
+        if let Some((gid, parent)) = anchor {
+            if parent.is_some() {
+                return Err(AppError::Validation {
+                    field: "place_id".into(),
+                    message: "Место вложенной группы задаётся корневой группой; \
+                              переместите блок через неё."
+                        .into(),
+                });
+            }
+            let members = deps.groups.subtree_device_ids_in_tx(tx, gid)?;
+            let carts = attached_cartridge_places(tx, &members)?;
+            let outcome = move_group_in_tx(tx, deps, gid, None, target, user_id, now)?;
+            if outcome.batch_id.is_some() {
+                for p in outcome.changed_place_ids {
+                    push_unique(&mut out.places, p);
+                }
+                for p in carts {
+                    push_unique(&mut out.places, p);
+                }
+            }
+            for m in members {
+                push_unique(&mut out.devices, m);
+            }
+            out.groups = deps.groups.subtree_group_ids_in_tx(tx, gid)?;
+        }
+        final_place = Some(target);
+    }
+
+    // Место после переноса блока (якорь мог поехать с группой) и до записи ниже.
+    let mid_place = deps.devices.get_in_tx(tx, device_id)?.place_id;
+    deps.devices
+        .update_status_and_place_in_tx(tx, device_id, status_id, final_place, now)?;
+
+    if mid_place != final_place {
+        deps.movements.record_movement_if_applicable(
+            tx,
+            &deps.places,
+            MovementEntityKind::Device,
+            device_id,
+            mid_place,
+            final_place,
+            MovementSource::Manual,
+            Some(&format!("по заявке №{request_id}")),
+            None,
+            user_id,
+            now,
+        )?;
+        if final_place.is_some() {
+            for p in attached_cartridge_places(tx, &[device_id])? {
+                push_unique(&mut out.places, p);
+            }
+            deps.cartridges.cascade_place_for_printer_in_tx(
+                tx,
+                device_id,
+                final_place,
+                MovementSource::Manual,
+                "вместе с принтером",
+                user_id,
+                now,
+            )?;
+        }
+    }
+
+    if before.place_id != final_place {
+        out.changed = true;
+        if let Some(p) = before.place_id {
+            push_unique(&mut out.places, p);
+        }
+        if let Some(p) = final_place {
+            push_unique(&mut out.places, p);
+        }
+        deps.audit.insert(
+            tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: device_id,
+                action: "custom:repair_move",
+                user_id,
+                before_json: None,
+                after_json: None,
+                payload_json: Some(
+                    serde_json::json!({
+                        "request_id": request_id,
+                        "from": before.place_id,
+                        "to": final_place,
+                    })
+                    .to_string(),
+                ),
+                created_at_utc: now,
+            },
+        )?;
+    }
+    Ok(out)
 }

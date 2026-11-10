@@ -132,3 +132,24 @@ pub struct OpenRepairRefDto {
     #[specta(type = i32)]
     pub request_id: i64,
 }
+
+/// Выбор в попапе «Перемещение устройства» при принятии заявки (D-03):
+/// переместить на место либо оставить где стоит.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RepairMoveChoiceDto {
+    #[serde(rename_all = "camelCase")]
+    Move {
+        #[specta(type = i32)]
+        place_id: i64,
+    },
+    Stay,
+}
+
+/// Итог перехода цикла ремонта: обновлённая заявка и состояние ремонта.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairTransitionResultDto {
+    pub request: RequestDto,
+    pub state: RepairStateDto,
+}
