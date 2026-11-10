@@ -5480,3 +5480,503 @@ async fn devices_container_reads_role_matrix() {
     .await
     .expect("devices_container_reads_role_matrix exceeded 60s");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.4 plan 14: ремонтные заявки — роли и серверные блокировки на обоих
+// транспортах. spa_fallback прячет забытые маршруты, поэтому каждая команда
+// проверяется живым build_router: без сессии 401, у сотрудника 403.
+// ---------------------------------------------------------------------------
+
+/// Команды, закрытые для сотрудника целиком (персонал: Admin | Manager).
+fn repair_staff_only_cases() -> Vec<(&'static str, serde_json::Value)> {
+    let dto = |extra: serde_json::Value| {
+        let mut v = json!({ "requestId": 999999, "version": 1 });
+        if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
+            for (k, x) in e {
+                o.insert(k.clone(), x.clone());
+            }
+        }
+        json!({ "dto": v })
+    };
+    vec![
+        ("repairs_last_places", json!({})),
+        ("repairs_open_for_devices", json!({ "deviceIds": [1] })),
+        (
+            "repairs_accept",
+            json!({ "requestId": 999999, "version": 1, "choice": { "kind": "stay" } }),
+        ),
+        (
+            "repairs_move_to_storage",
+            json!({ "requestId": 999999, "version": 1, "placeId": 1 }),
+        ),
+        (
+            "repairs_send",
+            dto(json!({
+                "dateUtc": 1700000000, "giverName": "Иванов И.И.", "receiverName": "Петров П.П.",
+                "servicePlaceId": 1, "faultDescription": "Не включается"
+            })),
+        ),
+        (
+            "repairs_receive",
+            dto(json!({
+                "dateUtc": 1700000000, "receivedByName": "Петров П.П.", "placeId": 1,
+                "returnToWorkplace": false, "worksDone": null, "cost": null
+            })),
+        ),
+        (
+            "repairs_complete",
+            dto(json!({ "placeId": null, "notes": null })),
+        ),
+        ("repairs_cancel_repair", dto(json!({}))),
+        ("repairs_reject", dto(json!({ "notes": null }))),
+        ("repairs_assign_device", dto(json!({ "deviceId": 1 }))),
+        (
+            "repairs_link_scans",
+            json!({ "visitId": 999999, "attachmentIds": [] }),
+        ),
+        ("repairs_render_act", json!({ "visitId": 999999 })),
+        (
+            "reports_list_repairs",
+            json!({
+                "filter": {
+                    "date_from_utc": null, "date_to_utc": null, "place_id": null,
+                    "status_id": null, "type_id": null, "act_type": null,
+                    "model_id": null, "color": null, "search": null
+                },
+                "period": {
+                    "mode": "year", "year": 2026, "month": null,
+                    "date_from": null, "date_to": null
+                }
+            }),
+        ),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn repairs_role_matrix_http() {
+    let env = gt_env().await;
+    for (name, payload) in repair_staff_only_cases() {
+        let status = post_with_cookie(
+            gt_app(&env.ctx),
+            &format!("/api/v1/{name}"),
+            payload.clone(),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{name} без сессии");
+
+        let (status, body) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "Employee → {name} → ожидали 403, получили {status} ({body})"
+        );
+
+        for (who, cookie) in [
+            ("Admin", &env.admin_cookie),
+            ("Manager", &env.manager_cookie),
+        ] {
+            let (status, body) = gt_post(&env, cookie, name, payload.clone()).await;
+            assert!(
+                !GROUP_NOT_REACHED.contains(&status),
+                "{who} → {name} → не дошёл до логики: {status} ({body})"
+            );
+        }
+    }
+
+    // Открытые всем ролям: repairs_create и repairs_device_options.
+    for (who, cookie) in [
+        ("Admin", &env.admin_cookie),
+        ("Manager", &env.manager_cookie),
+        ("Employee", &env.employee_cookie),
+    ] {
+        let (status, body) = gt_post(&env, cookie, "repairs_device_options", json!({})).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{who} → repairs_device_options: {body}"
+        );
+        let (status, body) = gt_post(
+            &env,
+            cookie,
+            "repairs_create",
+            json!({ "dto": { "deviceId": null, "description": "Не загружается" } }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{who} → repairs_create: {body}");
+    }
+    for (name, payload) in [
+        ("repairs_device_options", json!({})),
+        (
+            "repairs_create",
+            json!({ "dto": { "deviceId": null, "description": "x" } }),
+        ),
+        ("repairs_get_state", json!({ "requestId": 1 })),
+    ] {
+        let status =
+            post_with_cookie(gt_app(&env.ctx), &format!("/api/v1/{name}"), payload, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{name} без сессии");
+    }
+    // Контроль: несуществующий путь /api/ даёт 404, а не маскируется spa_fallback.
+    let status = post_with_cookie(
+        gt_app(&env.ctx),
+        "/api/v1/repairs_no_such_command",
+        json!({}),
+        Some(&env.admin_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "контрольный путь");
+    env.ctx.shutdown.cancel();
+}
+
+/// Tauri-путь: build_repairs_* с Identity каждой роли.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn repairs_role_matrix_tauri_path() {
+    use trackly_app::dto::repair::{
+        RepairAssignDeviceDto, RepairCancelDto, RepairCompleteDto, RepairMoveChoiceDto,
+        RepairReceiveDto, RepairRejectDto, RepairSendDto,
+    };
+    use trackly_app::tauri_cmds::repairs as r;
+
+    let env = gt_env().await;
+    let cancel = || RepairCancelDto {
+        request_id: 999999,
+        version: 1,
+    };
+    for (who, caller) in [("Admin", &env.admin), ("Manager", &env.manager)] {
+        // Для персонала гейт пропускает (ошибка допустима любая, кроме Forbidden).
+        let results: Vec<(&str, Result<(), AppError>)> = vec![
+            (
+                "last_places",
+                r::build_repairs_last_places(&env.ctx, caller)
+                    .await
+                    .map(|_| ()),
+            ),
+            (
+                "open_for_devices",
+                r::build_repairs_open_for_devices(&env.ctx, caller, vec![1])
+                    .await
+                    .map(|_| ()),
+            ),
+            (
+                "accept",
+                r::build_repairs_accept(&env.ctx, caller, 999999, 1, RepairMoveChoiceDto::Stay)
+                    .await
+                    .map(|_| ()),
+            ),
+            (
+                "move_to_storage",
+                r::build_repairs_move_to_storage(&env.ctx, caller, 999999, 1, 1)
+                    .await
+                    .map(|_| ()),
+            ),
+            (
+                "cancel_repair",
+                r::build_repairs_cancel_repair(&env.ctx, caller, cancel())
+                    .await
+                    .map(|_| ()),
+            ),
+            (
+                "link_scans",
+                r::build_repairs_link_scans(&env.ctx, caller, 999999, vec![])
+                    .await
+                    .map(|_| ()),
+            ),
+            (
+                "render_act",
+                r::build_repairs_render_act(&env.ctx, caller, 999999)
+                    .await
+                    .map(|_| ()),
+            ),
+        ];
+        for (n, res) in results {
+            assert!(
+                !matches!(res, Err(AppError::Forbidden)),
+                "{who} → build_repairs_{n} → Forbidden"
+            );
+        }
+    }
+
+    let emp = &env.employee;
+    let forbidden: Vec<(&str, Result<(), AppError>)> = vec![
+        (
+            "last_places",
+            r::build_repairs_last_places(&env.ctx, emp)
+                .await
+                .map(|_| ()),
+        ),
+        (
+            "open_for_devices",
+            r::build_repairs_open_for_devices(&env.ctx, emp, vec![1])
+                .await
+                .map(|_| ()),
+        ),
+        (
+            "accept",
+            r::build_repairs_accept(&env.ctx, emp, 999999, 1, RepairMoveChoiceDto::Stay)
+                .await
+                .map(|_| ()),
+        ),
+        (
+            "move_to_storage",
+            r::build_repairs_move_to_storage(&env.ctx, emp, 999999, 1, 1)
+                .await
+                .map(|_| ()),
+        ),
+        (
+            "send",
+            r::build_repairs_send(
+                &env.ctx,
+                emp,
+                RepairSendDto {
+                    request_id: 999999,
+                    version: 1,
+                    date_utc: 1700000000,
+                    giver_name: "Иванов И.И.".into(),
+                    receiver_name: "Петров П.П.".into(),
+                    service_place_id: 1,
+                    fault_description: "x".into(),
+                },
+            )
+            .await
+            .map(|_| ()),
+        ),
+        (
+            "receive",
+            r::build_repairs_receive(
+                &env.ctx,
+                emp,
+                RepairReceiveDto {
+                    request_id: 999999,
+                    version: 1,
+                    date_utc: 1700000000,
+                    received_by_name: "Петров П.П.".into(),
+                    place_id: 1,
+                    return_to_workplace: false,
+                    works_done: None,
+                    cost: None,
+                },
+            )
+            .await
+            .map(|_| ()),
+        ),
+        (
+            "complete",
+            r::build_repairs_complete(
+                &env.ctx,
+                emp,
+                RepairCompleteDto {
+                    request_id: 999999,
+                    version: 1,
+                    place_id: None,
+                    notes: None,
+                },
+            )
+            .await
+            .map(|_| ()),
+        ),
+        (
+            "cancel_repair",
+            r::build_repairs_cancel_repair(&env.ctx, emp, cancel())
+                .await
+                .map(|_| ()),
+        ),
+        (
+            "reject",
+            r::build_repairs_reject(
+                &env.ctx,
+                emp,
+                RepairRejectDto {
+                    request_id: 999999,
+                    version: 1,
+                    notes: None,
+                },
+            )
+            .await
+            .map(|_| ()),
+        ),
+        (
+            "assign_device",
+            r::build_repairs_assign_device(
+                &env.ctx,
+                emp,
+                RepairAssignDeviceDto {
+                    request_id: 999999,
+                    version: 1,
+                    device_id: 1,
+                },
+            )
+            .await
+            .map(|_| ()),
+        ),
+        (
+            "link_scans",
+            r::build_repairs_link_scans(&env.ctx, emp, 999999, vec![])
+                .await
+                .map(|_| ()),
+        ),
+        (
+            "render_act",
+            r::build_repairs_render_act(&env.ctx, emp, 999999)
+                .await
+                .map(|_| ()),
+        ),
+    ];
+    for (n, res) in forbidden {
+        assert!(
+            matches!(res, Err(AppError::Forbidden)),
+            "Employee → build_repairs_{n} → ожидали Forbidden, получили {res:?}"
+        );
+    }
+    // Открыто всем ролям.
+    for caller in [&env.admin, &env.manager, &env.employee] {
+        r::build_repairs_device_options(&env.ctx, caller)
+            .await
+            .expect("device_options");
+    }
+    env.ctx.shutdown.cancel();
+}
+
+/// repairs_get_state и requests_get: автор и участник — 200, посторонний сотрудник — 403.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn repairs_get_state_visibility_http() {
+    let env = gt_env().await;
+    let (st, body) = gt_post(
+        &env,
+        &env.employee_cookie,
+        "repairs_create",
+        json!({ "dto": { "deviceId": null, "description": "Не загружается" } }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "create: {body}");
+    let rid = body["request"]["id"].as_i64().expect("id заявки");
+
+    // Второй сотрудник, не участник.
+    let (_outsider, outsider_id) =
+        gt_make_user(&env.ctx, "gt_outsider", "Кузнецов К.К.", Role::Employee).await;
+    let store = RusqliteSessionStore::new(env.ctx.writer.clone(), env.ctx.readers.clone());
+    let outsider_cookie = create_session_cookie(&store, outsider_id, Role::Employee)
+        .await
+        .expect("session");
+
+    for name in ["repairs_get_state", "requests_get"] {
+        let payload = if name == "requests_get" {
+            json!({ "id": rid })
+        } else {
+            json!({ "requestId": rid })
+        };
+        let (st, b) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+        assert_eq!(st, StatusCode::OK, "автор → {name}: {b}");
+        let (st, b) = gt_post(&env, &env.manager_cookie, name, payload.clone()).await;
+        assert_eq!(st, StatusCode::OK, "персонал → {name}: {b}");
+        let (st, _) = gt_post(&env, &outsider_cookie, name, payload.clone()).await;
+        assert_eq!(st, StatusCode::FORBIDDEN, "посторонний → {name}");
+    }
+
+    // Участник (присоединился к открытой заявке) видит состояние.
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO request_participants (request_id, user_id, joined_at_utc) \
+         VALUES (?1, ?2, 1700000001)",
+        vec![gt_int(rid), gt_int(outsider_id)],
+    )
+    .await;
+    let (st, b) = gt_post(
+        &env,
+        &outsider_cookie,
+        "repairs_get_state",
+        json!({ "requestId": rid }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "участник → repairs_get_state: {b}");
+    env.ctx.shutdown.cancel();
+}
+
+/// D-21 и D-22 по HTTP: открытая ремонтная заявка блокирует ручную смену статуса/места
+/// устройства и включение его в акт, ответ — 409 с JSON-телом.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn repairs_open_request_blocks_device_update_and_act_over_http() {
+    use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+    use trackly_app::dto::number_template::NumberFieldInput;
+
+    let env = gt_env().await;
+    let device = groups_seed_device(&env, "Принтер для проверки", "INV-REP-1").await;
+    let place = groups_seed_place(&env, "Кабинет ремонта").await;
+    let other_status = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM device_statuses WHERE id <> 1 ORDER BY id LIMIT 1",
+        vec![],
+    )
+    .await;
+    let version = gt_db_i64(
+        &env.ctx,
+        "SELECT version FROM devices WHERE id = ?1",
+        vec![gt_int(device)],
+    )
+    .await;
+
+    let (st, body) = gt_post(
+        &env,
+        &env.manager_cookie,
+        "repairs_create",
+        json!({ "dto": { "deviceId": device, "description": "Не печатает" } }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "create: {body}");
+
+    // D-21: смена статуса и смена места — отказ.
+    for patch in [
+        json!({ "status_id": other_status }),
+        json!({ "place_id": place }),
+    ] {
+        let (st, b) = gt_post(
+            &env,
+            &env.manager_cookie,
+            "devices_update",
+            json!({ "id": device, "version": version, "patch": patch }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::CONFLICT, "D-21 {patch}: {b}");
+        assert_eq!(b["code"], "CONFLICT", "тело ошибки: {b}");
+    }
+    // Ничего не изменилось.
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT status_id FROM devices WHERE id = ?1",
+            vec![gt_int(device)]
+        )
+        .await,
+        1
+    );
+
+    // D-22: акт с этим устройством — отказ.
+    let dto = ActCreateDto {
+        number_input: NumberFieldInput {
+            value: "REP-1".into(),
+            ..Default::default()
+        },
+        giver_name: "Иванов И.И.".into(),
+        receiver_name: "Петров П.П.".into(),
+        items: vec![ActItemNewDto {
+            device_id: device,
+            device_ids: vec![device],
+            quantity: 1,
+        }],
+        ..Default::default()
+    };
+    let (st, b) = gt_post(
+        &env,
+        &env.manager_cookie,
+        "acts_create",
+        json!({ "payload": dto }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT, "D-22: {b}");
+    assert_eq!(
+        gt_db_i64(&env.ctx, "SELECT COUNT(*) FROM acts", vec![]).await,
+        0,
+        "акт не должен создаваться"
+    );
+    env.ctx.shutdown.cancel();
+}
