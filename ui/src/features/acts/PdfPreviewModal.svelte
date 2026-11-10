@@ -41,6 +41,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from '$lib/api/acts';
   import { apiCall } from '$lib/api/client';
+  import { repairs } from '../requests/api';
   import { isTauri } from '$lib/stores/transport.svelte';
   import {
     buildSrcdoc,
@@ -74,7 +75,14 @@
     /** Plan 03-05: 'handover' → render акта приёма-передачи (default);
      *  'acceptance' → render документа приёма устройства (DEV-14);
      *  'report' → render отчёта (Plan 17-03, D-09). */
-    mode?: 'handover' | 'acceptance' | 'report';
+    mode?: 'handover' | 'acceptance' | 'report' | 'repair';
+    /** Фаза 41.4 (D-27/D-28): required when mode='repair' — id захода ремонта,
+     *  акт рендерится командой repairs_render_act. */
+    repairVisitId?: number | null;
+    /** Фаза 41.4: HTML получен / не получен. Для mode='repair' вызывающий показывает
+     *  загрузку на своей кнопке и тост вместо встроенного сообщения об ошибке. */
+    onLoaded?: () => void;
+    onLoadError?: () => void;
     /** Required when mode='acceptance'. */
     acceptancePayload?: AcceptancePayload | null;
     /** Required when mode='report'. */
@@ -89,6 +97,9 @@
     mode = 'handover',
     acceptancePayload = null,
     reportParams = null,
+    repairVisitId = null,
+    onLoaded,
+    onLoadError,
   }: Props = $props();
 
   let htmlContent = $state<string | null>(null);
@@ -145,6 +156,12 @@
         acceptancePayload.dateUtc,
       );
     }
+    if (mode === 'repair') {
+      if (repairVisitId === null) {
+        return Promise.reject(new Error('repairVisitId required for mode="repair"'));
+      }
+      return repairs.renderAct(repairVisitId);
+    }
     if (mode === 'report') {
       if (!reportParams) {
         return Promise.reject(new Error('reportParams required for mode="report"'));
@@ -167,7 +184,9 @@
         ? acceptancePayload !== null
         : mode === 'report'
           ? reportParams !== null
-          : actId !== null),
+          : mode === 'repair'
+            ? repairVisitId !== null
+            : actId !== null),
   );
 
   /** D-07: keep showing the loading state until pagination has settled one
@@ -195,6 +214,7 @@
       try {
         const html = await renderCall();
         if (cancelled) return;
+        onLoaded?.();
         htmlContent = html;
         // Built ONCE, imperatively — never as a $derived, which would re-run
         // (and reload the iframe) on every later themeStore.resolved change
@@ -210,6 +230,10 @@
         }, PAGINATION_TIMEOUT_MS);
       } catch (e: unknown) {
         if (cancelled) return;
+        if (onLoadError) {
+          onLoadError();
+          return;
+        }
         const msg =
           e && typeof e === 'object' && 'message' in e
             ? String((e as { message: unknown }).message)
