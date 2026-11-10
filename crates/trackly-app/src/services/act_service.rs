@@ -38,7 +38,7 @@ use trackly_infra::repos::acts_sqlite::{next_sub_number_for_parent, recompute_pa
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::{
     SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository, SqliteGroupRepository,
-    SqlitePlaceMovementsRepository, SqlitePlaceRepository,
+    SqlitePlaceMovementsRepository, SqlitePlaceRepository, SqliteRepairRepository,
 };
 
 use crate::dto::act::{
@@ -95,10 +95,32 @@ fn is_act_assignable(
     device: &DeviceRow,
     on_warehouse_status_id: i64,
 ) -> Result<bool, AppError> {
+    // Phase 41.4 (D-22): открытая ремонтная заявка отказывает ДО обеих веток.
+    if SqliteRepairRepository
+        .open_repair_request_id(tx, device.id)?
+        .is_some()
+    {
+        return Ok(false);
+    }
     if device.status_id == on_warehouse_status_id {
         return Ok(true);
     }
     Ok(groups.group_of_device_in_tx(tx, device.id)?.is_some())
+}
+
+/// Причина отказа `is_act_assignable`: открытая ремонтная заявка (D-22) либо «не на складе».
+fn assignable_conflict(tx: &rusqlite::Transaction<'_>, dev_id: i64) -> AppError {
+    let repair_open = SqliteRepairRepository
+        .open_repair_request_id(tx, dev_id)
+        .ok()
+        .flatten()
+        .is_some();
+    let reason = if repair_open {
+        crate::services::group_act_plan::REPAIR_OPEN_ACT_MESSAGE.to_string()
+    } else {
+        format!("Устройство id={dev_id} больше не на складе — обновите список и повторите.")
+    };
+    AppError::Conflict { reason }
 }
 
 /// Application service for act lifecycle. `Arc`-fields keep `Clone` O(1).
@@ -597,13 +619,7 @@ impl ActService {
                                 &d,
                                 on_warehouse_status_id,
                             )? {
-                                return Err(AppError::Conflict {
-                                    reason: format!(
-                                        "Устройство id={} больше не на складе — \
-                                         обновите список и повторите.",
-                                        dev_id
-                                    ),
-                                });
+                                return Err(assignable_conflict(&tx, dev_id));
                             }
                         }
                         item.device_ids.clone()
@@ -1099,13 +1115,7 @@ impl ActService {
                     // остаются конфликтом.
                     if !is_act_assignable(&tx, &SqliteGroupRepository, &d, on_warehouse_status_id)?
                     {
-                        return Err(AppError::Conflict {
-                            reason: format!(
-                                "Устройство id={} больше не на складе — обновите список и \
-                                 повторите.",
-                                dev_id
-                            ),
-                        });
+                        return Err(assignable_conflict(&tx, dev_id));
                     }
                 }
                 // Перенос групп целиком и вынос частей состава (D-04, D-05). Строки журнала
@@ -4863,6 +4873,13 @@ fn undo_device_mutations_for_act(
 
     // (2) Снимки устройств.
     let rows = audit_repo.select_device_mutations_for_act(tx, act_id)?;
+    // Phase 41.4 (D-22): откат акта не трогает устройство с открытой ремонтной заявкой.
+    let row_ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
+    crate::services::group_act_plan::ensure_no_open_repair_in_tx(
+        tx,
+        &row_ids,
+        crate::services::group_act_plan::REPAIR_OPEN_RETURN_MESSAGE,
+    )?;
     // У устройства может быть несколько строк (создание акта + правки): членство проверяется
     // только на ПОСЛЕДНЕМ восстановлении (самая ранняя строка), иначе промежуточный снимок,
     // чьё место расходится с уже возвращённой группой, ошибочно вывел бы устройство из неё.

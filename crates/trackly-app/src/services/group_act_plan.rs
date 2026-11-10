@@ -33,7 +33,7 @@ use trackly_core::domain::groups::{
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
-use trackly_infra::repos::SqliteGroupRepository;
+use trackly_infra::repos::{SqliteGroupRepository, SqliteRepairRepository};
 
 use crate::services::act_service::device_snapshot_json;
 use crate::services::group_membership::{
@@ -686,6 +686,28 @@ pub(crate) fn load_snapshot(
     Ok(ActGroupSnapshot::new(rows, members))
 }
 
+/// Текст отказа включения в акт устройства с открытой ремонтной заявкой (D-22).
+pub(crate) const REPAIR_OPEN_ACT_MESSAGE: &str = "Открыта заявка на ремонт — в акт не включить.";
+/// Текст отказа возврата и отката акта для такого устройства (D-22).
+pub(crate) const REPAIR_OPEN_RETURN_MESSAGE: &str =
+    "Нельзя вернуть или откатить акт: по устройству открыта заявка на ремонт.";
+
+/// Отказ `Conflict` с `message`, если у любого из `device_ids` есть открытая ремонтная
+/// заявка (предикат `open_repair_requests_for_devices`, единый для D-19/D-21/D-22).
+pub(crate) fn ensure_no_open_repair_in_tx(
+    tx: &Transaction<'_>,
+    device_ids: &[i64],
+    message: &str,
+) -> Result<(), AppError> {
+    let open = SqliteRepairRepository.open_repair_requests_for_devices(tx, device_ids)?;
+    if open.is_empty() {
+        return Ok(());
+    }
+    Err(AppError::Conflict {
+        reason: message.to_string(),
+    })
+}
+
 /// План для списка устройств акта внутри транзакции writer'а: загрузка + `plan` +
 /// имена выносимых устройств одним запросом. Клиентский список не определяет, какие
 /// группы переезжают: план всегда пересчитывается здесь (T-41.2-13).
@@ -695,6 +717,14 @@ pub(crate) fn plan_in_tx(
 ) -> Result<ActGroupPlan, AppError> {
     let snapshot = load_snapshot(tx, &SqliteGroupRepository)?;
     let mut result = plan(&snapshot, act_device_ids);
+    // Phase 41.4 (D-22): расширение группы в акте не должно втянуть устройство с открытой
+    // ремонтной заявкой — отказ целого акта, а не молча неполный акт.
+    let mut touched: Vec<i64> = act_device_ids.to_vec();
+    for mv in &result.moves {
+        touched.extend(mv.subtree_device_ids.iter().copied());
+    }
+    touched.extend(result.releases.iter().map(|r| r.device_id));
+    ensure_no_open_repair_in_tx(tx, &touched, REPAIR_OPEN_ACT_MESSAGE)?;
     if result.releases.is_empty() {
         return Ok(result);
     }
@@ -751,6 +781,12 @@ pub(crate) fn plan_for_return_in_tx(
 ) -> Result<ActGroupPlan, AppError> {
     let snapshot = load_snapshot(tx, &SqliteGroupRepository)?;
     let mut result = plan_for_return(&snapshot, returned_device_ids, return_places);
+    // Phase 41.4 (D-22): возврат устройства с открытой ремонтной заявкой — отказ.
+    let mut touched: Vec<i64> = returned_device_ids.to_vec();
+    for mv in &result.moves {
+        touched.extend(mv.subtree_device_ids.iter().copied());
+    }
+    ensure_no_open_repair_in_tx(tx, &touched, REPAIR_OPEN_RETURN_MESSAGE)?;
     let mut ids: Vec<i64> = result.releases.iter().map(|r| r.device_id).collect();
     for s in &result.splits {
         ids.extend(s.returned_device_ids.iter().copied());
