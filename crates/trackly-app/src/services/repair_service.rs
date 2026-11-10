@@ -13,6 +13,7 @@ use std::sync::Arc;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trackly_core::auth::{authorize, Action, Identity, Role};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
+use trackly_core::domain::printers::RequestTransitionOp;
 use trackly_core::domain::repairs::{
     format_kopecks, parse_cost_kopecks, RepairVisitNew, DEVICE_STATUS_CODE_AWAITING_REPAIR,
     DEVICE_STATUS_CODE_IN_REPAIR, DEVICE_STATUS_CODE_IN_STORAGE, DEVICE_STATUS_CODE_IN_USE,
@@ -30,9 +31,10 @@ use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 
 use crate::dto::printer::WsEvent;
 use crate::dto::repair::{
-    OpenRepairRefDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMoveChoiceDto, RepairReceiveDto, RepairSendDto, RepairStateDto,
-    RepairTransitionResultDto, RepairVisitDto,
+    OpenRepairRefDto, RepairAssignDeviceDto, RepairAssignResultDto, RepairCancelDto,
+    RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
+    RepairLastPlacesDto, RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto,
+    RepairStateDto, RepairTransitionResultDto, RepairVisitDto,
 };
 use crate::dto::request::RequestDto;
 use crate::services::group_place::{move_group_in_tx, GroupMoveDeps};
@@ -1034,6 +1036,434 @@ impl RepairService {
         self.finish_transition(request_id, caller).await
     }
 
+    // -----------------------------------------------------------------------
+    // Выход из цикла: завершить, отменить ремонт, отклонить, отмена автором,
+    // «Указать устройство»
+    // -----------------------------------------------------------------------
+
+    /// «Завершить» (REP-06, D-09, D-10, D-16, D-18): статус устройства по месту возврата.
+    pub async fn complete(
+        &self,
+        dto: RepairCompleteDto,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let notes = optional_text(dto.notes.as_deref(), "notes")?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let (request_id, version, place_arg) = (dto.request_id, dto.version, dto.place_id);
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.status == "in_repair" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Сначала заберите устройство из ремонта.".into(),
+                    });
+                }
+                if row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Завершить можно только заявку в работе.".into(),
+                    });
+                }
+                if row.version != version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "request",
+                        id: request_id,
+                        expected: version,
+                        actual: row.version,
+                    });
+                }
+                let (_, moved) = repo.get_repair_fields(&tx, request_id)?;
+                let mut ids = (Vec::new(), Vec::new(), Vec::new());
+                let mut payload = serde_json::json!({ "device_id": row.printer_device_id });
+                if let Some(dev) = row.printer_device_id {
+                    let deps = GroupMoveDeps::new();
+                    let out = if moved {
+                        let Some(place) = place_arg else {
+                            return Err(AppError::Validation {
+                                field: "place_id".into(),
+                                message: "Укажите место возврата устройства.".into(),
+                            });
+                        };
+                        let code = status_code_for_place(&tx, place)?;
+                        payload["returned_to_place_id"] = serde_json::json!(place);
+                        apply_device_state_in_tx(
+                            &tx,
+                            &deps,
+                            &repo,
+                            dev,
+                            Some(code),
+                            Some(place),
+                            request_id,
+                            user_id,
+                            now,
+                        )?
+                    } else {
+                        let code = status_code_for_current_place(&tx, dev)?;
+                        apply_device_state_in_tx(
+                            &tx,
+                            &deps,
+                            &repo,
+                            dev,
+                            Some(code),
+                            None,
+                            request_id,
+                            user_id,
+                            now,
+                        )?
+                    };
+                    ids = (out.places, out.devices, out.groups);
+                }
+                request_repo.transition_in_tx(
+                    &tx,
+                    request_id,
+                    version,
+                    &RequestTransitionOp::Complete {
+                        notes,
+                        linked_cartridge_id: None,
+                    },
+                    None,
+                    None,
+                    now,
+                )?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:repair_complete",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(payload.to_string()),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(ids)
+            })
+            .await?;
+
+        self.broadcast_entities("complete", place_ids, device_ids, group_ids);
+        self.finish_transition(request_id, caller).await
+    }
+
+    /// «Отменить ремонт» (REP-07, D-12): только после перемещения и без заходов.
+    pub async fn cancel_repair(
+        &self,
+        dto: RepairCancelDto,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let (request_id, version) = (dto.request_id, dto.version);
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                let visits = repo.count_visits(&tx, request_id)?;
+                if visits > 0 || row.status == "in_repair" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Отмена ремонта недоступна после передачи в сервис; \
+                                  завершите заявку."
+                            .into(),
+                    });
+                }
+                if row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Отменить ремонт можно только заявку в работе.".into(),
+                    });
+                }
+                let (origin, moved) = repo.get_repair_fields(&tx, request_id)?;
+                if !moved {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Устройство не перемещалось: используйте «Отклонить».".into(),
+                    });
+                }
+                let mut ids = (Vec::new(), Vec::new(), Vec::new());
+                if let Some(dev) = row.printer_device_id {
+                    let deps = GroupMoveDeps::new();
+                    let code = match origin {
+                        Some(p) => status_code_for_place(&tx, p)?,
+                        None => status_code_for_current_place(&tx, dev)?,
+                    };
+                    let out = apply_device_state_in_tx(
+                        &tx,
+                        &deps,
+                        &repo,
+                        dev,
+                        Some(code),
+                        origin,
+                        request_id,
+                        user_id,
+                        now,
+                    )?;
+                    ids = (out.places, out.devices, out.groups);
+                }
+                repo.set_request_status_in_tx(&tx, request_id, version, "cancelled", None, now)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:repair_cancel",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({
+                                "device_id": row.printer_device_id,
+                                "returned_to_place_id": origin,
+                            })
+                            .to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(ids)
+            })
+            .await?;
+
+        self.broadcast_entities("cancel_repair", place_ids, device_ids, group_ids);
+        self.finish_transition(request_id, caller).await
+    }
+
+    /// «Отклонить» ремонтную заявку (D-11): до первого перемещения.
+    pub async fn reject(
+        &self,
+        dto: RepairRejectDto,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let notes = optional_text(dto.notes.as_deref(), "notes")?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let (request_id, version) = (dto.request_id, dto.version);
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.status != "open" && row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Отклонить можно только новую заявку или заявку в работе.".into(),
+                    });
+                }
+                let ids = release_device_in_tx(&tx, &repo, &row, user_id, now)?;
+                request_repo.transition_in_tx(
+                    &tx,
+                    request_id,
+                    version,
+                    &RequestTransitionOp::Reject { notes },
+                    None,
+                    None,
+                    now,
+                )?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:reject",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(ids)
+            })
+            .await?;
+
+        self.broadcast_entities("reject", place_ids, device_ids, group_ids);
+        self.finish_transition(request_id, caller).await
+    }
+
+    /// Отмена автором (D-11): владение проверяется на сервере.
+    pub async fn cancel_by_author(
+        &self,
+        dto: RepairCancelDto,
+        caller: &Identity,
+    ) -> Result<RepairTransitionResultDto, AppError> {
+        authorize(caller, &Action::CancelOwnRequest)?;
+        let staff = is_staff(caller);
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let (request_id, version) = (dto.request_id, dto.version);
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if !staff && user_id != Some(row.requested_by_user_id) {
+                    return Err(AppError::Forbidden);
+                }
+                if row.status != "open" && row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Отменить можно только новую заявку или заявку в работе.".into(),
+                    });
+                }
+                let ids = release_device_in_tx(&tx, &repo, &row, user_id, now)?;
+                repo.set_request_status_in_tx(&tx, request_id, version, "cancelled", None, now)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:cancel",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(ids)
+            })
+            .await?;
+
+        self.broadcast_entities("cancel_by_author", place_ids, device_ids, group_ids);
+        self.finish_transition(request_id, caller).await
+    }
+
+    /// «Указать устройство» для заявки «Другое» в работе (D-24).
+    pub async fn assign_device(
+        &self,
+        dto: RepairAssignDeviceDto,
+        caller: &Identity,
+    ) -> Result<RepairAssignResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let (request_id, version, device_id) = (dto.request_id, dto.version, dto.device_id);
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (conflict, place_ids, device_ids, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Указать устройство можно только в заявке в работе.".into(),
+                    });
+                }
+                if row.printer_device_id.is_some() {
+                    return Err(AppError::Validation {
+                        field: "device_id".into(),
+                        message: "В заявке уже указано устройство.".into(),
+                    });
+                }
+                if row.version != version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "request",
+                        id: request_id,
+                        expected: version,
+                        actual: row.version,
+                    });
+                }
+                let live: i64 = tx
+                    .query_row(
+                        "SELECT COUNT(*) FROM devices WHERE id = ?1 AND deleted_at_utc IS NULL",
+                        params![device_id],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                if live == 0 {
+                    return Err(AppError::NotFound {
+                        entity: "device",
+                        id: device_id,
+                    });
+                }
+                if let Some(other) = repo.open_repair_request_id(&tx, device_id)? {
+                    return Ok((Some(other), Vec::new(), Vec::new(), Vec::new()));
+                }
+                repo.set_request_device_in_tx(&tx, request_id, device_id, now)?;
+                let deps = GroupMoveDeps::new();
+                let out = apply_device_state_in_tx(
+                    &tx,
+                    &deps,
+                    &repo,
+                    device_id,
+                    Some(DEVICE_STATUS_CODE_AWAITING_REPAIR),
+                    None,
+                    request_id,
+                    user_id,
+                    now,
+                )?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:repair_assign_device",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({ "device_id": device_id }).to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok((None, out.places, out.devices, out.groups))
+            })
+            .await?;
+
+        if let Some(other) = conflict {
+            return Ok(RepairAssignResultDto {
+                request: None,
+                conflict_request_id: Some(other),
+            });
+        }
+        self.broadcast_entities("assign_device", place_ids, device_ids, group_ids);
+        let done = self.finish_transition(request_id, caller).await?;
+        Ok(RepairAssignResultDto {
+            request: Some(done.request),
+            conflict_request_id: None,
+        })
+    }
+
     /// D-06: связать вложения заявки с заходом явной записью. Всё или ничего.
     pub async fn link_scans(
         &self,
@@ -1408,6 +1838,53 @@ fn check_date(date_utc: i64, now: i64) -> Result<(), AppError> {
         });
     }
     Ok(())
+}
+
+/// D-09 на текущем месте устройства (без перемещения).
+fn status_code_for_current_place(
+    conn: &Connection,
+    device_id: i64,
+) -> Result<&'static str, AppError> {
+    let place: Option<i64> = conn
+        .query_row(
+            "SELECT place_id FROM devices WHERE id = ?1",
+            params![device_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)?;
+    match place {
+        Some(p) => status_code_for_place(conn, p),
+        None => Ok(DEVICE_STATUS_CODE_IN_USE),
+    }
+}
+
+/// Снять «Ожидает ремонта» при отклонении или отмене автором (D-09, D-11): только до
+/// первого перемещения и вне сервиса; иначе Validation. Без устройства ничего не делает.
+fn release_device_in_tx(
+    tx: &Transaction<'_>,
+    repo: &SqliteRepairRepository,
+    row: &trackly_core::domain::requests::RequestRow,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<(Vec<i64>, Vec<i64>, Vec<i64>), AppError> {
+    if row.status == "open" {
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
+    }
+    let (_, moved) = repo.get_repair_fields(tx, row.id)?;
+    if moved {
+        return Err(AppError::Validation {
+            field: "status".into(),
+            message: "Устройство уже перемещалось: завершите заявку.".into(),
+        });
+    }
+    let Some(dev) = row.printer_device_id else {
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
+    };
+    let code = status_code_for_current_place(tx, dev)?;
+    let deps = GroupMoveDeps::new();
+    let out =
+        apply_device_state_in_tx(tx, &deps, repo, dev, Some(code), None, row.id, user_id, now)?;
+    Ok((out.places, out.devices, out.groups))
 }
 
 /// D-09: статус устройства при возврате по месту считается на сервере. Складское

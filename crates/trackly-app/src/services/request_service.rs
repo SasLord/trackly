@@ -558,6 +558,21 @@ impl RequestService {
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                // T-41.4-43: цикл ремонтной заявки ведёт RepairService.
+                let req_type: Option<String> = tx
+                    .query_row(
+                        "SELECT request_type FROM requests WHERE id = ?1",
+                        rusqlite::params![request_id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?;
+                if req_type.as_deref() == Some("repair") {
+                    return Err(AppError::Validation {
+                        field: "request_id".into(),
+                        message: "Ремонтной заявкой управляет цикл ремонта.".into(),
+                    });
+                }
                 request_repo.transition_in_tx(
                     &tx,
                     request_id,
@@ -640,6 +655,25 @@ impl RequestService {
                 if req_type.as_deref() == Some("ad_register") && !caller_can_manage_users {
                     return Err(AppError::Forbidden);
                 }
+                if req_type.as_deref() == Some("repair") {
+                    let status: Option<String> = tx
+                        .query_row(
+                            "SELECT status FROM requests WHERE id = ?1 AND deleted_at_utc IS NULL",
+                            rusqlite::params![id],
+                            |r| r.get(0),
+                        )
+                        .optional()
+                        .map_err(map_rusqlite)?;
+                    if matches!(
+                        status.as_deref(),
+                        Some("open") | Some("in_progress") | Some("in_repair")
+                    ) {
+                        return Err(AppError::Validation {
+                            field: "request_id".into(),
+                            message: "Ремонтной заявкой управляет цикл ремонта.".into(),
+                        });
+                    }
+                }
 
                 let affected = tx
                     .execute(
@@ -712,6 +746,12 @@ impl RequestService {
         authorize(caller, &Action::CancelOwnRequest)?;
 
         let current = self.get(id, caller).await?;
+        if current.request_type == "repair" {
+            return Err(AppError::Validation {
+                field: "request_id".into(),
+                message: "Ремонтной заявкой управляет цикл ремонта.".into(),
+            });
+        }
         RequestTransitionOp::Cancel.validate_from_status(&current.status)?;
 
         let now = self.clock.unix_seconds();

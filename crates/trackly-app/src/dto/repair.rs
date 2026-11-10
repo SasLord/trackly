@@ -192,3 +192,59 @@ pub struct RepairReceiveDto {
     /// Стоимость строкой («1 500,50»); разбирается на сервере.
     pub cost: Option<String>,
 }
+
+/// Вход «Завершить» (D-09, D-16): место возврата обязательно, только если устройство
+/// перемещалось в ходе ремонта.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairCompleteDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i64>,
+    pub notes: Option<String>,
+}
+
+/// Вход «Отклонить» ремонтную заявку.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairRejectDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    pub notes: Option<String>,
+}
+
+/// Вход «Отменить ремонт» (D-12) и отмены автором.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairCancelDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+}
+
+/// Вход «Указать устройство» для заявки «Другое» (D-24).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairAssignDeviceDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    #[specta(type = i32)]
+    pub device_id: i64,
+}
+
+/// Итог «Указать устройство»: либо обновлённая заявка, либо id заявки, занявшей устройство.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairAssignResultDto {
+    pub request: Option<RequestDto>,
+    #[specta(type = Option<i32>)]
+    pub conflict_request_id: Option<i64>,
+}
