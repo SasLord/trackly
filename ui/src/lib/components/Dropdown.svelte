@@ -77,6 +77,13 @@
     onQueryInput?: (query: string) => void;
     onPickGroup: (g: TGroup) => void;
     onPickMember: (m: TMember) => void;
+    /** Фаза 41.4 (D-22): недоступная строка — `aria-disabled`, цвет
+     *  `--tr-text-tertiary`, выбор невозможен (клик, Enter, Tab). Без пропа
+     *  поведение прежнее. Пояснение второй строкой — `getGroupNote`/`getMemberNote`. */
+    isGroupDisabled?: (g: TGroup) => boolean;
+    isMemberDisabled?: (m: TMember) => boolean;
+    getGroupNote?: (g: TGroup) => string | undefined;
+    getMemberNote?: (m: TMember) => string | undefined;
   }
 
   const {
@@ -108,6 +115,10 @@
     onQueryInput,
     onPickGroup,
     onPickMember,
+    isGroupDisabled,
+    isMemberDisabled,
+    getGroupNote,
+    getMemberNote,
   }: Props = $props();
 
   // Stable per-instance id prefix (Svelte 5.20+ rune) — Dropdown is a
@@ -251,6 +262,7 @@
    *  fix — see handleMemberClick below for the full rationale); drilling in
    *  does not, since it replaces the panel content with the member list. */
   function handleOptionClick(g: TGroup) {
+    if (isGroupDisabled?.(g)) return;
     if (!flat && isGroupExpandable(g)) {
       void drillInto(g);
     } else {
@@ -268,6 +280,7 @@
    *  always closed the dropdown unconditionally on pick (`openByRow[idx] =
    *  false`); this restores that parity for both field variants/list modes. */
   function handleMemberClick(m: TMember) {
+    if (isMemberDisabled?.(m)) return;
     onPickMember(m);
     open = false;
   }
@@ -500,7 +513,7 @@
         // groups[-1] === undefined and crash both production consumers'
         // isExpandable/isGroupExpandable calls.
         const g = visibleGroups[activeIndex];
-        if (g && !(!flat && isGroupExpandable(g))) {
+        if (g && !(!flat && isGroupExpandable(g)) && !isGroupDisabled?.(g)) {
           onPickGroup(g);
         }
         // WR-02: Tab advances focus forward — don't restore focus to the trigger.
@@ -567,7 +580,11 @@
         handleMemberClick(members[activeIndex]);
       }
     } else if (e.key === 'Tab') {
-      if (activeIndex >= 0 && activeIndex < members.length) {
+      if (
+        activeIndex >= 0 &&
+        activeIndex < members.length &&
+        !isMemberDisabled?.(members[activeIndex])
+      ) {
         onPickMember(members[activeIndex]);
       }
       // WR-02: Tab advances focus forward — don't restore focus to the trigger.
@@ -734,8 +751,10 @@
                 id={`${uid}-opt-${getMemberId(m)}`}
                 class="tr-dropdown-option"
                 class:active={i === activeIndex}
+                class:disabled={!!isMemberDisabled?.(m)}
                 role="option"
                 aria-selected={i === activeIndex}
+                aria-disabled={isMemberDisabled?.(m) ? true : undefined}
                 onmousedown={(e) => e.preventDefault()}
                 onclick={() => handleMemberClick(m)}
               >
@@ -747,6 +766,9 @@
                 </span>
                 {#if getMemberSub?.(m)}
                   <span class="tr-dropdown-option-sub">{getMemberSub(m)}</span>
+                {/if}
+                {#if getMemberNote?.(m)}
+                  <span class="tr-dropdown-option-sub">{getMemberNote(m)}</span>
                 {/if}
               </button>
             </li>
@@ -768,8 +790,10 @@
               class="tr-dropdown-option"
               class:active={i === activeIndex}
               class:selected={flat && !!isGroupSelected?.(g)}
+              class:disabled={!!isGroupDisabled?.(g)}
               role="option"
               aria-selected={flat ? !!isGroupSelected?.(g) : i === activeIndex}
+              aria-disabled={isGroupDisabled?.(g) ? true : undefined}
               onmousedown={(e) => e.preventDefault()}
               onclick={() => handleOptionClick(g)}
             >
@@ -793,6 +817,9 @@
               </span>
               {#if getGroupSub?.(g)}
                 <span class="tr-dropdown-option-sub" class:tr-mono={flat}>{getGroupSub(g)}</span>
+              {/if}
+              {#if getGroupNote?.(g)}
+                <span class="tr-dropdown-option-sub">{getGroupNote(g)}</span>
               {/if}
             </button>
           </li>
@@ -938,6 +965,16 @@
   }
   :global(.tr-dropdown-panel .tr-dropdown-option.selected) {
     background: var(--tr-row-selected);
+  }
+  // Фаза 41.4 (D-22): недоступная строка не реагирует на наведение и клик.
+  :global(.tr-dropdown-panel .tr-dropdown-option[aria-disabled='true']) {
+    cursor: not-allowed;
+    background: transparent;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option[aria-disabled='true'] .tr-dropdown-option-name),
+  :global(.tr-dropdown-panel .tr-dropdown-option[aria-disabled='true'] .tr-dropdown-option-meta),
+  :global(.tr-dropdown-panel .tr-dropdown-option[aria-disabled='true'] .tr-dropdown-option-count) {
+    color: var(--tr-text-tertiary);
   }
 
   :global(.tr-dropdown-panel .tr-dropdown-option-row) {

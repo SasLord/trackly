@@ -31,6 +31,12 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { statusTone } from '$lib/stores/deviceStatuses.svelte';
   import {
+    REPAIR_CONFLICT_TOAST,
+    isRepairConflict,
+    loadOpenRepairs,
+    repairMoveLockTitle,
+  } from '../requests/repairLocks';
+  import {
     notifyPlaceContentChanged,
     placeContentEventsStore,
   } from '$lib/stores/placeContentEvents.svelte';
@@ -464,6 +470,34 @@
     };
   });
 
+  // Фаза 41.4 (D-21): устройства этого места с открытой ремонтной заявкой. Массовый
+  // перенос содержимого их не двигает (сервер отказывает целиком), поэтому кнопка
+  // «Перенести всё содержимое» блокируется с причиной. Видны только устройства
+  // загруженных строк; вложенные и устройства в составе групп добирает серверный
+  // отказ (тост). Запись — после await, не синхронно в эффекте.
+  let repairLockRequestId = $state<number | null>(null);
+  $effect(() => {
+    const ids = (rows ?? [])
+      .filter((r) => r.kind === 'device' || r.kind === 'printer')
+      .map((r) => r.id);
+    void reloadToken;
+    if (ids.length === 0) {
+      repairLockRequestId = null;
+      return;
+    }
+    let cancelled = false;
+    void loadOpenRepairs(ids).then((m) => {
+      if (cancelled) return;
+      repairLockRequestId = m.size > 0 ? [...m.values()][0] : null;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+  const moveLockTitle = $derived(
+    repairLockRequestId !== null ? repairMoveLockTitle(repairLockRequestId) : undefined,
+  );
+
   async function handleMoveConfirm(): Promise<void> {
     if (moveTargetId === null || moving) return;
     moving = true;
@@ -486,8 +520,9 @@
       }
       moveModalOpen = false;
       reloadToken += 1;
-    } catch {
-      pushToast('error', 'Не удалось перенести содержимое. Попробуйте ещё раз.');
+    } catch (e: unknown) {
+      if (isRepairConflict(e)) pushToast('error', REPAIR_CONFLICT_TOAST);
+      else pushToast('error', 'Не удалось перенести содержимое. Попробуйте ещё раз.');
     } finally {
       moving = false;
     }
@@ -586,7 +621,12 @@
           >
         </Checkbox>
       </div>
-      <Button variant="secondary" onclick={openMoveModal}>Перенести всё содержимое в…</Button>
+      <Button
+        variant="secondary"
+        disabled={repairLockRequestId !== null}
+        title={moveLockTitle}
+        onclick={openMoveModal}>Перенести всё содержимое в…</Button
+      >
     </div>
   </div>
 

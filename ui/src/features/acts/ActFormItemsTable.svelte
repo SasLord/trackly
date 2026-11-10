@@ -22,6 +22,7 @@
   import { ensureLoaded, statusIdByCode } from '$lib/stores/deviceStatuses.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { pluralizeRu } from '$lib/utils/pluralize';
+  import { REPAIR_ACT_NOTE, loadOpenRepairs } from '../requests/repairLocks';
   import type { DeviceDto, DeviceGroup, GroupActUnitDto, GroupSearchHitDto } from '../../bindings';
 
   export interface FormItemRow {
@@ -102,6 +103,37 @@
 
   // Серверный потолок позиций в одном акте (validate_create).
   const MAX_ACT_ITEMS = 100;
+
+  // Фаза 41.4 (D-22): deviceId -> requestId открытой ремонтной заявки для устройств,
+  // уже показанных в пикере. Только UX-слой («в акт не включить»): авторитетный
+  // отказ даёт сервер при создании акта (план 05). Пишется после await.
+  let repairByDevice = $state<Map<number, number>>(new Map());
+  function absorbRepairs(found: Map<number, number>): void {
+    if (found.size > 0) repairByDevice = new Map([...repairByDevice, ...found]);
+  }
+  function inRepair(deviceId: number): boolean {
+    return repairByDevice.has(deviceId);
+  }
+  function itemDisabled(item: ActPickerItem): boolean {
+    if (item.kind === 'member') return inRepair(item.device.id);
+    if (item.kind === 'storage') {
+      return (
+        inRepair(item.group.repr.id) ||
+        (item.group.ids.length > 0 && item.group.ids.every(inRepair))
+      );
+    }
+    return false;
+  }
+  function memberDisabled(m: MemberRow): boolean {
+    if (m.kind === 'instance' || m.kind === 'member') return inRepair(m.device.id);
+    return false;
+  }
+  function itemNote(item: ActPickerItem): string | undefined {
+    return itemDisabled(item) ? REPAIR_ACT_NOTE : undefined;
+  }
+  function memberNote(m: MemberRow): string | undefined {
+    return memberDisabled(m) ? REPAIR_ACT_NOTE : undefined;
+  }
 
   let suggestionsByRow = $state<Record<number, ActPickerItem[]>>({});
   let loadingByRow = $state<Record<number, boolean>>({});
@@ -284,6 +316,13 @@
       const memberKept = members.filter(
         (m) => !selectedIds.has(m.device.id) && !storageIds.has(m.device.id),
       );
+      // D-22: одним запросом узнаём, какие из показанных устройств в ремонте.
+      const found = await loadOpenRepairs([
+        ...storageKept.flatMap((g) => g.ids),
+        ...memberKept.map((m) => m.device.id),
+      ]);
+      if (seq !== fetchSeqByRow[idx]) return;
+      absorbRepairs(found);
       const all: ActPickerItem[] = [
         ...hits.map((hit): ActPickerItem => ({ kind: 'group', key: `g-${hit.id}`, hit })),
         ...storageKept.map(
@@ -330,11 +369,16 @@
    *  — соответствует ASCII-макету UI-SPEC. Plan 25-07: extracted from the old
    *  row-indexed memberRows(idx) into a pure function taking the fetched list
    *  directly, since expandGroup() below no longer stores it in $state first. */
-  function partitionMembers(members: DeviceDto[]): MemberRow[] {
+  function partitionMembers(
+    members: DeviceDto[],
+    inRepairIds: Map<number, number> = new Map(),
+  ): MemberRow[] {
     const rows: MemberRow[] = [];
     const subgroups = new Map<string | null, DeviceDto[]>();
     for (const d of members) {
-      if (d.serial_no || d.inventory_no) {
+      // Устройство с открытой заявкой всегда отдельной (недоступной) строкой,
+      // чтобы его нельзя было выбрать вместе с под-группой.
+      if (d.serial_no || d.inventory_no || inRepairIds.has(d.id)) {
         rows.push({ kind: 'instance', key: `d-${d.id}`, device: d });
       } else {
         const key = d.state ?? null;
@@ -357,7 +401,10 @@
     const selectedIds = getSelectedIds(idx);
     const ids = g.ids.filter((id) => !selectedIds.has(id));
     try {
-      return partitionMembers(await devices.listByIds(ids));
+      const list = await devices.listByIds(ids);
+      const found = await loadOpenRepairs(list.map((d) => d.id));
+      absorbRepairs(found);
+      return partitionMembers(list, found);
     } catch {
       return [];
     }
@@ -517,6 +564,8 @@
         : d.name
       : `${d.name}${d.model ? ` · ${d.model}` : ''} ×${g.count}`;
     const hasSerial = !!d.serial_no;
+    // D-22: устройства с открытой ремонтной заявкой в акт не уходят.
+    const pickableIds = g.ids.filter((id) => !inRepair(id));
     const next = items.map((it, i) =>
       i === idx
         ? {
@@ -529,9 +578,9 @@
             // W-5: если выбранное устройство имеет serial — clamp qty=1.
             // WR-02 (Plan 19-08) forced qty=1 in edit mode; superseded by
             // GT2 (260715-gt2) — see the matching comment in pickDevice above.
-            quantity: hasSerial ? 1 : Math.min(it.quantity, g.count),
-            stock_available: g.count,
-            group_ids: g.ids,
+            quantity: hasSerial ? 1 : Math.min(it.quantity, pickableIds.length || g.count),
+            stock_available: pickableIds.length || g.count,
+            group_ids: pickableIds.length > 0 ? pickableIds : g.ids,
           }
         : it,
     );
@@ -731,6 +780,10 @@
               onQueryInput={(v) => handleQueryInput(idx, v)}
               onPickGroup={(g: ActPickerItem) => pickItem(idx, g)}
               onPickMember={(m: MemberRow) => pickMember(idx, m)}
+              isGroupDisabled={itemDisabled}
+              isMemberDisabled={memberDisabled}
+              getGroupNote={itemNote}
+              getMemberNote={memberNote}
             />
             {#if loadingByRow[idx]}
               <div class="loading-row"><Spinner size="sm" /></div>
