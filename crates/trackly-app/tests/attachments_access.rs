@@ -17,6 +17,8 @@ use trackly_infra::repos::attachments_sqlite::{AttachmentNew, SqliteAttachmentRe
 #[allow(dead_code)]
 mod fixture;
 
+mod attachments_support;
+
 const NOW: i64 = 1_700_000_000;
 
 fn hash(seed: u8) -> String {
@@ -360,5 +362,105 @@ async fn attachments_access_missing_file() {
         // Thumbnail for a non-photo row is NotFound too.
         let e = svc.open_for_read(att, &admin, ReadKind::Thumb).await;
         assert!(matches!(e, Err(AppError::NotFound { .. })));
+    });
+}
+
+/// D-20/D-06: участник общей ремонтной заявки читает и добавляет вложения,
+/// посторонний сотрудник получает Forbidden, персонал работает как прежде.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn attachments_access_repair_participant() {
+    use trackly_app::dto::printer::WsEvent;
+    use trackly_app::services::attachment_service::StageError;
+
+    timed!(async {
+        let (ctx, _dir) = fixture::make_test_ctx().await;
+        let svc = &ctx.attachments;
+        let author = seed_user(&ctx, "ivanov", "Иванов И.И.", "employee").await;
+        let member = seed_user(&ctx, "petrov", "Петров П.П.", "employee").await;
+        let outsider = seed_user(&ctx, "sidorov", "Сидоров С.С.", "employee").await;
+        let mgr = seed_user(&ctx, "mgr", "Козлов К.К.", "manager").await;
+        let req = seed_request(&ctx, author, "in_repair").await;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE requests SET request_type = 'repair' WHERE id = ?1",
+                    params![req],
+                )
+                .map_err(map_rusqlite)?;
+                conn.execute(
+                    "INSERT INTO request_participants (request_id, user_id, joined_at_utc) \
+                     VALUES (?1, ?2, 1700000000)",
+                    params![req, member],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("make repair + participant");
+        let att =
+            seed_attachment(&ctx, ParentKind::Request, req, "скан.pdf", 7, Some(author)).await;
+
+        let parent = p(ParentKind::Request, req);
+        let member_id = ident(member, Role::Employee);
+        let outsider_id = ident(outsider, Role::Employee);
+        let author_id = ident(author, Role::Employee);
+
+        // Участник: список, файл, право добавлять.
+        let l = svc.list(parent, &member_id).await.expect("member list");
+        assert_eq!(l.items.len(), 1);
+        assert!(l.can_attach);
+        assert!(svc
+            .open_for_read(att, &member_id, ReadKind::File)
+            .await
+            .is_ok());
+        svc.authorize_attach(&member_id, parent)
+            .await
+            .expect("member may attach");
+
+        // Посторонний: Forbidden на чтение и добавление.
+        assert!(matches!(
+            svc.list(parent, &outsider_id).await,
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            svc.open_for_read(att, &outsider_id, ReadKind::File).await,
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            svc.authorize_attach(&outsider_id, parent).await,
+            Err(AppError::Forbidden)
+        ));
+
+        // D-06: персонал прикладывает как прежде.
+        for who in [Identity::trusted_admin(), ident(mgr, Role::Manager)] {
+            svc.authorize_attach(&who, parent)
+                .await
+                .expect("staff attach");
+        }
+
+        // WS: загрузка участником даёт AttachmentsChanged, видимый автору и участнику.
+        let mut rx = ctx.ws_broadcast.subscribe();
+        fixture::drain(&mut rx);
+        let mut staged = svc.begin_staging().unwrap();
+        match staged.write_chunk(
+            &attachments_support::tiny_pdf(),
+            svc.effective_limit().await.unwrap(),
+        ) {
+            Ok(()) => {}
+            Err(StageError::Reject(c)) => panic!("rejected: {}", c.as_code()),
+            Err(StageError::Internal(e)) => panic!("{e:?}"),
+        }
+        let out = svc
+            .ingest(&member_id, parent, "Акт ремонта.pdf", staged)
+            .await
+            .expect("participant upload");
+        assert!(out.attachment.is_some());
+        let ev = fixture::collect_events(&mut rx)
+            .into_iter()
+            .find(|e| matches!(e, WsEvent::AttachmentsChanged { .. }))
+            .expect("AttachmentsChanged sent");
+        assert!(ev.is_visible_to(&author_id));
+        assert!(ev.is_visible_to(&member_id));
+        assert!(!ev.is_visible_to(&outsider_id));
     });
 }
