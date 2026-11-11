@@ -11,9 +11,10 @@ use tower_sessions::Session;
 use crate::context::AppCtx;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairAssignDeviceDto, RepairAssignResultDto, RepairCancelDto,
-    RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto, RepairMoveChoiceDto,
-    RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto, RepairTransitionResultDto,
+    RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceHistoryDto,
+    RepairDeviceOptionDto, RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto,
+    RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto,
+    RepairTransitionResultDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -70,6 +71,27 @@ pub async fn handler_get_state(
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
         r::build_repairs_get_state(&ctx, &identity, p.request_id)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceHistoryPayload {
+    pub device_id: i64,
+}
+
+pub async fn handler_device_history(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<DeviceHistoryPayload>,
+) -> Result<Json<RepairDeviceHistoryDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        r::build_repairs_device_history(&ctx, &identity, p.device_id)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -401,6 +423,10 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/repairs_merge_into_open",
             post(handler_merge_into_open),
+        )
+        .route(
+            "/api/v1/repairs_device_history",
+            post(handler_device_history),
         )
         .route("/api/v1/repairs_link_scans", post(handler_link_scans))
         .route("/api/v1/repairs_render_act", post(handler_render_act))

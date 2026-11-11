@@ -5531,6 +5531,7 @@ fn repair_staff_only_cases() -> Vec<(&'static str, serde_json::Value)> {
         ("repairs_reject", dto(json!({ "notes": null }))),
         ("repairs_assign_device", dto(json!({ "deviceId": 1 }))),
         ("repairs_merge_into_open", dto(json!({ "deviceId": 1 }))),
+        ("repairs_device_history", json!({ "deviceId": 1 })),
         (
             "repairs_link_scans",
             json!({ "visitId": 999999, "attachmentIds": [] }),
@@ -5823,6 +5824,12 @@ async fn repairs_role_matrix_tauri_path() {
             )
             .await
             .map(|_| ()),
+        ),
+        (
+            "device_history",
+            r::build_repairs_device_history(&env.ctx, emp, 1)
+                .await
+                .map(|_| ()),
         ),
         (
             "link_scans",

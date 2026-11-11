@@ -533,7 +533,8 @@ impl RepairService {
         let repo = self.repo.clone();
         tokio::task::spawn_blocking(move || -> Result<RepairDeviceHistoryDto, AppError> {
             let conn = readers.acquire();
-            let dev: Option<(String, Option<String>, Option<String>, Option<String>)> = conn
+            type DeviceHead = (String, Option<String>, Option<String>, Option<String>);
+            let dev: Option<DeviceHead> = conn
                 .query_row(
                     "SELECT d.name, d.inventory_number, d.serial_number, dt.name \
                      FROM devices d LEFT JOIN device_types dt ON dt.id = d.type_id \

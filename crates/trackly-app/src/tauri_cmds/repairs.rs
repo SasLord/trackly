@@ -7,9 +7,10 @@
 use crate::context::AppCtx;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairAssignDeviceDto, RepairAssignResultDto, RepairCancelDto,
-    RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto, RepairMoveChoiceDto,
-    RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto, RepairTransitionResultDto,
+    RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceHistoryDto,
+    RepairDeviceOptionDto, RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto,
+    RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto,
+    RepairTransitionResultDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -43,6 +44,15 @@ pub async fn build_repairs_get_state(
 ) -> Result<RepairStateDto, AppError> {
     authorize(caller, &Action::CreateRequest)?;
     ctx.repairs.get_state(request_id, caller).await
+}
+
+pub async fn build_repairs_device_history(
+    ctx: &AppCtx,
+    caller: &Identity,
+    device_id: i64,
+) -> Result<RepairDeviceHistoryDto, AppError> {
+    authorize(caller, &Action::TransitionRequests)?;
+    ctx.repairs.device_history(device_id, caller).await
 }
 
 pub async fn build_repairs_last_places(
@@ -347,6 +357,16 @@ pub async fn repairs_assign_device(
 ) -> Result<RepairAssignResultDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_repairs_assign_device(state.inner(), &caller, dto).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn repairs_device_history(
+    state: tauri::State<'_, AppCtx>,
+    device_id: i32,
+) -> Result<RepairDeviceHistoryDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_repairs_device_history(state.inner(), &caller, device_id as i64).await
 }
 
 #[tauri::command]
