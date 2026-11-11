@@ -18,6 +18,8 @@ import type {
   OpenRepairRefDto,
   Pagination,
   RepairAssignDeviceDto,
+  RepairMergeDto,
+  RepairMergeResultDto,
   RepairAssignResultDto,
   RepairCancelDto,
   RepairCompleteDto,
@@ -114,6 +116,9 @@ export const repairs = {
 
   assignDevice: (dto: RepairAssignDeviceDto) =>
     apiCall<RepairAssignResultDto>('repairs_assign_device', { dto }),
+
+  mergeIntoOpen: (dto: RepairMergeDto) =>
+    apiCall<RepairMergeResultDto>('repairs_merge_into_open', { dto }),
 
   linkScans: (visitId: number, attachmentIds: number[]) =>
     apiCall<RepairStateDto>('repairs_link_scans', { visitId, attachmentIds }),

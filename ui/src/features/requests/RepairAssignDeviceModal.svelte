@@ -1,11 +1,12 @@
 <script lang="ts">
   // Фаза 41.4, план 17 (D-24): попап «Указать устройство» для ремонтной заявки «Другое».
-  // Конфликт (устройство уже в открытой заявке) показывается внутри попапа, тост не нужен.
+  // D-33: если устройство уже в открытой заявке, второй попап предлагает объединить заявки.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { parseAppError } from '$lib/api/errors';
   import { repairs } from './api';
   import type { RepairDeviceOptionDto, RequestDto } from '../../bindings';
 
@@ -14,11 +15,11 @@
     request: RequestDto;
     onClose: () => void;
     onSuccess: (_request: RequestDto) => void;
-    /** Открыть заявку, занявшую устройство. */
-    onOpenRequest: (_id: number) => void;
+    /** Заявка объединена с открытой заявкой устройства; id целевой заявки. */
+    onMerged: (_targetRequestId: number) => void;
   }
 
-  const { open, request, onClose, onSuccess, onOpenRequest }: Props = $props();
+  const { open, request, onClose, onSuccess, onMerged }: Props = $props();
 
   interface PickOption {
     id: string;
@@ -34,6 +35,7 @@
   let query = $state('');
   let submitting = $state(false);
   let conflictRequestId = $state<number | null>(null);
+  let merging = $state(false);
   let loadFailed = $state(false);
 
   $effect(() => {
@@ -43,6 +45,7 @@
       choice = null;
       query = '';
       submitting = false;
+      merging = false;
       conflictRequestId = null;
       loadFailed = false;
       devicesLoading = true;
@@ -88,6 +91,26 @@
 
   function noExpand(): PickOption[] {
     return [];
+  }
+
+  async function merge() {
+    if (merging || choice === null) return;
+    merging = true;
+    try {
+      const result = await repairs.mergeIntoOpen({
+        requestId: request.id,
+        version: request.version,
+        deviceId: parseInt(choice, 10),
+      });
+      pushToast('success', `Заявка объединена с заявкой №${result.targetRequestId}`);
+      conflictRequestId = null;
+      onClose();
+      onMerged(result.targetRequestId);
+    } catch (e: unknown) {
+      pushToast('error', parseAppError(e).message);
+    } finally {
+      merging = false;
+    }
   }
 
   async function submit() {
@@ -151,16 +174,6 @@
         <span class="error" role="alert">Не удалось загрузить список устройств.</span>
       {/if}
     </div>
-
-    {#if conflictRequestId !== null}
-      {@const conflictId = conflictRequestId}
-      <div class="conflict" role="alert">
-        <span>По этому устройству уже есть заявка на ремонт.</span>
-        <Button variant="link" size="sm" onclick={() => onOpenRequest(conflictId)}>
-          Открыть заявку №{conflictId}
-        </Button>
-      </div>
-    {/if}
   </div>
 
   {#snippet footer()}
@@ -172,6 +185,31 @@
       onclick={submit}
     >
       Указать устройство
+    </Button>
+  {/snippet}
+</Modal>
+
+<Modal
+  open={open && conflictRequestId !== null}
+  title="Устройство уже в ремонте"
+  size="md"
+  initialFocus=".modal-footer .btn-secondary"
+  onClose={() => (conflictRequestId = null)}
+>
+  <div class="merge-body">
+    <p>Для этого устройства уже есть заявка в работе. Объединить эту заявку с ней?</p>
+    <p class="hint">
+      Описание добавится в историю ранее созданной заявки с пометкой, что о поломке сообщил другой
+      пользователь; эта заявка будет закрыта.
+    </p>
+  </div>
+
+  {#snippet footer()}
+    <Button variant="secondary" disabled={merging} onclick={() => (conflictRequestId = null)}>
+      Отмена
+    </Button>
+    <Button variant="primary" loading={merging} disabled={merging} onclick={merge}>
+      Объединить
     </Button>
   {/snippet}
 </Modal>
@@ -197,12 +235,15 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-danger-text);
   }
-  .conflict {
+  .merge-body {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--tr-space-xs);
+    flex-direction: column;
+    gap: var(--tr-space-sm);
+    white-space: normal;
+    text-align: left;
+  }
+  .hint {
     font-size: var(--tr-font-size-label);
-    color: var(--tr-danger-text);
+    color: var(--tr-text-secondary);
   }
 </style>

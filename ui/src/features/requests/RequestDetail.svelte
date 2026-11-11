@@ -428,6 +428,10 @@
         return `Ремонт отменён${who}`;
       case 'repair_join':
         return `Присоединился к заявке${who}${note ? `; ${note}` : ''}`;
+      case 'repair_merge':
+        return `К заявке присоединена другая заявка${who}${note ? `; ${note}` : ''}`;
+      case 'repair_merged_into':
+        return `Заявка объединена с другой${who}${note ? `; ${note}` : ''}`;
       case 'repair_assign_device':
         return `Указано устройство${who}`;
       default:
@@ -1178,9 +1182,10 @@
     {request}
     onClose={() => (assignModalOpen = false)}
     onSuccess={() => onTransition()}
-    onOpenRequest={(id) => {
+    onMerged={(targetId) => {
       assignModalOpen = false;
-      openRepairRequest(id);
+      onTransition();
+      openRepairRequest(targetId);
     }}
   />
 
