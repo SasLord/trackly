@@ -495,3 +495,155 @@ async fn generic_request_service_cannot_drive_repair_cycle() {
         .await
         .expect("delete closed");
 }
+
+// ---- Фаза 41.4, план 22: «Отменить ремонт» члена группы (UAT 15, D-12/D-16) ---------
+
+async fn make_group_member(ctx: &AppCtx, room: i64) -> (i64, i64) {
+    let (_t, group) =
+        entities_support::fixture::seed_group_type_and_group(ctx, "АРМ-1", 1, Some(room)).await;
+    let dev = seed_device(ctx, 1, "ПК-00014", "INV-14", Some(room), Some(group)).await;
+    (group, dev)
+}
+
+async fn move_group_to(ctx: &AppCtx, group: i64, place: i64) {
+    let version: i64 = one_str(
+        ctx,
+        "SELECT CAST(version AS TEXT) FROM groups WHERE id = ?1",
+        group,
+    )
+    .await
+    .expect("version")
+    .parse()
+    .expect("n");
+    ctx.groups
+        .move_group(&admin(), group, version, place)
+        .await
+        .expect("move group");
+}
+
+async fn group_place_of(ctx: &AppCtx, group: i64) -> Option<i64> {
+    one_str(
+        ctx,
+        "SELECT CAST(place_id AS TEXT) FROM groups WHERE id = ?1",
+        group,
+    )
+    .await
+    .map(|s| s.parse().expect("id"))
+}
+
+// Повтор дефекта UAT 15: группа переехала, пока член был в ремонте.
+#[tokio::test]
+async fn cancel_repair_member_returns_to_current_group_place() {
+    let (ctx, _d) = make_test_ctx().await;
+    let room = seed_place(&ctx, "Кабинет 12").await;
+    let new_room = seed_place(&ctx, "Кабинет 14").await;
+    let hold = storage_place(&ctx, "Склад А").await;
+    let (group, dev) = make_group_member(&ctx, room).await;
+    let (req, v) = accept_with(
+        &ctx,
+        Some(dev),
+        RepairMoveChoiceDto::Move { place_id: hold },
+    )
+    .await;
+    move_group_to(&ctx, group, new_room).await;
+    assert_eq!(
+        dev_place(&ctx, dev).await,
+        Some(hold),
+        "член в ремонте остался"
+    );
+
+    let st = ctx.repairs.get_state(req, &admin()).await.expect("state");
+    assert_eq!(st.suggested_return_place_id, Some(new_room));
+
+    ctx.repairs
+        .cancel_repair(cancel_dto(req, v), &admin())
+        .await
+        .expect("cancel_repair");
+    assert_eq!(dev_place(&ctx, dev).await, Some(new_room));
+    assert_eq!(
+        dev_place(&ctx, dev).await,
+        group_place_of(&ctx, group).await
+    );
+    assert_eq!(status_code(&ctx, dev).await, "в_работе");
+
+    // Журнал «по заявке №N» с корректными «откуда/куда»; аудит с фактическим местом.
+    let note = format!("по заявке №{req}");
+    let rows: i64 = ctx
+        .writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'device' \
+                 AND entity_id = ?1 AND note = ?2 AND from_place_id = ?3 AND to_place_id = ?4",
+                params![dev, note, hold, new_room],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("journal");
+    assert_eq!(rows, 1);
+    let payload = one_str(
+        &ctx,
+        "SELECT payload_json FROM audit_log WHERE entity_type = 'request' \
+         AND entity_id = ?1 AND action = 'custom:repair_cancel'",
+        req,
+    )
+    .await
+    .expect("audit");
+    let json: serde_json::Value = serde_json::from_str(&payload).expect("json");
+    assert_eq!(json["returned_to_place_id"], serde_json::json!(new_room));
+    assert_ne!(json["returned_to_place_id"], serde_json::json!(room));
+}
+
+// Статус по месту назначения (D-09): группа переехала на склад.
+#[tokio::test]
+async fn cancel_repair_member_group_moved_to_storage_gets_in_storage_status() {
+    let (ctx, _d) = make_test_ctx().await;
+    let room = seed_place(&ctx, "Кабинет 12").await;
+    let hold = storage_place(&ctx, "Склад А").await;
+    let store_b = storage_place(&ctx, "Склад Б").await;
+    let (group, dev) = make_group_member(&ctx, room).await;
+    let (req, v) = accept_with(
+        &ctx,
+        Some(dev),
+        RepairMoveChoiceDto::Move { place_id: hold },
+    )
+    .await;
+    move_group_to(&ctx, group, store_b).await;
+    ctx.repairs
+        .cancel_repair(cancel_dto(req, v), &admin())
+        .await
+        .expect("cancel_repair");
+    assert_eq!(dev_place(&ctx, dev).await, Some(store_b));
+    assert_eq!(status_code(&ctx, dev).await, "на_складе");
+}
+
+// Якорь корневой группы возвращается блоком на сохранённое место.
+#[tokio::test]
+async fn cancel_repair_root_anchor_returns_block_to_saved_place() {
+    let (ctx, _d) = make_test_ctx().await;
+    let room = seed_place(&ctx, "Кабинет 12").await;
+    let hold = storage_place(&ctx, "Склад А").await;
+    let (group, anchor) = make_group_member(&ctx, room).await;
+    let part = seed_device(&ctx, 1, "Монитор", "INV-15", Some(room), Some(group)).await;
+    exec1(
+        &ctx,
+        "UPDATE groups SET anchor_device_id = (SELECT id FROM devices WHERE inventory_number = 'INV-14') WHERE id = ?1",
+        group,
+    )
+    .await;
+    let (req, v) = accept_with(
+        &ctx,
+        Some(anchor),
+        RepairMoveChoiceDto::Move { place_id: hold },
+    )
+    .await;
+    assert_eq!(dev_place(&ctx, part).await, Some(hold));
+    ctx.repairs
+        .cancel_repair(cancel_dto(req, v), &admin())
+        .await
+        .expect("cancel_repair");
+    assert_eq!(dev_place(&ctx, anchor).await, Some(room));
+    assert_eq!(dev_place(&ctx, part).await, Some(room));
+    assert_eq!(group_place_of(&ctx, group).await, Some(room));
+}
