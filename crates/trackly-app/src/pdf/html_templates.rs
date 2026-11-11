@@ -42,6 +42,10 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
         "repair_transfer_act.html",
         include_str!("../../templates/repair_transfer_act.html"),
     ),
+    (
+        "repair_device_report.html",
+        include_str!("../../templates/repair_device_report.html"),
+    ),
 ];
 
 /// Registry of previously-shipped default bodies, keyed by filename (D-12).
@@ -146,6 +150,11 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             "../../templates/_legacy_defaults/v30/repair_transfer_act.html"
         )],
     ),
+    // Phase 41.4 (plan 31) introduced `repair_device_report.html`; its CURRENT
+    // body is the first one ever shipped (empty-but-present). Before the next
+    // edit, snapshot THIS body into `_legacy_defaults/vNN/repair_device_report.html`
+    // and add it here.
+    ("repair_device_report.html", &[]),
 ];
 
 /// Resolves the templates directory: `TRACKLY_TEMPLATES_DIR` env var wins

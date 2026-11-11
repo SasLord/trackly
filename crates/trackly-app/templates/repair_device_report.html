@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+{#- Default HTML template for «Отчёт о ремонтах устройства» (Phase 41.4, D-28).
+
+  Self-contained HTML5 document (inline <style>, no external CSS/CDN): shared
+  header partial (_header.html) -> heading -> device block -> summary ->
+  one section per repair request with a table of its service visits.
+
+  Context:
+    org.{name,full_name,inn,kpp,address,address_line2,logo_data_uri,phone,fax,email,okpo,ogrn}
+    device.{name,inventory_no,serial_no,type_name}
+    summary.{visit_count,total_cost,printed_date_human}
+    requests[] = {id,status_label,created_date_human,requester_name,description,
+                  visits[] = {seq,act_number,sent_date_human,returned_date_human,
+                              service_place,fault,works_done,cost_display,has_scan}}
+
+  Autoescape is ON (build_safe_html_env) — plain {{ var }} interpolation is
+  HTML-safe by construction. The only `| safe` is in the shared _header.html
+  partial. Read-only document: no numbers are issued. Re-read from disk on
+  every render.
+-#}
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Отчёт о ремонтах устройства</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 20mm 15mm;
+  }
+  body {
+    font-family: "Times New Roman", Georgia, "PT Serif", "Liberation Serif", "DejaVu Serif", serif;
+    font-size: 11pt;
+    color: #000;
+    margin: 0;
+    padding: 0;
+  }
+  .title {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: bold;
+    margin: 8pt 0 12pt 0;
+  }
+  .field-row {
+    margin: 3pt 0;
+    overflow-wrap: break-word;
+  }
+  .section-title {
+    font-weight: bold;
+    margin: 12pt 0 4pt 0;
+  }
+  .request-block {
+    margin: 10pt 0;
+  }
+  .request-head {
+    font-weight: bold;
+    margin: 6pt 0 2pt 0;
+    break-after: avoid;
+  }
+  .request-desc {
+    margin: 2pt 0 4pt 0;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+  table.visits {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 9.5pt;
+  }
+  table.visits th,
+  table.visits td {
+    border: 1px solid #000;
+    padding: 2pt 4pt;
+    vertical-align: top;
+    text-align: left;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  table.visits tr {
+    page-break-inside: avoid;
+  }
+  table.visits th {
+    font-weight: bold;
+  }
+  .empty {
+    margin: 8pt 0;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+  {% include "_header.html" %}
+
+  <div class="title">Отчёт о ремонтах устройства</div>
+
+  <div class="section-title">Устройство</div>
+  <div class="field-row">Наименование: {{ device.name }}</div>
+  <div class="field-row">Инвентарный номер: {{ device.inventory_no | default("—", true) }}</div>
+  <div class="field-row">Серийный номер: {{ device.serial_no | default("—", true) }}</div>
+  <div class="field-row">Тип: {{ device.type_name | default("—", true) }}</div>
+
+  <div class="section-title">Сводка</div>
+  <div class="field-row">Заходов: {{ summary.visit_count }}</div>
+  <div class="field-row">Суммарная стоимость: {% if summary.total_cost %}{{ summary.total_cost }} ₽{% else %}—{% endif %}</div>
+  <div class="field-row">Дата формирования: {{ summary.printed_date_human }}</div>
+
+  {% for request in requests %}
+  <div class="request-block">
+    <div class="request-head">Заявка № {{ request.id }} — {{ request.status_label }}, создана {{ request.created_date_human }}</div>
+    <div class="field-row">Заявитель: {{ request.requester_name | default("—", true) }}</div>
+    <div class="request-desc">{{ request.description | default("—", true) }}</div>
+    <table class="visits">
+      <colgroup>
+        <col style="width: 4%">
+        <col style="width: 12%">
+        <col style="width: 11%">
+        <col style="width: 11%">
+        <col style="width: 14%">
+        <col style="width: 18%">
+        <col style="width: 16%">
+        <col style="width: 8%">
+        <col style="width: 6%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Акт №</th>
+          <th>Уход</th>
+          <th>Возврат</th>
+          <th>Сервис</th>
+          <th>Неисправность</th>
+          <th>Выполненные работы</th>
+          <th>Стоимость</th>
+          <th>Скан</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for visit in request.visits %}
+        <tr>
+          <td>{{ visit.seq }}</td>
+          <td>{{ visit.act_number }}</td>
+          <td>{{ visit.sent_date_human }}</td>
+          <td>{{ visit.returned_date_human | default("—", true) }}</td>
+          <td>{{ visit.service_place | default("—", true) }}</td>
+          <td>{{ visit.fault }}</td>
+          <td>{{ visit.works_done | default("—", true) }}</td>
+          <td>{% if visit.cost_display %}{{ visit.cost_display }} ₽{% else %}—{% endif %}</td>
+          <td>{% if visit.has_scan %}Да{% else %}Нет{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Ремонтов не было</div>
+  {% endfor %}
+
+</body>
+</html>

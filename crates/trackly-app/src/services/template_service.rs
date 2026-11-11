@@ -499,6 +499,76 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
                 "place_from": "Офис 101"
             }
         }),
+        // Phase 41.4 (D-28): repair_device_report.html reads device.*, summary.*
+        // and requests[].visits[] under strict-undefined — every key must be
+        // present (nulls included), plus the lists iterated by {% for %}.
+        "repair_device_report" => serde_json::json!({
+            "org": org,
+            "device": {
+                "name": "ПК-00014",
+                "inventory_no": "ИНВ-001",
+                "serial_no": "SN-001",
+                "type_name": "Системный блок"
+            },
+            "summary": {
+                "visit_count": 3,
+                "total_cost": "4 500",
+                "printed_date_human": "17 июня 2026 г."
+            },
+            "requests": [
+                {
+                    "id": 12,
+                    "status_label": "Выполнена",
+                    "created_date_human": "2 июня 2026 г.",
+                    "requester_name": "Иванов И.И.",
+                    "description": "Не включается",
+                    "visits": [
+                        {
+                            "seq": 1,
+                            "act_number": "РЕМ-000001",
+                            "sent_date_human": "3 июня 2026 г.",
+                            "returned_date_human": "10 июня 2026 г.",
+                            "service_place": "Сервис-центр №1",
+                            "fault": "Нет реакции на кнопку питания",
+                            "works_done": "Заменён блок питания",
+                            "cost_display": "4 500",
+                            "has_scan": true
+                        },
+                        {
+                            "seq": 2,
+                            "act_number": "РЕМ-000002",
+                            "sent_date_human": "12 июня 2026 г.",
+                            "returned_date_human": "14 июня 2026 г.",
+                            "service_place": "Сервис-центр №1",
+                            "fault": "Шумит вентилятор",
+                            "works_done": "Чистка",
+                            "cost_display": null,
+                            "has_scan": false
+                        }
+                    ]
+                },
+                {
+                    "id": 15,
+                    "status_label": "В ремонте",
+                    "created_date_human": "16 июня 2026 г.",
+                    "requester_name": "Петров П.П.",
+                    "description": "Перегрев",
+                    "visits": [
+                        {
+                            "seq": 1,
+                            "act_number": "РЕМ-000003",
+                            "sent_date_human": "17 июня 2026 г.",
+                            "returned_date_human": null,
+                            "service_place": "Сервис-центр №2",
+                            "fault": "Перегрев при нагрузке",
+                            "works_done": null,
+                            "cost_display": null,
+                            "has_scan": false
+                        }
+                    ]
+                }
+            ]
+        }),
         "report" => serde_json::json!({
             "org": org,
             "report_name": "Демо-отчёт: Акты приёма-передачи",
@@ -743,6 +813,28 @@ mod tests {
         }
     }
 
+    /// repair_device_report branch of demo_context_for_kind supplies every
+    /// variable the template reads (strict-undefined, Phase 41.4 D-28).
+    #[tokio::test]
+    async fn validate_preview_repair_device_report_returns_html() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+
+        let body = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "repair_device_report.html")
+            .map(|(_, body)| *body)
+            .expect("repair_device_report.html must exist in DEFAULT_HTML_TEMPLATES");
+
+        let result = svc.validate_preview("repair_device_report", body).await;
+        match result {
+            Ok(html) => {
+                assert!(html.contains("Отчёт о ремонтах устройства"));
+                assert!(html.contains("Сервис-центр №1"));
+            }
+            Err(e) => panic!("validate_preview failed for repair_device_report: {e:?}"),
+        }
+    }
+
     /// R3-3 / CR-02 (Phase 17 retarget): update_body on a kind not in the
     /// fixed DEFAULT_HTML_TEMPLATES allowlist must return AppError::NotFound
     /// — T-17-02-01 mitigation, unrecognized kind never reaches the
@@ -872,12 +964,13 @@ mod tests {
         let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
 
         let items = svc.list_all_for_editor().await.unwrap();
-        assert_eq!(items.len(), 4, "must return exactly 4 known kinds");
+        assert_eq!(items.len(), 5, "must return exactly 5 known kinds");
         let kinds: Vec<&str> = items.iter().map(|i| i.kind.as_str()).collect();
         assert!(kinds.contains(&"act_handover"));
         assert!(kinds.contains(&"act_acceptance"));
         assert!(kinds.contains(&"report"));
         assert!(kinds.contains(&"repair_transfer_act"));
+        assert!(kinds.contains(&"repair_device_report"));
         // No templates written to the fresh tempdir yet — every item must
         // report is_default = true (body equals the embedded default).
         assert!(items.iter().all(|i| i.is_default));
