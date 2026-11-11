@@ -57,6 +57,18 @@
     font-size: var(--tr-font-size-body);
     line-height: var(--tr-line-height-body);
 
+    // Chromium (WebView2, LAN-браузеры): внутреннее поле с текстом даты тянется,
+    // индикатор календаря уходит к правому краю. Для WKWebView безвредно.
+    &::-webkit-datetime-edit {
+      flex: 1 1 auto;
+      text-align: left;
+    }
+
+    &::-webkit-calendar-picker-indicator {
+      margin-left: auto;
+      cursor: pointer;
+    }
+
     &:focus-visible {
       outline: none;
       border-color: var(--tr-accent);

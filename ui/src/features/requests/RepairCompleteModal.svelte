@@ -107,7 +107,7 @@
   title="Завершить заявку"
   size="md"
   {onClose}
-  initialFocus={moved ? '#rep-complete-place' : '#rep-complete-notes'}
+  initialFocus={moved ? '.modal-footer .btn-secondary' : '#rep-complete-notes'}
 >
   <div class="form">
     {#if moved}

@@ -99,9 +99,8 @@
   const warnedStatusLabel = $derived(
     warnedStatusCode ? (statusByCode(warnedStatusCode)?.name ?? warnedStatusCode) : '',
   );
-  const nested = $derived(repairState.groupNested);
   const showAnchorNote = $derived(repairState.isAnchor && repairState.groupBlockSize > 0);
-  const canMove = $derived(!submitting && placeId !== null && !nested);
+  const canMove = $derived(!submitting && placeId !== null);
 
   async function run(choice: { kind: 'move'; placeId: number } | { kind: 'stay' }) {
     if (submitting) return;
@@ -131,7 +130,7 @@
   }
 
   function move() {
-    if (placeId === null || nested) return;
+    if (placeId === null) return;
     void run({ kind: 'move', placeId });
   }
 
@@ -140,7 +139,14 @@
   }
 </script>
 
-<Modal {open} title="Перемещение устройства" size="md" {onClose} initialFocus="#rep-move-place">
+<!-- Начальный фокус на «Отмена»: фокус на PlacePicker раскрывает дерево (handleFocus). -->
+<Modal
+  {open}
+  title="Перемещение устройства"
+  size="md"
+  {onClose}
+  initialFocus=".modal-footer .btn-secondary"
+>
   <div class="form">
     <div class="facts">
       <DetailField label="Устройство">
@@ -156,7 +162,7 @@
       <DetailField label="Сейчас" value={repairState.currentPlacePath} />
     </div>
 
-    {#if storageIds.length > 0 && !nested}
+    {#if storageIds.length > 0}
       <div class="field">
         <span class="label" id="rep-move-quick-label">Быстрый выбор склада</span>
         <div class="chips" role="group" aria-label="Быстрый выбор склада">
@@ -176,17 +182,8 @@
 
     <div class="field">
       <label class="label" for="rep-move-place">Куда переместить</label>
-      <PlacePicker
-        value={placeId}
-        id="rep-move-place"
-        disabled={nested}
-        onChange={(id) => (placeId = id)}
-      />
-      {#if nested}
-        <span class="hint"
-          >Устройство входит в группу, место задаётся группой и здесь не меняется.</span
-        >
-      {:else if showAnchorNote}
+      <PlacePicker value={placeId} id="rep-move-place" onChange={(id) => (placeId = id)} />
+      {#if showAnchorNote}
         <span class="hint"
           >Вместе с устройством переместятся детали его группы: {repairState.groupBlockSize}.</span
         >
