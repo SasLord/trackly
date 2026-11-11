@@ -5530,6 +5530,7 @@ fn repair_staff_only_cases() -> Vec<(&'static str, serde_json::Value)> {
         ("repairs_cancel_repair", dto(json!({}))),
         ("repairs_reject", dto(json!({ "notes": null }))),
         ("repairs_assign_device", dto(json!({ "deviceId": 1 }))),
+        ("repairs_merge_into_open", dto(json!({ "deviceId": 1 }))),
         (
             "repairs_link_scans",
             json!({ "visitId": 999999, "attachmentIds": [] }),
@@ -5633,8 +5634,8 @@ async fn repairs_role_matrix_http() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn repairs_role_matrix_tauri_path() {
     use trackly_app::dto::repair::{
-        RepairAssignDeviceDto, RepairCancelDto, RepairCompleteDto, RepairMoveChoiceDto,
-        RepairReceiveDto, RepairRejectDto, RepairSendDto,
+        RepairAssignDeviceDto, RepairCancelDto, RepairCompleteDto, RepairMergeDto,
+        RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto,
     };
     use trackly_app::tauri_cmds::repairs as r;
 
@@ -5801,6 +5802,20 @@ async fn repairs_role_matrix_tauri_path() {
                 &env.ctx,
                 emp,
                 RepairAssignDeviceDto {
+                    request_id: 999999,
+                    version: 1,
+                    device_id: 1,
+                },
+            )
+            .await
+            .map(|_| ()),
+        ),
+        (
+            "merge_into_open",
+            r::build_repairs_merge_into_open(
+                &env.ctx,
+                emp,
+                RepairMergeDto {
                     request_id: 999999,
                     version: 1,
                     device_id: 1,

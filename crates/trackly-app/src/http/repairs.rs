@@ -12,8 +12,8 @@ use crate::context::AppCtx;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairAssignDeviceDto, RepairAssignResultDto, RepairCancelDto,
     RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto,
-    RepairStateDto, RepairTransitionResultDto,
+    RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto, RepairMoveChoiceDto,
+    RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto, RepairTransitionResultDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -305,6 +305,27 @@ pub async fn handler_assign_device(
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MergePayload {
+    pub dto: RepairMergeDto,
+}
+
+pub async fn handler_merge_into_open(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<MergePayload>,
+) -> Result<Json<RepairMergeResultDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        r::build_repairs_merge_into_open(&ctx, &identity, p.dto)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LinkScansPayload {
     pub visit_id: i64,
     pub attachment_ids: Vec<i64>,
@@ -377,6 +398,10 @@ pub fn router() -> Router<AppCtx> {
             post(handler_cancel_by_author),
         )
         .route("/api/v1/repairs_assign_device", post(handler_assign_device))
+        .route(
+            "/api/v1/repairs_merge_into_open",
+            post(handler_merge_into_open),
+        )
         .route("/api/v1/repairs_link_scans", post(handler_link_scans))
         .route("/api/v1/repairs_render_act", post(handler_render_act))
 }

@@ -81,6 +81,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::repairs::repairs_reject,
         crate::tauri_cmds::repairs::repairs_cancel_by_author,
         crate::tauri_cmds::repairs::repairs_assign_device,
+        crate::tauri_cmds::repairs::repairs_merge_into_open,
         crate::tauri_cmds::repairs::repairs_link_scans,
         crate::tauri_cmds::repairs::repairs_render_act,
         crate::tauri_cmds::organization::organization_get,

@@ -8,8 +8,8 @@ use crate::context::AppCtx;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairAssignDeviceDto, RepairAssignResultDto, RepairCancelDto,
     RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto,
-    RepairStateDto, RepairTransitionResultDto,
+    RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto, RepairMoveChoiceDto,
+    RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto, RepairTransitionResultDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -151,6 +151,15 @@ pub async fn build_repairs_assign_device(
 ) -> Result<RepairAssignResultDto, AppError> {
     authorize(caller, &Action::TransitionRequests)?;
     ctx.repairs.assign_device(dto, caller).await
+}
+
+pub async fn build_repairs_merge_into_open(
+    ctx: &AppCtx,
+    caller: &Identity,
+    dto: RepairMergeDto,
+) -> Result<RepairMergeResultDto, AppError> {
+    authorize(caller, &Action::TransitionRequests)?;
+    ctx.repairs.merge_into_open(dto, caller).await
 }
 
 pub async fn build_repairs_link_scans(
@@ -338,6 +347,16 @@ pub async fn repairs_assign_device(
 ) -> Result<RepairAssignResultDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_repairs_assign_device(state.inner(), &caller, dto).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn repairs_merge_into_open(
+    state: tauri::State<'_, AppCtx>,
+    dto: RepairMergeDto,
+) -> Result<RepairMergeResultDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_repairs_merge_into_open(state.inner(), &caller, dto).await
 }
 
 #[tauri::command]
