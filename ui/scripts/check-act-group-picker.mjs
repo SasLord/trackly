@@ -265,8 +265,8 @@ function runSelfTest() {
         name: '(1) из складского запроса убран `status_id: storageStatusId`',
         src: mutate(
           raw,
-          '          status_id: storageStatusId,\n',
-          '          status_id: null,\n',
+          '        status_id: storageStatusId,\n',
+          '        status_id: null,\n',
           'storage-no-status',
         ),
         rule: 'B',

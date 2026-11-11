@@ -20,6 +20,7 @@
   import { devices } from '$lib/api/devices';
   import { groups } from '$lib/api/groups';
   import { ensureLoaded, statusIdByCode } from '$lib/stores/deviceStatuses.svelte';
+  import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { REPAIR_ACT_NOTE, loadOpenRepairs } from '../requests/repairLocks';
@@ -209,6 +210,39 @@
     onChange(next);
   }
 
+  /** Типы устройств, в названии которых есть введённый текст (от 2 символов). */
+  async function matchingTypeIds(query: string): Promise<number[]> {
+    const needle = query.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    await ensureTypesLoaded();
+    return orderedTypes()
+      .filter((t) => t.name.toLowerCase().includes(needle))
+      .slice(0, 3)
+      .map((t) => t.id);
+  }
+
+  /** Складской запрос пикера. UAT Fix #3/#4: listGrouped возвращает свёртки
+   *  (одинаковые name+model+inv_no=NULL) с count + ids.
+   *  group_by_condition: true — сохраняет DEF-2B разбивку по condition (ITEM-1). */
+  async function storageGroups(
+    storageStatusId: number,
+    query: string,
+    typeId: number | null,
+  ): Promise<DeviceGroup[]> {
+    return await devices.listGrouped(
+      {
+        type_id: typeId,
+        place_id: null,
+        status_id: storageStatusId,
+        state: null,
+        name_prefix: query,
+        include_deleted: false,
+        group_by_condition: true,
+      },
+      { offset: 0, limit: 20 },
+    );
+  }
+
   /** Складской источник (прежний запрос ОДИН-В-ОДИН): единственный, на кого
    *  действует фильтр статуса «на складе» (D-02). Отказ даёт пустой список и не
    *  роняет остальные источники. */
@@ -227,21 +261,21 @@
         );
         return [];
       }
-      // UAT Fix #3/#4: listGrouped возвращает свёртки (одинаковые
-      // name+model+inv_no=NULL) с count + ids.
-      // group_by_condition: true — сохраняет DEF-2B разбивку по condition (ITEM-1).
-      return await devices.listGrouped(
-        {
-          type_id: null,
-          place_id: null,
-          status_id: storageStatusId,
-          state: null,
-          name_prefix: query,
-          include_deleted: false,
-          group_by_condition: true,
-        },
-        { offset: 0, limit: 20 },
-      );
+      const base = await storageGroups(storageStatusId, query, null);
+      // Поиск по названию типа («принтер»): FTS индексирует только имя, модель и
+      // номера устройства, а пустой запрос показывает лишь 20 свёрток с наибольшим
+      // остатком — единичные устройства (принтеры) иначе не находятся вовсе.
+      const typeIds = await matchingTypeIds(query);
+      const byType: DeviceGroup[] = [];
+      for (const typeId of typeIds) {
+        byType.push(...(await storageGroups(storageStatusId, '', typeId)));
+      }
+      const seen = new Set<number>();
+      return [...byType, ...base].filter((g) => {
+        if (seen.has(g.repr.id)) return false;
+        seen.add(g.repr.id);
+        return true;
+      });
     } catch {
       return [];
     }

@@ -1795,7 +1795,8 @@ impl DeviceRepository for SqliteDeviceRepository {
             "
                  )
                  WHERE d.deleted_at_utc IS NULL
-                   AND (?1 IS NULL OR d.status_id = ?1) AND ",
+                   AND (?1 IS NULL OR d.status_id = ?1)
+                   AND (?7 IS NULL OR d.type_id = ?7) AND ",
             grouped_flag_predicates!("d"),
             "
                  GROUP BY d.type_id, d.name, d.model
@@ -1851,7 +1852,8 @@ impl DeviceRepository for SqliteDeviceRepository {
             "
                  )
                  WHERE d.deleted_at_utc IS NULL
-                   AND (?1 IS NULL OR d.status_id = ?1) AND ",
+                   AND (?1 IS NULL OR d.status_id = ?1)
+                   AND (?7 IS NULL OR d.type_id = ?7) AND ",
             grouped_flag_predicates!("d"),
             "
                    AND devices_fts MATCH ?4
@@ -1905,7 +1907,8 @@ impl DeviceRepository for SqliteDeviceRepository {
             "
                  )
                  WHERE d.deleted_at_utc IS NULL
-                   AND (?1 IS NULL OR d.status_id = ?1) AND ",
+                   AND (?1 IS NULL OR d.status_id = ?1)
+                   AND (?7 IS NULL OR d.type_id = ?7) AND ",
             grouped_flag_predicates!("d"),
             "
                  GROUP BY d.type_id, d.name
@@ -1942,12 +1945,21 @@ impl DeviceRepository for SqliteDeviceRepository {
         let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
 
         // ?4 — FTS-выражение (только в `sql_grouped_by_model_with_query`, иначе NULL и
-        // в SQL не упоминается), ?5 — exclude_anchors, ?6 — hide_anchor_members.
+        // в SQL не упоминается), ?5 — exclude_anchors, ?6 — hide_anchor_members,
+        // ?7 — type_id (NULL = любой тип; поиск по названию типа в пикере акта, 41.4-26).
         let excl = filter.exclude_anchors as i64;
         let hide = filter.hide_anchor_members as i64;
         let rows = stmt
             .query_map(
-                rusqlite::params![status_id, limit, offset, match_expr, excl, hide],
+                rusqlite::params![
+                    status_id,
+                    limit,
+                    offset,
+                    match_expr,
+                    excl,
+                    hide,
+                    filter.type_id
+                ],
                 group_row_tuple,
             )
             .map_err(map_rusqlite)?;
