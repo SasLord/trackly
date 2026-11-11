@@ -25,6 +25,7 @@ import type {
   RepairCompleteDto,
   RepairCreateDto,
   RepairCreateResultDto,
+  RepairDeviceHistoryDto,
   RepairDeviceOptionDto,
   RepairLastPlacesDto,
   RepairMoveChoiceDto,
@@ -125,4 +126,12 @@ export const repairs = {
 
   /** HTML акта для браузерной печати (text/html по LAN, строка в Tauri). */
   renderAct: (visitId: number) => apiCall<string>('repairs_render_act', { visitId }),
+
+  /** История ремонтов устройства: заявки, заходы, итог, счётчик (кнопка «Ремонты»). */
+  deviceHistory: (deviceId: number) =>
+    apiCall<RepairDeviceHistoryDto>('repairs_device_history', { deviceId }),
+
+  /** HTML полного отчёта о ремонтах устройства для печати. */
+  renderDeviceReport: (deviceId: number) =>
+    apiCall<string>('repairs_render_device_report', { deviceId }),
 };

@@ -75,10 +75,13 @@
     /** Plan 03-05: 'handover' → render акта приёма-передачи (default);
      *  'acceptance' → render документа приёма устройства (DEV-14);
      *  'report' → render отчёта (Plan 17-03, D-09). */
-    mode?: 'handover' | 'acceptance' | 'report' | 'repair';
+    mode?: 'handover' | 'acceptance' | 'report' | 'repair' | 'repairDevice';
     /** Фаза 41.4 (D-27/D-28): required when mode='repair' — id захода ремонта,
      *  акт рендерится командой repairs_render_act. */
     repairVisitId?: number | null;
+    /** Фаза 41.4: required when mode='repairDevice' — id устройства, полный отчёт
+     *  о ремонтах рендерится командой repairs_render_device_report. */
+    repairDeviceId?: number | null;
     /** Фаза 41.4: HTML получен / не получен. Для mode='repair' вызывающий показывает
      *  загрузку на своей кнопке и тост вместо встроенного сообщения об ошибке. */
     onLoaded?: () => void;
@@ -98,6 +101,7 @@
     acceptancePayload = null,
     reportParams = null,
     repairVisitId = null,
+    repairDeviceId = null,
     onLoaded,
     onLoadError,
   }: Props = $props();
@@ -162,6 +166,12 @@
       }
       return repairs.renderAct(repairVisitId);
     }
+    if (mode === 'repairDevice') {
+      if (repairDeviceId === null) {
+        return Promise.reject(new Error('repairDeviceId required for mode="repairDevice"'));
+      }
+      return repairs.renderDeviceReport(repairDeviceId);
+    }
     if (mode === 'report') {
       if (!reportParams) {
         return Promise.reject(new Error('reportParams required for mode="report"'));
@@ -186,7 +196,9 @@
           ? reportParams !== null
           : mode === 'repair'
             ? repairVisitId !== null
-            : actId !== null),
+            : mode === 'repairDevice'
+              ? repairDeviceId !== null
+              : actId !== null),
   );
 
   /** D-07: keep showing the loading state until pagination has settled one
