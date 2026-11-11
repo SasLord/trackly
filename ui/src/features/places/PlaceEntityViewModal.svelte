@@ -38,6 +38,9 @@
   import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';
+  import RepairDeviceHistoryModal from '../requests/RepairDeviceHistoryModal.svelte';
+  import { repairs } from '../requests/api';
+  import { canUseRepairs } from '../requests/repairLocks';
   import { apiCall } from '$lib/api/client';
   import type {
     PlaceContentDto,
@@ -165,6 +168,31 @@
       await Promise.all([mainLoad, timelineLoad]);
       loading = false;
     })();
+  });
+
+  // Фаза 41.4, план 32: счётчик заходов в сервис — отдельная независимая загрузка
+  // (только device/printer, только персонал); сбой или 0 — кнопки «Ремонты» нет,
+  // просмотр не затрагивается (loading/loadError основной загрузки не делятся).
+  let visitCount = $state(0);
+  let historyOpen = $state(false);
+  let historyToken = 0;
+
+  $effect(() => {
+    const r = row;
+    const token = ++historyToken;
+    visitCount = 0;
+    if (r.kind === 'cartridge' || !canUseRepairs()) return;
+    repairs
+      .deviceHistory(r.id)
+      .then((h) => {
+        if (token === historyToken) visitCount = h.visitCount;
+      })
+      .catch(() => {
+        if (token === historyToken) visitCount = 0;
+      });
+    return () => {
+      historyToken++;
+    };
   });
 
   const loadFailed = $derived(
@@ -312,11 +340,26 @@
     <Button variant="secondary" onclick={handleGoTo}>
       {GOTO_LABEL_BY_KIND[row.kind] ?? 'Перейти'}
     </Button>
+    {#if !isCartridge && visitCount > 0}
+      <Button variant="secondary" onclick={() => (historyOpen = true)}>
+        Ремонты ({visitCount})
+      </Button>
+    {/if}
     <Button variant="primary" onclick={handleEdit} disabled={loading || loadFailed}>
       Редактировать
     </Button>
   {/snippet}
 </Modal>
+
+{#if !isCartridge && visitCount > 0}
+  <RepairDeviceHistoryModal
+    open={historyOpen}
+    deviceId={row.id}
+    deviceName={deviceDto?.name ?? row.name}
+    onClose={() => (historyOpen = false)}
+    onNavigate={onClose}
+  />
+{/if}
 
 {#if isCartridge}
   <CartridgeFormModal
