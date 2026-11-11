@@ -5538,6 +5538,10 @@ fn repair_staff_only_cases() -> Vec<(&'static str, serde_json::Value)> {
         ),
         ("repairs_render_act", json!({ "visitId": 999999 })),
         (
+            "repairs_render_device_report",
+            json!({ "deviceId": 999999 }),
+        ),
+        (
             "reports_list_repairs",
             json!({
                 "filter": {
@@ -5687,6 +5691,12 @@ async fn repairs_role_matrix_tauri_path() {
             (
                 "render_act",
                 r::build_repairs_render_act(&env.ctx, caller, 999999)
+                    .await
+                    .map(|_| ()),
+            ),
+            (
+                "render_device_report",
+                r::build_repairs_render_device_report(&env.ctx, caller, 999999)
                     .await
                     .map(|_| ()),
             ),
@@ -5840,6 +5850,12 @@ async fn repairs_role_matrix_tauri_path() {
         (
             "render_act",
             r::build_repairs_render_act(&env.ctx, emp, 999999)
+                .await
+                .map(|_| ()),
+        ),
+        (
+            "render_device_report",
+            r::build_repairs_render_device_report(&env.ctx, emp, 999999)
                 .await
                 .map(|_| ()),
         ),

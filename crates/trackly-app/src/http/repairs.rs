@@ -392,6 +392,30 @@ pub async fn handler_render_act(
     ))
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderDeviceReportPayload {
+    pub device_id: i64,
+}
+
+pub async fn handler_render_device_report(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<RenderDeviceReportPayload>,
+) -> Result<impl IntoResponse, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    let html = r::build_repairs_render_device_report(&ctx, &identity, p.device_id)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    ))
+}
+
 pub fn router() -> Router<AppCtx> {
     Router::new()
         .route(
@@ -430,4 +454,8 @@ pub fn router() -> Router<AppCtx> {
         )
         .route("/api/v1/repairs_link_scans", post(handler_link_scans))
         .route("/api/v1/repairs_render_act", post(handler_render_act))
+        .route(
+            "/api/v1/repairs_render_device_report",
+            post(handler_render_device_report),
+        )
 }

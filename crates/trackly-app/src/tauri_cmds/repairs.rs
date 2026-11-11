@@ -194,6 +194,18 @@ pub async fn build_repairs_render_act(
     ctx.repair_acts.render_html(visit_id, caller).await
 }
 
+/// HTML печатного отчёта о ремонтах устройства; только чтение, номера не выдаются.
+pub async fn build_repairs_render_device_report(
+    ctx: &AppCtx,
+    caller: &Identity,
+    device_id: i64,
+) -> Result<String, AppError> {
+    authorize(caller, &Action::TransitionRequests)?;
+    ctx.repair_acts
+        .render_device_report(&ctx.repairs, device_id, caller)
+        .await
+}
+
 // ---------------------------------------------------------------------------
 // Tauri-обёртки (числа i32 — ограничение specta)
 // ---------------------------------------------------------------------------
@@ -367,6 +379,16 @@ pub async fn repairs_device_history(
 ) -> Result<RepairDeviceHistoryDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_repairs_device_history(state.inner(), &caller, device_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn repairs_render_device_report(
+    state: tauri::State<'_, AppCtx>,
+    device_id: i32,
+) -> Result<String, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_repairs_render_device_report(state.inner(), &caller, device_id as i64).await
 }
 
 #[tauri::command]

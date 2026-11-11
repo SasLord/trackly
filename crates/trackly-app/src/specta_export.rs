@@ -85,6 +85,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::repairs::repairs_device_history,
         crate::tauri_cmds::repairs::repairs_link_scans,
         crate::tauri_cmds::repairs::repairs_render_act,
+        crate::tauri_cmds::repairs::repairs_render_device_report,
         crate::tauri_cmds::organization::organization_get,
         crate::tauri_cmds::templates::templates_get_active,
         crate::tauri_cmds::templates::templates_render_preview,
