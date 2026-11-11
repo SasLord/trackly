@@ -14,7 +14,6 @@
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
   import { parseAppError } from '$lib/api/errors';
-  import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { formatFileSize } from '$lib/utils/formatFileSize';
   import { attachments, uploadAttachment } from '../attachments/api';
@@ -80,7 +79,7 @@
     let cancelled = false;
     untrack(() => {
       dateIso = todayIso();
-      receivedBy = authStore.user?.fullName ?? '';
+      receivedBy = '';
       placeId = null;
       returnToWorkplace = false;
       worksDone = '';
@@ -101,6 +100,8 @@
         const last = await repairs.lastPlaces();
         if (cancelled) return;
         lastMovePlaceId = last.movePlaceId;
+        // Последнее запомненное значение, иначе имя учётной записи приложения (сервер).
+        if (receivedBy === '') receivedBy = last.lastReceivedByName ?? last.accountName ?? '';
         if (placeId === null && !returnToWorkplace) placeId = last.movePlaceId;
       } catch {
         // Предзаполнение — удобство, не условие.

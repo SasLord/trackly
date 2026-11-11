@@ -31,6 +31,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import { requests, repairs } from './api';
+  import RepairDeviceStatus from './RepairDeviceStatus.svelte';
   import { openRepairRequest } from './repairLocks';
   import RepairMoveModal from './RepairMoveModal.svelte';
   import RepairSendModal from './RepairSendModal.svelte';
@@ -146,6 +147,18 @@
       ? repairState
       : null,
   );
+  const deviceStatusCode = $derived(curState?.deviceStatusCode ?? null);
+  // Название устройства для карточки: имя, инвентарный номер, тип.
+  const repairDeviceLine = $derived.by(() => {
+    if (!hasDevice) return 'Не указано';
+    const name = curState?.deviceName ?? request?.printerName ?? null;
+    if (name === null) return '—';
+    const extra = [
+      curState?.deviceInventoryNo ? `инв. № ${curState.deviceInventoryNo}` : null,
+      curState?.deviceTypeName ?? null,
+    ].filter((x): x is string => x !== null);
+    return extra.length > 0 ? `${name} (${extra.join(', ')})` : name;
+  });
   // Ничего не перемещалось и в сервис не ездило: доступны «Забрать на склад»,
   // «Отклонить» и отмена автором (D-11).
   const repairFresh = $derived(
@@ -881,6 +894,24 @@
             {#if request.description}
               <div class="field-wide">
                 <DetailField label="Комментарий" value={request.description} />
+              </div>
+            {/if}
+          {:else if request.requestType === 'repair'}
+            <DetailField label="Устройство" value={repairDeviceLine} />
+            {#if hasDevice && deviceStatusCode !== null}
+              <DetailField label="Статус устройства">
+                <RepairDeviceStatus code={deviceStatusCode} />
+              </DetailField>
+            {/if}
+            {#if hasDevice && curState?.currentPlacePath}
+              <DetailField label="Место" value={curState.currentPlacePath} />
+            {/if}
+            {#if request.categoryName}
+              <DetailField label="Категория" value={request.categoryName} />
+            {/if}
+            {#if request.description}
+              <div class="field-wide">
+                <DetailField label="Описание" value={request.description} />
               </div>
             {/if}
           {:else}

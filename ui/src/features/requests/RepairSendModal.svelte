@@ -10,7 +10,6 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { formatFileSize } from '$lib/utils/formatFileSize';
   import { attachments, uploadAttachment } from '../attachments/api';
@@ -65,7 +64,7 @@
     let cancelled = false;
     untrack(() => {
       dateIso = todayIso();
-      giverName = authStore.user?.fullName ?? '';
+      giverName = '';
       receiverName = '';
       servicePlaceId = null;
       fault = request.description ?? '';
@@ -81,7 +80,10 @@
     (async () => {
       try {
         const last = await repairs.lastPlaces();
-        if (!cancelled && servicePlaceId === null) servicePlaceId = last.servicePlaceId;
+        if (cancelled) return;
+        if (servicePlaceId === null) servicePlaceId = last.servicePlaceId;
+        // Последнее запомненное значение, иначе имя учётной записи приложения (сервер).
+        if (giverName === '') giverName = last.lastGiverName ?? last.accountName ?? '';
       } catch {
         // Предзаполнение — удобство, не условие.
       }
