@@ -549,7 +549,7 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
                 },
                 {
                     "id": 15,
-                    "status_label": "В ремонте",
+                    "status_label": "Открыта",
                     "created_date_human": "16 июня 2026 г.",
                     "requester_name": "Петров П.П.",
                     "description": "Перегрев",
