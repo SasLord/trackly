@@ -499,3 +499,80 @@ async fn anchor_send_and_receive_move_whole_block() {
     assert_eq!(dev_place(&ctx, anchor).await, Some(store));
     assert_eq!(dev_place(&ctx, part).await, Some(store));
 }
+
+#[tokio::test]
+async fn last_giver_and_received_by_remembered_on_success_only() {
+    let (ctx, _d) = make_test_ctx().await;
+    let room = seed_place(&ctx, "Кабинет 12").await;
+    let service = seed_place(&ctx, "Сервис Альфа").await;
+    let store = storage_place(&ctx, "Склад А").await;
+    let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), None).await;
+    let (req, v) = accepted(&ctx, dev).await;
+
+    let last = ctx.repairs.last_places(&admin()).await.expect("last");
+    assert_eq!(last.last_giver_name, None);
+    assert_eq!(last.last_received_by_name, None);
+
+    // Неуспешная отправка (пустое «кому выдал») запоминание не меняет.
+    let mut bad = send_dto(req, v, service);
+    bad.giver_name = "  Сидоров С.С.  ".into();
+    bad.receiver_name = "   ".into();
+    assert!(validation(
+        ctx.repairs.send(bad, &admin()).await.expect_err("bad")
+    ));
+    let last = ctx.repairs.last_places(&admin()).await.expect("last");
+    assert_eq!(last.last_giver_name, None);
+
+    let mut ok = send_dto(req, v, service);
+    ok.giver_name = "  Сидоров С.С.  ".into();
+    let sent = ctx.repairs.send(ok, &admin()).await.expect("send");
+    let last = ctx.repairs.last_places(&admin()).await.expect("last");
+    assert_eq!(last.last_giver_name.as_deref(), Some("Сидоров С.С."));
+    assert_eq!(last.last_received_by_name, None);
+
+    let mut rec = recv_dto(req, sent.request.version, store, false);
+    rec.received_by_name = "Кузнецов К.К.".into();
+    ctx.repairs.receive(rec, &admin()).await.expect("receive");
+    let last = ctx.repairs.last_places(&admin()).await.expect("last");
+    assert_eq!(last.last_received_by_name.as_deref(), Some("Кузнецов К.К."));
+
+    // Значения общие для всех вызывающих (app_settings, не по пользователю).
+    let other = seed_user(&ctx, "other_mgr", "Орлов О.О.").await;
+    let shared = ctx
+        .repairs
+        .last_places(&manager(other))
+        .await
+        .expect("last");
+    assert_eq!(shared.last_giver_name.as_deref(), Some("Сидоров С.С."));
+    assert_eq!(
+        shared.last_received_by_name.as_deref(),
+        Some("Кузнецов К.К.")
+    );
+}
+
+#[tokio::test]
+async fn account_name_from_caller_or_first_admin() {
+    let (ctx, _d) = make_test_ctx().await;
+    let mgr = seed_user(&ctx, "mgr", "Орлов О.О.").await;
+    let last = ctx.repairs.last_places(&manager(mgr)).await.expect("last");
+    assert_eq!(last.account_name.as_deref(), Some("Орлов О.О."));
+
+    // Доверенный администратор без user_id, пользователей-админов нет.
+    let last = ctx.repairs.last_places(&admin()).await.expect("last");
+    assert_eq!(last.account_name, None);
+
+    let adm = seed_user(&ctx, "adm", "Администратор А.А.").await;
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE users SET role = 'admin' WHERE id = ?1",
+                params![adm],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("promote");
+    let last = ctx.repairs.last_places(&admin()).await.expect("last");
+    assert_eq!(last.account_name.as_deref(), Some("Администратор А.А."));
+}

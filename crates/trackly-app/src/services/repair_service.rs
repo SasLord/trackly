@@ -43,6 +43,8 @@ use crate::services::number_template_service::issue_repair_act_number_in_tx;
 /// Ключи `app_settings` для последних выбранных мест (D-25).
 const SETTING_LAST_MOVE_PLACE: &str = "repair_last_move_place_id";
 const SETTING_LAST_SERVICE_PLACE: &str = "repair_last_service_place_id";
+const SETTING_LAST_GIVER: &str = "repair_last_giver_name";
+const SETTING_LAST_RECEIVED_BY: &str = "repair_last_received_by_name";
 
 /// Предел длины описания (символов).
 const MAX_DESCRIPTION_CHARS: usize = 4000;
@@ -283,10 +285,41 @@ impl RepairService {
     /// D-25: последние выбранные места. Удалённое или архивное место даёт `None`.
     pub async fn last_places(&self, caller: &Identity) -> Result<RepairLastPlacesDto, AppError> {
         authorize(caller, &Action::TransitionRequests)?;
+        let caller_user_id = caller.user_id;
         let readers = self.readers.clone();
         let repo = self.repo.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
+            let read_text = |key: &str| -> Result<Option<String>, AppError> {
+                Ok(repo
+                    .read_setting(&conn, key)?
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty()))
+            };
+            let account_name: Option<String> = match caller_user_id {
+                Some(uid) => conn
+                    .query_row(
+                        "SELECT full_name FROM users WHERE id = ?1",
+                        params![uid],
+                        |r| r.get::<_, Option<String>>(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?
+                    .flatten(),
+                None => conn
+                    .query_row(
+                        "SELECT full_name FROM users \
+                         WHERE role = 'admin' AND deleted_at_utc IS NULL \
+                         ORDER BY id LIMIT 1",
+                        [],
+                        |r| r.get::<_, Option<String>>(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?
+                    .flatten(),
+            }
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty());
             let read = |key: &str| -> Result<Option<i64>, AppError> {
                 let Some(raw) = repo.read_setting(&conn, key)? else {
                     return Ok(None);
@@ -299,6 +332,9 @@ impl RepairService {
             Ok(RepairLastPlacesDto {
                 move_place_id: read(SETTING_LAST_MOVE_PLACE)?,
                 service_place_id: read(SETTING_LAST_SERVICE_PLACE)?,
+                last_giver_name: read_text(SETTING_LAST_GIVER)?,
+                last_received_by_name: read_text(SETTING_LAST_RECEIVED_BY)?,
+                account_name,
             })
         })
         .await
@@ -338,23 +374,36 @@ impl RepairService {
             let device_id = row.printer_device_id;
 
             let mut device_name = None;
+            let mut device_inventory_no = None;
+            let mut device_type_name = None;
             let mut status_code = None;
             let mut current_place_id = None;
             let mut is_anchor = false;
             let mut group_nested = false;
             let mut block_size = 0_i64;
             if let Some(dev) = device_id {
-                let d: Option<(String, Option<String>, Option<i64>)> = conn
+                type DeviceRow = (
+                    String,
+                    Option<String>,
+                    Option<i64>,
+                    Option<String>,
+                    Option<String>,
+                );
+                let d: Option<DeviceRow> = conn
                     .query_row(
-                        "SELECT d.name, ds.code, d.place_id FROM devices d \
-                         LEFT JOIN device_statuses ds ON ds.id = d.status_id WHERE d.id = ?1",
+                        "SELECT d.name, ds.code, d.place_id, d.inventory_number, dt.name \
+                         FROM devices d \
+                         LEFT JOIN device_statuses ds ON ds.id = d.status_id \
+                         LEFT JOIN device_types dt ON dt.id = d.type_id WHERE d.id = ?1",
                         params![dev],
-                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
                     )
                     .optional()
                     .map_err(map_rusqlite)?;
-                if let Some((n, s, p)) = d {
+                if let Some((n, s, p, inv, tn)) = d {
                     device_name = Some(n);
+                    device_inventory_no = inv.filter(|v| !v.trim().is_empty());
+                    device_type_name = tn;
                     status_code = s;
                     current_place_id = p;
                 }
@@ -438,6 +487,8 @@ impl RepairService {
                 request_id,
                 device_id,
                 device_name,
+                device_inventory_no,
+                device_type_name,
                 device_status_code: status_code,
                 current_place_id,
                 current_place_path: place_path(&conn, current_place_id)?,
@@ -844,6 +895,7 @@ impl RepairService {
                     )
                     .map_err(map_rusqlite)?;
                 let act_number = issue_repair_act_number_in_tx(&tx, now)?;
+                repo.upsert_setting(&tx, SETTING_LAST_GIVER, &giver, now)?;
                 let visit_id = repo.insert_visit_in_tx(
                     &tx,
                     &RepairVisitNew {
@@ -1014,6 +1066,7 @@ impl RepairService {
                     "in_progress"
                 };
                 repo.set_request_status_in_tx(&tx, request_id, version, new_status, user_id, now)?;
+                repo.upsert_setting(&tx, SETTING_LAST_RECEIVED_BY, &received_by, now)?;
                 if !to_workplace {
                     repo.upsert_setting(&tx, SETTING_LAST_MOVE_PLACE, &place_id.to_string(), now)?;
                 }

@@ -158,3 +158,39 @@ async fn device_options_scope_and_no_foreign_request_ids() {
     assert!(all_ids.contains(&own) && all_ids.contains(&foreign));
     assert!(all.iter().find(|o| o.id == foreign).unwrap().in_repair);
 }
+
+#[tokio::test]
+async fn get_state_carries_device_card_fields() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let ivanov = seed_user(&ctx, "ivanov", "Иванов И.И.").await;
+    let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", None, None).await;
+    seed_user_group(&ctx, ivanov, "Комплект Иванова", &[dev]).await;
+
+    let with = ctx
+        .repairs
+        .create(dto(Some(dev), "Не включается"), &emp(ivanov))
+        .await
+        .expect("create");
+    let st = ctx
+        .repairs
+        .get_state(with.request.id, &emp(ivanov))
+        .await
+        .expect("state");
+    assert_eq!(st.device_name.as_deref(), Some("ПК-00014"));
+    assert_eq!(st.device_inventory_no.as_deref(), Some("INV-14"));
+    assert!(st.device_type_name.is_some());
+
+    let other = ctx
+        .repairs
+        .create(dto(None, "Сломалась мышь"), &emp(ivanov))
+        .await
+        .expect("other");
+    let st = ctx
+        .repairs
+        .get_state(other.request.id, &emp(ivanov))
+        .await
+        .expect("state");
+    assert_eq!(st.device_name, None);
+    assert_eq!(st.device_inventory_no, None);
+    assert_eq!(st.device_type_name, None);
+}

@@ -91,6 +91,8 @@ pub struct RepairStateDto {
     #[specta(type = Option<i32>)]
     pub device_id: Option<i64>,
     pub device_name: Option<String>,
+    pub device_inventory_no: Option<String>,
+    pub device_type_name: Option<String>,
     pub device_status_code: Option<String>,
     #[specta(type = Option<i32>)]
     pub current_place_id: Option<i64>,
@@ -121,6 +123,12 @@ pub struct RepairLastPlacesDto {
     pub move_place_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub service_place_id: Option<i64>,
+    /// Последнее запомненное «Кто выдал» (общее для всех, как последнее место).
+    pub last_giver_name: Option<String>,
+    /// Последнее запомненное «Кто принял».
+    pub last_received_by_name: Option<String>,
+    /// Имя учётной записи приложения (запасной вариант предзаполнения).
+    pub account_name: Option<String>,
 }
 
 /// Пара «устройство -> открытая заявка» для пометки «уже в ремонте» персоналу.
