@@ -18,8 +18,11 @@ use trackly_infra::repos::repairs_sqlite::SqliteRepairRepository;
 use crate::services::act_service::format_ru_date;
 use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
+use crate::services::repair_service::RepairService;
+use crate::services::report_service::translate_request_status;
 
 const TEMPLATE_FILE: &str = "repair_transfer_act.html";
+const DEVICE_REPORT_TEMPLATE_FILE: &str = "repair_device_report.html";
 
 #[derive(Clone)]
 pub struct RepairActRenderer {
@@ -205,6 +208,115 @@ impl RepairActRenderer {
         crate::pdf::minijinja_env::render_with_timeout(
             &crate::pdf::minijinja_env::build_safe_html_env(),
             "repair_transfer_act_html",
+            &template_src,
+            ctx,
+            &[("_header.html", &header_src)],
+        )
+        .await
+    }
+
+    /// HTML печатного «Отчёта о ремонтах устройства». Только чтение: номера не
+    /// выдаются, журнал «Акты» не затрагивается. Данные — тот же
+    /// `RepairService::device_history`, что и в попапе «Ремонты», чтобы экран
+    /// и печать не расходились. Доступно Администратору и Специалисту.
+    pub async fn render_device_report(
+        &self,
+        repairs: &RepairService,
+        device_id: i64,
+        caller: &Identity,
+    ) -> Result<String, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let history = repairs.device_history(device_id, caller).await?;
+
+        let (org_dto, logo_bytes, logo_mime) = self.org_db.get_for_pdf().await?;
+        let logo_data_uri =
+            crate::pdf::minijinja_env::logo_data_uri(logo_bytes, logo_mime.as_deref());
+
+        let templates_dir =
+            crate::pdf::html_templates::resolve_templates_dir(&self.organization.paths);
+        let embedded = |file: &str| {
+            crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+                .iter()
+                .find(|(f, _)| *f == file)
+                .map(|(_, body)| *body)
+                .unwrap_or("")
+        };
+        let template_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            DEVICE_REPORT_TEMPLATE_FILE,
+            embedded(DEVICE_REPORT_TEMPLATE_FILE),
+        );
+        let header_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "_header.html",
+            embedded("_header.html"),
+        );
+
+        let requests: Vec<serde_json::Value> = history
+            .requests
+            .iter()
+            .map(|r| {
+                let visits: Vec<serde_json::Value> = r
+                    .visits
+                    .iter()
+                    .map(|v| {
+                        serde_json::json!({
+                            "seq": v.seq,
+                            "act_number": v.act_number,
+                            "sent_date_human": format_ru_date(v.sent_at_utc),
+                            "returned_date_human": v.returned_at_utc.map(format_ru_date),
+                            "service_place": v.service_place_path,
+                            "fault": v.fault_description,
+                            "works_done": v.works_done,
+                            "cost_display": v.cost_display,
+                            "has_scan": v.scan_count > 0,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({
+                    "id": r.request_id,
+                    "status_label": translate_request_status(&r.status),
+                    "created_date_human": format_ru_date(r.created_at_utc),
+                    "requester_name": r.requester_name,
+                    "description": r.description,
+                    "visits": visits,
+                })
+            })
+            .collect();
+
+        let printed = time::OffsetDateTime::now_utc().unix_timestamp();
+        let ctx = serde_json::json!({
+            "org": {
+                "name": org_dto.org_name,
+                "inn": org_dto.inn,
+                "kpp": org_dto.kpp,
+                "address": org_dto.address,
+                "address_line2": org_dto.address_line2,
+                "phone": org_dto.phone,
+                "fax": org_dto.fax,
+                "email": org_dto.email,
+                "okpo": org_dto.okpo,
+                "ogrn": org_dto.ogrn,
+                "full_name": crate::pdf::minijinja_env::org_full_name_html(&org_dto.full_name),
+                "logo_data_uri": logo_data_uri,
+            },
+            "device": {
+                "name": history.device_name,
+                "inventory_no": history.inventory_no,
+                "serial_no": history.serial_no,
+                "type_name": history.type_name,
+            },
+            "summary": {
+                "visit_count": history.visit_count,
+                "total_cost": history.total_cost_display,
+                "printed_date_human": format_ru_date(printed),
+            },
+            "requests": requests,
+        });
+
+        crate::pdf::minijinja_env::render_with_timeout(
+            &crate::pdf::minijinja_env::build_safe_html_env(),
+            "repair_device_report_html",
             &template_src,
             ctx,
             &[("_header.html", &header_src)],

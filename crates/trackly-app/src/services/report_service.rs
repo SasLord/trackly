@@ -289,7 +289,7 @@ fn translate_request_type(raw: &str) -> String {
 /// domain. Includes `cancelled` (V031, self-cancel) — already labelled
 /// «Отменена» in `RequestListRow.svelte`/`RequestDetail.svelte`, the report
 /// must match. Unknown values fall back to the raw key (VAD-03).
-fn translate_request_status(raw: &str) -> String {
+pub(crate) fn translate_request_status(raw: &str) -> String {
     match raw {
         "open" => "Открыта".to_string(),
         "in_progress" => "В работе".to_string(),
