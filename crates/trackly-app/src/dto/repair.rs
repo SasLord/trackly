@@ -82,6 +82,39 @@ pub struct RepairVisitDto {
     pub version: i64,
 }
 
+/// Заявка в истории ремонтов устройства с заходами этого устройства.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairHistoryRequestDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    pub status: String,
+    pub description: Option<String>,
+    #[specta(type = i32)]
+    pub created_at_utc: i64,
+    pub requester_name: Option<String>,
+    pub visits: Vec<RepairVisitDto>,
+}
+
+/// История ремонтов устройства: сводка и заявки с заходами в сервис.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairDeviceHistoryDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub device_name: String,
+    pub inventory_no: Option<String>,
+    pub serial_no: Option<String>,
+    pub type_name: Option<String>,
+    /// Число заходов в сервис (счётчик кнопки «Ремонты»).
+    pub visit_count: i32,
+    /// Сумма по заходам со стоимостью; `None`, если ни у одного захода стоимости нет.
+    #[specta(type = Option<i32>)]
+    pub total_cost_kopecks: Option<i64>,
+    pub total_cost_display: Option<String>,
+    pub requests: Vec<RepairHistoryRequestDto>,
+}
+
 /// Состояние ремонта для карточки заявки.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

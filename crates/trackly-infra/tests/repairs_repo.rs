@@ -393,3 +393,51 @@ fn employee_device_ids_scope_and_negative() {
         .unwrap()
         .is_empty());
 }
+
+#[test]
+fn history_requests_by_visit_device_without_duplicates_or_deleted() {
+    let (mut conn, _g) = test_db();
+    let u = add_user(&conn, "ivanov", "Иванов И.И.");
+    let place = add_place(&conn, "Сервис");
+    let d1 = add_device(&conn, "Принтер", "Принтер А", "INV-1");
+    let d2 = add_device(&conn, "Принтер", "Принтер Б", "INV-2");
+    // req_a ссылается на d2 в requests, но заходы у неё по d1: берём по заходам.
+    let req_a = add_request(&conn, u, Some(d2), "completed", None).unwrap();
+    let req_b = add_request(&conn, u, Some(d1), "in_repair", None).unwrap();
+    let req_deleted = add_request(&conn, u, Some(d1), "completed", Some(NOW)).unwrap();
+    let _req_empty = add_request(&conn, u, Some(d2), "open", None).unwrap();
+    conn.execute(
+        "UPDATE requests SET created_at_utc = ?2 WHERE id = ?1",
+        params![req_b, NOW + 100],
+    )
+    .unwrap();
+    let tx = conn.transaction().unwrap();
+    for req in [req_a, req_a, req_b, req_deleted] {
+        let v = repo()
+            .insert_visit_in_tx(&tx, &visit_new(req, d1, place), NOW)
+            .unwrap_or_else(|_| {
+                panic!("insert visit for {req}");
+            });
+        // закрываем, чтобы следующий заход той же заявки не упёрся в «один открытый»
+        if req == req_a {
+            repo()
+                .close_visit_in_tx(&tx, v, 1, NOW + 1, Some(place), None, None, None, NOW + 1)
+                .unwrap();
+        }
+    }
+    tx.commit().unwrap();
+    let rows = repo()
+        .list_repair_requests_with_visits_for_device(&conn, d1)
+        .unwrap();
+    let ids: Vec<i64> = rows.iter().map(|x| x.id).collect();
+    assert_eq!(
+        ids,
+        vec![req_b, req_a],
+        "новые первыми, без дублей и удалённых"
+    );
+    assert_eq!(rows[0].requester_name.as_deref(), Some("Иванов И.И."));
+    assert!(repo()
+        .list_repair_requests_with_visits_for_device(&conn, d2)
+        .unwrap()
+        .is_empty());
+}

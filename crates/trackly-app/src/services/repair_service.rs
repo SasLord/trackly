@@ -32,10 +32,10 @@ use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 use crate::dto::printer::WsEvent;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairAssignDeviceDto, RepairAssignResultDto, RepairCancelDto,
-    RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto, RepairMoveChoiceDto,
-    RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto, RepairTransitionResultDto,
-    RepairVisitDto,
+    RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceHistoryDto,
+    RepairDeviceOptionDto, RepairHistoryRequestDto, RepairLastPlacesDto, RepairMergeDto,
+    RepairMergeResultDto, RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto,
+    RepairStateDto, RepairTransitionResultDto, RepairVisitDto,
 };
 use crate::dto::request::RequestDto;
 use crate::services::group_place::{move_group_in_tx, move_nested_block_in_tx, GroupMoveDeps};
@@ -51,6 +51,43 @@ const SETTING_LAST_RECEIVED_BY: &str = "repair_last_received_by_name";
 const MAX_DESCRIPTION_CHARS: usize = 4000;
 /// Предел длины имени (символов) в актах захода.
 const MAX_NAME_CHARS: usize = 200;
+
+/// Строки заходов -> DTO с подписями мест и стоимости (общий код `get_state` и истории
+/// ремонтов устройства).
+fn visit_rows_to_dtos(
+    conn: &Connection,
+    rows: Vec<trackly_core::domain::repairs::RepairVisitRow>,
+    scan_counts: &std::collections::HashMap<i64, i64>,
+) -> Result<Vec<RepairVisitDto>, AppError> {
+    let mut visits = Vec::with_capacity(rows.len());
+    for v in rows {
+        visits.push(RepairVisitDto {
+            id: v.id,
+            request_id: v.request_id,
+            device_id: v.device_id,
+            seq: v.seq,
+            service_place_id: v.service_place_id,
+            service_place_path: place_path(conn, Some(v.service_place_id))?,
+            from_place_id: v.from_place_id,
+            from_place_path: place_path(conn, v.from_place_id)?,
+            sent_at_utc: v.sent_at_utc,
+            returned_at_utc: v.returned_at_utc,
+            giver_name: v.giver_name,
+            receiver_name: v.receiver_name,
+            fault_description: v.fault_description,
+            returned_to_place_id: v.returned_to_place_id,
+            returned_to_place_path: place_path(conn, v.returned_to_place_id)?,
+            received_by_name: v.received_by_name,
+            works_done: v.works_done,
+            cost_kopecks: v.cost_kopecks,
+            cost_display: v.cost_kopecks.map(format_kopecks),
+            act_number: v.act_number,
+            scan_count: scan_counts.get(&v.id).copied().unwrap_or(0),
+            version: v.version,
+        });
+    }
+    Ok(visits)
+}
 
 fn is_staff(caller: &Identity) -> bool {
     matches!(caller.role, Role::Admin | Role::Manager)
@@ -453,33 +490,7 @@ impl RepairService {
             let visit_rows = repo.list_visits_for_request(&conn, request_id)?;
             let has_open_visit = visit_rows.iter().any(|v| v.returned_at_utc.is_none());
             let visit_count = visit_rows.len();
-            let mut visits = Vec::with_capacity(visit_count);
-            for v in visit_rows {
-                visits.push(RepairVisitDto {
-                    id: v.id,
-                    request_id: v.request_id,
-                    device_id: v.device_id,
-                    seq: v.seq,
-                    service_place_id: v.service_place_id,
-                    service_place_path: place_path(&conn, Some(v.service_place_id))?,
-                    from_place_id: v.from_place_id,
-                    from_place_path: place_path(&conn, v.from_place_id)?,
-                    sent_at_utc: v.sent_at_utc,
-                    returned_at_utc: v.returned_at_utc,
-                    giver_name: v.giver_name,
-                    receiver_name: v.receiver_name,
-                    fault_description: v.fault_description,
-                    returned_to_place_id: v.returned_to_place_id,
-                    returned_to_place_path: place_path(&conn, v.returned_to_place_id)?,
-                    received_by_name: v.received_by_name,
-                    works_done: v.works_done,
-                    cost_kopecks: v.cost_kopecks,
-                    cost_display: v.cost_kopecks.map(format_kopecks),
-                    act_number: v.act_number,
-                    scan_count: scan_counts.get(&v.id).copied().unwrap_or(0),
-                    version: v.version,
-                });
-            }
+            let visits = visit_rows_to_dtos(&conn, visit_rows, &scan_counts)?;
 
             let can_cancel_repair =
                 staff && row.status == "in_progress" && moved && visit_count == 0;
@@ -504,6 +515,86 @@ impl RepairService {
                 has_open_visit,
                 visits,
                 can_cancel_repair,
+            })
+        })
+        .await
+        .map_err(join_err)?
+    }
+
+    /// История ремонтов устройства (только чтение, только персонал): заявки с заходами,
+    /// число заходов и суммарная стоимость (по заходам со стоимостью).
+    pub async fn device_history(
+        &self,
+        device_id: i64,
+        caller: &Identity,
+    ) -> Result<RepairDeviceHistoryDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        tokio::task::spawn_blocking(move || -> Result<RepairDeviceHistoryDto, AppError> {
+            let conn = readers.acquire();
+            let dev: Option<(String, Option<String>, Option<String>, Option<String>)> = conn
+                .query_row(
+                    "SELECT d.name, d.inventory_number, d.serial_number, dt.name \
+                     FROM devices d LEFT JOIN device_types dt ON dt.id = d.type_id \
+                     WHERE d.id = ?1",
+                    params![device_id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                )
+                .optional()
+                .map_err(map_rusqlite)?;
+            let Some((device_name, inventory_no, serial_no, type_name)) = dev else {
+                return Err(AppError::NotFound {
+                    entity: "device",
+                    id: device_id,
+                });
+            };
+            let rows = repo.list_repair_requests_with_visits_for_device(&conn, device_id)?;
+            let mut requests = Vec::with_capacity(rows.len());
+            let mut visit_count = 0_i32;
+            let mut total: Option<i64> = None;
+            for row in rows {
+                let scan_counts: std::collections::HashMap<i64, i64> = repo
+                    .scan_counts_for_request(&conn, row.id)?
+                    .into_iter()
+                    .collect();
+                // В истории устройства — только заходы этого устройства.
+                let visit_rows: Vec<_> = repo
+                    .list_visits_for_request(&conn, row.id)?
+                    .into_iter()
+                    .filter(|v| v.device_id == device_id)
+                    .collect();
+                let visits = visit_rows_to_dtos(&conn, visit_rows, &scan_counts)?;
+                for v in &visits {
+                    visit_count += 1;
+                    if let Some(c) = v.cost_kopecks {
+                        total = Some(total.unwrap_or(0).checked_add(c).ok_or_else(|| {
+                            AppError::Validation {
+                                field: "cost".into(),
+                                message: "Суммарная стоимость слишком велика.".into(),
+                            }
+                        })?);
+                    }
+                }
+                requests.push(RepairHistoryRequestDto {
+                    request_id: row.id,
+                    status: row.status,
+                    description: row.description,
+                    created_at_utc: row.created_at_utc,
+                    requester_name: row.requester_name,
+                    visits,
+                });
+            }
+            Ok(RepairDeviceHistoryDto {
+                device_id,
+                device_name,
+                inventory_no: inventory_no.filter(|v| !v.trim().is_empty()),
+                serial_no: serial_no.filter(|v| !v.trim().is_empty()),
+                type_name,
+                visit_count,
+                total_cost_kopecks: total,
+                total_cost_display: total.map(format_kopecks),
+                requests,
             })
         })
         .await

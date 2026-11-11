@@ -10,6 +10,16 @@ use trackly_core::error::AppError;
 
 use crate::error_conversions::map_rusqlite;
 
+/// Заявка в истории ремонтов устройства (строка запроса по заходам).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepairHistoryRequestRow {
+    pub id: i64,
+    pub status: String,
+    pub description: Option<String>,
+    pub created_at_utc: i64,
+    pub requester_name: Option<String>,
+}
+
 /// SQLite-репозиторий ремонтов (zero-sized).
 #[derive(Debug, Default, Clone)]
 pub struct SqliteRepairRepository;
@@ -287,6 +297,40 @@ impl SqliteRepairRepository {
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt
             .query_map(params![request_id], visit_from_row)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Ремонтные заявки, у которых есть заходы именно по этому устройству (по
+    /// `repair_visits.device_id`, не по `requests.printer_device_id`): без дубликатов, без
+    /// помеченных удалёнными, новые первыми.
+    pub fn list_repair_requests_with_visits_for_device(
+        &self,
+        conn: &Connection,
+        device_id: i64,
+    ) -> Result<Vec<RepairHistoryRequestRow>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT r.id, r.status, r.description, r.created_at_utc, u.full_name \
+                 FROM requests r \
+                 LEFT JOIN users u ON u.id = r.requested_by_user_id \
+                 WHERE r.request_type = 'repair' AND r.deleted_at_utc IS NULL \
+                   AND r.id IN (SELECT request_id FROM repair_visits WHERE device_id = ?1) \
+                 ORDER BY r.created_at_utc DESC, r.id DESC",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![device_id], |r| {
+                Ok(RepairHistoryRequestRow {
+                    id: r.get(0)?,
+                    status: r.get(1)?,
+                    description: r.get(2)?,
+                    created_at_utc: r.get(3)?,
+                    requester_name: r.get(4)?,
+                })
+            })
             .map_err(map_rusqlite)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(map_rusqlite)?;

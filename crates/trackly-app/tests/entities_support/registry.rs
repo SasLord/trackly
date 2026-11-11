@@ -378,6 +378,7 @@ pub const REGISTRY: &[Entry] = &[
     ro(REPAIR, "open_requests_for_devices"),
     ro(REPAIR, "last_places"),
     ro(REPAIR, "get_state"),
+    ro(REPAIR, "device_history"),
     // ---- переходы цикла (Phase 41.4, план 10) -------------------------------
     b(REPAIR, "accept"),
     b(REPAIR, "move_to_storage"),
