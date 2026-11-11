@@ -37,7 +37,7 @@ use crate::dto::repair::{
     RepairStateDto, RepairTransitionResultDto, RepairVisitDto,
 };
 use crate::dto::request::RequestDto;
-use crate::services::group_place::{move_group_in_tx, GroupMoveDeps};
+use crate::services::group_place::{move_group_in_tx, move_nested_block_in_tx, GroupMoveDeps};
 use crate::services::number_template_service::issue_repair_act_number_in_tx;
 
 /// Ключи `app_settings` для последних выбранных мест (D-25).
@@ -343,7 +343,6 @@ impl RepairService {
             let mut is_anchor = false;
             let mut group_nested = false;
             let mut block_size = 0_i64;
-            let mut member_group_place: Option<i64> = None;
             if let Some(dev) = device_id {
                 let d: Option<(String, Option<String>, Option<i64>)> = conn
                     .query_row(
@@ -387,27 +386,14 @@ impl RepairService {
                             |r| r.get(0),
                         )
                         .map_err(map_rusqlite)?;
-                } else {
-                    member_group_place = conn
-                        .query_row(
-                            "SELECT g.place_id FROM group_devices gd \
-                             JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL \
-                             WHERE gd.device_id = ?1",
-                            params![dev],
-                            |r| r.get::<_, Option<i64>>(0),
-                        )
-                        .optional()
-                        .map_err(map_rusqlite)?
-                        .flatten();
                 }
             }
 
-            // D-16 / D-18: якорь возвращается блоком на сохранённое место; член группы,
-            // не якорный, на текущее место группы; прочие на сохранённое.
-            let suggested_return_place_id = if is_anchor {
-                origin_place_id
-            } else {
-                member_group_place.or(origin_place_id)
+            // D-16 / D-18 / D-32: место возврата считает сервер одним помощником,
+            // общим с отменой ремонта.
+            let suggested_return_place_id = match device_id {
+                Some(dev) => return_place_for_device(&conn, dev, origin_place_id)?,
+                None => origin_place_id,
             };
 
             let scan_counts: std::collections::HashMap<i64, i64> = repo
@@ -1226,9 +1212,14 @@ impl RepairService {
                     });
                 }
                 let mut ids = (Vec::new(), Vec::new(), Vec::new());
+                let mut returned_to: Option<i64> = origin;
                 if let Some(dev) = row.printer_device_id {
                     let deps = GroupMoveDeps::new();
-                    let code = match origin {
+                    // D-12 / D-16 / UAT 15: место возврата считает сервер (текущее место
+                    // группы, если она переехала за время ремонта), статус по нему.
+                    let target = return_place_for_device(&tx, dev, origin)?;
+                    returned_to = target;
+                    let code = match target {
                         Some(p) => status_code_for_place(&tx, p)?,
                         None => status_code_for_current_place(&tx, dev)?,
                     };
@@ -1238,7 +1229,7 @@ impl RepairService {
                         &repo,
                         dev,
                         Some(code),
-                        origin,
+                        target,
                         request_id,
                         user_id,
                         now,
@@ -1258,7 +1249,7 @@ impl RepairService {
                         payload_json: Some(
                             serde_json::json!({
                                 "device_id": row.printer_device_id,
-                                "returned_to_place_id": origin,
+                                "returned_to_place_id": returned_to,
                             })
                             .to_string(),
                         ),
@@ -1670,12 +1661,58 @@ fn attached_cartridge_places(
     Ok(out)
 }
 
+/// Место возврата устройства из ремонта (D-16, D-32): единый помощник для get_state
+/// («Завершить»/«Забрать») и отмены. Якорь вложенной группы: ТЕКУЩЕЕ место родительской
+/// группы; якорь корневой группы: сохранённое место заявки (`origin`); не-якорный член
+/// живой группы: ТЕКУЩЕЕ место его группы; прочие: `origin`. Если у группы места нет,
+/// берётся `origin`.
+fn return_place_for_device(
+    conn: &Connection,
+    device_id: i64,
+    origin: Option<i64>,
+) -> Result<Option<i64>, AppError> {
+    let anchor: Option<Option<i64>> = conn
+        .query_row(
+            "SELECT parent_group_id FROM groups \
+             WHERE anchor_device_id = ?1 AND deleted_at_utc IS NULL",
+            params![device_id],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)?;
+    let group_place = match anchor {
+        Some(Some(parent)) => conn
+            .query_row(
+                "SELECT place_id FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL",
+                params![parent],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .optional()
+            .map_err(map_rusqlite)?
+            .flatten(),
+        Some(None) => None,
+        None => conn
+            .query_row(
+                "SELECT g.place_id FROM group_devices gd \
+                 JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL \
+                 WHERE gd.device_id = ?1",
+                params![device_id],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .optional()
+            .map_err(map_rusqlite)?
+            .flatten(),
+    };
+    Ok(group_place.or(origin))
+}
+
 /// Единственная точка записи `status_id` и `place_id` устройства сервиса.
 ///
 /// `status_code`: `Some` ставит статус по коду из справочника (D-02), `None` оставляет.
 /// `target_place`: `Some` перемещает, `None` оставляет на месте. Якорное устройство
-/// перемещает весь блок через `move_group_in_tx` (D-18), статус меняется только у
-/// него; якорь вложенной группы переместить нельзя. Журнал Manual с note «по заявке №N»,
+/// перемещает весь блок (D-18): корневая группа через `move_group_in_tx`, вложенная
+/// через `move_nested_block_in_tx` (D-32, только её блок); статус меняется только у
+/// него. Журнал Manual с note «по заявке №N»,
 /// аудит `custom:repair_move`, каскад места картриджей принтера (только при `Some` и
 /// смене места, CR-03) выполняются в той же транзакции.
 #[allow(clippy::too_many_arguments)]
@@ -1727,17 +1764,15 @@ fn apply_device_state_in_tx(
             .optional()
             .map_err(map_rusqlite)?;
         if let Some((gid, parent)) = anchor {
-            if parent.is_some() {
-                return Err(AppError::Validation {
-                    field: "place_id".into(),
-                    message: "Место вложенной группы задаётся корневой группой; \
-                              переместите блок через неё."
-                        .into(),
-                });
-            }
             let members = deps.groups.subtree_device_ids_in_tx(tx, gid)?;
             let carts = attached_cartridge_places(tx, &members)?;
-            let outcome = move_group_in_tx(tx, deps, gid, None, target, user_id, now)?;
+            // D-18 / D-32: корневая группа переезжает целиком; якорь вложенной группы
+            // увозит только свой блок, место корня и его прочих членов не меняется.
+            let outcome = if parent.is_some() {
+                move_nested_block_in_tx(tx, deps, gid, target, user_id, now)?
+            } else {
+                move_group_in_tx(tx, deps, gid, None, target, user_id, now)?
+            };
             if outcome.batch_id.is_some() {
                 for p in outcome.changed_place_ids {
                     push_unique(&mut out.places, p);

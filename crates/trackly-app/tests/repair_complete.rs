@@ -273,7 +273,7 @@ async fn suggested_return_place_follows_d16() {
 }
 
 #[tokio::test]
-async fn anchor_returns_whole_block_and_nested_is_refused() {
+async fn anchor_returns_whole_block_and_nested_block_returns() {
     let (ctx, _d) = make_test_ctx().await;
     let room = seed_place(&ctx, "Кабинет 12").await;
     let hold = storage_place(&ctx, "Склад А").await;
@@ -300,37 +300,201 @@ async fn anchor_returns_whole_block_and_nested_is_refused() {
         Some(room),
         "блок вернулся целиком"
     );
+}
 
-    // Вложенная группа: якорь вложенной группы переместить нельзя.
-    let (_t, parent) = seed_group_type_and_group(&ctx, "Родитель", 2, Some(room)).await;
-    let child_anchor = seed_device(&ctx, 1, "ПК-00020", "INV-20", Some(room), None).await;
-    let (req2, v2) = accept_with(
-        &ctx,
-        Some(child_anchor),
-        RepairMoveChoiceDto::Move { place_id: hold },
-    )
-    .await;
-    ctx.writer
+/// Корневая «АРМ-1» (Кабинет 12) с членом и вложенный «Системный блок» с якорем и
+/// деталью. Возвращает (room, hold, root, nested, root_member, anchor, part).
+async fn nested_fixture(ctx: &AppCtx) -> (i64, i64, i64, i64, i64, i64, i64) {
+    let room = seed_place(ctx, "Кабинет 12").await;
+    let hold = storage_place(ctx, "Склад А").await;
+    let (t, root) = seed_group_type_and_group(ctx, "АРМ-1", 1, Some(room)).await;
+    let root_member = seed_device(ctx, 1, "Монитор", "INV-10", Some(room), Some(root)).await;
+    let nested = ctx
+        .writer
         .execute(move |conn| {
             conn.execute(
                 "INSERT INTO groups (type_id, name, seq, place_id, parent_group_id, \
-                 anchor_device_id, created_at_utc, updated_at_utc, version) \
-                 SELECT type_id, 'Вложенная', 3, place_id, id, ?2, 1700000000, 1700000000, 1 \
-                 FROM groups WHERE id = ?1",
-                params![parent, child_anchor],
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, 'Системный блок', 2, ?2, ?3, 1700000000, 1700000000, 1)",
+                params![t, room, root],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("nested");
+    let anchor = seed_device(ctx, 1, "ПК-00014", "INV-14", Some(room), Some(nested)).await;
+    let part = seed_device(ctx, 1, "Блок питания", "INV-15", Some(room), Some(nested)).await;
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE groups SET anchor_device_id = ?1 WHERE id = ?2",
+                params![anchor, nested],
             )
             .map_err(map_rusqlite)?;
             Ok(())
         })
         .await
-        .expect("nested");
-    let err = ctx
-        .repairs
-        .complete(complete_dto(req2, v2, Some(room)), &admin())
+        .expect("anchor");
+    (room, hold, root, nested, root_member, anchor, part)
+}
+
+async fn group_place(ctx: &AppCtx, id: i64) -> Option<i64> {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT place_id FROM groups WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .map_err(map_rusqlite)
+        })
         .await
-        .expect_err("вложенная группа");
-    assert!(validation(&err));
-    assert_eq!(dev_place(&ctx, child_anchor).await, Some(hold));
+        .expect("group place")
+}
+
+async fn group_version(ctx: &AppCtx, id: i64) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT version FROM groups WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("group version")
+}
+
+// D-32: якорь вложенной группы возвращается блоком на место родителя.
+#[tokio::test]
+async fn nested_anchor_block_returns_to_parent_place() {
+    let (ctx, _d) = make_test_ctx().await;
+    let (room, hold, root, nested, root_member, anchor, part) = nested_fixture(&ctx).await;
+    let (req, v) = accept_with(
+        &ctx,
+        Some(anchor),
+        RepairMoveChoiceDto::Move { place_id: hold },
+    )
+    .await;
+    assert_eq!(dev_place(&ctx, part).await, Some(hold));
+    assert_eq!(group_place(&ctx, nested).await, Some(hold));
+    assert_eq!(dev_place(&ctx, root_member).await, Some(room));
+
+    let st = ctx.repairs.get_state(req, &admin()).await.expect("state");
+    assert!(st.is_anchor && st.group_nested);
+    assert_eq!(st.group_block_size, 1, "деталь вложенной группы");
+    assert_eq!(st.suggested_return_place_id, Some(room));
+
+    let done = ctx
+        .repairs
+        .complete(complete_dto(req, v, st.suggested_return_place_id), &admin())
+        .await
+        .expect("complete");
+    assert_eq!(done.request.status, "completed");
+    assert_eq!(dev_place(&ctx, anchor).await, Some(room));
+    assert_eq!(dev_place(&ctx, part).await, Some(room));
+    assert_eq!(group_place(&ctx, nested).await, Some(room));
+    assert_eq!(
+        group_place(&ctx, nested).await,
+        group_place(&ctx, root).await,
+        "отъезд снят"
+    );
+    assert_eq!(status_code(&ctx, anchor).await, "в_работе");
+}
+
+// D-15 / D-16: корень переехал, пока блок в ремонте; блок не затронут, предложение места
+// возврата берёт НОВОЕ место родителя.
+#[tokio::test]
+async fn root_moved_during_repair_suggests_new_parent_place() {
+    let (ctx, _d) = make_test_ctx().await;
+    let (_room, hold, root, nested, root_member, anchor, part) = nested_fixture(&ctx).await;
+    let new_room = seed_place(&ctx, "Кабинет 14").await;
+    let (req, v) = accept_with(
+        &ctx,
+        Some(anchor),
+        RepairMoveChoiceDto::Move { place_id: hold },
+    )
+    .await;
+
+    let version = group_version(&ctx, root).await;
+    ctx.groups
+        .move_group(&admin(), root, version, new_room)
+        .await
+        .expect("move root");
+    assert_eq!(dev_place(&ctx, root_member).await, Some(new_room));
+    assert_eq!(
+        group_place(&ctx, nested).await,
+        Some(hold),
+        "блок не стянут"
+    );
+    assert_eq!(dev_place(&ctx, anchor).await, Some(hold));
+    assert_eq!(dev_place(&ctx, part).await, Some(hold));
+
+    let st = ctx.repairs.get_state(req, &admin()).await.expect("state");
+    assert_eq!(st.suggested_return_place_id, Some(new_room));
+
+    ctx.repairs
+        .complete(complete_dto(req, v, st.suggested_return_place_id), &admin())
+        .await
+        .expect("complete");
+    assert_eq!(dev_place(&ctx, anchor).await, Some(new_room));
+    assert_eq!(group_place(&ctx, nested).await, Some(new_room));
+}
+
+// D-32: полный цикл «принять с перемещением -> в сервис -> забрать и вернуть» для
+// вложенного якоря проходит без отказов.
+#[tokio::test]
+async fn nested_anchor_full_cycle_send_receive_return() {
+    let (ctx, _d) = make_test_ctx().await;
+    let (room, hold, _root, nested, _m, anchor, part) = nested_fixture(&ctx).await;
+    let service = seed_place(&ctx, "Сервис").await;
+    let (req, v) = accept_with(
+        &ctx,
+        Some(anchor),
+        RepairMoveChoiceDto::Move { place_id: hold },
+    )
+    .await;
+    let sent = ctx
+        .repairs
+        .send(
+            RepairSendDto {
+                request_id: req,
+                version: v,
+                date_utc: NOW,
+                giver_name: "Иванов И.И.".into(),
+                receiver_name: "Петров П.П.".into(),
+                service_place_id: service,
+                fault_description: "Не включается".into(),
+            },
+            &admin(),
+        )
+        .await
+        .expect("send");
+    let st = ctx.repairs.get_state(req, &admin()).await.expect("state");
+    assert_eq!(st.suggested_return_place_id, Some(room));
+    let done = ctx
+        .repairs
+        .receive(
+            RepairReceiveDto {
+                request_id: req,
+                version: sent.request.version,
+                date_utc: NOW + 3600,
+                received_by_name: "Иванов И.И.".into(),
+                place_id: st.suggested_return_place_id.expect("место"),
+                return_to_workplace: true,
+                works_done: None,
+                cost: None,
+            },
+            &admin(),
+        )
+        .await
+        .expect("receive");
+    assert_eq!(done.request.status, "completed");
+    assert_eq!(dev_place(&ctx, anchor).await, Some(room));
+    assert_eq!(dev_place(&ctx, part).await, Some(room));
+    assert_eq!(group_place(&ctx, nested).await, Some(room));
 }
 
 #[tokio::test]

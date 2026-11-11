@@ -307,47 +307,78 @@ async fn status_code_of_fresh(ctx: &AppCtx) -> String {
         .expect("fresh status")
 }
 
-#[tokio::test]
-async fn nested_group_anchor_move_rejected_stay_passes() {
-    let (ctx, _d) = make_test_ctx().await;
-    let room = seed_place(&ctx, "Кабинет 12").await;
-    let store = storage_place(&ctx, "Склад А").await;
-    let (t, root) = seed_group_type_and_group(&ctx, "Корень", 1, Some(room)).await;
-    let anchor = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), Some(root)).await;
-    let child = ctx
+/// Корневая «АРМ-1» (Кабинет 12) с членом-монитором и вложенная «Системный блок» с
+/// якорем и деталью. Возвращает (room, store, root, nested, root_member, anchor, part).
+async fn nested_fixture(ctx: &AppCtx) -> (i64, i64, i64, i64, i64, i64, i64) {
+    let room = seed_place(ctx, "Кабинет 12").await;
+    let store = storage_place(ctx, "Склад А").await;
+    let (t, root) = seed_group_type_and_group(ctx, "АРМ-1", 1, Some(room)).await;
+    let root_member = seed_device(ctx, 1, "Монитор", "INV-10", Some(room), Some(root)).await;
+    let nested = ctx
         .writer
         .execute(move |conn| {
             conn.execute(
                 "INSERT INTO groups (type_id, name, seq, place_id, parent_group_id, \
-                 anchor_device_id, created_at_utc, updated_at_utc, version) \
-                 VALUES (?1, 'Вложенная', 2, ?2, ?3, ?4, 1700000000, 1700000000, 1)",
-                params![t, room, root, anchor],
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, 'Системный блок', 2, ?2, ?3, 1700000000, 1700000000, 1)",
+                params![t, room, root],
             )
             .map_err(map_rusqlite)?;
             Ok(conn.last_insert_rowid())
         })
         .await
-        .expect("child");
-    let _ = child;
+        .expect("nested");
+    let anchor = seed_device(ctx, 1, "ПК-00014", "INV-14", Some(room), Some(nested)).await;
+    let part = seed_device(ctx, 1, "Блок питания", "INV-15", Some(room), Some(nested)).await;
+    exec(
+        ctx,
+        "UPDATE groups SET anchor_device_id = ?1 WHERE id = ?2",
+        anchor,
+        nested,
+    )
+    .await;
+    (room, store, root, nested, root_member, anchor, part)
+}
+
+#[tokio::test]
+async fn nested_group_anchor_moves_its_block_stay_passes() {
+    let (ctx, _d) = make_test_ctx().await;
+    let (room, store, root, nested, root_member, anchor, part) = nested_fixture(&ctx).await;
     let (req, v) = new_request(&ctx, Some(anchor)).await;
 
-    let err = ctx
-        .repairs
+    ctx.repairs
         .accept(req, v, mv(store), &admin())
         .await
-        .expect_err("nested move");
-    assert!(matches!(err, AppError::Validation { .. }), "{err:?}");
-    assert_eq!(dev_place(&ctx, anchor).await, Some(room));
-    assert_eq!(
-        status_code(&ctx, anchor).await,
-        status_code_of_fresh(&ctx).await
-    );
+        .expect("перемещение якоря вложенной группы");
 
+    assert_eq!(dev_place(&ctx, anchor).await, Some(store));
+    assert_eq!(dev_place(&ctx, part).await, Some(store));
+    assert_eq!(
+        sql_i64(&ctx, "SELECT place_id FROM groups WHERE id = ?1", nested).await,
+        Some(store)
+    );
+    // Корень и его прочие члены не тронуты (D-18).
+    assert_eq!(
+        sql_i64(&ctx, "SELECT place_id FROM groups WHERE id = ?1", root).await,
+        Some(room)
+    );
+    assert_eq!(dev_place(&ctx, root_member).await, Some(room));
+    assert_eq!(status_code(&ctx, anchor).await, "на_ремонте");
+    assert_ne!(status_code(&ctx, part).await, "на_ремонте");
+    assert_eq!(fields(&ctx, req).await, (Some(room), 1));
+}
+
+#[tokio::test]
+async fn nested_group_anchor_stay_still_passes() {
+    let (ctx, _d) = make_test_ctx().await;
+    let (room, _store, _root, _nested, _m, anchor, _part) = nested_fixture(&ctx).await;
+    let (req, v) = new_request(&ctx, Some(anchor)).await;
     ctx.repairs
         .accept(req, v, RepairMoveChoiceDto::Stay, &admin())
         .await
         .expect("stay");
     assert_eq!(status_code(&ctx, anchor).await, "на_ремонте");
+    assert_eq!(dev_place(&ctx, anchor).await, Some(room));
 }
 
 #[tokio::test]
