@@ -216,3 +216,81 @@ async fn bulk_move_not_blocked_by_completed_repair_request() {
         .expect("bulk move");
     assert_eq!(place_of(&ctx, fx.diverged).await, Some(fx.target));
 }
+
+async fn group_place_of(ctx: &AppCtx, id: i64) -> Option<i64> {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT place_id FROM groups WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("group place")
+}
+
+/// Вложенная группа под `parent` (прямая вставка), с местом `place`.
+async fn seed_nested_group(
+    ctx: &AppCtx,
+    parent: i64,
+    name: &str,
+    seq: i64,
+    place: Option<i64>,
+) -> i64 {
+    let name = name.to_string();
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO groups (type_id, name, seq, place_id, parent_group_id, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ((SELECT type_id FROM groups WHERE id = ?1), ?2, ?3, ?4, ?1, \
+                 1700000000, 1700000000, 1)",
+                params![parent, name, seq, place],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed nested group")
+}
+
+// (5) D-15: вложенный блок «в отъезде» (место отличается от места корня) НЕ едет при
+// переносе корня; прочие члены корня и синхронная вложенная группа едут как раньше.
+#[tokio::test]
+async fn move_root_leaves_away_nested_block_in_place() {
+    let (ctx, _d) = make_test_ctx().await;
+    let office = seed_place(&ctx, "Кабинет 12").await;
+    let store = seed_place(&ctx, "Склад А").await;
+    let target = seed_place(&ctx, "Склад Б").await;
+    let (_t, root) = seed_group_type_and_group(&ctx, "АРМ-1", 1, Some(office)).await;
+    let root_member = seed_device(&ctx, 1, "ПК-00041", "ПК-00041", Some(office), Some(root)).await;
+    let synced = seed_nested_group(&ctx, root, "АРМ-1.1", 2, Some(office)).await;
+    let synced_dev = seed_device(&ctx, 1, "ПК-00042", "ПК-00042", Some(office), Some(synced)).await;
+    let away = seed_nested_group(&ctx, root, "АРМ-1.2", 3, Some(store)).await;
+    let away_anchor = seed_device(&ctx, 1, "ПК-00043", "ПК-00043", Some(store), Some(away)).await;
+    let away_part = seed_device(&ctx, 1, "ПК-00044", "ПК-00044", Some(store), Some(away)).await;
+    let before_anchor = movements(&ctx, away_anchor).await;
+    let before_part = movements(&ctx, away_part).await;
+
+    let version = group_version(&ctx, root).await;
+    ctx.groups
+        .move_group(&admin(), root, version, target)
+        .await
+        .expect("move root");
+
+    assert_eq!(group_place_of(&ctx, root).await, Some(target));
+    assert_eq!(group_place_of(&ctx, synced).await, Some(target));
+    assert_eq!(place_of(&ctx, root_member).await, Some(target));
+    assert_eq!(place_of(&ctx, synced_dev).await, Some(target));
+    assert_eq!(
+        group_place_of(&ctx, away).await,
+        Some(store),
+        "блок в отъезде"
+    );
+    assert_eq!(place_of(&ctx, away_anchor).await, Some(store));
+    assert_eq!(place_of(&ctx, away_part).await, Some(store));
+    assert_eq!(movements(&ctx, away_anchor).await, before_anchor);
+    assert_eq!(movements(&ctx, away_part).await, before_part);
+}

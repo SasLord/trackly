@@ -494,6 +494,67 @@ fn set_subtree_place_updates_all_nested_groups_only() {
 }
 
 #[test]
+fn away_nested_group_ids_returns_only_diverged_nested() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    insert_place(&conn, 1, "Кабинет 12");
+    insert_place(&conn, 2, "Склад А");
+    let t = insert_type(&conn, "rack", "Стойка", "container");
+    let root = make_group(&mut conn, &repo, t, "Корень", Some(1));
+    let synced = make_group(&mut conn, &repo, t, "Синхронная", Some(1));
+    let away = make_group(&mut conn, &repo, t, "В отъезде", Some(2));
+    let deep = make_group(&mut conn, &repo, t, "Под отъехавшей", Some(2));
+    let unplaced = make_group(&mut conn, &repo, t, "Без места", None);
+    set_parent(&mut conn, &repo, synced.id, Some(root.id)).unwrap();
+    set_parent(&mut conn, &repo, away.id, Some(root.id)).unwrap();
+    set_parent(&mut conn, &repo, deep.id, Some(away.id)).unwrap();
+    set_parent(&mut conn, &repo, unplaced.id, Some(root.id)).unwrap();
+
+    let tx = conn.transaction().unwrap();
+    let got = repo
+        .away_nested_group_ids_in_tx(&tx, root.id, Some(1))
+        .unwrap();
+    assert_eq!(got, vec![away.id, deep.id]);
+    let none = repo
+        .away_nested_group_ids_in_tx(&tx, root.id, None)
+        .unwrap();
+    assert!(none.is_empty(), "без места корня отъезда нет");
+}
+
+#[test]
+fn set_groups_place_updates_only_listed_groups() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    insert_place(&conn, 1, "Кабинет 12");
+    insert_place(&conn, 2, "Склад А");
+    let t = insert_type(&conn, "rack", "Стойка", "container");
+    let a = make_group(&mut conn, &repo, t, "А", Some(1));
+    let b = make_group(&mut conn, &repo, t, "Б", Some(1));
+    let c = make_group(&mut conn, &repo, t, "В", Some(1));
+    let b_before = repo.get_group(&conn, b.id).unwrap();
+
+    let tx = conn.transaction().unwrap();
+    assert_eq!(
+        repo.set_groups_place_in_tx(&tx, &[a.id, c.id], Some(2), NOW + 5)
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        repo.set_groups_place_in_tx(&tx, &[], Some(2), NOW + 5)
+            .unwrap(),
+        0
+    );
+    tx.commit().unwrap();
+    let a_after = repo.get_group(&conn, a.id).unwrap();
+    assert_eq!(a_after.place_id, Some(2));
+    assert_eq!(a_after.version, a.version + 1);
+    assert_eq!(repo.get_group(&conn, c.id).unwrap().place_id, Some(2));
+    let b_after = repo.get_group(&conn, b.id).unwrap();
+    assert_eq!(b_after.place_id, Some(1));
+    assert_eq!(b_after.version, b_before.version);
+}
+
+#[test]
 fn reads_groups_for_devices_children_and_list() {
     let (mut conn, _g) = test_db();
     let repo = SqliteGroupRepository;

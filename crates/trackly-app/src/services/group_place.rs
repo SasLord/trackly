@@ -225,6 +225,27 @@ fn push_unique(out: &mut Vec<i64>, id: i64) {
     }
 }
 
+/// Целевое место переноса: существует и не в архиве.
+fn check_target_place(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    target_place_id: i64,
+) -> Result<(), AppError> {
+    let place_err = |message: &str| AppError::Validation {
+        field: "place_id".to_string(),
+        message: message.to_string(),
+    };
+    let target = match deps.places.get(tx, target_place_id) {
+        Ok(p) => p,
+        Err(AppError::NotFound { .. }) => return Err(place_err("Место не найдено.")),
+        Err(e) => return Err(e),
+    };
+    if target.archived_at_utc.is_some() {
+        return Err(place_err("Место в архиве: выберите другое."));
+    }
+    Ok(())
+}
+
 /// Перенести корневую группу и весь её состав (включая вложенные группы) в `target_place_id`.
 ///
 /// `expected_version`: `Some` — CAS по версии группы (UI), `None` — внутренний вызов (D-23).
@@ -262,18 +283,7 @@ pub(crate) fn move_group_in_tx(
         });
     }
 
-    let place_err = |message: &str| AppError::Validation {
-        field: "place_id".to_string(),
-        message: message.to_string(),
-    };
-    let target = match deps.places.get(tx, target_place_id) {
-        Ok(p) => p,
-        Err(AppError::NotFound { .. }) => return Err(place_err("Место не найдено.")),
-        Err(e) => return Err(e),
-    };
-    if target.archived_at_utc.is_some() {
-        return Err(place_err("Место в архиве: выберите другое."));
-    }
+    check_target_place(tx, deps, target_place_id)?;
 
     let batch_id = uuid::Uuid::new_v4().to_string();
     let outcome = propagate_group_place_in_tx(
@@ -314,6 +324,69 @@ pub(crate) fn move_group_in_tx(
     Ok(outcome)
 }
 
+/// Перенести ВЛОЖЕННУЮ группу вместе с её блоком (сама группа, её вложенные группы и
+/// устройства состава) в `target_place_id`; место корневой группы и её прочих членов не
+/// меняется (Phase 41.4, D-18/D-32). Внутренний вызов: версия группы не проверяется.
+///
+/// Блок может оказаться «в отъезде» (его место отличается от места корня): перенос
+/// корня такой блок не трогает (D-15), возврат на место родителя отъезд снимает.
+pub(crate) fn move_nested_block_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group_id: i64,
+    target_place_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<GroupMoveOutcome, AppError> {
+    let group = deps.groups.get_group_in_tx(tx, group_id)?;
+    if group.parent_group_id.is_none() {
+        return Err(AppError::Validation {
+            field: "place_id".to_string(),
+            message: "Для корневой группы используйте перенос группы.".to_string(),
+        });
+    }
+    check_target_place(tx, deps, target_place_id)?;
+
+    let batch_id = uuid::Uuid::new_v4().to_string();
+    let outcome = propagate_group_place_in_tx(
+        tx,
+        deps,
+        group_id,
+        target_place_id,
+        group.place_id,
+        &batch_id,
+        user_id,
+        now,
+        GroupMoveCause::GROUP,
+    )?;
+    if outcome.batch_id.is_none() {
+        return Ok(outcome);
+    }
+
+    let payload = serde_json::json!({
+        "batch_id": batch_id,
+        "moved_devices": outcome.moved_devices,
+        "from": group.place_id,
+        "to": target_place_id,
+        "nested": true,
+    });
+    deps.audit.insert(
+        tx,
+        AuditEntry {
+            entity_type: "group",
+            entity_id: group_id,
+            action: "move",
+            user_id,
+            before_json: None,
+            after_json: None,
+            payload_json: Some(payload.to_string()),
+            created_at_utc: now,
+        },
+    )?;
+
+    Ok(outcome)
+}
+
 /// Ядро протаскивания: поставить `target_place` группе поддерева `group_id`, вложенным
 /// группам и каждому устройству состава (с каскадом картриджей). Общее для переноса
 /// корневой группы и вложения группы под родителя с местом (план 11).
@@ -336,15 +409,29 @@ pub(crate) fn propagate_group_place_in_tx(
     cause: GroupMoveCause,
 ) -> Result<GroupMoveOutcome, AppError> {
     let group = deps.groups.get_group_in_tx(tx, group_id)?;
-    let group_ids = deps.groups.subtree_group_ids_in_tx(tx, group_id)?;
-    let device_ids = deps.groups.subtree_device_ids_in_tx(tx, group_id)?;
+    let mut group_ids = deps.groups.subtree_group_ids_in_tx(tx, group_id)?;
+    let mut device_ids = deps.groups.subtree_device_ids_in_tx(tx, group_id)?;
     let group_moves = old_place != Some(target_place);
+
+    // Phase 41.4 (D-15/D-32): вложенный блок «в отъезде» (его место отличается от
+    // места переносимой группы) остаётся на месте вместе со всем поддеревом.
+    if old_place.is_some() {
+        for away in deps
+            .groups
+            .away_nested_group_ids_in_tx(tx, group_id, old_place)?
+        {
+            let away_groups = deps.groups.subtree_group_ids_in_tx(tx, away)?;
+            let away_devices = deps.groups.subtree_device_ids_in_tx(tx, away)?;
+            group_ids.retain(|id| !away_groups.contains(id));
+            device_ids.retain(|id| !away_devices.contains(id));
+        }
+    }
 
     let mut changed_places: Vec<i64> = Vec::new();
 
     if group_moves {
         deps.groups
-            .set_subtree_place_in_tx(tx, group_id, Some(target_place), now)?;
+            .set_groups_place_in_tx(tx, &group_ids, Some(target_place), now)?;
         deps.movements.record_batch_movement_if_applicable(
             tx,
             &deps.places,
@@ -404,4 +491,168 @@ pub(crate) fn propagate_group_place_in_tx(
         changed_place_ids: changed_places,
         batch_id: Some(batch_id.to_string()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::group_act_plan::test_support::{fresh_db, NOW};
+    use rusqlite::{params, Connection, TransactionBehavior};
+
+    const OFFICE: i64 = 1;
+    const STORE: i64 = 2;
+    const ROOM: i64 = 3;
+    const ROOT: i64 = 1;
+    const NESTED: i64 = 2;
+    const ROOT_DEV: i64 = 1;
+    const NESTED_ANCHOR: i64 = 2;
+    const NESTED_PART: i64 = 3;
+
+    /// Корень «АРМ-1» (Кабинет 12) с членом; вложенная «АРМ-1.1» с двумя устройствами.
+    fn seed(conn: &Connection) {
+        for (id, name) in [
+            (OFFICE, "Кабинет 12"),
+            (STORE, "Склад А"),
+            (ROOM, "Склад Б"),
+        ] {
+            conn.execute(
+                "INSERT INTO places (id, parent_id, kind, name, is_storage, created_at_utc, \
+                 updated_at_utc) VALUES (?1, NULL, 'room', ?2, 0, ?3, ?3)",
+                params![id, name, NOW],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+             VALUES ('rack_t', 'Стойка', 'container', ?1, ?1)",
+            params![NOW],
+        )
+        .unwrap();
+        let ty = conn.last_insert_rowid();
+        for (id, name, seq, parent) in
+            [(ROOT, "АРМ-1", 1, None), (NESTED, "АРМ-1.1", 2, Some(ROOT))]
+        {
+            conn.execute(
+                "INSERT INTO groups (id, type_id, name, seq, place_id, parent_group_id, \
+                 created_at_utc, updated_at_utc, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 1)",
+                params![id, ty, name, seq, OFFICE, parent, NOW],
+            )
+            .unwrap();
+        }
+        for (id, group) in [
+            (ROOT_DEV, ROOT),
+            (NESTED_ANCHOR, NESTED),
+            (NESTED_PART, NESTED),
+        ] {
+            conn.execute(
+                "INSERT INTO devices (id, type_id, name, inventory_number, place_id, status_id, \
+                 created_at_utc, updated_at_utc, version) VALUES (?1, 1, ?2, ?3, ?4, 1, ?5, ?5, 1)",
+                params![
+                    id,
+                    format!("ПК-{id:05}"),
+                    format!("ИНВ-{id:05}"),
+                    OFFICE,
+                    NOW
+                ],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO group_devices (device_id, group_id, added_at_utc) VALUES (?1, ?2, ?3)",
+                params![id, group, NOW],
+            )
+            .unwrap();
+        }
+    }
+
+    fn dev_place(conn: &Connection, id: i64) -> Option<i64> {
+        conn.query_row(
+            "SELECT place_id FROM devices WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn grp_place(conn: &Connection, id: i64) -> Option<i64> {
+        conn.query_row(
+            "SELECT place_id FROM groups WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn nested_block_moves_alone_and_root_stays() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let out = move_nested_block_in_tx(&tx, &GroupMoveDeps::new(), NESTED, STORE, None, NOW)
+            .expect("move nested");
+        tx.commit().unwrap();
+
+        assert_eq!(grp_place(&conn, NESTED), Some(STORE));
+        assert_eq!(dev_place(&conn, NESTED_ANCHOR), Some(STORE));
+        assert_eq!(dev_place(&conn, NESTED_PART), Some(STORE));
+        assert_eq!(grp_place(&conn, ROOT), Some(OFFICE), "корень не тронут");
+        assert_eq!(
+            dev_place(&conn, ROOT_DEV),
+            Some(OFFICE),
+            "член корня не тронут"
+        );
+        assert_eq!(out.moved_devices, 2);
+        let batch = out.batch_id.expect("пакет");
+        let rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM place_movements WHERE batch_id = ?1",
+                params![batch],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 3, "группа + 2 устройства одним пакетом");
+        let audit: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'group' \
+                 AND entity_id = ?1 AND action = 'move' AND payload_json LIKE '%\"nested\":true%'",
+                params![NESTED],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(audit, 1);
+    }
+
+    #[test]
+    fn nested_block_returns_to_parent_place() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let deps = GroupMoveDeps::new();
+        move_nested_block_in_tx(&tx, &deps, NESTED, STORE, None, NOW).unwrap();
+        move_nested_block_in_tx(&tx, &deps, NESTED, OFFICE, None, NOW).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(grp_place(&conn, NESTED), Some(OFFICE));
+        assert_eq!(dev_place(&conn, NESTED_PART), Some(OFFICE));
+    }
+
+    #[test]
+    fn move_nested_block_rejects_root_group() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let err = move_nested_block_in_tx(&tx, &GroupMoveDeps::new(), ROOT, STORE, None, NOW)
+            .expect_err("корень");
+        match err {
+            AppError::Validation { field, message } => {
+                assert_eq!(field, "place_id");
+                assert!(message.contains("корневой группы"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
 }

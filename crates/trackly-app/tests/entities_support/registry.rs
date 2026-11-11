@@ -208,6 +208,7 @@ pub const REGISTRY: &[Entry] = &[
     ro(GPLACE, "act"),
     ex(GPLACE, "apply_group_place_to_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GPLACE, "move_group_in_tx", TX_PRIMITIVE_REASON),
+    ex(GPLACE, "move_nested_block_in_tx", TX_PRIMITIVE_REASON),
     ex(GPLACE, "propagate_group_place_in_tx", TX_PRIMITIVE_REASON),
     // ---- group_membership (примитивы внутри транзакции) --------------------
     ex(GMEMB, "release_device_in_tx", TX_PRIMITIVE_REASON),

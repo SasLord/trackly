@@ -500,6 +500,56 @@ impl SqliteGroupRepository {
         Ok(ids)
     }
 
+    /// Вложенные группы поддерева `root` (кроме самого корня), «в отъезде»: у них есть
+    /// место, и оно отличается от `root_place` (Phase 41.4, D-15/D-32). Отъезд выводится
+    /// из различия мест, отдельного признака в схеме нет. При `root_place = None` пусто.
+    pub fn away_nested_group_ids_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        root: i64,
+        root_place: Option<i64>,
+    ) -> Result<Vec<i64>, AppError> {
+        let Some(root_place) = root_place else {
+            return Ok(Vec::new());
+        };
+        let sql = [
+            SUBTREE_CTE,
+            " SELECT g.id FROM groups g JOIN sub ON g.id = sub.id
+              WHERE g.id <> ?1 AND g.place_id IS NOT NULL AND g.place_id <> ?2
+              ORDER BY g.id",
+        ]
+        .concat();
+        let mut stmt = tx.prepare(&sql).map_err(map_rusqlite)?;
+        let ids = stmt
+            .query_map(rusqlite::params![root, root_place], |r| r.get::<_, i64>(0))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(ids)
+    }
+
+    /// Проставить место ровно перечисленным группам (версия +1 только у них). Пустой
+    /// список ничего не делает. Возвращает число затронутых групп.
+    pub fn set_groups_place_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        ids: &[i64],
+        place: Option<i64>,
+        now_utc: i64,
+    ) -> Result<usize, AppError> {
+        let mut affected = 0;
+        for id in ids {
+            affected += tx
+                .execute(
+                    "UPDATE groups SET place_id = ?2, updated_at_utc = ?3, version = version + 1
+                     WHERE id = ?1",
+                    rusqlite::params![id, place, now_utc],
+                )
+                .map_err(map_rusqlite)?;
+        }
+        Ok(affected)
+    }
+
     /// Проставить место всем группам поддерева — денормализация места вложенных
     /// групп (Pitfall 4). Возвращает число затронутых групп.
     pub fn set_subtree_place_in_tx(
