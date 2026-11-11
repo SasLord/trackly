@@ -401,4 +401,9 @@ pub const REGISTRY: &[Entry] = &[
         "create",
         "создание заявки не меняет места, устройства и группы; сигнал отдельные WsEvent NewRequest и RequestStatusChanged",
     ),
+    ex(
+        REPAIR,
+        "merge_into_open",
+        "слияние заявок не меняет места, устройства и группы; сигнал отдельным WsEvent RequestStatusChanged участникам обеих заявок",
+    ),
 ];

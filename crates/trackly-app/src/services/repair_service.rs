@@ -33,8 +33,9 @@ use crate::dto::printer::WsEvent;
 use crate::dto::repair::{
     OpenRepairRefDto, RepairAssignDeviceDto, RepairAssignResultDto, RepairCancelDto,
     RepairCompleteDto, RepairCreateDto, RepairCreateResultDto, RepairDeviceOptionDto,
-    RepairLastPlacesDto, RepairMoveChoiceDto, RepairReceiveDto, RepairRejectDto, RepairSendDto,
-    RepairStateDto, RepairTransitionResultDto, RepairVisitDto,
+    RepairLastPlacesDto, RepairMergeDto, RepairMergeResultDto, RepairMoveChoiceDto,
+    RepairReceiveDto, RepairRejectDto, RepairSendDto, RepairStateDto, RepairTransitionResultDto,
+    RepairVisitDto,
 };
 use crate::dto::request::RequestDto;
 use crate::services::group_place::{move_group_in_tx, move_nested_block_in_tx, GroupMoveDeps};
@@ -1531,6 +1532,174 @@ impl RepairService {
         Ok(RepairAssignResultDto {
             request: Some(done.request),
             conflict_request_id: None,
+        })
+    }
+
+    /// Объединение (D-33): текущая заявка «Другое» без устройства сливается в уже
+    /// открытую заявку занятого устройства. Целевую заявку определяет сервер.
+    ///
+    /// Автор поглощаемой заявки становится участником целевой (как при присоединении,
+    /// D-20), в истории целевой остаётся пометка о нём, поглощаемая закрывается
+    /// (`cancelled`). Устройства, места и группы не меняются, поэтому
+    /// `broadcast_entities` не вызывается. Вложения поглощаемой заявки остаются на ней.
+    pub async fn merge_into_open(
+        &self,
+        dto: RepairMergeDto,
+        caller: &Identity,
+    ) -> Result<RepairMergeResultDto, AppError> {
+        authorize(caller, &Action::TransitionRequests)?;
+        let user_id = caller.user_id;
+        let now = self.clock.unix_seconds();
+        let (request_id, version, device_id) = (dto.request_id, dto.version, dto.device_id);
+        let repo = self.repo.clone();
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let target_id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let row = request_repo.get(&tx, request_id)?;
+                ensure_repair(&row.request_type)?;
+                if row.status != "in_progress" {
+                    return Err(AppError::Validation {
+                        field: "status".into(),
+                        message: "Объединить можно только заявку в работе.".into(),
+                    });
+                }
+                if row.printer_device_id.is_some() {
+                    return Err(AppError::Validation {
+                        field: "device_id".into(),
+                        message: "В заявке уже указано устройство.".into(),
+                    });
+                }
+                if row.version != version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "request",
+                        id: request_id,
+                        expected: version,
+                        actual: row.version,
+                    });
+                }
+                let live: i64 = tx
+                    .query_row(
+                        "SELECT COUNT(*) FROM devices WHERE id = ?1 AND deleted_at_utc IS NULL",
+                        params![device_id],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                if live == 0 {
+                    return Err(AppError::NotFound {
+                        entity: "device",
+                        id: device_id,
+                    });
+                }
+                let target = repo
+                    .open_repair_request_id(&tx, device_id)?
+                    .ok_or_else(|| AppError::Validation {
+                        field: "device_id".into(),
+                        message: "Для этого устройства больше нет открытой заявки: \
+                                  укажите устройство без объединения."
+                            .into(),
+                    })?;
+                if target == request_id {
+                    return Err(AppError::Validation {
+                        field: "device_id".into(),
+                        message: "Нельзя объединить заявку саму с собой.".into(),
+                    });
+                }
+                let author_name: String = tx
+                    .query_row(
+                        "SELECT full_name FROM users WHERE id = ?1",
+                        params![row.requested_by_user_id],
+                        |r| r.get::<_, Option<String>>(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?
+                    .flatten()
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| "другой пользователь".to_string());
+
+                repo.add_participant_in_tx(&tx, target, row.requested_by_user_id, now)?;
+                let description: String = row
+                    .description
+                    .as_deref()
+                    .unwrap_or("")
+                    .chars()
+                    .take(MAX_DESCRIPTION_CHARS)
+                    .collect();
+                let notes: String =
+                    format!("О поломке также сообщил(а) {author_name}: {description}")
+                        .chars()
+                        .take(MAX_DESCRIPTION_CHARS)
+                        .collect();
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: target,
+                        action: "repair_merge",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({
+                                "description": description,
+                                "notes": notes,
+                                "merged_request_id": request_id,
+                            })
+                            .to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
+                repo.set_request_status_in_tx(&tx, request_id, version, "cancelled", None, now)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:repair_merged_into",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({
+                                "notes": format!("Объединена с заявкой №{target}"),
+                                "into_request_id": target,
+                            })
+                            .to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(target)
+            })
+            .await?;
+
+        // Сигнал по обеим заявкам (участники читаются после коммита).
+        let done = self.finish_transition(request_id, caller).await?;
+        if let Some(ws) = &self.ws_tx {
+            let readers = self.readers.clone();
+            let request_repo = self.request_repo.clone();
+            let target_row = tokio::task::spawn_blocking(move || {
+                let conn = readers.acquire();
+                request_repo.get(&conn, target_id)
+            })
+            .await
+            .map_err(join_err)??;
+            let participants = self.participants_of(target_id).await;
+            let _ = ws.send(WsEvent::RequestStatusChanged {
+                request_id: target_id,
+                new_status: target_row.status.clone(),
+                requested_by_user_id: target_row.requested_by_user_id,
+                participant_user_ids: participants,
+            });
+        }
+        Ok(RepairMergeResultDto {
+            request: done.request,
+            target_request_id: target_id,
         })
     }
 

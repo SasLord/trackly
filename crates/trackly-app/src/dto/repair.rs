@@ -256,3 +256,25 @@ pub struct RepairAssignResultDto {
     #[specta(type = Option<i32>)]
     pub conflict_request_id: Option<i64>,
 }
+
+/// Вход «Объединить» (D-33): текущая заявка без устройства сливается в открытую
+/// заявку устройства. Целевую заявку определяет сервер по устройству.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairMergeDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    #[specta(type = i32)]
+    pub device_id: i64,
+}
+
+/// Итог объединения: поглощённая (закрытая) заявка и id целевой.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairMergeResultDto {
+    pub request: RequestDto,
+    #[specta(type = i32)]
+    pub target_request_id: i64,
+}
