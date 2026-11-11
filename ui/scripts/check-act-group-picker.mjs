@@ -15,12 +15,17 @@
 // это проверяется живой проверкой фазы.
 //
 // Правила (над текстом файла без комментариев):
-//   (A) в Dropdown передан getGroupSection; три константы секций на месте.
+//   (A) в Dropdown передан getGroupSection; четыре константы секций на месте и
+//       SECTION_WORKING стоит в SECTION_ORDER.
 //   (B) тело fetchStorage/fetchGroupHits/fetchMembers: складской listGrouped
-//       несёт `status_id: storageStatusId`; запрос членов devices.list несёт
-//       `group_members_only: true` и `status_id: null` и не упоминает
-//       storageStatusId; groups.search не несёт status_id вовсе. Нижний порог
-//       антивакуума: все три запроса обязаны быть найдены.
+//       несёт `status_id: storageStatusId`; запрос членов devices.list (в теле
+//       fetchMembers) несёт `group_members_only: true` и `status_id: null` и не
+//       упоминает storageStatusId; groups.search не несёт status_id вовсе. Нижний
+//       порог антивакуума: все запросы обязаны быть найдены.
+//   (E) D-34 фазы 41.4: тело fetchWorking найдено; его devices.list несёт
+//       `status_id: workingStatusId` и `group_members_only: false`, не упоминает
+//       storageStatusId; workingStatusId получен через statusIdByCode('в_работе');
+//       члены групп отсеиваются через groups.forDevices(.
 //   (C) pickGroupHit вызывает groups.actExpansion(; проверка лимита
 //       (MAX_ACT_ITEMS) стоит ВЫШЕ первого onChange( в теле функции; константа
 //       MAX_ACT_ITEMS равна 100; строка единицы создаётся через groupRow с
@@ -72,7 +77,9 @@ function functionBody(code, name) {
   const parenOpen = code.indexOf('(', m.index);
   const params = extractBalanced(code, parenOpen, '(', ')');
   if (params === null) return null;
-  const braceOpen = code.indexOf('{', parenOpen + params.length + 2);
+  // Тип результата может содержать собственные `{`: тело открывает та скобка,
+  // после которой сразу перенос строки.
+  const braceOpen = code.indexOf('{\n', parenOpen + params.length + 2);
   if (braceOpen === -1) return null;
   return extractBalanced(code, braceOpen, '{', '}');
 }
@@ -101,19 +108,39 @@ export function scanSource(raw, violations) {
       `(A) ${FILE}: в <Dropdown> не передан getGroupSection — секции «Группы» / «Устройства со склада» / «Устройства в составе групп» не будут разделены (D-01).`,
     );
   }
-  for (const lit of ["'Группы'", "'Устройства со склада'", "'Устройства в составе групп'"]) {
+  for (const lit of [
+    "'Группы'",
+    "'Устройства со склада'",
+    "'Устройства в работе'",
+    "'Устройства в составе групп'",
+  ]) {
     if (!code.includes(lit)) {
       violations.push(`(A) ${FILE}: нет константы секции ${lit}.`);
     }
   }
+  if (!/\bSECTION_ORDER\s*=\s*\[[^\]]*\bSECTION_WORKING\b[^\]]*\]/.test(code)) {
+    violations.push(
+      `(A) ${FILE}: SECTION_WORKING не входит в SECTION_ORDER — секция не покажется.`,
+    );
+  }
 
   // (B) источники подсказок и фильтр статуса.
   const grouped = callArgs(code, 'devices.listGrouped(');
-  const listed = callArgs(code, 'devices.list(');
+  const membersFn = functionBody(code, 'fetchMembers');
+  const workingFn = functionBody(code, 'fetchWorking');
+  const listed = membersFn === null ? [] : callArgs(membersFn, 'devices.list(');
+  const listedWorking = workingFn === null ? [] : callArgs(workingFn, 'devices.list(');
+  const listedAll = callArgs(code, 'devices.list(');
   const searched = callArgs(code, 'groups.search(');
-  if (grouped.length !== 1 || listed.length !== 1 || searched.length !== 1) {
+  if (
+    grouped.length !== 1 ||
+    listed.length !== 1 ||
+    listedWorking.length !== 1 ||
+    listedAll.length !== 2 ||
+    searched.length !== 1
+  ) {
     violations.push(
-      `(B) ${FILE}: антивакуум — найдено запросов listGrouped=${grouped.length}, devices.list=${listed.length}, groups.search=${searched.length}; нужно по одному (иначе гейт ничего не охраняет).`,
+      `(B) ${FILE}: антивакуум — найдено запросов listGrouped=${grouped.length}, devices.list(fetchMembers)=${listed.length}, devices.list(fetchWorking)=${listedWorking.length}, devices.list(всего)=${listedAll.length}, groups.search=${searched.length}; нужно 1/1/1/2/1 (иначе гейт ничего не охраняет).`,
     );
   }
   for (const body of grouped) {
@@ -144,6 +171,37 @@ export function scanSource(raw, violations) {
         `(B) ${FILE}: groups.search( несёт фильтр статуса — группа любого статуса обязана быть достижима (D-02).`,
       );
     }
+  }
+
+  // (E) источник «Устройства в работе» (D-34 фазы 41.4).
+  for (const body of listedWorking) {
+    if (!/\bstatus_id\s*:\s*workingStatusId\b/.test(body)) {
+      violations.push(
+        `(E) ${FILE}: запрос fetchWorking не несёт \`status_id: workingStatusId\` — устройства «В работе» не попадут в пикер (D-34).`,
+      );
+    }
+    if (!/\bgroup_members_only\s*:\s*false\b/.test(body)) {
+      violations.push(`(E) ${FILE}: запрос fetchWorking не несёт \`group_members_only: false\`.`);
+    }
+    if (/storageStatusId/.test(body)) {
+      violations.push(
+        `(E) ${FILE}: запрос fetchWorking упоминает storageStatusId — фильтр «на складе» просочился в источник «в работе» (D-34).`,
+      );
+    }
+  }
+  if (workingFn !== null) {
+    if (!workingFn.includes('groups.forDevices(')) {
+      violations.push(
+        `(E) ${FILE}: fetchWorking не отсеивает членов групп через groups.forDevices( — член группы показался бы без предупреждения о выносе из состава (D-34).`,
+      );
+    }
+    if (!/\bworkingStatusId\s*=\s*statusIdByCode\(\s*'в_работе'\s*\)/.test(workingFn)) {
+      violations.push(
+        `(E) ${FILE}: workingStatusId в fetchWorking не получен через statusIdByCode('в_работе') (D-09: id статуса по code).`,
+      );
+    }
+  } else {
+    violations.push(`(E) ${FILE}: не найдена функция fetchWorking — антивакуум (D-34).`);
   }
 
   // (C) разворот группы.
@@ -330,6 +388,36 @@ function runSelfTest() {
           'no-retained-marker',
         ),
         rule: 'D',
+      },
+      {
+        name: '(9) в fetchWorking `status_id: workingStatusId` заменён на `status_id: storageStatusId`',
+        src: mutate(
+          raw,
+          '              status_id: workingStatusId,\n',
+          '              status_id: storageStatusId,\n',
+          'working-storage-status',
+        ),
+        rule: 'E',
+      },
+      {
+        name: '(10) из fetchWorking убран вызов groups.forDevices(',
+        src: mutate(
+          raw,
+          'await groups.forDevices(found.map((d) => d.id))',
+          'await Promise.resolve([] as { device_id: number }[])',
+          'working-no-owners',
+        ),
+        rule: 'E',
+      },
+      {
+        name: '(11) SECTION_WORKING убрана из SECTION_ORDER',
+        src: mutate(
+          raw,
+          '[SECTION_GROUPS, SECTION_STORAGE, SECTION_WORKING, SECTION_MEMBERS]',
+          '[SECTION_GROUPS, SECTION_STORAGE, SECTION_MEMBERS]',
+          'working-not-in-order',
+        ),
+        rule: 'A',
       },
     ];
   } catch (e) {

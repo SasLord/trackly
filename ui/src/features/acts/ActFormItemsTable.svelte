@@ -93,14 +93,17 @@
   type ActPickerItem =
     | { kind: 'group'; key: string; hit: GroupSearchHitDto }
     | { kind: 'storage'; key: string; group: DeviceGroup }
+    | { kind: 'working'; key: string; device: DeviceDto }
     | { kind: 'member'; key: string; device: DeviceDto; groupName: string };
 
   // Порядок секций панели фиксирован и не зависит от того, что нашлось: самый
   // «опасный» выбор (устройство из состава группы) стоит последним.
   const SECTION_GROUPS = 'Группы';
   const SECTION_STORAGE = 'Устройства со склада';
+  // D-34 (фаза 41.4): устройства «В работе» вне групп передаются актом наравне со складскими.
+  const SECTION_WORKING = 'Устройства в работе';
   const SECTION_MEMBERS = 'Устройства в составе групп';
-  const SECTION_ORDER = [SECTION_GROUPS, SECTION_STORAGE, SECTION_MEMBERS];
+  const SECTION_ORDER = [SECTION_GROUPS, SECTION_STORAGE, SECTION_WORKING, SECTION_MEMBERS];
 
   // Серверный потолок позиций в одном акте (validate_create).
   const MAX_ACT_ITEMS = 100;
@@ -116,7 +119,7 @@
     return repairByDevice.has(deviceId);
   }
   function itemDisabled(item: ActPickerItem): boolean {
-    if (item.kind === 'member') return inRepair(item.device.id);
+    if (item.kind === 'member' || item.kind === 'working') return inRepair(item.device.id);
     if (item.kind === 'storage') {
       return (
         inRepair(item.group.repr.id) ||
@@ -281,6 +284,52 @@
     }
   }
 
+  /** Источник «Устройства в работе» (D-34 фазы 41.4): устройства в статусе «В работе»
+   *  вне групп, включая принтеры, найденные в сети. Члены живых групп отсеиваются
+   *  (их показывает секция «Устройства в составе групп» с предупреждением о выносе из
+   *  состава); если членство не удалось узнать, не показываем ничего. Любой сбой даёт
+   *  пустой список и не роняет остальные источники. */
+  async function fetchWorking(query: string): Promise<DeviceDto[]> {
+    try {
+      await ensureLoaded();
+      const workingStatusId = statusIdByCode('в_работе');
+      // Справочник не загружен: об этом уже сообщает fetchStorage.
+      if (workingStatusId === null) return [];
+      const run = async (typeId: number | null, prefix: string) =>
+        (
+          await devices.list(
+            {
+              type_id: typeId,
+              place_id: null,
+              status_id: workingStatusId,
+              state: null,
+              name_prefix: prefix,
+              include_deleted: false,
+              group_by_condition: false,
+              group_members_only: false,
+            },
+            { offset: 0, limit: 20 },
+          )
+        ).items;
+      const byType: DeviceDto[] = [];
+      for (const typeId of await matchingTypeIds(query)) {
+        byType.push(...(await run(typeId, '')));
+      }
+      const seen = new Set<number>();
+      const found = [...byType, ...(await run(null, query))].filter((d) => {
+        if (seen.has(d.id)) return false;
+        seen.add(d.id);
+        return true;
+      });
+      if (found.length === 0) return [];
+      const owned = new Set<number>();
+      for (const m of await groups.forDevices(found.map((d) => d.id))) owned.add(m.device_id);
+      return found.filter((d) => !owned.has(d.id));
+    } catch {
+      return [];
+    }
+  }
+
   /** Источник «Группы»: корневые группы любого статуса и места (OQ-3, D-02). */
   async function fetchGroupHits(query: string): Promise<GroupSearchHitDto[]> {
     try {
@@ -335,10 +384,11 @@
     const seq = (fetchSeqByRow[idx] = (fetchSeqByRow[idx] ?? 0) + 1);
     loadingByRow[idx] = true;
     try {
-      const [storage, hits, members] = await Promise.all([
+      const [storage, hits, members, working] = await Promise.all([
         fetchStorage(query),
         fetchGroupHits(query),
         fetchMembers(query),
+        fetchWorking(query),
       ]);
       if (seq !== fetchSeqByRow[idx]) return;
       // DEF-2A: exclude devices already picked in other rows. A group itself is
@@ -347,12 +397,18 @@
       const selectedIds = getSelectedIds(idx);
       const storageKept = storage.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
       const storageIds = new Set(storage.flatMap((g) => g.ids));
+      const workingKept = working.filter((d) => !selectedIds.has(d.id) && !storageIds.has(d.id));
+      const workingIds = new Set(workingKept.map((d) => d.id));
       const memberKept = members.filter(
-        (m) => !selectedIds.has(m.device.id) && !storageIds.has(m.device.id),
+        (m) =>
+          !selectedIds.has(m.device.id) &&
+          !storageIds.has(m.device.id) &&
+          !workingIds.has(m.device.id),
       );
       // D-22: одним запросом узнаём, какие из показанных устройств в ремонте.
       const found = await loadOpenRepairs([
         ...storageKept.flatMap((g) => g.ids),
+        ...workingKept.map((d) => d.id),
         ...memberKept.map((m) => m.device.id),
       ]);
       if (seq !== fetchSeqByRow[idx]) return;
@@ -361,6 +417,9 @@
         ...hits.map((hit): ActPickerItem => ({ kind: 'group', key: `g-${hit.id}`, hit })),
         ...storageKept.map(
           (group): ActPickerItem => ({ kind: 'storage', key: `s-${group.repr.id}`, group }),
+        ),
+        ...workingKept.map(
+          (device): ActPickerItem => ({ kind: 'working', key: `w-${device.id}`, device }),
         ),
         ...memberKept.map(
           (m): ActPickerItem => ({
@@ -382,7 +441,8 @@
 
   function sectionOf(item: ActPickerItem): string {
     if (item.kind === 'group') return SECTION_GROUPS;
-    return item.kind === 'storage' ? SECTION_STORAGE : SECTION_MEMBERS;
+    if (item.kind === 'storage') return SECTION_STORAGE;
+    return item.kind === 'working' ? SECTION_WORKING : SECTION_MEMBERS;
   }
 
   /** Раскрываемость группы (checkpoint fix #4 + D-08):
@@ -452,6 +512,18 @@
     if (item.kind === 'member') {
       return [{ kind: 'member', key: item.key, device: item.device, groupName: item.groupName }];
     }
+    if (item.kind === 'working') {
+      // Существующий вид «member»: pickMember идёт через pickMemberDevice (quantity 1,
+      // канонический путь device_ids); в мете показываем место, а не группу.
+      return [
+        {
+          kind: 'member',
+          key: item.key,
+          device: item.device,
+          groupName: item.device.place_path_short ?? 'Без места',
+        },
+      ];
+    }
     return expandGroup(idx, item.group);
   }
 
@@ -509,6 +581,7 @@
   function itemMeta(item: ActPickerItem): string | undefined {
     if (item.kind === 'group') return item.hit.type_name;
     if (item.kind === 'storage') return item.group.repr.model ?? undefined;
+    if (item.kind === 'working') return item.device.place_path_short ?? 'Без места';
     return item.groupName;
   }
   function itemSub(item: ActPickerItem): string | undefined {
@@ -730,7 +803,7 @@
   /** Обработчик выбора элемента панели Dropdown по виду элемента. */
   function pickItem(idx: number, item: ActPickerItem) {
     if (item.kind === 'storage') pickGroup(idx, item.group);
-    else if (item.kind === 'member') pickMemberDevice(idx, item.device);
+    else if (item.kind === 'member' || item.kind === 'working') pickMemberDevice(idx, item.device);
     else void pickGroupHit(idx, item.hit);
   }
 
