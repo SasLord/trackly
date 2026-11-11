@@ -135,9 +135,17 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
     // phase, snapshot THIS body into `_legacy_defaults/vNN/_header.html` and
     // add it here, or existing installs will never receive the new header.
     ("_header.html", &[]),
-    // Phase 41.4 introduced `repair_transfer_act.html`; its CURRENT body is the
-    // first one ever shipped (empty-but-present, WR-06).
-    ("repair_transfer_act.html", &[]),
+    // Phase 41.4 introduced `repair_transfer_act.html`; its first body is the
+    // v30 snapshot. Plan 41.4-23 (UAT 6, D-27): v30 is the snapshot
+    // taken immediately before removing the "Тип:" row — without this entry an
+    // install holding the unchanged v30 body would be misclassified as
+    // user-customized and never receive the update.
+    (
+        "repair_transfer_act.html",
+        &[include_str!(
+            "../../templates/_legacy_defaults/v30/repair_transfer_act.html"
+        )],
+    ),
 ];
 
 /// Resolves the templates directory: `TRACKLY_TEMPLATES_DIR` env var wins

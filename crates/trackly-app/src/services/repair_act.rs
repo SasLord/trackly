@@ -114,7 +114,16 @@ impl RepairActRenderer {
                     id: visit.device_id,
                 })?;
             let service_place = place_label(&conn, visit.service_place_id)?.unwrap_or_default();
-            let place_from = match visit.from_place_id {
+            // UAT 6 / D-27: для первого захода «до отправки» = исходное место
+            // устройства (до перемещения на склад по заявке); иначе — место на
+            // момент отправки (from_place_id захода).
+            let (origin, moved) =
+                SqliteRepairRepository.get_repair_fields(&conn, visit.request_id)?;
+            let place_from_id = match origin {
+                Some(o) if visit.seq == 1 && moved => Some(o),
+                _ => visit.from_place_id,
+            };
+            let place_from = match place_from_id {
                 Some(id) => place_label(&conn, id)?,
                 None => None,
             };

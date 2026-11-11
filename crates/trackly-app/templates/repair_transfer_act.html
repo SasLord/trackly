@@ -10,7 +10,9 @@
   Context:
     org.{name,full_name,inn,kpp,address,address_line2,logo_data_uri,phone,fax,email,okpo,ogrn}
     repair.{number,date_human,giver_name,receiver_name,fault,service_place}
-    device.{name,inventory_no,serial_no,type,place_from}
+    device.{name,inventory_no,serial_no,place_from}
+    (device.type stays in the render context for user-customized copies;
+    the default template does not use it)
 
   Autoescape is ON (build_safe_html_env) — plain {{ var }} interpolation is
   HTML-safe by construction. The only `| safe` is in the shared _header.html
@@ -108,7 +110,6 @@
     <div class="field-row">Наименование: {{ device.name }}</div>
     <div class="field-row">Инвентарный номер: {{ device.inventory_no | default("—", true) }}</div>
     <div class="field-row">Серийный номер: {{ device.serial_no | default("—", true) }}</div>
-    <div class="field-row">Тип: {{ device.type | default("—", true) }}</div>
     <div class="field-row">Расположение до отправки: {{ device.place_from | default("—", true) }}</div>
   </div>
 
