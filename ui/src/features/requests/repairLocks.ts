@@ -69,3 +69,28 @@ export function groupPlace(groupId: number): Promise<GroupPlace> {
   groupPlaceCache.set(groupId, { at: Date.now(), p });
   return p;
 }
+
+/** Подписи статусов заявок — те же слова, что в списке и карточке заявки. */
+export function requestStatusLabel(status: string): string {
+  switch (status) {
+    case 'open':
+      return 'Создана';
+    case 'in_progress':
+      return 'В работе';
+    case 'in_repair':
+      return 'В ремонте';
+    case 'completed':
+      return 'Выполнена';
+    case 'cancelled':
+      return 'Отменена';
+    default:
+      return 'Отклонена';
+  }
+}
+
+export function requestStatusVariant(status: string): 'default' | 'accent' | 'success' | 'warning' {
+  if (status === 'open') return 'accent';
+  if (status === 'in_progress' || status === 'in_repair') return 'warning';
+  if (status === 'completed') return 'success';
+  return 'default';
+}
