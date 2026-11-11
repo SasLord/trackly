@@ -87,15 +87,20 @@ enum ActWriteStep {
     NeedsGroupRelease(GroupReleaseWarningDto),
 }
 
-/// Устройство можно передать актом: оно на складе либо состоит в живой группе
-/// (D-02). Одиночное устройство «В работе» вне групп остаётся конфликтом.
+/// Устройство можно передать актом (D-34 фазы 41.4; заменяет правило D-02 фазы 41.2).
+///
+/// Порядок: открытая ремонтная заявка отказывает раньше всего (D-22); затем допустимы
+/// статусы «На складе» и «В работе» (оба определяются по `code`, не по подписи и не по
+/// числовому id) и член живой группы при любом статусе. Вне групп любой другой статус
+/// («Ожидает ремонта», «В ремонте», «На списание», «Списано») акт не допускает.
 fn is_act_assignable(
     tx: &rusqlite::Transaction<'_>,
     groups: &SqliteGroupRepository,
     device: &DeviceRow,
     on_warehouse_status_id: i64,
+    in_work_status_id: i64,
 ) -> Result<bool, AppError> {
-    // Phase 41.4 (D-22): открытая ремонтная заявка отказывает ДО обеих веток.
+    // Phase 41.4 (D-22): открытая ремонтная заявка отказывает ДО всех веток.
     if SqliteRepairRepository
         .open_repair_request_id(tx, device.id)?
         .is_some()
@@ -105,10 +110,14 @@ fn is_act_assignable(
     if device.status_id == on_warehouse_status_id {
         return Ok(true);
     }
-    Ok(groups.group_of_device_in_tx(tx, device.id)?.is_some())
+    if groups.group_of_device_in_tx(tx, device.id)?.is_some() {
+        return Ok(true);
+    }
+    Ok(device.status_id == in_work_status_id)
 }
 
-/// Причина отказа `is_act_assignable`: открытая ремонтная заявка (D-22) либо «не на складе».
+/// Причина отказа `is_act_assignable`: открытая ремонтная заявка (D-22) либо статус,
+/// не допускающий акт вне групп (подпись статуса читается из справочника).
 fn assignable_conflict(tx: &rusqlite::Transaction<'_>, dev_id: i64) -> AppError {
     let repair_open = SqliteRepairRepository
         .open_repair_request_id(tx, dev_id)
@@ -118,7 +127,21 @@ fn assignable_conflict(tx: &rusqlite::Transaction<'_>, dev_id: i64) -> AppError 
     let reason = if repair_open {
         crate::services::group_act_plan::REPAIR_OPEN_ACT_MESSAGE.to_string()
     } else {
-        format!("Устройство id={dev_id} больше не на складе — обновите список и повторите.")
+        let row: Result<(String, String), rusqlite::Error> = tx.query_row(
+            "SELECT d.name, s.name FROM devices d \
+             JOIN device_statuses s ON s.id = d.status_id WHERE d.id = ?1",
+            [dev_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        );
+        match row {
+            Ok((name, status)) => format!(
+                "Устройство «{name}» в статусе «{status}» нельзя передать актом — \
+                 обновите список и повторите."
+            ),
+            Err(_) => format!(
+                "Устройство id={dev_id} нельзя передать актом — обновите список и повторите."
+            ),
+        }
     };
     AppError::Conflict { reason }
 }
@@ -618,6 +641,7 @@ impl ActService {
                                 &SqliteGroupRepository,
                                 &d,
                                 on_warehouse_status_id,
+                                in_work_status_id,
                             )? {
                                 return Err(assignable_conflict(&tx, dev_id));
                             }
@@ -627,6 +651,26 @@ impl ActService {
                         // Legacy: clone-on-handover (item.quantity-1 клонов
                         // источника). Сохраняется для backward-compat и для
                         // случая когда в стоке только 1 девайс группы.
+                        // D-34: проверка допустимости и на legacy-пути, до любой записи.
+                        if !is_act_assignable(
+                            &tx,
+                            &SqliteGroupRepository,
+                            &source_before,
+                            on_warehouse_status_id,
+                            in_work_status_id,
+                        )? {
+                            return Err(assignable_conflict(&tx, item.device_id));
+                        }
+                        // Клонирование — операция над складским запасом.
+                        if item.quantity > 1 && source_before.status_id != on_warehouse_status_id {
+                            return Err(AppError::Conflict {
+                                reason: format!(
+                                    "Количество больше 1 допустимо только для складского \
+                                     устройства: «{}» — обновите список и повторите.",
+                                    source_before.name
+                                ),
+                            });
+                        }
                         let mut ids: Vec<i64> = Vec::with_capacity(item.quantity as usize);
                         ids.push(item.device_id);
                         for _ in 1..item.quantity {
@@ -1113,8 +1157,13 @@ impl ActService {
                     let d = devices_repo.get_in_tx(&tx, dev_id)?;
                     // D-02: на складе либо член живой группы; прочие «в работе» вне групп
                     // остаются конфликтом.
-                    if !is_act_assignable(&tx, &SqliteGroupRepository, &d, on_warehouse_status_id)?
-                    {
+                    if !is_act_assignable(
+                        &tx,
+                        &SqliteGroupRepository,
+                        &d,
+                        on_warehouse_status_id,
+                        in_work_status_id,
+                    )? {
                         return Err(assignable_conflict(&tx, dev_id));
                     }
                 }
@@ -1303,6 +1352,7 @@ impl ActService {
                 // (transaction rollback on any Err before commit).
                 let removed: Vec<i64> = d_old.difference(&d_new).copied().collect();
                 let outstanding = populate_outstanding_device_ids_in_tx(&tx, payload.id)?;
+                ensure_not_superseded_in_tx(&tx, payload.id, &removed)?;
                 for &removed_id in &removed {
                     if !outstanding.contains(&removed_id) {
                         return Err(AppError::Conflict {
@@ -2018,6 +2068,8 @@ impl ActService {
                     payload.apply_to_all,
                     resolved_bulk_place_id,
                 );
+                // D-34 фазы 41.4: устройство, переданное более поздним актом, по раннему не возвращается.
+                ensure_not_superseded_in_tx(&tx, act_id, &returned_ids)?;
                 let group_plan = plan_for_return_in_tx(&tx, &returned_ids, &return_places)?;
                 // D-46: целиком возвращаемая группа возвращается в одно место (до любой записи).
                 group_plan.ensure_places_match()?;
@@ -2754,6 +2806,11 @@ impl ActService {
                         });
                     }
                 }
+
+                // D-34 фазы 41.4: добавленное устройство не должно числиться по более позднему
+                // акту. После проверок существования, статуса и границы количества (WR-03):
+                // их отказы точнее, а эта проверка только добавляет защиту раннего акта.
+                ensure_not_superseded_in_tx(&tx, parent_act_id, &added)?;
 
                 // 8b. D-11 guard (Pattern 4): for every `removed` device AND
                 // every `retained` device whose payload requests an actual
@@ -4880,6 +4937,7 @@ fn undo_device_mutations_for_act(
         &row_ids,
         crate::services::group_act_plan::REPAIR_OPEN_RETURN_MESSAGE,
     )?;
+    ensure_not_superseded_in_tx(tx, act_id, &row_ids)?;
     // У устройства может быть несколько строк (создание акта + правки): членство проверяется
     // только на ПОСЛЕДНЕМ восстановлении (самая ранняя строка), иначе промежуточный снимок,
     // чьё место расходится с уже возвращённой группой, ошибочно вывел бы устройство из неё.
@@ -5527,6 +5585,58 @@ fn populate_outstanding_device_ids(
             item.outstanding_device_ids = vec![item.device_id];
         } else {
             item.outstanding_device_ids = Vec::new();
+        }
+    }
+    Ok(())
+}
+
+/// Устройство, переданное более поздним живым актом передачи и не возвращённое по нему,
+/// нельзя откатить, править или возвращать по раннему акту: восстановление снимка раннего
+/// акта затёрло бы результат позднего. Следствие D-34 фазы 41.4 (повторная передача
+/// устройства «В работе»): решение планировщика, подтверждается пользователем в плане 34.
+///
+/// Вызывается до любой записи (validate-then-mutate). «Не возвращено» — та же форма
+/// `NOT EXISTS`, что в `populate_outstanding_device_ids_in_tx`. Члены живых групп
+/// пропускаются: для них действует групповая логика D-09/D-48.
+fn ensure_not_superseded_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    act_id: i64,
+    device_ids: &[i64],
+) -> Result<(), AppError> {
+    for &device_id in device_ids {
+        // Член живой группы: перенос группы поздним актом и забывание раннего переноса
+        // обрабатывает групповая логика фазы 41.2 (D-09, D-48); проверка к нему не относится.
+        if SqliteGroupRepository
+            .group_of_device_in_tx(tx, device_id)?
+            .is_some()
+        {
+            continue;
+        }
+        let later: Option<(String, String)> = tx
+            .query_row(
+                "SELECT a2.number, d.name FROM acts a2 \
+                   JOIN act_items i2 ON i2.act_id = a2.id \
+                   JOIN devices d ON d.id = i2.device_id \
+                  WHERE a2.act_type = 'handover' AND a2.deleted_at_utc IS NULL \
+                    AND a2.id > ?1 AND i2.device_id = ?2 \
+                    AND NOT EXISTS ( \
+                          SELECT 1 FROM act_items ri \
+                            JOIN acts ra ON ra.id = ri.act_id \
+                           WHERE ra.parent_act_id = a2.id AND ra.deleted_at_utc IS NULL \
+                             AND ri.device_id = i2.device_id) \
+                  ORDER BY a2.id LIMIT 1",
+                params![act_id, device_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(map_rusqlite)?;
+        if let Some((number, name)) = later {
+            return Err(AppError::Conflict {
+                reason: format!(
+                    "Устройство «{name}» передано по более позднему акту №{number} — сначала \
+                     удалите его из того акта или оформите по нему возврат."
+                ),
+            });
         }
     }
     Ok(())

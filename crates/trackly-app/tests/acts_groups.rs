@@ -802,7 +802,7 @@ async fn create_anchor_goes_as_one_item_with_parts_kit() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn create_status_gate_accepts_group_member_but_not_lone_in_work() {
+async fn create_status_gate_accepts_group_member_and_lone_in_work() {
     timed(async {
         let (ctx, _dir) = make_test_ctx().await;
         let a = seed_place(&ctx, "Склад А").await;
@@ -825,13 +825,9 @@ async fn create_status_gate_accepts_group_member_but_not_lone_in_work() {
         )
         .await;
 
-        let err = ctx
-            .acts
-            .create(&admin(), dto("G-E1", &[lone], Some(b), false))
-            .await
-            .expect_err("одиночное «В работе» не принимается");
-        assert!(matches!(err, AppError::Conflict { .. }), "{err:?}");
-        assert_eq!(device_place(&ctx, lone).await, Some(a));
+        // D-34 фазы 41.4 (заменяет D-02 фазы 41.2): одиночное «В работе» вне групп принимается.
+        create_ok(&ctx, dto("G-E1", &[lone], Some(b), false)).await;
+        assert_eq!(device_place(&ctx, lone).await, Some(b));
 
         create_ok(&ctx, dto("G-E2", &[member], Some(b), false)).await;
         assert_eq!(device_place(&ctx, member).await, Some(b));
@@ -1305,7 +1301,7 @@ async fn update_removing_the_anchor_returns_group_and_parts() {
 
 // (u7) статус-гейт добавленных позиций.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn update_status_gate_accepts_group_member_but_not_lone_in_work() {
+async fn update_status_gate_accepts_group_member_and_lone_in_work() {
     timed(async {
         let (ctx, _dir) = make_test_ctx().await;
         let a = seed_place(&ctx, "Склад А").await;
@@ -1330,15 +1326,12 @@ async fn update_status_gate_accepts_group_member_but_not_lone_in_work() {
         .await;
         let act = create_ok(&ctx, dto("U-7", &[solo], Some(b), false)).await;
 
-        let before = counters(&ctx).await;
-        let err = update_outcome(&ctx, act, &[solo, lone], false)
-            .await
-            .expect_err("одиночное «В работе» не принимается");
-        assert!(matches!(err, AppError::Conflict { .. }), "{err:?}");
-        assert_eq!(counters(&ctx).await, before);
-        assert_eq!(device_place(&ctx, lone).await, Some(a));
+        // D-34 фазы 41.4 (заменяет D-02 фазы 41.2): одиночное «В работе» принимается.
+        update_ok(&ctx, act, &[solo, lone], false).await;
+        assert_eq!(device_place(&ctx, lone).await, Some(b));
+        assert_eq!(act_item_rows(&ctx, act, lone).await, 1);
 
-        update_ok(&ctx, act, &[solo, member], false).await;
+        update_ok(&ctx, act, &[solo, lone, member], false).await;
         assert_eq!(device_place(&ctx, member).await, Some(b));
         assert_eq!(act_item_rows(&ctx, act, member).await, 1);
     })
