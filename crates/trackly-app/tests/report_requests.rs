@@ -859,3 +859,132 @@ async fn report_requests_category_filter_reflected_in_csv_export() {
         "ad_register row must be filtered out: {body}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// UAT 16 (41.4-24): filter key «Ремонт техники» covers both the old free-form
+// category and the new request type «Ремонт» (request_type = 'repair').
+// ---------------------------------------------------------------------------
+
+/// Three requests in the period: free-form with category «Ремонт техники»,
+/// repair-type (category NULL), free-form «Прочее».
+async fn seed_repair_filter_fixture() -> (AppCtx, TempDir, HashMap<&'static str, i64>) {
+    let (ctx, dir) = minimal_ctx();
+    let requester_id = seed_user(&ctx.writer, "us503", "Сидоров С.С.").await;
+    let repair_cat = category_id_by_name(&ctx.readers, "Ремонт техники").await;
+    let other_cat = category_id_by_name(&ctx.readers, "Прочее").await;
+    let mut ids = HashMap::new();
+    ids.insert(
+        "old_repair",
+        seed_request(
+            &ctx.writer,
+            "free_form",
+            "open",
+            requester_id,
+            None,
+            FIXTURE_CREATED_AT_UTC,
+            Some(repair_cat),
+        )
+        .await,
+    );
+    ids.insert(
+        "new_repair",
+        seed_request(
+            &ctx.writer,
+            "repair",
+            "open",
+            requester_id,
+            None,
+            FIXTURE_CREATED_AT_UTC,
+            None,
+        )
+        .await,
+    );
+    ids.insert(
+        "other",
+        seed_request(
+            &ctx.writer,
+            "free_form",
+            "open",
+            requester_id,
+            None,
+            FIXTURE_CREATED_AT_UTC,
+            Some(other_cat),
+        )
+        .await,
+    );
+    (ctx, dir, ids)
+}
+
+async fn repair_filter_ids(
+    ctx: &AppCtx,
+    keys: Option<Vec<&str>>,
+) -> std::collections::HashSet<i64> {
+    let filter = ReportFilter {
+        request_category_filter: keys.map(|k| k.into_iter().map(String::from).collect()),
+        ..Default::default()
+    };
+    let response =
+        build_reports_list_requests_all(ctx, &Identity::trusted_admin(), filter, fixture_period())
+            .await
+            .expect("requests_all");
+    assert_eq!(response.total as usize, response.rows.len());
+    response.rows.iter().map(|r| r.id).collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_requests_repair_filter_includes_old_category_and_new_repair_type() {
+    let (ctx, _dir, ids) = seed_repair_filter_fixture().await;
+
+    let got = repair_filter_ids(&ctx, Some(vec!["repair"])).await;
+    assert_eq!(got.len(), 2);
+    assert!(got.contains(&ids["old_repair"]));
+    assert!(got.contains(&ids["new_repair"]));
+    assert!(!got.contains(&ids["other"]));
+
+    assert_eq!(repair_filter_ids(&ctx, None).await.len(), 3);
+
+    let other = repair_filter_ids(&ctx, Some(vec!["other"])).await;
+    assert_eq!(other, std::collections::HashSet::from([ids["other"]]));
+
+    let no_cat = repair_filter_ids(&ctx, Some(vec!["no_category"])).await;
+    assert!(!no_cat.contains(&ids["new_repair"]));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_requests_repair_type_row_keeps_type_label_and_counts_match() {
+    let (ctx, _dir, ids) = seed_repair_filter_fixture().await;
+    let filter = ReportFilter {
+        request_category_filter: Some(vec!["repair".to_string()]),
+        ..Default::default()
+    };
+    let response = build_reports_list_requests_all(
+        &ctx,
+        &Identity::trusted_admin(),
+        filter.clone(),
+        fixture_period(),
+    )
+    .await
+    .expect("requests_all");
+    let row = response
+        .rows
+        .iter()
+        .find(|r| r.id == ids["new_repair"])
+        .expect("repair row present");
+    assert_eq!(row.request_type_label.as_deref(), Some("Ремонт"));
+
+    let counts_dto = build_reports_get_report_counts(
+        &ctx,
+        &Identity::trusted_admin(),
+        "requests".to_string(),
+        filter,
+        fixture_period(),
+    )
+    .await
+    .expect("counts");
+    let counts: HashMap<String, i64> = counts_dto
+        .counts
+        .into_iter()
+        .map(|e| (e.key, e.count))
+        .collect();
+    assert_eq!(counts.get("all"), Some(&(response.rows.len() as i64)));
+}

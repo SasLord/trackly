@@ -375,10 +375,17 @@ fn category_filter_clause(
                 };
                 let idx = next_idx(owned_params);
                 owned_params.push(Box::new(category_name.to_string()));
-                ors.push(format!(
+                let category_pred = format!(
                     "(r.request_type = 'free_form' AND r.category_id = \
                      (SELECT id FROM request_categories WHERE name = ?{idx}))"
-                ));
+                );
+                if key == "repair" {
+                    // UAT 16 (41.4-24): «Ремонт техники» also covers the new
+                    // request type «Ремонт» (category_id is NULL there).
+                    ors.push(format!("({category_pred} OR r.request_type = 'repair')"));
+                } else {
+                    ors.push(category_pred);
+                }
             }
             _ => {
                 // Unknown/future key — silently skipped, not an error.
@@ -3204,6 +3211,32 @@ mod tests {
             "clause: {clause}"
         );
         assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn category_filter_clause_repair_key_includes_repair_request_type() {
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        let keys = vec!["repair".to_string()];
+        let clause = category_filter_clause(Some(&keys), &mut params).unwrap();
+        assert!(
+            clause.contains("SELECT id FROM request_categories WHERE name = ?"),
+            "clause: {clause}"
+        );
+        assert!(
+            clause.contains("OR r.request_type = 'repair'"),
+            "clause: {clause}"
+        );
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn category_filter_clause_other_keys_do_not_capture_repair_type() {
+        for key in ["no_category", "consumables", "software", "other"] {
+            let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+            let keys = vec![key.to_string()];
+            let clause = category_filter_clause(Some(&keys), &mut params).unwrap();
+            assert!(!clause.contains("'repair'"), "key {key}: {clause}");
+        }
     }
 
     #[test]
