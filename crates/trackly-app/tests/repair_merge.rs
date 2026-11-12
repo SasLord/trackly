@@ -531,6 +531,9 @@ async fn http_route_is_registered_not_spa_fallback() {
 
 // ---------- D-35: описание и вложения ----------
 
+/// id, имя, mime, хеш, размер, загрузивший, created_at, deleted_at.
+type AttRow = (i64, String, String, String, i64, i64, i64, Option<i64>);
+
 const HASH_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HASH_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
@@ -655,7 +658,7 @@ async fn merge_copies_live_attachments_to_target() {
 
     let (t, s) = (fx.target, fx.source);
     // Ровно одна строка у цели (удалённая не копируется), поля те же.
-    let rows: Vec<(i64, String, String, String, i64, i64, i64, Option<i64>)> = fx
+    let rows: Vec<AttRow> = fx
         .ctx
         .writer
         .execute(move |conn| {
