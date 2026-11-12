@@ -551,6 +551,51 @@ async fn last_giver_and_received_by_remembered_on_success_only() {
 }
 
 #[tokio::test]
+async fn last_receiver_remembered_on_success_only() {
+    let (ctx, _d) = make_test_ctx().await;
+    let room = seed_place(&ctx, "Кабинет 12").await;
+    let service = seed_place(&ctx, "Сервис Альфа").await;
+    let dev = seed_device(&ctx, 1, "ПК-00014", "INV-14", Some(room), None).await;
+    let (req, v) = accepted(&ctx, dev).await;
+
+    assert_eq!(
+        ctx.repairs
+            .last_places(&admin())
+            .await
+            .expect("last")
+            .last_receiver_name,
+        None
+    );
+
+    // Отказ внутри транзакции (несуществующее место сервиса): не запоминается.
+    let mut bad = send_dto(req, v, 999_999);
+    bad.receiver_name = "  Смирнов С.С.  ".into();
+    assert!(ctx.repairs.send(bad, &admin()).await.is_err());
+    assert_eq!(
+        ctx.repairs
+            .last_places(&admin())
+            .await
+            .expect("last")
+            .last_receiver_name,
+        None
+    );
+
+    let mut ok = send_dto(req, v, service);
+    ok.receiver_name = "  Смирнов С.С.  ".into();
+    ctx.repairs.send(ok, &admin()).await.expect("send");
+    let last = ctx.repairs.last_places(&admin()).await.expect("last");
+    assert_eq!(last.last_receiver_name.as_deref(), Some("Смирнов С.С."));
+
+    let other = seed_user(&ctx, "other_mgr2", "Орлов О.О.").await;
+    let shared = ctx
+        .repairs
+        .last_places(&manager(other))
+        .await
+        .expect("last");
+    assert_eq!(shared.last_receiver_name.as_deref(), Some("Смирнов С.С."));
+}
+
+#[tokio::test]
 async fn account_name_from_caller_or_first_admin() {
     let (ctx, _d) = make_test_ctx().await;
     let mgr = seed_user(&ctx, "mgr", "Орлов О.О.").await;

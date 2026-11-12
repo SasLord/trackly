@@ -176,8 +176,11 @@ async fn merge_moves_author_and_leaves_trace_in_both() {
     assert_eq!(res.request.id, fx.source);
     assert_eq!(res.request.status, "cancelled");
 
-    // Цель не изменилась (статус, версия, устройство).
-    assert_eq!(req_state(&fx, fx.target).await, before);
+    // D-35: описание цели меняется, версия +1; статус и устройство прежние.
+    let after = req_state(&fx, fx.target).await;
+    assert_eq!(after.0, before.0);
+    assert_eq!(after.1, before.1 + 1);
+    assert_eq!(after.2, before.2);
     assert_eq!(req_state(&fx, fx.source).await.0, "cancelled");
 
     // Автор поглощённой заявки — участник целевой.
@@ -524,4 +527,321 @@ async fn http_route_is_registered_not_spa_fallback() {
         .unwrap_or("")
         .to_string();
     assert!(ct.contains("json"), "content-type: {ct}");
+}
+
+// ---------- D-35: описание и вложения ----------
+
+const HASH_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const HASH_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+async fn seed_attachment(
+    ctx: &AppCtx,
+    request_id: i64,
+    name: &'static str,
+    hash: &'static str,
+    uploader: i64,
+    deleted: bool,
+) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO attachments (parent_kind, parent_id, original_name, mime, \
+                 size_bytes, content_hash, uploaded_by_user_id, created_at_utc, deleted_at_utc) \
+                 VALUES ('request', ?1, ?2, 'application/pdf', 10, ?3, ?4, 1700000000, ?5)",
+                params![
+                    request_id,
+                    name,
+                    hash,
+                    uploader,
+                    if deleted {
+                        Some(1_700_000_001_i64)
+                    } else {
+                        None
+                    }
+                ],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("attachment")
+}
+
+async fn set_target_description(ctx: &AppCtx, id: i64, text: String) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE requests SET description = ?2 WHERE id = ?1",
+                params![id, text],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set description");
+}
+
+async fn description_of(ctx: &AppCtx, id: i64) -> String {
+    scalar_str(
+        ctx,
+        "SELECT COALESCE(description, '') FROM requests WHERE id = ?1",
+        id,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn merge_appends_source_description_block_to_target() {
+    let fx = fixture().await;
+    let before = req_state(&fx, fx.target).await;
+    fx.ctx
+        .repairs
+        .merge_into_open(dto(&fx), &admin())
+        .await
+        .expect("merge");
+    assert_eq!(
+        description_of(&fx.ctx, fx.target).await,
+        "Не включается\n\nИванов И.И.:\nШумит и греется"
+    );
+    let after = req_state(&fx, fx.target).await;
+    assert_eq!(after.0, before.0);
+    assert_eq!(after.1, before.1 + 1);
+    assert_eq!(after.2, before.2);
+}
+
+#[tokio::test]
+async fn merge_appends_without_leading_blank_lines_when_target_empty() {
+    let fx = fixture().await;
+    set_target_description(&fx.ctx, fx.target, String::new()).await;
+    fx.ctx
+        .repairs
+        .merge_into_open(dto(&fx), &admin())
+        .await
+        .expect("merge");
+    assert_eq!(
+        description_of(&fx.ctx, fx.target).await,
+        "Иванов И.И.:\nШумит и греется"
+    );
+}
+
+#[tokio::test]
+async fn merge_description_capped_at_limit() {
+    let fx = fixture().await;
+    let long = "я".repeat(3990);
+    set_target_description(&fx.ctx, fx.target, long.clone()).await;
+    fx.ctx
+        .repairs
+        .merge_into_open(dto(&fx), &admin())
+        .await
+        .expect("merge");
+    let d = description_of(&fx.ctx, fx.target).await;
+    assert_eq!(d.chars().count(), 4000);
+    assert!(d.starts_with(&long), "прежнее описание цели потеряно");
+}
+
+#[tokio::test]
+async fn merge_copies_live_attachments_to_target() {
+    use trackly_app::services::attachment_service::ParentRef;
+    use trackly_core::domain::attachments::ParentKind;
+
+    let fx = fixture().await;
+    let live = seed_attachment(&fx.ctx, fx.source, "скан.pdf", HASH_A, fx.ivanov, false).await;
+    let dead = seed_attachment(&fx.ctx, fx.source, "старый.pdf", HASH_B, fx.ivanov, true).await;
+    fx.ctx
+        .repairs
+        .merge_into_open(dto(&fx), &admin())
+        .await
+        .expect("merge");
+
+    let (t, s) = (fx.target, fx.source);
+    // Ровно одна строка у цели (удалённая не копируется), поля те же.
+    let rows: Vec<(i64, String, String, String, i64, i64, i64, Option<i64>)> = fx
+        .ctx
+        .writer
+        .execute(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, original_name, mime, content_hash, size_bytes, uploaded_by_user_id, \
+                     created_at_utc, deleted_at_utc FROM attachments \
+                     WHERE parent_kind = 'request' AND parent_id = ?1 ORDER BY id",
+                )
+                .map_err(map_rusqlite)?;
+            let it = stmt
+                .query_map(params![t], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                    ))
+                })
+                .map_err(map_rusqlite)?;
+            it.collect::<Result<Vec<_>, _>>().map_err(map_rusqlite)
+        })
+        .await
+        .expect("rows");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    let new = &rows[0];
+    assert_eq!(new.1, "скан.pdf");
+    assert_eq!(new.2, "application/pdf");
+    assert_eq!(new.3, HASH_A);
+    assert_eq!(new.4, 10);
+    assert_eq!(new.5, fx.ivanov);
+    assert_eq!(new.6, 1_700_000_000);
+    assert_eq!(new.7, None);
+
+    // Строки источника не изменились.
+    assert_eq!(
+        scalar_i64(
+            &fx.ctx,
+            "SELECT COUNT(*) FROM attachments WHERE parent_kind = 'request' AND parent_id = ?1",
+            s
+        )
+        .await,
+        2
+    );
+    assert_eq!(
+        scalar_i64(
+            &fx.ctx,
+            "SELECT COUNT(*) FROM attachments WHERE parent_kind = 'request' AND parent_id = ?1 \
+             AND deleted_at_utc IS NOT NULL",
+            s
+        )
+        .await,
+        1
+    );
+    // Строк с этим хешем стало две (purge не снесёт блоб при удалении одной копии).
+    let n_hash = fx
+        .ctx
+        .writer
+        .execute(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM attachments WHERE content_hash = ?1",
+                params![HASH_A],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("hash");
+    assert_eq!(n_hash, 2);
+    let _ = (live, dead);
+
+    // История цели: одна запись custom:attachment_added.
+    let added = audit_payloads(&fx.ctx, fx.target, "custom:attachment_added").await;
+    assert_eq!(added.len(), 1, "{added:?}");
+    let v: serde_json::Value = serde_json::from_str(&added[0]).expect("json");
+    assert_eq!(v["attachment_id"].as_i64(), Some(new.0));
+    assert_eq!(v["name"].as_str(), Some("скан.pdf"));
+    assert_eq!(v["merged_from_request_id"].as_i64(), Some(fx.source));
+
+    // Автор поглощённой (участник цели) видит вложение.
+    let list = fx
+        .ctx
+        .attachments
+        .list(
+            ParentRef {
+                kind: ParentKind::Request,
+                id: fx.target,
+            },
+            &emp(fx.ivanov),
+        )
+        .await
+        .expect("list");
+    assert_eq!(list.items.len(), 1);
+    assert_eq!(list.items[0].id, new.0);
+}
+
+#[tokio::test]
+async fn merge_signals_attachments_changed_for_target() {
+    let fx = fixture().await;
+    seed_attachment(&fx.ctx, fx.source, "скан.pdf", HASH_A, fx.ivanov, false).await;
+    let mut rx = fx.ctx.ws_broadcast.subscribe();
+    fx.ctx
+        .repairs
+        .merge_into_open(dto(&fx), &admin())
+        .await
+        .expect("merge");
+    let mut seen = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        if let WsEvent::AttachmentsChanged {
+            parent_kind,
+            parent_id,
+            participant_user_ids,
+            ..
+        } = ev
+        {
+            seen.push((parent_kind, parent_id, participant_user_ids));
+        }
+    }
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0].0, "request");
+    assert_eq!(seen[0].1, fx.target);
+    assert!(seen[0].2.contains(&fx.ivanov), "{seen:?}");
+
+    // Без вложений событие не уходит.
+    let fx2 = fixture().await;
+    let mut rx2 = fx2.ctx.ws_broadcast.subscribe();
+    fx2.ctx
+        .repairs
+        .merge_into_open(dto(&fx2), &admin())
+        .await
+        .expect("merge");
+    while let Ok(ev) = rx2.try_recv() {
+        assert!(
+            !matches!(ev, WsEvent::AttachmentsChanged { .. }),
+            "лишнее событие: {ev:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn history_exposes_related_request_id_for_merge_events() {
+    let fx = fixture().await;
+    fx.ctx
+        .repairs
+        .merge_into_open(dto(&fx), &admin())
+        .await
+        .expect("merge");
+    let on_source = fx
+        .ctx
+        .requests
+        .get_history(fx.source, &admin())
+        .await
+        .expect("history source");
+    let merged = on_source
+        .iter()
+        .find(|e| e.action == "custom:repair_merged_into")
+        .expect("запись об объединении");
+    assert_eq!(merged.related_request_id, Some(fx.target));
+    assert!(
+        on_source
+            .iter()
+            .filter(|e| e.action != "custom:repair_merged_into")
+            .all(|e| e.related_request_id.is_none()),
+        "{on_source:?}"
+    );
+
+    let on_target = fx
+        .ctx
+        .requests
+        .get_history(fx.target, &admin())
+        .await
+        .expect("history target");
+    let merge = on_target
+        .iter()
+        .find(|e| e.action == "repair_merge")
+        .expect("запись repair_merge");
+    assert_eq!(merge.related_request_id, Some(fx.source));
+    assert!(
+        on_target
+            .iter()
+            .filter(|e| e.action != "repair_merge")
+            .all(|e| e.related_request_id.is_none()),
+        "{on_target:?}"
+    );
 }
