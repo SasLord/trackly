@@ -405,6 +405,6 @@ pub const REGISTRY: &[Entry] = &[
     ex(
         REPAIR,
         "merge_into_open",
-        "слияние заявок не меняет места, устройства и группы; сигнал отдельным WsEvent RequestStatusChanged участникам обеих заявок",
+        "слияние заявок не меняет места, устройства и группы; сигнал отдельным WsEvent RequestStatusChanged участникам обеих заявок; вложения цели (D-35) сигналятся отдельным WsEvent AttachmentsChanged",
     ),
 ];

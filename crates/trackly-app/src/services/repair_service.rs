@@ -25,6 +25,7 @@ use trackly_core::ports::requests::RequestRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::repos::attachments_sqlite::{AttachmentNew, SqliteAttachmentRepository};
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::repairs_sqlite::SqliteRepairRepository;
 use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
@@ -45,6 +46,8 @@ use crate::services::number_template_service::issue_repair_act_number_in_tx;
 const SETTING_LAST_MOVE_PLACE: &str = "repair_last_move_place_id";
 const SETTING_LAST_SERVICE_PLACE: &str = "repair_last_service_place_id";
 const SETTING_LAST_GIVER: &str = "repair_last_giver_name";
+/// D-36: последнее «Кому выдал» (общее для всех).
+const SETTING_LAST_RECEIVER: &str = "repair_last_receiver_name";
 const SETTING_LAST_RECEIVED_BY: &str = "repair_last_received_by_name";
 
 /// Предел длины описания (символов).
@@ -372,6 +375,7 @@ impl RepairService {
                 service_place_id: read(SETTING_LAST_SERVICE_PLACE)?,
                 last_giver_name: read_text(SETTING_LAST_GIVER)?,
                 last_received_by_name: read_text(SETTING_LAST_RECEIVED_BY)?,
+                last_receiver_name: read_text(SETTING_LAST_RECEIVER)?,
                 account_name,
             })
         })
@@ -989,6 +993,7 @@ impl RepairService {
                     .map_err(map_rusqlite)?;
                 let act_number = issue_repair_act_number_in_tx(&tx, now)?;
                 repo.upsert_setting(&tx, SETTING_LAST_GIVER, &giver, now)?;
+                repo.upsert_setting(&tx, SETTING_LAST_RECEIVER, &receiver, now)?;
                 let visit_id = repo.insert_visit_in_tx(
                     &tx,
                     &RepairVisitNew {
@@ -1633,7 +1638,12 @@ impl RepairService {
     /// Автор поглощаемой заявки становится участником целевой (как при присоединении,
     /// D-20), в истории целевой остаётся пометка о нём, поглощаемая закрывается
     /// (`cancelled`). Устройства, места и группы не меняются, поэтому
-    /// `broadcast_entities` не вызывается. Вложения поглощаемой заявки остаются на ней.
+    /// `broadcast_entities` не вызывается.
+    ///
+    /// D-35: описание цели дополняется блоком «ФИО автора: описание» (в пределах
+    /// `MAX_DESCRIPTION_CHARS`), живые вложения поглощаемой заявки копируются строками
+    /// с тем же хешем (файлы на диске не трогаются; хранилище адресуется по хешу, purge
+    /// считает строки), по цели уходит `AttachmentsChanged`.
     pub async fn merge_into_open(
         &self,
         dto: RepairMergeDto,
@@ -1647,7 +1657,7 @@ impl RepairService {
         let request_repo = self.request_repo.clone();
         let audit_repo = self.audit_repo.clone();
 
-        let target_id = self
+        let (target_id, copied_attachments) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -1725,6 +1735,78 @@ impl RepairService {
                         .chars()
                         .take(MAX_DESCRIPTION_CHARS)
                         .collect();
+                // D-35: дописать описание поглощаемой в описание цели.
+                let source_text = row.description.as_deref().unwrap_or("").trim().to_string();
+                if !source_text.is_empty() {
+                    let target_text: String = tx
+                        .query_row(
+                            "SELECT COALESCE(description, '') FROM requests WHERE id = ?1",
+                            params![target],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    let block = format!("{author_name}:\n{source_text}");
+                    let merged_text: String = if target_text.trim().is_empty() {
+                        block
+                    } else {
+                        format!("{target_text}\n\n{block}")
+                    }
+                    .chars()
+                    .take(MAX_DESCRIPTION_CHARS)
+                    .collect();
+                    let changed = tx
+                        .execute(
+                            "UPDATE requests SET description = ?2, updated_at_utc = ?3, \
+                             version = version + 1 WHERE id = ?1 AND deleted_at_utc IS NULL",
+                            params![target, merged_text, now],
+                        )
+                        .map_err(map_rusqlite)?;
+                    if changed != 1 {
+                        return Err(AppError::Internal {
+                            source_chain: "merge: описание цели не обновлено".into(),
+                        });
+                    }
+                }
+                // D-35: живые вложения поглощаемой -> новые строки у цели (тот же хеш).
+                let attachment_repo = SqliteAttachmentRepository;
+                let mut copied: usize = 0;
+                for a in attachment_repo.list_by_parent_on(&tx, "request", request_id, false)? {
+                    let new_id = attachment_repo.insert_on(
+                        &tx,
+                        &AttachmentNew {
+                            parent_kind: "request",
+                            parent_id: target,
+                            original_name: &a.original_name,
+                            mime: &a.mime,
+                            size_bytes: a.size_bytes,
+                            content_hash: &a.content_hash,
+                            uploaded_by_user_id: a.uploaded_by_user_id,
+                            created_at_utc: a.created_at_utc,
+                        },
+                    )?;
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "request",
+                            entity_id: target,
+                            action: "custom:attachment_added",
+                            user_id,
+                            before_json: None,
+                            after_json: None,
+                            payload_json: Some(
+                                serde_json::json!({
+                                    "attachment_id": new_id,
+                                    "name": a.original_name,
+                                    "merged_from_request_id": request_id,
+                                    "source_attachment_id": a.id,
+                                })
+                                .to_string(),
+                            ),
+                            created_at_utc: now,
+                        },
+                    )?;
+                    copied += 1;
+                }
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -1766,7 +1848,7 @@ impl RepairService {
                     },
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(target)
+                Ok((target, copied))
             })
             .await?;
 
@@ -1786,8 +1868,16 @@ impl RepairService {
                 request_id: target_id,
                 new_status: target_row.status.clone(),
                 requested_by_user_id: target_row.requested_by_user_id,
-                participant_user_ids: participants,
+                participant_user_ids: participants.clone(),
             });
+            if copied_attachments > 0 {
+                let _ = ws.send(WsEvent::AttachmentsChanged {
+                    parent_kind: "request".to_string(),
+                    parent_id: target_id,
+                    requested_by_user_id: Some(target_row.requested_by_user_id),
+                    participant_user_ids: participants,
+                });
+            }
         }
         Ok(RepairMergeResultDto {
             request: done.request,

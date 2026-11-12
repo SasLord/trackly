@@ -160,6 +160,8 @@ pub struct RepairLastPlacesDto {
     pub last_giver_name: Option<String>,
     /// Последнее запомненное «Кто принял».
     pub last_received_by_name: Option<String>,
+    /// D-36: последнее запомненное «Кому выдал» (общее для всех).
+    pub last_receiver_name: Option<String>,
     /// Имя учётной записи приложения (запасной вариант предзаполнения).
     pub account_name: Option<String>,
 }

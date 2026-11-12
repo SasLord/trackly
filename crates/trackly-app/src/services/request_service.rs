@@ -221,6 +221,12 @@ impl RequestService {
             Ok(rows
                 .into_iter()
                 .map(|r| RequestHistoryEntryDto {
+                    related_request_id: r.payload_json.as_deref().and_then(|p| {
+                        let v = serde_json::from_str::<serde_json::Value>(p).ok()?;
+                        v.get("into_request_id")
+                            .and_then(|n| n.as_i64())
+                            .or_else(|| v.get("merged_request_id").and_then(|n| n.as_i64()))
+                    }),
                     id: r.id,
                     action: r.action,
                     created_at_utc: r.created_at_utc,

@@ -269,6 +269,11 @@ pub struct RequestHistoryEntryDto {
     pub actor_name: Option<String>,
     /// Free-text notes captured with the action (reject/complete reason).
     pub notes: Option<String>,
+    /// D-35: связанная заявка (`into_request_id` / `merged_request_id` из payload) —
+    /// клиент строит ссылку по id, а не разбором текста.
+    #[specta(type = Option<i32>)]
+    #[serde(default)]
+    pub related_request_id: Option<i64>,
 }
 
 /// Aggregate counts for the status switch-bar.
