@@ -78,7 +78,9 @@ const EXPORT_FORCED: &str =
 const VERDICTS: &[(&str, Path, Verdict)] = &[
     ("type_id", List, Narrows),
     ("type_id", ListAll, Narrows),
-    ("type_id", ListGrouped, Ignored(GROUPED_COLLAPSE)),
+    // 41.4-26: пикер акта ищет принтеры по названию типа; предикат типа добавлен во все три
+    // ветки свёртки `list_grouped`, поэтому поле больше не «игнорируется».
+    ("type_id", ListGrouped, Narrows),
     ("place_id", List, Narrows),
     ("place_id", ListAll, Narrows),
     ("place_id", ListGrouped, Ignored(GROUPED_COLLAPSE)),
@@ -810,9 +812,8 @@ async fn name_prefix_gives_the_same_devices_on_all_three_paths() {
 /// `fetchCandidates`): `type_id` + необязательный `name_prefix` + малое окно.
 /// Поле-за-раз уже покрыто строками VERDICTS; здесь страхуется сочетание и порядок
 /// «сначала тип, потом окно»: малый `limit` не должен вытеснять принтер
-/// устройствами других типов. Для контраста зафиксировано, почему пикер не может
-/// ходить через `list_grouped`: тот игнорирует `type_id` (D-08a), и окно режется
-/// по всем типам.
+/// устройствами других типов. С 41.4-26 `list_grouped` тоже сужает по `type_id`
+/// (пикер акта ищет принтеры по названию типа); контраст ниже это закрепляет.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn printer_picker_filter_shape_narrows_by_type_before_the_window() {
     timed(async {
@@ -870,7 +871,7 @@ async fn printer_picker_filter_shape_narrows_by_type_before_the_window() {
             "тип 2 + текст «Монитор»: мониторов типа 2 нет, текст не перебивает тип"
         );
 
-        // Контраст: `list_grouped` с тем же типом отдаёт все живые устройства.
+        // 41.4-26: `list_grouped` с тем же типом сужает выборку до устройств типа.
         let grouped = run(
             &fx,
             ListGrouped,
@@ -883,27 +884,27 @@ async fn printer_picker_filter_shape_narrows_by_type_before_the_window() {
         .await;
         assert_eq!(
             grouped.flat,
-            all_live(),
-            "list_grouped игнорирует type_id (вердикт реестра): тип на нём не отфильтровать"
+            set(&[D]),
+            "list_grouped сужает по type_id (вердикт реестра, 41.4-26)"
         );
     })
     .await;
 }
 
-/// D-08a: шесть полей `list_grouped` не меняют результат — «игнорируется» доказано данными.
+/// D-08a: пять полей `list_grouped` не меняют результат — «игнорируется» доказано данными
+/// (`type_id` с 41.4-26 сужает и в этот список не входит).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn list_grouped_ignores_its_six_fields() {
+async fn list_grouped_ignores_its_five_fields() {
     timed(async {
         let fx = fixture().await;
-        let six = [
-            "type_id",
+        let five = [
             "include_deleted",
             "place_id",
             "state",
             "anchors_only",
             "member_of_group_id",
         ];
-        for field in six {
+        for field in five {
             let verdict = VERDICTS
                 .iter()
                 .find(|(f, p, _)| *f == field && *p == ListGrouped)
