@@ -21,7 +21,9 @@
   interface Props {
     open: boolean;
     onClose: () => void;
-    onSuccess: () => void;
+    // Минимум, нужный странице: id и статус созданной заявки (repairs.create и
+    // requests.create возвращают разные генерированные RequestDto).
+    onSuccess: (request: { id: number; status: string }) => void;
   }
 
   const { open, onClose, onSuccess }: Props = $props();
@@ -265,11 +267,11 @@
           res.joined ? 'Вы присоединились к заявке на ремонт' : 'Заявка отправлена',
         );
         maybeRequestNotifyPermission();
-        onSuccess();
+        onSuccess(res.request);
         onClose();
         return;
       }
-      await requests.create({
+      const created = await requests.create({
         requestType,
         printerDeviceId: requestType === 'cartridge_replace' ? printerDeviceId : null,
         cartridgeModelId: null,
@@ -278,7 +280,7 @@
       });
       pushToast('success', 'Заявка отправлена');
       maybeRequestNotifyPermission();
-      onSuccess();
+      onSuccess(created);
       onClose();
     } catch (e: unknown) {
       const msg =

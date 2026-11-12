@@ -60,9 +60,18 @@
     loading: boolean;
     identity: CurrentUser | null;
     onTransition: () => void;
+    /** D-35: открыть другую заявку на странице заявок (ставит выбранную напрямую). */
+    onOpenRequest?: (id: number) => void;
   }
 
-  const { request, loading, identity, onTransition }: Props = $props();
+  const { request, loading, identity, onTransition, onOpenRequest }: Props = $props();
+
+  // Вне страницы заявок колбэка нет — переходим по ссылке. На самой странице
+  // push того же #/requests?id=N при совпадающем URL эффект не перезапускает.
+  function openRequest(id: number) {
+    if (onOpenRequest) onOpenRequest(id);
+    else openRepairRequest(id);
+  }
 
   // --- Local state ---
   let operationModalOpen = $state(false);
@@ -408,6 +417,12 @@
     return labels[action] ?? action;
   }
 
+  // D-35: id целевой заявки для записи «объединена с…»; иначе null.
+  function mergedIntoId(e: RequestHistoryEntry): number | null {
+    if (e.action.replace(/^custom:/, '') !== 'repair_merged_into') return null;
+    return e.relatedRequestId ?? null;
+  }
+
   // REP-07: строка истории без даты. События ремонта читаемо, место/сервис/описание
   // приходят в notes (пишутся сервером при записи события); сырые коды не показываем.
   function entryText(e: RequestHistoryEntry): string {
@@ -431,7 +446,7 @@
       case 'repair_merge':
         return `К заявке присоединена другая заявка${who}${note ? `; ${note}` : ''}`;
       case 'repair_merged_into':
-        return `Заявка объединена с другой${who}${note ? `; ${note}` : ''}`;
+        return `Заявка объединена с другой${who}`;
       case 'repair_assign_device':
         return `Указано устройство${who}`;
       default:
@@ -914,7 +929,7 @@
               <DetailField label="Категория" value={request.categoryName} />
             {/if}
             {#if request.description}
-              <div class="field-wide">
+              <div class="field-wide description-text">
                 <DetailField label="Описание" value={request.description} />
               </div>
             {/if}
@@ -923,7 +938,7 @@
               <DetailField label="Категория" value={request.categoryName} />
             {/if}
             {#if request.description}
-              <div class="field-wide">
+              <div class="field-wide description-text">
                 <DetailField label="Описание" value={request.description} />
               </div>
             {/if}
@@ -1018,6 +1033,12 @@
                 <li class="history-row">
                   <span class="history-text">
                     {formatFullDate(row.entry.createdAtUtc)} — {entryText(row.entry)}
+                    {#if mergedIntoId(row.entry) !== null}
+                      {@const relatedId = mergedIntoId(row.entry) as number}
+                      {'; '}<Button variant="link" onclick={() => openRequest(relatedId)}>
+                        {row.entry.notes?.trim() ? row.entry.notes.trim() : `Заявка №${relatedId}`}
+                      </Button>
+                    {/if}
                   </span>
                 </li>
               {:else}
@@ -1185,7 +1206,7 @@
     onMerged={(targetId) => {
       assignModalOpen = false;
       onTransition();
-      openRepairRequest(targetId);
+      openRequest(targetId);
     }}
   />
 
@@ -1267,6 +1288,12 @@
 
   .field-wide {
     grid-column: 1 / -1;
+  }
+
+  // D-35: переводы строк дописанного при слиянии блока описания.
+  .description-text :global(.field-value) {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .field {

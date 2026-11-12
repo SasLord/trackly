@@ -84,6 +84,8 @@
         if (servicePlaceId === null) servicePlaceId = last.servicePlaceId;
         // Последнее запомненное значение, иначе имя учётной записи приложения (сервер).
         if (giverName === '') giverName = last.lastGiverName ?? last.accountName ?? '';
+        // D-36: «Кому выдал» — последнее запомненное значение; запасного нет.
+        if (receiverName === '') receiverName = last.lastReceiverName ?? '';
       } catch {
         // Предзаполнение — удобство, не условие.
       }

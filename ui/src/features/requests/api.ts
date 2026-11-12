@@ -78,6 +78,8 @@ export interface RequestHistoryEntry {
   createdAtUtc: number;
   actorName: string | null;
   notes: string | null;
+  /** D-35: связанная заявка (объединение) — ссылка строится по id. */
+  relatedRequestId: number | null;
 }
 
 /** Phase 41.4: ремонтные заявки. Имена команд как в specta_export.rs. */

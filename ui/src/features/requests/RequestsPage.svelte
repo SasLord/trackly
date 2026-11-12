@@ -302,6 +302,7 @@
           loading={detailLoading}
           {identity}
           onTransition={handleTransition}
+          onOpenRequest={(id) => (selectedId = id)}
         />
       {/snippet}
     </RequestsMasterDetail>
@@ -311,9 +312,20 @@
 <RequestFormModal
   open={formModalOpen}
   onClose={() => (formModalOpen = false)}
-  onSuccess={() => {
+  onSuccess={(created) => {
     formModalOpen = false;
-    void refresh();
+    // D-37: созданная заявка становится выбранной; если текущая вкладка статуса её
+    // не содержит — «Все». Фильтр меняем присваиванием (handleStatusFilterChange
+    // сбросил бы выбор).
+    if (filter.status !== null && filter.status !== created.status) {
+      filter = { ...filter, status: null };
+    }
+    if (selectedId === created.id) {
+      handleTransition();
+    } else {
+      selectedId = created.id;
+      void refresh();
+    }
   }}
 />
 
