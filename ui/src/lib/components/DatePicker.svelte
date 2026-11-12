@@ -44,8 +44,13 @@
 
 <style lang="scss">
   .date-picker {
+    // Вертикальное центрирование даты (WKWebView прижимал её к верху) — колоночным
+    // flex БЕЗ align-items. Строчный flex на input (display:flex / align-items:center
+    // в колонке) сжимает внутренний контейнер Chromium по содержимому, и иконка
+    // календаря встаёт сразу за датой. Держит гейт scripts/check-date-picker-layout.mjs.
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    justify-content: center;
     width: 100%;
     height: 36px;
     padding: 0 var(--tr-space-md);
@@ -57,15 +62,7 @@
     font-size: var(--tr-font-size-body);
     line-height: var(--tr-line-height-body);
 
-    // Chromium (WebView2, LAN-браузеры): внутреннее поле с текстом даты тянется,
-    // индикатор календаря уходит к правому краю. Для WKWebView безвредно.
-    &::-webkit-datetime-edit {
-      flex: 1 1 auto;
-      text-align: left;
-    }
-
     &::-webkit-calendar-picker-indicator {
-      margin-left: auto;
       cursor: pointer;
     }
 
