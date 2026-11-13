@@ -6018,3 +6018,411 @@ async fn repairs_open_request_blocks_device_update_and_act_over_http() {
     );
     env.ctx.shutdown.cancel();
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.4, план 41 (раунд 3): путь сотрудника на живом роутере (D-38, D-40)
+// ---------------------------------------------------------------------------
+
+/// Устройство в группе АРМ сотрудника: тот же набор строк, что у
+/// `repair_support::seed_user_group` (область `employee_device_ids`).
+async fn gt_seed_employee_device(env: &GtEnv, name: &str, inv: &str) -> i64 {
+    let employee_id = env.employee.user_id.expect("employee id");
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO devices (type_id, name, inventory_number, place_id, status_id, \
+         created_at_utc, updated_at_utc, version) \
+         VALUES (1, ?1, ?2, NULL, 1, 1700000000, 1700000000, 1)",
+        vec![gt_text(name), gt_text(inv)],
+    )
+    .await;
+    let device_id = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM devices WHERE inventory_number = ?1",
+        vec![gt_text(inv)],
+    )
+    .await;
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+         VALUES ('arm_gt41', 'АРМ-тест', 'workstation', 1700000000, 1700000000)",
+        vec![],
+    )
+    .await;
+    let type_id = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM group_types WHERE code = 'arm_gt41'",
+        vec![],
+    )
+    .await;
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO group_type_properties (type_id, name, data_type, created_at_utc, \
+         updated_at_utc) VALUES (?1, 'Пользователи', 'users', 1700000000, 1700000000)",
+        vec![gt_int(type_id)],
+    )
+    .await;
+    let prop_id = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM group_type_properties WHERE type_id = ?1",
+        vec![gt_int(type_id)],
+    )
+    .await;
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO groups (type_id, name, seq, version, created_at_utc, updated_at_utc) \
+         VALUES (?1, 'АРМ сотрудника', 1, 1, 1700000000, 1700000000)",
+        vec![gt_int(type_id)],
+    )
+    .await;
+    let group_id = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM groups WHERE type_id = ?1",
+        vec![gt_int(type_id)],
+    )
+    .await;
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+         VALUES (?1, ?2, 1700000000)",
+        vec![gt_int(device_id), gt_int(group_id)],
+    )
+    .await;
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO group_property_values (group_id, property_id, value_ref, updated_at_utc) \
+         VALUES (?1, ?2, ?3, 1700000000)",
+        vec![gt_int(group_id), gt_int(prop_id), gt_int(employee_id)],
+    )
+    .await;
+    device_id
+}
+
+/// Сотрудник по HTTP: создание ремонта, карточка, отмена, поглощённая и удалённая
+/// заявки. Отдельная функция (а не кейс монолита), см. `device_statuses_role_matrix`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn employee_repair_ui_flow_http() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let emp = env.employee_cookie.clone();
+        let dev = gt_seed_employee_device(&env, "ПК-1", "INV-GT41-1").await;
+        let dev2 = gt_seed_employee_device_extra(&env, "ПК-2", "INV-GT41-2").await;
+
+        // Что видит сотрудник при создании.
+        let (st, body) = gt_post(&env, &emp, "repairs_device_options", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "repairs_device_options: {body}");
+
+        // Ремонт на устройство своей группы АРМ.
+        let (st, created) = gt_post(
+            &env,
+            &emp,
+            "repairs_create",
+            json!({ "dto": { "deviceId": dev, "description": "Не включается" } }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "repairs_create(device): {created}");
+        let rid = created["request"]["id"].as_i64().expect("request id");
+        let ver = created["request"]["version"].as_i64().expect("version");
+
+        let (st, body) = gt_post(&env, &emp, "requests_get", json!({ "id": rid })).await;
+        assert_eq!(st, StatusCode::OK, "requests_get: {body}");
+        let (st, body) = gt_post(&env, &emp, "requests_get_history", json!({ "id": rid })).await;
+        assert_eq!(st, StatusCode::OK, "requests_get_history: {body}");
+
+        // Карточка: подпись статуса приходит в DTO (устройство засеяно статусом id=1).
+        let (st, state) =
+            gt_post(&env, &emp, "repairs_get_state", json!({ "requestId": rid })).await;
+        assert_eq!(st, StatusCode::OK, "repairs_get_state: {state}");
+        let expected = gt_db_string(
+            &env.ctx,
+            "SELECT ds.name FROM devices d JOIN device_statuses ds ON ds.id = d.status_id \
+             WHERE d.id = ?1",
+            vec![gt_int(dev)],
+        )
+        .await;
+        assert!(!expected.is_empty());
+        assert_eq!(
+            state["deviceStatusName"].as_str(),
+            Some(expected.as_str()),
+            "deviceStatusName должен совпасть с device_statuses.name: {state}"
+        );
+
+        for kind_name in ["attachments_list", "attachments_history"] {
+            let (st, body) = gt_post(
+                &env,
+                &emp,
+                kind_name,
+                json!({ "parentKind": "request", "parentId": rid }),
+            )
+            .await;
+            assert_eq!(st, StatusCode::OK, "{kind_name}: {body}");
+        }
+        let (st, body) = gt_post(&env, &emp, "requests_counts", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "requests_counts: {body}");
+        let (st, body) = gt_post(&env, &emp, "requests_list_categories", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "requests_list_categories: {body}");
+        let (st, body) = gt_post(&env, &emp, "request_printer_options", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "request_printer_options: {body}");
+
+        // Отмена автором: заявка остаётся доступной.
+        let (st, cancelled) = gt_post(
+            &env,
+            &emp,
+            "repairs_cancel_by_author",
+            json!({ "dto": { "requestId": rid, "version": ver } }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "repairs_cancel_by_author: {cancelled}");
+        let (st, body) = gt_post(&env, &emp, "requests_get", json!({ "id": rid })).await;
+        assert_eq!(st, StatusCode::OK, "requests_get после отмены: {body}");
+        assert_eq!(body["status"], "cancelled");
+        let (st, body) =
+            gt_post(&env, &emp, "repairs_get_state", json!({ "requestId": rid })).await;
+        assert_eq!(st, StatusCode::OK, "repairs_get_state после отмены: {body}");
+
+        // «Другое» сотрудника, поглощённое персоналом в открытую заявку устройства.
+        let (st, staff_req) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "repairs_create",
+            json!({ "dto": { "deviceId": dev2, "description": "Греется" } }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "admin repairs_create: {staff_req}");
+        let target_id = staff_req["request"]["id"].as_i64().unwrap();
+        let (st, body) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "repairs_accept",
+            json!({
+                "requestId": target_id,
+                "version": staff_req["request"]["version"],
+                "choice": { "kind": "stay" }
+            }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "admin repairs_accept target: {body}");
+
+        let (st, other) = gt_post(
+            &env,
+            &emp,
+            "repairs_create",
+            json!({ "dto": { "deviceId": null, "description": "Шумит и греется" } }),
+        )
+        .await;
+        assert_eq!(
+            st,
+            StatusCode::OK,
+            "employee repairs_create(другое): {other}"
+        );
+        let oid = other["request"]["id"].as_i64().unwrap();
+        let (st, acc) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "repairs_accept",
+            json!({
+                "requestId": oid,
+                "version": other["request"]["version"],
+                "choice": { "kind": "stay" }
+            }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "admin repairs_accept другое: {acc}");
+        let (st, merged) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "repairs_merge_into_open",
+            json!({ "dto": {
+                "requestId": oid,
+                "version": acc["request"]["version"],
+                "deviceId": dev2
+            } }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "repairs_merge_into_open: {merged}");
+        let (st, body) = gt_post(&env, &emp, "requests_get", json!({ "id": oid })).await;
+        assert_eq!(st, StatusCode::OK, "requests_get поглощённой: {body}");
+        let (st, hist) = gt_post(&env, &emp, "requests_get_history", json!({ "id": oid })).await;
+        assert_eq!(
+            st,
+            StatusCode::OK,
+            "requests_get_history поглощённой: {hist}"
+        );
+        assert!(
+            hist.as_array()
+                .expect("history array")
+                .iter()
+                .any(|h| h["relatedRequestId"].as_i64() == Some(target_id)),
+            "в истории поглощённой нет relatedRequestId цели: {hist}"
+        );
+        let (st, body) =
+            gt_post(&env, &emp, "repairs_get_state", json!({ "requestId": oid })).await;
+        assert_eq!(st, StatusCode::OK, "repairs_get_state поглощённой: {body}");
+
+        // Удалённая персоналом (обычная заявка: ремонтную requests_delete не удаляет):
+        // сотрудник получает 404 с кодом NOT_FOUND.
+        let (st, third) = gt_post(
+            &env,
+            &emp,
+            "requests_create",
+            json!({ "dto": {
+                "requestType": "free_form", "printerDeviceId": null,
+                "cartridgeModelId": null, "categoryId": null, "description": "Скрипит"
+            } }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "requests_create(для удаления): {third}");
+        let tid = third["id"].as_i64().unwrap();
+        let (st, body) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "requests_delete",
+            json!({ "id": tid, "version": third["version"] }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "requests_delete: {body}");
+        let (st, body) = gt_post(&env, &emp, "requests_get", json!({ "id": tid })).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "requests_get удалённой: {body}");
+        assert_eq!(body["code"], "NOT_FOUND", "{body}");
+
+        // Закрытое сотруднику остаётся закрытым: UI не может на это рассчитывать.
+        for (name, payload) in [
+            ("device_statuses_list", json!({})),
+            ("repairs_last_places", json!({})),
+            ("repairs_open_for_devices", json!({ "deviceIds": [dev] })),
+            ("repairs_device_history", json!({ "deviceId": dev })),
+        ] {
+            let (st, body) = gt_post(&env, &emp, name, payload).await;
+            assert_eq!(st, StatusCode::FORBIDDEN, "employee -> {name}: {body}");
+        }
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("employee_repair_ui_flow_http exceeded 60s");
+}
+
+/// Второе устройство без новой группы (группа и сотрудник уже заведены).
+async fn gt_seed_employee_device_extra(env: &GtEnv, name: &str, inv: &str) -> i64 {
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO devices (type_id, name, inventory_number, place_id, status_id, \
+         created_at_utc, updated_at_utc, version) \
+         VALUES (1, ?1, ?2, NULL, 1, 1700000000, 1700000000, 1)",
+        vec![gt_text(name), gt_text(inv)],
+    )
+    .await;
+    let device_id = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM devices WHERE inventory_number = ?1",
+        vec![gt_text(inv)],
+    )
+    .await;
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+         SELECT ?1, id, 1700000000 FROM groups WHERE name = 'АРМ сотрудника'",
+        vec![gt_int(device_id)],
+    )
+    .await;
+    device_id
+}
+
+/// Команды, которые сотрудник вызывает из своего UI (имя + валидный payload).
+/// Единственный источник для `ui/scripts/fixtures/employee-allowed-commands.json`.
+fn employee_ui_commands() -> Vec<(&'static str, serde_json::Value)> {
+    vec![
+        (
+            "attachments_history",
+            json!({ "parentKind": "request", "parentId": 1 }),
+        ),
+        (
+            "attachments_list",
+            json!({ "parentKind": "request", "parentId": 1 }),
+        ),
+        ("auth_logout", json!({})),
+        ("dashboard_get_all_widgets", json!({ "period": null })),
+        (
+            "repairs_cancel_by_author",
+            json!({ "dto": { "requestId": 1, "version": 1 } }),
+        ),
+        (
+            "repairs_create",
+            json!({ "dto": { "deviceId": null, "description": "Шумит" } }),
+        ),
+        ("repairs_device_options", json!({})),
+        ("repairs_get_state", json!({ "requestId": 1 })),
+        ("request_printer_options", json!({})),
+        ("requests_cancel", json!({ "id": 1, "version": 1 })),
+        ("requests_counts", json!({})),
+        (
+            "requests_create",
+            json!({ "dto": {
+                "requestType": "free_form", "printerDeviceId": null,
+                "cartridgeModelId": null, "categoryId": null, "description": "Шумит"
+            } }),
+        ),
+        ("requests_get", json!({ "id": 1 })),
+        ("requests_get_history", json!({ "id": 1 })),
+        (
+            "requests_list",
+            json!({
+                "filter": { "status": null, "requestType": null,
+                            "assignedToUserId": null, "requestedByUserId": null },
+                "pagination": { "offset": 0, "limit": 20 }
+            }),
+        ),
+        ("requests_list_categories", json!({})),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn employee_allowed_fixture_sound() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let cmds = employee_ui_commands();
+        let mut names: Vec<&str> = cmds.iter().map(|(n, _)| *n).collect();
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        assert_eq!(names, sorted, "EMPLOYEE_UI_COMMANDS должен быть отсортирован");
+        names.dedup();
+        assert_eq!(names.len(), cmds.len(), "дубликаты в списке команд");
+
+        // Ни одна команда списка не отказана сотруднику по правам. Ответ при
+        // не-2xx обязан быть структурированной ошибкой приложения ({code}), а не
+        // отказом разбора payload (иначе проба не дошла до authorize).
+        for (name, payload) in &cmds {
+            // Выход сбрасывает сессию (последующие вызовы дали бы 401) и authorize не вызывает.
+            if *name == "auth_logout" {
+                continue;
+            }
+            let (st, body) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+            assert!(
+                st != StatusCode::UNAUTHORIZED && st != StatusCode::FORBIDDEN,
+                "employee -> {name}: {st} ({body}); уберите команду из списка или откройте её"
+            );
+            if !st.is_success() {
+                assert!(
+                    body.get("code").is_some(),
+                    "employee -> {name}: {st} без кода ошибки приложения (payload не разобран?): {body}"
+                );
+            }
+        }
+
+        let expected: Vec<String> = names.iter().map(|s| (*s).to_string()).collect();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../ui/scripts/fixtures/employee-allowed-commands.json");
+        let rendered = format!("{}\n", serde_json::to_string_pretty(&expected).unwrap());
+        if std::env::var("TRACKLY_UPDATE_FIXTURES").as_deref() == Ok("1") {
+            std::fs::write(&path, &rendered).expect("write fixture");
+        }
+        let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(
+            on_disk, rendered,
+            "пересоздайте ui/scripts/fixtures/employee-allowed-commands.json \
+             (TRACKLY_UPDATE_FIXTURES=1 cargo test -p trackly-app --test role_endpoint_matrix \
+             employee_allowed_fixture_sound); ожидаемое содержимое файла — выше (right)"
+        );
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("employee_allowed_fixture_sound exceeded 60s");
+}

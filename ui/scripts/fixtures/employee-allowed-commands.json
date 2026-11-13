@@ -1,0 +1,18 @@
+[
+  "attachments_history",
+  "attachments_list",
+  "auth_logout",
+  "dashboard_get_all_widgets",
+  "repairs_cancel_by_author",
+  "repairs_create",
+  "repairs_device_options",
+  "repairs_get_state",
+  "request_printer_options",
+  "requests_cancel",
+  "requests_counts",
+  "requests_create",
+  "requests_get",
+  "requests_get_history",
+  "requests_list",
+  "requests_list_categories"
+]
