@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Router from 'svelte-spa-router';
   import { routes, employeeRoutes } from './routes';
   import Layout from './features/layout/Layout.svelte';
@@ -10,6 +10,8 @@
   import { apiCall } from '$lib/api/client';
   import { trySilentAdSso } from '$lib/api/adSso';
   import { authStore } from '$lib/stores/auth.svelte';
+  import { resetUserScoped } from '$lib/stores/userScoped.svelte';
+  import { clearToasts } from '$lib/stores/toast.svelte';
   import type { UserRole } from '$lib/stores/auth.svelte';
   import type { AuthStatusDto } from './bindings';
 
@@ -61,6 +63,30 @@
       window.location.hash = '#/';
     }
   }
+
+  // D-39: смена пользователя в той же вкладке не переносит клиентское состояние.
+  // $effect.pre, а не $effect: сброс должен пройти ДО монтирования дочерних
+  // экранов, иначе их onMount успел бы начать загрузку справочника, а сброс
+  // отбросил бы её результат и оставил стор в 'idle'. Читает только
+  // authStore.user?.id; запись в $state-сторы идёт внутри untrack.
+  // prevUserId: undefined — первый прогон (не смена); null — никто не вошёл.
+  // Восстановление сессии и первый вход (null -> id) хеш и тосты НЕ трогают:
+  // перезагрузка страницы с #/requests?id=N под тем же пользователем сохраняет
+  // ссылку. Хеш и тосты чистятся, только когда прежний пользователь был (не null).
+  let prevUserId: number | null | undefined = undefined;
+  $effect.pre(() => {
+    const id = authStore.user?.id ?? null;
+    untrack(() => {
+      if (prevUserId !== undefined && prevUserId !== id) {
+        resetUserScoped();
+        if (prevUserId !== null) {
+          clearToasts();
+          if (/[?&]id=/.test(window.location.hash)) window.location.hash = '#/';
+        }
+      }
+      prevUserId = id;
+    });
+  });
 
   onMount(async () => {
     try {

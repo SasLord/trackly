@@ -1,5 +1,6 @@
 <script module lang="ts">
   import { groupTypes, groups } from '$lib/api/groups';
+  import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
   import type { GroupTypeDto } from '../../bindings';
 
   // Типы групп общие для всех строк: меню порождает быстрые действия из них
@@ -9,20 +10,29 @@
   // администратором доходило без перезапуска.
   const typesCache = $state<{ items: GroupTypeDto[] | null }>({ items: null });
   let typesInflight: Promise<void> | null = null;
+  // D-39: поколение сброса; ответ прежнего пользователя в кэш не пишется.
+  let typesGeneration = 0;
+
+  registerUserScopedReset(() => {
+    typesGeneration += 1;
+    typesCache.items = null;
+    typesInflight = null;
+  });
 
   function refreshTypes(): Promise<void> {
     if (typesInflight) return typesInflight;
+    const gen = typesGeneration;
     typesInflight = groupTypes
       .list(false)
       .then((rows) => {
-        typesCache.items = rows;
+        if (gen === typesGeneration) typesCache.items = rows;
       })
       .catch(() => {
         // Ошибка загрузки: быстрых действий в меню не будет, остальные пункты
         // работают (меню никогда не открывается с пустой панелью).
       })
       .finally(() => {
-        typesInflight = null;
+        if (gen === typesGeneration) typesInflight = null;
       });
     return typesInflight;
   }

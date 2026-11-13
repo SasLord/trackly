@@ -14,6 +14,8 @@
 
 import { devices } from '$lib/api/devices';
 import { pushToast } from '$lib/stores/toast.svelte';
+import { authStore } from '$lib/stores/auth.svelte';
+import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
 import type { DeviceTypeDto } from '../../bindings';
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
@@ -25,15 +27,30 @@ const deviceTypesStore = $state<{ items: DeviceTypeDto[]; state: LoadState }>({
 
 let inflight: Promise<void> | null = null;
 let errorToasted = false;
+// Поколение сброса (D-39): ответ, начатый прежним пользователем и пришедший
+// после смены входа, в стор не пишется.
+let generation = 0;
+
+registerUserScopedReset(() => {
+  generation += 1;
+  deviceTypesStore.items = [];
+  deviceTypesStore.state = 'idle';
+  inflight = null;
+  errorToasted = false;
+});
 
 /** Грузит справочник один раз за сессию; параллельные вызовы делят один запрос. */
 export function ensureLoaded(): Promise<void> {
+  // D-38: справочник закрыт для employee; не обращаемся к серверу и не шумим тостом.
+  if (authStore.user?.role === 'employee') return Promise.resolve();
   if (deviceTypesStore.state === 'ready') return Promise.resolve();
   if (inflight) return inflight;
   deviceTypesStore.state = 'loading';
+  const gen = generation;
   inflight = devices
     .types()
     .then((rows) => {
+      if (gen !== generation) return;
       // apiCall отдаёт text/html как строку; без проверки формы такой «успех»
       // (например, index.html вместо JSON) дал бы state='ready' и массив символов.
       if (
@@ -46,6 +63,7 @@ export function ensureLoaded(): Promise<void> {
       deviceTypesStore.state = 'ready';
     })
     .catch(() => {
+      if (gen !== generation) return;
       deviceTypesStore.state = 'error';
       if (!errorToasted) {
         errorToasted = true;
@@ -56,7 +74,7 @@ export function ensureLoaded(): Promise<void> {
       }
     })
     .finally(() => {
-      inflight = null;
+      if (gen === generation) inflight = null;
     });
   return inflight;
 }

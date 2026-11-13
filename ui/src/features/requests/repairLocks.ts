@@ -5,6 +5,7 @@
 import { push } from 'svelte-spa-router';
 import { authStore } from '$lib/stores/auth.svelte';
 import { groups } from '$lib/api/groups';
+import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
 import { repairs } from './api';
 
 /** Ремонтные команды доступны менеджеру и администратору (TransitionRequests). */
@@ -55,6 +56,11 @@ export function openRepairRequest(requestId: number): void {
 type GroupPlace = { id: number | null; path: string | null };
 const GROUP_PLACE_TTL_MS = 15_000;
 const groupPlaceCache = new Map<number, { at: number; p: Promise<GroupPlace> }>();
+
+// D-39: место группы прежнего пользователя не переносится новому.
+registerUserScopedReset(() => {
+  groupPlaceCache.clear();
+});
 
 export function groupPlace(groupId: number): Promise<GroupPlace> {
   const hit = groupPlaceCache.get(groupId);

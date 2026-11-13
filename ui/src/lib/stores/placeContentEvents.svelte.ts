@@ -38,6 +38,8 @@
 //     not a rejected/deferred idea per 40-CONTEXT.md's "deferred idea"
 //     convention.
 
+import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+
 export const placeContentEventsStore = $state<{
   seq: number;
   placeIds: number[];
@@ -46,6 +48,13 @@ export const placeContentEventsStore = $state<{
   seq: 0,
   placeIds: [],
   reloadSeq: 0,
+});
+
+// D-39: при смене пользователя счётчики событий прежней сессии обнуляются.
+registerUserScopedReset(() => {
+  placeContentEventsStore.seq = 0;
+  placeContentEventsStore.placeIds = [];
+  placeContentEventsStore.reloadSeq = 0;
 });
 
 export function notifyPlaceContentChanged(placeIds: number[]): void {

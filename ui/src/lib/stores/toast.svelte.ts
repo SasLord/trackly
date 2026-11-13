@@ -118,6 +118,11 @@ export function removeToast(id: string): void {
   toastStore.items = toastStore.items.filter((t) => t.id !== id);
 }
 
+/** Снимает все тосты (D-39: тосты прежнего пользователя не показываются новому). */
+export function clearToasts(): void {
+  toastStore.items = [];
+}
+
 // Convenience helpers
 export const toast = {
   success: (msg: string) => pushToast('success', msg),
