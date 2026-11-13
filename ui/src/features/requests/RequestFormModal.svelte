@@ -14,6 +14,7 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { parseAppError } from '$lib/api/errors';
   import { requests, repairs } from './api';
   import type { RequestCategoryDto, RequestPrinterOptionDto } from '../../bindings-phase6';
   import type { RepairDeviceOptionDto } from '../../bindings';
@@ -103,6 +104,7 @@
   // emptied this list for Employee since ReadData/ReadPrinters got gated).
   let availablePrinters = $state<RequestPrinterOptionDto[]>([]);
   let printersLoading = $state(false);
+  let printersLoaded = $state(false);
 
   // Category list — loaded from the server {id, name} endpoint (D-CAT-01).
   // No more hardcoded array — request_categories rows can change without a
@@ -143,6 +145,7 @@
       description = '';
       categoryId = null;
       printerError = '';
+      printersLoaded = false;
       descError = '';
       repairChoice = null;
       repairQuery = '';
@@ -162,6 +165,7 @@
     printersLoading = true;
     try {
       availablePrinters = await requests.printerOptions();
+      printersLoaded = true;
     } catch {
       // Non-fatal — printers list stays empty.
     } finally {
@@ -283,6 +287,17 @@
       onSuccess(created);
       onClose();
     } catch (e: unknown) {
+      // D-41: принтер вне области сотрудника (устаревший список, гонка) —
+      // понятное пояснение у поля; список обновляем. Общий тост 403 даёт client.ts.
+      if (
+        requestType === 'cartridge_replace' &&
+        ['FORBIDDEN', 'Forbidden'].includes(parseAppError(e).code)
+      ) {
+        printerError = 'Этот принтер недоступен: он не связан с вашей группой. Выберите другой.';
+        printerDeviceId = null;
+        void loadPrinters();
+        return;
+      }
       const msg =
         e && typeof e === 'object' && 'message' in e
           ? String((e as { message: unknown }).message)
@@ -356,6 +371,12 @@
           {/if}
           {#if printersLoading && availablePrinters.length === 0}
             <span class="field-hint">Загрузка принтеров…</span>
+          {/if}
+          {#if printersLoaded && availablePrinters.length === 0}
+            <span class="field-hint"
+              >Нет доступных принтеров: принтер должен быть связан с вашей группой. Обратитесь к
+              Специалисту.</span
+            >
           {/if}
         </div>
 

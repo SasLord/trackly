@@ -19,6 +19,11 @@
 //      handleSelectedLoadError; он проверяет code === 'NOT_FOUND' ДО сырого
 //      pushToast('error', ...), снимает выбор и показывает русский info-тост; каждый
 //      requests.get(...) страницы имеет такой обработчик.
+//  [F] RequestFormModal (D-41): пояснение «Нет доступных принтеров» стоит внутри
+//      {#if printersLoaded && availablePrinters.length === 0}, без printersLoading в
+//      условии; printersLoaded = true только сразу после await requests.printerOptions()
+//      (не в finally); клиентского отбора availablePrinters (.filter/.slice) нет:
+//      область принтеров определяет сервер.
 //
 // Usage:
 //   node scripts/check-request-flow.mjs
@@ -111,6 +116,28 @@ export function check({ detail, form, page, send }) {
   const handled = (p.match(/\.catch\(\(e: unknown\) => handleSelectedLoadError\(/g) ?? []).length;
   if (gets !== handled)
     bad.push(`[E] RequestsPage: requests.get — ${gets}, с handleSelectedLoadError — ${handled}`);
+
+  // [F]
+  const em = /\{#if ([^}]*)\}\s*<span[^>]*>[^<]*Нет доступных принтеров/.exec(f);
+  if (!em) bad.push('[F] пояснение «Нет доступных принтеров» не внутри {#if …}');
+  else {
+    if (!/printersLoaded/.test(em[1]) || !/availablePrinters\.length === 0/.test(em[1]))
+      bad.push('[F] условие пояснения не printersLoaded && availablePrinters.length === 0');
+    if (/printersLoading/.test(em[1])) bad.push('[F] условие пояснения содержит printersLoading');
+  }
+  const lp = /async function loadPrinters\(\)[^{]*\{([\s\S]*?)\n {2}\}\n/.exec(f);
+  if (!lp) bad.push('[F] нет loadPrinters');
+  else {
+    const t = lp[1];
+    const fin = t.indexOf('finally');
+    const call = t.indexOf('await requests.printerOptions()');
+    const set = t.search(/printersLoaded = true/);
+    if (call < 0) bad.push('[F] loadPrinters не зовёт await requests.printerOptions()');
+    if (set < 0 || (call >= 0 && set < call) || (fin >= 0 && set > fin))
+      bad.push('[F] printersLoaded = true не сразу после await printerOptions (вне finally)');
+  }
+  if (/availablePrinters\s*(\.filter\(|\.slice\(|=\s*availablePrinters\b)/.test(f))
+    bad.push('[F] клиентский отбор availablePrinters запрещён (D-41: область у сервера)');
   return bad;
 }
 
@@ -161,6 +188,22 @@ function selftest() {
       'page',
       ".catch((e: unknown) => handleSelectedLoadError(e, 'ws'))",
       '.catch(() => {})',
+    ),
+    'no-empty-text': mut('form', 'Нет доступных принтеров', 'Пусто'),
+    'empty-uses-loading': mut(
+      'form',
+      '{#if printersLoaded && availablePrinters.length === 0}',
+      '{#if printersLoading && availablePrinters.length === 0}',
+    ),
+    'loaded-before-await': mut(
+      'form',
+      '      availablePrinters = await requests.printerOptions();\n      printersLoaded = true;',
+      '      printersLoaded = true;\n      availablePrinters = await requests.printerOptions();',
+    ),
+    'client-filter': mut(
+      'form',
+      'options={availablePrinters}',
+      'options={availablePrinters.filter((p) => p.id > 0)}',
     ),
     'no-selectedId': mut('page', '      selectedId = created.id;', ''),
     'no-onOpenRequest': mut('page', 'onOpenRequest={(id) => (selectedId = id)}', ''),
