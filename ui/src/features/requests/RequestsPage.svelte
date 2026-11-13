@@ -9,6 +9,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import { apiCall } from '$lib/api/client';
+  import { parseAppError } from '$lib/api/errors';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import RequestsMasterDetail from './RequestsMasterDetail.svelte';
   import RequestsSearchAndTabs from './RequestsSearchAndTabs.svelte';
@@ -89,18 +90,34 @@
       .then((dto) => {
         selectedRequest = dto;
       })
-      .catch((e: unknown) => {
-        const msg =
-          e && typeof e === 'object' && 'message' in e
-            ? String((e as { message: unknown }).message)
-            : 'Не удалось загрузить данные заявки';
-        pushToast('error', msg);
-        selectedRequest = null;
-      })
+      .catch((e: unknown) => handleSelectedLoadError(e, 'load'))
       .finally(() => {
         detailLoading = false;
       });
   });
+
+  // D-40: заявка выбранной карточки исчезла (удалена, нет такого номера). Вместо сырого
+  // «request N not found» снимаем выбор, обновляем список и счётчики и пишем по-русски.
+  // 'load' — загрузка выбранной заявки (тост и для прочих ошибок), 'transition' — повторное
+  // чтение после действия (тост только для NOT_FOUND), 'ws' — по событию (без тостов).
+  function handleSelectedLoadError(e: unknown, mode: 'load' | 'transition' | 'ws') {
+    if (parseAppError(e).code === 'NOT_FOUND') {
+      selectedId = null;
+      selectedRequest = null;
+      void refresh();
+      if (mode !== 'ws') pushToast('info', 'Заявка не найдена: возможно, её удалили');
+      return;
+    }
+    if (mode === 'ws') return;
+    selectedRequest = null;
+    if (mode === 'load') {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось загрузить данные заявки';
+      pushToast('error', msg);
+    }
+  }
 
   async function refresh() {
     listLoading = true;
@@ -148,9 +165,7 @@
           .then((dto) => {
             selectedRequest = dto;
           })
-          .catch(() => {
-            // Non-fatal.
-          })
+          .catch((e: unknown) => handleSelectedLoadError(e, 'ws'))
           .finally(() => {
             detailLoading = false;
           });
@@ -192,9 +207,7 @@
         .then((dto) => {
           selectedRequest = dto;
         })
-        .catch(() => {
-          selectedRequest = null;
-        })
+        .catch((e: unknown) => handleSelectedLoadError(e, 'transition'))
         .finally(() => {
           detailLoading = false;
         });

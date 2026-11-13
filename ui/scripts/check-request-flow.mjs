@@ -15,6 +15,10 @@
 //      RequestsPage: onSuccess формы присваивает selectedId из аргумента и не зовёт
 //      handleStatusFilterChange; RequestDetail получает onOpenRequest, ставящий selectedId.
 //  [D] RepairSendModal: receiverName предзаполняется из lastReceiverName.
+//  [E] RequestsPage (D-40): ошибка чтения выбранной заявки идёт через
+//      handleSelectedLoadError; он проверяет code === 'NOT_FOUND' ДО сырого
+//      pushToast('error', ...), снимает выбор и показывает русский info-тост; каждый
+//      requests.get(...) страницы имеет такой обработчик.
 //
 // Usage:
 //   node scripts/check-request-flow.mjs
@@ -87,6 +91,26 @@ export function check({ detail, form, page, send }) {
   // [D]
   if (!/receiverName = last\.lastReceiverName/.test(s))
     bad.push('[D] RepairSendModal не предзаполняет receiverName из lastReceiverName');
+
+  // [E]
+  const fe = /function handleSelectedLoadError\([^)]*\)[^{]*\{([\s\S]*?)\n {2}\}\n/.exec(p);
+  if (!fe) bad.push('[E] RequestsPage: нет handleSelectedLoadError');
+  else {
+    const body = fe[1];
+    const nf = body.search(/parseAppError\([^)]*\)\.code === 'NOT_FOUND'/);
+    const raw = body.indexOf("pushToast('error'");
+    if (nf < 0) bad.push('[E] handleSelectedLoadError не проверяет code === NOT_FOUND');
+    else if (raw >= 0 && nf > raw)
+      bad.push("[E] проверка NOT_FOUND стоит после сырого pushToast('error')");
+    if (!/selectedId = null/.test(body.slice(0, raw < 0 ? undefined : raw)))
+      bad.push('[E] при NOT_FOUND выбор не снимается');
+    if (!/pushToast\('info', 'Заявка не найдена: возможно, её удалили'\)/.test(body))
+      bad.push('[E] нет русского info-тоста «Заявка не найдена: возможно, её удалили»');
+  }
+  const gets = (p.match(/requests\s*\.get\(/g) ?? []).length;
+  const handled = (p.match(/\.catch\(\(e: unknown\) => handleSelectedLoadError\(/g) ?? []).length;
+  if (gets !== handled)
+    bad.push(`[E] RequestsPage: requests.get — ${gets}, с handleSelectedLoadError — ${handled}`);
   return bad;
 }
 
@@ -127,6 +151,16 @@ function selftest() {
       'page',
       '      filter = { ...filter, status: null };',
       '      handleStatusFilterChange({ ...filter, status: null });',
+    ),
+    'no-notfound-check': mut(
+      'page',
+      "parseAppError(e).code === 'NOT_FOUND'",
+      "parseAppError(e).code === 'X'",
+    ),
+    'raw-catch-left': mut(
+      'page',
+      ".catch((e: unknown) => handleSelectedLoadError(e, 'ws'))",
+      '.catch(() => {})',
     ),
     'no-selectedId': mut('page', '      selectedId = created.id;', ''),
     'no-onOpenRequest': mut('page', 'onOpenRequest={(id) => (selectedId = id)}', ''),
