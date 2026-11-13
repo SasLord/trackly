@@ -14,6 +14,12 @@
 // Переопределения :global(.date-picker) в любом .svelte не должны включать
 // flex/grid (размеры — можно).
 //
+// Вторая часть гейта (раунд 4, план 48): значение даты прижато влево
+// (::-webkit-date-and-time-value), собственная кнопка календаря для WebKit стоит
+// ТОЛЬКО под {#if} от needsOwnCalendarIcon (не скрыта CSS — иначе дубль в Chromium),
+// showPicker вызывается в try под typeof-охраной с фоллбэком focus, цвет иконки — токен,
+// таблица User-Agent детектора. Проверяется вложенность, а не число вхождений.
+//
 // Гейт структурный (чтение исходников). Рантайм раскладки доказывает только
 // ручная проба scripts/probe-date-picker-chromium.mjs (настоящий Chromium).
 //
@@ -23,7 +29,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +78,13 @@ function topLevelDecls(body) {
   return decls;
 }
 
+/** Тело `{...}` вложенного/верхнего блока по заголовку-регэкспу, либо null. */
+function findBlock(css, headerRe) {
+  const m = headerRe.exec(css);
+  if (!m) return null;
+  return blockBody(css, m.index + m[0].length - 1);
+}
+
 const NEUTRAL = new Set(['stretch', 'normal']);
 
 /** Нарушения для DatePicker.svelte: список строк. */
@@ -105,6 +118,179 @@ export function check(raw) {
   return bad;
 }
 
+const ICON_WHY_DUP =
+  'кнопка календаря должна быть под {#if} от needsOwnCalendarIcon, а не скрыта CSS (дубль иконки в Chromium/WebView2)';
+
+/** Нарушения иконки/выравнивания в DatePicker.svelte (весь файл, не только style). */
+export function checkIcon(raw) {
+  const bad = [];
+  const clean = stripComments(raw);
+  const styleM = clean.match(/<style\b[^>]*>([^]*?)<\/style>/);
+  const css = styleM ? styleM[1] : '';
+  const scriptM = clean.match(/<script\b[^>]*>([^]*?)<\/script>/);
+  const script = scriptM ? scriptM[1] : '';
+  const markup = clean
+    .replace(/<style\b[^>]*>[^]*?<\/style>/g, '')
+    .replace(/<script\b[^>]*>[^]*?<\/script>/g, '');
+
+  // (а) значение слева в WebKit
+  const dp = findBlock(css, /(^|[\s}])\.date-picker\s*\{/);
+  const val = dp ? findBlock(dp, /&?::-webkit-date-and-time-value\s*\{/) : null;
+  const ta = val === null ? undefined : topLevelDecls(val)['text-align'];
+  if (ta !== 'left' && ta !== 'start') {
+    bad.push(
+      '.date-picker без ::-webkit-date-and-time-value { text-align: left } — WKWebView центрирует значение даты',
+    );
+  }
+
+  // (е) импорт и ownIcon
+  if (
+    !/import\s*\{[^}]*\bneedsOwnCalendarIcon\b[^}]*\}\s*from\s*['"][^'"]*calendarIcon(?:\.js)?['"]/.test(
+      script,
+    )
+  ) {
+    bad.push('нет импорта needsOwnCalendarIcon из calendarIcon');
+  }
+
+  // (б) кнопка
+  const btnM = /<button\b[^>]*\bclass="date-picker-btn"[^>]*>/.exec(markup);
+  if (!btnM) {
+    bad.push('нет button.date-picker-btn — в WKWebView нет иконки календаря');
+  } else {
+    if (!/\btype="button"/.test(btnM[0])) bad.push('button.date-picker-btn без type="button"');
+    if (!/\baria-label="[^"]+"/.test(btnM[0])) bad.push('button.date-picker-btn без aria-label');
+
+    // (в) кнопка внутри {#if ...needsOwnCalendarIcon|ownIcon...} без {:else} до неё
+    const stack = [];
+    let guarded;
+    const tok = /\{#if\b([^}]*)\}|\{:else[^}]*\}|\{\/if\}/g;
+    for (const t of markup.matchAll(tok)) {
+      if (t.index >= btnM.index) break;
+      if (t[0].startsWith('{#if')) stack.push({ cond: t[1], inElse: false });
+      else if (t[0].startsWith('{:else')) {
+        if (stack.length) stack[stack.length - 1].inElse = true;
+      } else stack.pop();
+    }
+    guarded = stack.some((f) => !f.inElse && /\b(ownIcon|needsOwnCalendarIcon)\b/.test(f.cond));
+    if (!guarded) bad.push(ICON_WHY_DUP);
+    if (guarded && /\bownIcon\b/.test(stack.map((f) => f.cond).join(' '))) {
+      if (!/\bownIcon\s*=\s*needsOwnCalendarIcon\s*\(/.test(script)) {
+        bad.push('ownIcon не вычисляется через needsOwnCalendarIcon(...)');
+      }
+    }
+
+    // (г) обработчик клика
+    const hm = /\bonclick=\{\s*([A-Za-z_$][\w$]*)\s*\}/.exec(btnM[0]);
+    const fnRe = hm ? new RegExp('function\\s+' + hm[1] + '\\s*\\([^)]*\\)\\s*\\{') : null;
+    const fnBody = fnRe ? findBlock(script, fnRe) : null;
+    if (fnBody === null) {
+      bad.push('у button.date-picker-btn нет onclick={функция} с объявленной функцией');
+    } else {
+      const tryM = /\btry\s*\{/.exec(fnBody);
+      const tryBody = tryM ? blockBody(fnBody, tryM.index + tryM[0].length - 1) : '';
+      const rest = tryM
+        ? fnBody.slice(0, tryM.index) +
+          fnBody.slice(tryM.index + tryM[0].length + tryBody.length + 1)
+        : fnBody;
+      if (!/typeof\s+[\w$.]+\.showPicker\s*===\s*['"]function['"]/.test(fnBody)) {
+        bad.push("обработчик без охраны typeof …showPicker === 'function'");
+      }
+      if (!/\.showPicker\s*\(/.test(tryBody)) {
+        bad.push('вызов showPicker() вне try — NotAllowedError/SecurityError уронят обработчик');
+      } else if (/\.showPicker\s*\(/.test(rest)) {
+        bad.push('вызов showPicker() и вне try');
+      }
+      if (!/\.focus\s*\(\s*\)/.test(rest)) {
+        bad.push('нет фоллбэка .focus() при отказе/отсутствии showPicker');
+      }
+    }
+  }
+
+  // (д) цвет иконки — токен
+  const btnCss = findBlock(css, /(^|[\s}])\.date-picker-btn\s*\{/);
+  if (btnCss !== null) {
+    const color = topLevelDecls(btnCss).color ?? '';
+    if (!/^var\(--tr-[\w-]+\)$/.test(color)) {
+      bad.push(`.date-picker-btn color: ${color || '(нет)'} — нужен токен var(--tr-…)`);
+    }
+    if (/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/.test(btnCss)) {
+      bad.push('.date-picker-btn: хардкод цвета (hex/rgb/hsl) вместо токена');
+    }
+    if (/\bdisplay\s*:\s*none\b/.test(btnCss)) {
+      bad.push(`.date-picker-btn скрыт через CSS — ${ICON_WHY_DUP}`);
+    }
+  } else if (btnM) {
+    bad.push('нет стилей .date-picker-btn');
+  }
+  return bad;
+}
+
+export const UA_TABLE = [
+  [
+    'Chrome Windows',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    false,
+  ],
+  [
+    'Chrome macOS',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    false,
+  ],
+  [
+    'Edge / WebView2',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+    false,
+  ],
+  [
+    'Firefox',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
+    false,
+  ],
+  [
+    'Opera',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 OPR/115.0.0.0',
+    false,
+  ],
+  [
+    'Safari macOS',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    true,
+  ],
+  [
+    'Tauri WKWebView macOS',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)',
+    true,
+  ],
+  [
+    'Safari iPhone',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+    false,
+  ],
+  [
+    'Chrome iOS',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0.0.0 Mobile/15E148 Safari/604.1',
+    false,
+  ],
+  [
+    'Chrome Android',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+    false,
+  ],
+  ['пустая строка', '', false],
+  ['undefined', undefined, false],
+];
+
+/** Расхождения детектора с таблицей UA. */
+export function checkDetector(fn) {
+  const bad = [];
+  for (const [name, ua, want] of UA_TABLE) {
+    const got = fn(ua);
+    if (got !== want)
+      bad.push(`needsOwnCalendarIcon(${name}: ${JSON.stringify(ua)}) = ${got}, ожидалось ${want}`);
+  }
+  return bad;
+}
+
 /** Нарушения переопределений :global(.date-picker) в одном .svelte. */
 export function checkOverrides(raw, file = '?') {
   const bad = [];
@@ -132,6 +318,80 @@ function walk(dir, out = []) {
 
 const wrap = (decls) =>
   `<input class="date-picker"/><style lang="scss">.date-picker { ${decls} }</style>`;
+
+export const CLEAN = `<script lang="ts">
+  import { needsOwnCalendarIcon } from '$lib/utils/calendarIcon.js';
+  const ownIcon = needsOwnCalendarIcon(navigator.userAgent);
+  function openPicker() {
+    if (typeof inputEl.showPicker === 'function') {
+      try {
+        inputEl.showPicker();
+        return;
+      } catch {
+        // отказ
+      }
+    }
+    inputEl.focus();
+  }
+</script>
+<span class="date-picker-field">
+  <input type="date" class="date-picker" />
+  {#if ownIcon && !disabled}
+    <button type="button" class="date-picker-btn" aria-label="Выбрать дату" onclick={openPicker}></button>
+  {/if}
+</span>
+<style lang="scss">
+  .date-picker-btn { color: var(--tr-text-secondary); &:hover { color: var(--tr-text-primary); } }
+  .date-picker {
+    display: flex; flex-direction: column;
+    &::-webkit-date-and-time-value { text-align: left; }
+  }
+</style>`;
+
+export function iconFixtures() {
+  const rep = (a, b) => {
+    if (CLEAN.split(a).length !== 2) throw new Error('якорь фикстуры не уникален: ' + a);
+    return CLEAN.replace(a, b);
+  };
+  const bad = {
+    'нет text-align': rep('text-align: left;', 'color: red;'),
+    'text-align: center': rep('text-align: left;', 'text-align: center;'),
+    'text-align только в комментарии': rep('text-align: left;', '/* text-align: left; */'),
+    'нет кнопки': rep(/<button[^]*?<\/button>/.exec(CLEAN)[0], ''),
+    'кнопка только в HTML-комментарии': rep(
+      /<button[^]*?<\/button>/.exec(CLEAN)[0],
+      '<!-- <button type="button" class="date-picker-btn" aria-label="x"></button> -->',
+    ),
+    'без type=button': rep('<button type="button" class', '<button class'),
+    'без aria-label': rep(' aria-label="Выбрать дату"', ''),
+    'кнопка безусловна': rep('{#if ownIcon && !disabled}', '{#if !disabled}'),
+    'кнопка перед {#if}': rep(
+      '{#if ownIcon && !disabled}\n    <button',
+      '<button type="button" class="date-picker-btn" aria-label="x" onclick={openPicker}></button>\n  {#if ownIcon}\n  {/if}\n  {#if ownIcon}\n    <button',
+    ).replace(
+      /\{#if ownIcon\}\n\s*\{\/if\}\n\s*\{#if ownIcon\}\n\s*<button type="button" class="date-picker-btn" aria-label="Выбрать дату" onclick=\{openPicker\}><\/button>\n\s*\{\/if\}/,
+      '{#if ownIcon}\n  {/if}',
+    ),
+    'кнопка в {:else}': rep('{/if}\n</span>', '{/if}\n</span>').replace(
+      '{#if ownIcon && !disabled}',
+      '{#if ownIcon}{:else}',
+    ),
+    'ownIcon не от детектора': rep(
+      'const ownIcon = needsOwnCalendarIcon(navigator.userAgent);',
+      'const ownIcon = true;',
+    ),
+    'скрыта через CSS': rep('.date-picker-btn { color', '.date-picker-btn { display: none; color'),
+    'showPicker вне try': rep(
+      'try {\n        inputEl.showPicker();\n        return;\n      } catch {\n        // отказ\n      }',
+      'inputEl.showPicker();\n      return;',
+    ),
+    'нет typeof-охраны': rep("typeof inputEl.showPicker === 'function'", 'inputEl'),
+    'нет focus-фоллбэка': rep('inputEl.focus();', 'noop();'),
+    'хардкод цвета': rep('color: var(--tr-text-secondary);', 'color: #888;'),
+    'нет импорта': rep("import { needsOwnCalendarIcon } from '$lib/utils/calendarIcon.js';", ''),
+  };
+  return bad;
+}
 
 function selftest() {
   const bad = [
@@ -165,6 +425,16 @@ function selftest() {
     `<style>/* :global(.date-picker) { display: flex; } */ .r { color: red; }</style>`,
   ];
   const errs = [];
+  if (checkIcon(CLEAN).length !== 0)
+    errs.push('чистая фикстура иконки ложно красная: ' + checkIcon(CLEAN).join('; '));
+  for (const [name, src] of Object.entries(iconFixtures())) {
+    if (checkIcon(src).length === 0) errs.push(`плохая фикстура иконки не поймана: ${name}`);
+  }
+  // таблица UA красная на заглушках (всегда true / всегда false)
+  if (checkDetector(() => true).length === 0)
+    errs.push('таблица UA не поймала заглушку «всегда true»');
+  if (checkDetector(() => false).length === 0)
+    errs.push('таблица UA не поймала заглушку «всегда false»');
   bad.forEach((s, i) => check(s).length === 0 && errs.push(`bad[${i}] не пойман`));
   good.forEach((s, i) => check(s).length !== 0 && errs.push(`good[${i}] ложно красный`));
   ovBad.forEach((s, i) => checkOverrides(s).length === 0 && errs.push(`ovBad[${i}] не пойман`));
@@ -182,7 +452,12 @@ if (process.argv.includes('--selftest')) {
   selftest();
 } else {
   const file = process.argv.find((a) => a.endsWith('.svelte')) ?? COMPONENT;
-  const bad = check(fs.readFileSync(file, 'utf8')).map((b) => `${path.basename(file)}: ${b}`);
+  const src = fs.readFileSync(file, 'utf8');
+  const bad = [...check(src), ...checkIcon(src)].map((b) => `${path.basename(file)}: ${b}`);
+  const { needsOwnCalendarIcon } = await import(
+    pathToFileURL(path.join(SRC, 'lib/utils/calendarIcon.js')).href
+  );
+  bad.push(...checkDetector(needsOwnCalendarIcon).map((b) => `calendarIcon.js: ${b}`));
   const files = walk(SRC);
   for (const f of files) {
     bad.push(...checkOverrides(fs.readFileSync(f, 'utf8'), path.relative(SRC, f)));
