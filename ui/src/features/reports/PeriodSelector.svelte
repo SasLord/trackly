@@ -280,6 +280,11 @@
     gap: var(--tr-space-2xs);
 
     // GAP-R3: constrain DatePicker to match other filter-row controls (28px height)
+    :global(.date-picker-field) {
+      width: auto;
+      min-width: 130px;
+    }
+
     :global(.date-picker) {
       height: 28px;
       font-size: var(--tr-font-size-label);
