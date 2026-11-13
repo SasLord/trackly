@@ -919,7 +919,10 @@
             <DetailField label="Устройство" value={repairDeviceLine} />
             {#if hasDevice && deviceStatusCode !== null}
               <DetailField label="Статус устройства">
-                <RepairDeviceStatus code={deviceStatusCode} />
+                <RepairDeviceStatus
+                  code={deviceStatusCode}
+                  name={curState?.deviceStatusName ?? null}
+                />
               </DetailField>
             {/if}
             {#if hasDevice && curState?.currentPlacePath}
@@ -1165,8 +1168,9 @@
 
 <!-- Фаза 41.4: попапы цикла ремонта. Открываются флагами; монтируются только когда
      есть заявка и её состояние ремонта. Успех: попап сам показывает тост, здесь —
-     обновить состояние и карточку. -->
-{#if request !== null && isRepair && curState !== null}
+     обновить состояние и карточку. D-38: только персоналу; сотрудник эти попапы не
+     получает (они читают места и справочники, закрытые для его роли). -->
+{#if isSpecialist && request !== null && isRepair && curState !== null}
   <RepairMoveModal
     open={moveModalOpen}
     mode={moveMode}
@@ -1197,7 +1201,7 @@
     onSuccess={applyRepairResult}
   />
 {/if}
-{#if request !== null && isRepair}
+{#if isSpecialist && request !== null && isRepair}
   <RepairAssignDeviceModal
     open={assignModalOpen}
     {request}
