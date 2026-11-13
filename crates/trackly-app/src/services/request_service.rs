@@ -24,6 +24,7 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::cartridges_sqlite::SqliteCartridgeRepository;
+use trackly_infra::repos::repairs_sqlite::SqliteRepairRepository;
 use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 
 use crate::dto::printer::WsEvent;
@@ -31,6 +32,7 @@ use crate::dto::request::{
     ApproveAdRegisterDto, RequestCountsDto, RequestCreateDto, RequestDto, RequestHistoryEntryDto,
     RequestListResponse, RequestPrinterOptionDto, RequestTransitionPayload,
 };
+use crate::services::repair_service::is_staff;
 
 /// Application service for request lifecycle. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
@@ -265,10 +267,27 @@ impl RequestService {
         caller: &Identity,
     ) -> Result<Vec<RequestPrinterOptionDto>, AppError> {
         authorize(caller, &Action::CreateRequest)?;
+        // D-41: персонал видит все принтеры, сотрудник — только принтеры своей области
+        // (`employee_device_ids`, единая с формой «Ремонт»; фильтр только на сервере).
+        let staff = is_staff(caller);
+        let user_id = caller.user_id;
+        if !staff && user_id.is_none() {
+            return Err(AppError::Forbidden);
+        }
 
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<Vec<RequestPrinterOptionDto>, AppError> {
             let conn = readers.acquire();
+            let scope: Option<std::collections::HashSet<i64>> = if staff {
+                None
+            } else {
+                Some(
+                    SqliteRepairRepository
+                        .employee_device_ids(&conn, user_id.unwrap_or(-1))?
+                        .into_iter()
+                        .collect(),
+                )
+            };
             // WR-04: resolve the "printer" device type by its stable seed name
             // instead of hardcoding the magic literal `type_id = 2`. The seed
             // (migrations/V001) defines `(2, 'Принтер')`; the subquery keeps
@@ -298,6 +317,10 @@ impl RequestService {
                 .map_err(map_rusqlite)?
                 .collect::<rusqlite::Result<Vec<_>>>()
                 .map_err(map_rusqlite)?;
+            let mut rows = rows;
+            if let Some(scope) = scope {
+                rows.retain(|o| scope.contains(&o.id));
+            }
             Ok(rows)
         })
         .await
@@ -365,6 +388,33 @@ impl RequestService {
                 }
             }
             _ => unreachable!("request_type already validated against the allowlist above"),
+        }
+
+        // D-41: сотрудник создаёт заявку только на принтер своей области (BOLA); область
+        // единая с формой «Ремонт» (`employee_device_ids`). Проверка до записи и не
+        // зависит от типа заявки. Персонал создаёт на любой принтер. Не-персонал без
+        // user_id отклоняется явно — подстановка `unwrap_or(1)` ниже только для
+        // доверенного администратора.
+        let staff = is_staff(caller);
+        if !staff {
+            let uid = caller.user_id.ok_or(AppError::Forbidden)?;
+            if let Some(printer) = payload.printer_device_id {
+                let printer = printer as i64;
+                let readers = self.readers.clone();
+                let allowed = tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+                    let conn = readers.acquire();
+                    Ok(SqliteRepairRepository
+                        .employee_device_ids(&conn, uid)?
+                        .contains(&printer))
+                })
+                .await
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("spawn_blocking: {e}"),
+                })??;
+                if !allowed {
+                    return Err(AppError::Forbidden);
+                }
+            }
         }
 
         let now = self.clock.unix_seconds();

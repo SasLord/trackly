@@ -15,6 +15,8 @@
 //! sessions are created programmatically via `RusqliteSessionStore`, bypassing
 //! the `GovernorLayer` on `/auth_login` (which needs a real TCP peer IP).
 
+mod repair_support;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use rusqlite::params;
@@ -186,6 +188,27 @@ async fn employee_gets_printer_options_minimal_dto() {
             ],
         )
         .await;
+
+        // D-41: сотрудник видит только принтеры своей области — вводим все четыре в
+        // состав его группы (проверки минимального DTO и сортировки не ослаблены).
+        let printer_ids: Vec<i64> = ctx
+            .writer
+            .execute(|conn| {
+                let mut stmt = conn
+                    .prepare("SELECT id FROM devices WHERE type_id = 2 ORDER BY id")
+                    .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                let ids = stmt
+                    .query_map([], |r| r.get::<_, i64>(0))
+                    .map_err(trackly_infra::error_conversions::map_rusqlite)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(ids)
+            })
+            .await
+            .expect("printer ids");
+        assert_eq!(printer_ids.len(), 4);
+        repair_support::seed_user_group(&ctx, employee_dto.id, "Комплект сотрудника", &printer_ids)
+            .await;
 
         let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
         let employee_cookie =

@@ -92,7 +92,9 @@ fn visit_rows_to_dtos(
     Ok(visits)
 }
 
-fn is_staff(caller: &Identity) -> bool {
+/// Персонал (Администратор и Специалист): видит все устройства и принтеры. Единый
+/// предикат для форм «Ремонт» и «Замена картриджа» (D-41).
+pub(crate) fn is_staff(caller: &Identity) -> bool {
     matches!(caller.role, Role::Admin | Role::Manager)
 }
 
