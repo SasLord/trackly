@@ -419,6 +419,7 @@ impl RepairService {
             let mut device_inventory_no = None;
             let mut device_type_name = None;
             let mut status_code = None;
+            let mut status_name = None;
             let mut current_place_id = None;
             let mut is_anchor = false;
             let mut group_nested = false;
@@ -430,23 +431,34 @@ impl RepairService {
                     Option<i64>,
                     Option<String>,
                     Option<String>,
+                    Option<String>,
                 );
                 let d: Option<DeviceRow> = conn
                     .query_row(
-                        "SELECT d.name, ds.code, d.place_id, d.inventory_number, dt.name \
+                        "SELECT d.name, ds.code, d.place_id, d.inventory_number, dt.name, ds.name \
                          FROM devices d \
                          LEFT JOIN device_statuses ds ON ds.id = d.status_id \
                          LEFT JOIN device_types dt ON dt.id = d.type_id WHERE d.id = ?1",
                         params![dev],
-                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                        |r| {
+                            Ok((
+                                r.get(0)?,
+                                r.get(1)?,
+                                r.get(2)?,
+                                r.get(3)?,
+                                r.get(4)?,
+                                r.get(5)?,
+                            ))
+                        },
                     )
                     .optional()
                     .map_err(map_rusqlite)?;
-                if let Some((n, s, p, inv, tn)) = d {
+                if let Some((n, s, p, inv, tn, sn)) = d {
                     device_name = Some(n);
                     device_inventory_no = inv.filter(|v| !v.trim().is_empty());
                     device_type_name = tn;
                     status_code = s;
+                    status_name = sn;
                     current_place_id = p;
                 }
                 let anchor: Option<(i64, Option<i64>)> = conn
@@ -506,6 +518,7 @@ impl RepairService {
                 device_inventory_no,
                 device_type_name,
                 device_status_code: status_code,
+                device_status_name: status_name,
                 current_place_id,
                 current_place_path: place_path(&conn, current_place_id)?,
                 origin_place_id,

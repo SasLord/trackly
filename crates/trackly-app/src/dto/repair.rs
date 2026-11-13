@@ -127,6 +127,9 @@ pub struct RepairStateDto {
     pub device_inventory_no: Option<String>,
     pub device_type_name: Option<String>,
     pub device_status_code: Option<String>,
+    /// Подпись статуса из `device_statuses.name` (D-38): справочник статусов закрыт
+    /// сотруднику, карточка берёт подпись отсюда.
+    pub device_status_name: Option<String>,
     #[specta(type = Option<i32>)]
     pub current_place_id: Option<i64>,
     pub current_place_path: Option<String>,
