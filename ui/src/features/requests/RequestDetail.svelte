@@ -218,6 +218,7 @@
   }
 
   async function startAccept() {
+    if (!isSpecialist) return;
     if (!request || repairBusy) return;
     if (hasDevice) {
       if (curState === null) return;
@@ -244,6 +245,7 @@
   }
 
   async function handleCancelRepairConfirm() {
+    if (!isSpecialist) return;
     if (!request || cancelRepairSubmitting) return;
     cancelRepairSubmitting = true;
     try {
@@ -261,7 +263,7 @@
   const CANCEL_REPAIR_HINT = 'Сначала заберите устройство из ремонта';
 
   $effect(() => {
-    if (!isAdRegister) return;
+    if (!isSpecialist || !isAdRegister) return;
     apiCall<AdSettingsDto>('settings_get_ad', {})
       .then((s) => {
         adAutoAccept = s.auto_accept;
@@ -460,7 +462,7 @@
   // --- Lifecycle actions ---
 
   async function handleAccept() {
-    if (!request) return;
+    if (!isSpecialist || !request) return;
     try {
       await requests.transition({
         op: 'accept',
@@ -483,7 +485,7 @@
   }
 
   async function handleComplete() {
-    if (!request || completeSubmitting) return;
+    if (!isSpecialist || !request || completeSubmitting) return;
     completeSubmitting = true;
     try {
       await requests.transition({
@@ -508,7 +510,7 @@
   }
 
   async function handleRejectConfirm() {
-    if (!request || rejectSubmitting) return;
+    if (!isSpecialist || !request || rejectSubmitting) return;
     rejectSubmitting = true;
     try {
       if (isRepair) {
@@ -556,7 +558,7 @@
 
   // GAP-12-07/A4: delete request (Admin/Manager, any status).
   async function handleDeleteConfirm() {
-    if (!request || deleteSubmitting) return;
+    if (!isSpecialist || !request || deleteSubmitting) return;
     deleteSubmitting = true;
     try {
       await requests.delete(request.id, request.version);
@@ -609,7 +611,7 @@
   }
 
   async function handleApproveConfirm() {
-    if (!request || approveSubmitting) return;
+    if (!isSpecialist || !request || approveSubmitting) return;
     approveSubmitting = true;
     try {
       const dto: ApproveAdRegisterDto = {
@@ -682,7 +684,7 @@
   // `effectiveCartridge.place_id`) — see OperationModal.svelte's onSuccess
   // contract.
   async function handleInstallSuccess(cartridge: CartridgeDto, previousPlaceId?: number | null) {
-    if (!request) return;
+    if (!isSpecialist || !request) return;
     const oldPlaceId = previousPlaceId ?? null;
     const newPlaceId = cartridge.place_id ?? null;
     const changedPlaceIds = Array.from(
@@ -1152,7 +1154,7 @@
 {/if}
 
 <!-- REQ-05: OperationModal для «Установить картридж» -->
-{#if request !== null}
+{#if isSpecialist && request !== null}
   <OperationModal
     open={operationModalOpen}
     op="install"

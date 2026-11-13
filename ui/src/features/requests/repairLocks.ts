@@ -63,6 +63,8 @@ registerUserScopedReset(() => {
 });
 
 export function groupPlace(groupId: number): Promise<GroupPlace> {
+  // groups_get закрыт сотруднику (ReadGroups): без роли персонала место не запрашиваем.
+  if (!canUseRepairs()) return Promise.resolve({ id: null, path: null });
   const hit = groupPlaceCache.get(groupId);
   if (hit && Date.now() - hit.at < GROUP_PLACE_TTL_MS) return hit.p;
   const p = groups

@@ -85,6 +85,7 @@
   }
 
   async function onScanPicked(visit: RepairVisitDto, event: Event) {
+    if (!canManage) return;
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0] ?? null;
     input.value = '';

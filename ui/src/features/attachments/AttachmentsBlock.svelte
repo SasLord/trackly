@@ -381,7 +381,7 @@
 
   async function doDelete() {
     const item = confirmDelete;
-    if (!item || busy) return;
+    if (!item || !canDeleteItem(item) || busy) return;
     busy = true;
     try {
       await attachments.remove(item.id);
@@ -396,6 +396,7 @@
   }
 
   async function doRestore(item: AttachmentDto) {
+    if (!canManageDeleted) return;
     try {
       await attachments.restore(item.id);
       pushToast('success', `Вложение «${item.originalName}» восстановлено`);
@@ -407,7 +408,7 @@
 
   async function doPurge() {
     const item = confirmPurge;
-    if (!item || busy) return;
+    if (!item || !canManageDeleted || busy) return;
     busy = true;
     try {
       await attachments.purge(item.id);
