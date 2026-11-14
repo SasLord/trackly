@@ -379,6 +379,8 @@ pub const REGISTRY: &[Entry] = &[
     ro(REPAIR, "last_places"),
     ro(REPAIR, "get_state"),
     ro(REPAIR, "device_history"),
+    // 41.4-47: предикат роли (чистая функция), используется и request_service.rs
+    ro(REPAIR, "is_staff"),
     // ---- переходы цикла (Phase 41.4, план 10) -------------------------------
     b(REPAIR, "accept"),
     b(REPAIR, "move_to_storage"),
