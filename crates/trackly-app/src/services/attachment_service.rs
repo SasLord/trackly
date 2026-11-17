@@ -239,9 +239,26 @@ impl AttachmentService {
         intent: Intent,
     ) -> Result<Perms, AppError> {
         let readers = self.readers.clone();
+        let draft_attach = parent.kind == ParentKind::MessageDraft && intent == Intent::Attach;
         let (owner, participants) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            load_parent(&conn, parent)
+            let loaded = load_parent(&conn, parent)?;
+            if draft_attach {
+                // D-07/D-05: closed request or ad_register has no chat.
+                let (status, request_type): (String, String) = conn
+                    .query_row(
+                        "SELECT status, request_type FROM requests WHERE id = ?1",
+                        rusqlite::params![parent.id],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .map_err(map_rusqlite)?;
+                if !trackly_core::domain::chat::can_post_status(&status)
+                    || !trackly_core::domain::chat::request_type_has_chat(&request_type)
+                {
+                    return Err(AppError::Forbidden);
+                }
+            }
+            Ok::<_, AppError>(loaded)
         })
         .await
         .map_err(internal)??;
@@ -308,6 +325,7 @@ impl AttachmentService {
             deleted_by_name: r.deleted_by_name.clone(),
             deleted_by_id: r.deleted_by_user_id,
             deleted_at_utc: r.deleted_at_utc,
+            from_message: r.message_id.is_some(),
         }
     }
 
@@ -485,6 +503,7 @@ impl AttachmentService {
         let kind_str = parent.kind.as_str();
         let entity = audit_entity(parent.kind);
         let parent_id = parent.id;
+        let is_draft = parent.kind == ParentKind::MessageDraft;
         let row = self
             .writer
             .execute(move |conn| {
@@ -503,21 +522,25 @@ impl AttachmentService {
                         message_id: None,
                     },
                 )?;
-                audit_repo.insert(
-                    &tx,
-                    AuditEntry {
-                        entity_type: entity,
-                        entity_id: parent_id,
-                        action: "custom:attachment_added",
-                        user_id,
-                        before_json: None,
-                        after_json: None,
-                        payload_json: Some(
-                            serde_json::json!({ "attachment_id": id, "name": name }).to_string(),
-                        ),
-                        created_at_utc: now,
-                    },
-                )?;
+                // D-14: a draft never reaches the request history.
+                if !is_draft {
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: entity,
+                            entity_id: parent_id,
+                            action: "custom:attachment_added",
+                            user_id,
+                            before_json: None,
+                            after_json: None,
+                            payload_json: Some(
+                                serde_json::json!({ "attachment_id": id, "name": name })
+                                    .to_string(),
+                            ),
+                            created_at_utc: now,
+                        },
+                    )?;
+                }
                 // D-18: moves only when the blob is absent. If the commit below
                 // fails after the rename, the orphan blob is left for the
                 // integrity scan (plan 08).
@@ -532,7 +555,9 @@ impl AttachmentService {
             .await?;
 
         // D-15/D-25: only after the writer returned Ok.
-        self.notify_changed(parent).await;
+        if !is_draft {
+            self.notify_changed(parent).await;
+        }
         Ok(AttachmentUploadDto {
             attachment: Some(self.to_dto(&row)),
             reject_code: None,
@@ -921,7 +946,6 @@ fn load_parent(
     parent: ParentRef,
 ) -> Result<(Option<i64>, Vec<i64>), AppError> {
     let (entity, sql): (&'static str, &str) = match parent.kind {
-        // MessageDraft: временно как Request (полная логика - план 04).
         ParentKind::Request | ParentKind::MessageDraft => (
             "request",
             "SELECT requested_by_user_id FROM requests WHERE id = ?1 AND deleted_at_utc IS NULL",
@@ -960,8 +984,9 @@ fn decide(
     caller: &Identity,
     intent: Intent,
 ) -> Result<Perms, AppError> {
-    // MessageDraft: до плана 04 любой доступ запрещён.
-    if parent.kind == ParentKind::MessageDraft {
+    // MessageDraft: only upload (Attach) is allowed; every other intent is
+    // Forbidden for everyone, Admin included (drafts are invisible to public paths).
+    if parent.kind == ParentKind::MessageDraft && intent != Intent::Attach {
         return Err(AppError::Forbidden);
     }
     let staff = matches!(caller.role, Role::Admin | Role::Manager);
@@ -984,7 +1009,7 @@ fn decide(
         return Err(AppError::Forbidden);
     }
     // Employee-author may attach to own request only (D-02/D-03).
-    let can_attach = staff || parent.kind == ParentKind::Request;
+    let can_attach = staff || matches!(parent.kind, ParentKind::Request | ParentKind::MessageDraft);
     let perms = Perms {
         can_attach,
         can_delete_any: staff,

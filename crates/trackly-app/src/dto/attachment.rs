@@ -32,6 +32,8 @@ pub struct AttachmentDto {
     pub deleted_by_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub deleted_at_utc: Option<i64>,
+    /// File came from a chat message (D-16): tile shows the "from chat" badge.
+    pub from_message: bool,
 }
 
 /// List of a parent's attachments with the caller's permissions.
