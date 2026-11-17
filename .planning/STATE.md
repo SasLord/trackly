@@ -1609,6 +1609,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 | Date | Slug | Summary | Status |
 |------|------|---------|--------|
+| 2026-11-17 | traceability-deferred-reqs | REQUIREMENTS.md Traceability: 11 отложенных REQ-ID (MAPX-01..04, GRPX-02..04, QA-05, INT-02, DOC-12, PRIV-03) внесены как TBD — ни одно не назначено фазе; GRPX-04 расходится с ROADMAP Фазы 43. | complete ✓ |
 | 2026-11-17 | repair-act-number-unique | W-1 ф.41.4: V052 делает номер акта ремонта UNIQUE (trim + кириллический регистр), дубли старых БД → `ДУБЛЬ-NNNNNN (…)` с аудитом; тест отказа БД. Попутно `trackly-infra/build.rs`: новый `.sql` не пересобирал крейт (сплошной прогон шёл без V052). Сплошной прогон 2602/0. | complete ✓ |
 | 2026-11-17 | macos-date-align | Дата в `<input type="date">` на macOS (WKWebView) стояла по центру из-за UA-шного `align-items: center` WebKit в flex-колонке; явный `align-items: stretch` в DatePicker, гейт check-date-picker-layout требует его. Проверено снимком системного WKWebView; в `cargo tauri dev` подтверждено пользователем. | complete ✓ |
 | 2026-11-09 | ci-ubuntu-disk-space | ubuntu-джобы ci-fast/ci-full падали по месту при линковке тестов; шаг очистки раннера + `CARGO_PROFILE_DEV_DEBUG=0`, оба workflow зелёные на 7231a4a8. | complete ✓ |
