@@ -390,6 +390,26 @@ impl SqliteChatRepository {
         Ok(rows)
     }
 
+    /// Черновики старше порога (любых пользователей и заявок), ещё не повышенные.
+    pub fn list_stale_drafts_on(
+        &self,
+        conn: &Connection,
+        created_before: i64,
+    ) -> Result<Vec<AttachmentRow>, AppError> {
+        let mut stmt = conn
+            .prepare(&format!(
+                "{ATT_SELECT} WHERE a.parent_kind = 'message_draft' AND a.message_id IS NULL \
+                 AND a.created_at_utc < ?1 ORDER BY a.id"
+            ))
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![created_before], map_att)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
     /// Повышает черновики до вложений заявки с `message_id`. Любой id, не
     /// удовлетворяющий условию черновика, даёт `Forbidden`; вызывающий откатывает
     /// транзакцию (T-41.5-08).

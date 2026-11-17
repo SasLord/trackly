@@ -327,6 +327,15 @@ impl AppCtx {
             )
             .with_ws_tx(ws_broadcast.clone()),
         );
+        // Phase 41.5 D-14: stale message drafts are cleaned in the background.
+        {
+            let chat_svc = chat.clone();
+            tokio::spawn(async move {
+                if let Err(e) = chat_svc.purge_stale_drafts(24 * 3600).await {
+                    tracing::warn!("chat stale drafts purge failed: {e}");
+                }
+            });
+        }
         let backup = Arc::new(
             BackupService::new(
                 writer.clone(),

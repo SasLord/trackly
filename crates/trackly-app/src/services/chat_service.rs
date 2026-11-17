@@ -11,20 +11,27 @@ use std::sync::Arc;
 
 use rusqlite::params;
 use trackly_core::auth::{Identity, Role};
-use trackly_core::domain::chat::{author_role_label, can_post_status, request_type_has_chat};
+use trackly_core::domain::chat::{
+    author_role_label, can_post_status, exceeds_limit, normalize_text, request_type_has_chat,
+    ChatRejectCode,
+};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::chat_sqlite::{ReadMark, SqliteChatRepository};
+use trackly_infra::repos::attachments_sqlite::{AttachmentRow, SqliteAttachmentRepository};
+use trackly_infra::repos::audit_log_sqlite::AuditEntry;
+use trackly_infra::repos::chat_sqlite::{
+    ChatMessageNew, ChatMessageRow, ReadMark, SqliteChatRepository,
+};
 use trackly_infra::repos::repairs_sqlite::SqliteRepairRepository;
 
 use super::attachment_service::{AttachmentService, ParentRef};
 use super::request_service::{notes_of, related_request_id_of};
 use crate::dto::attachment::AttachmentDto;
 use crate::dto::chat::{
-    ChatAttachmentEventDto, ChatEventDto, ChatFeedDto, ChatItemDto, ChatMessageDto, UnreadItemDto,
-    UnreadSummaryDto,
+    ChatAttachmentEventDto, ChatEventDto, ChatFeedDto, ChatItemDto, ChatMessageDto,
+    ChatSendOutcomeDto, UnreadItemDto, UnreadSummaryDto,
 };
 use crate::dto::printer::WsEvent;
 use trackly_core::domain::attachments::ParentKind;
@@ -51,6 +58,48 @@ pub(crate) struct Access {
 fn internal(e: tokio::task::JoinError) -> AppError {
     AppError::Internal {
         source_chain: format!("spawn_blocking: {e}"),
+    }
+}
+
+/// One message as feed item; shared by the feed and `send`.
+fn message_dto(
+    m: &ChatMessageRow,
+    access: &Access,
+    caller_id: Option<i64>,
+    attachments: Vec<AttachmentDto>,
+) -> ChatMessageDto {
+    let role = m.author_role.as_deref().and_then(|r| {
+        author_role_label(
+            r,
+            m.author_user_id.is_some() && m.author_user_id == access.requested_by,
+            m.author_user_id
+                .is_some_and(|u| access.participants.contains(&u)),
+        )
+    });
+    ChatMessageDto {
+        key: format!("m{}", m.id),
+        id: m.id,
+        created_at_utc: m.created_at_utc,
+        actor_user_id: m.author_user_id,
+        actor_name: m.author_name.clone(),
+        author_role: role.map(str::to_string),
+        is_own: caller_id.is_some() && m.author_user_id == caller_id,
+        text: m.body.clone(),
+        moved_from_request_id: m.moved_from_request_id,
+        attachments,
+    }
+}
+
+/// Result of the writer closure of `send`.
+enum Written {
+    Closed,
+    Sent(ChatMessageRow, Vec<AttachmentRow>),
+}
+
+fn reject(code: ChatRejectCode) -> ChatSendOutcomeDto {
+    ChatSendOutcomeDto {
+        message: None,
+        reject_code: Some(code.as_code().to_string()),
     }
 }
 
@@ -102,6 +151,16 @@ impl ChatService {
         caller: &Identity,
         request_id: i64,
     ) -> Result<Access, AppError> {
+        let access = self.load_access(caller, request_id).await?;
+        if !request_type_has_chat(&access.request_type) {
+            return Err(AppError::Forbidden);
+        }
+        Ok(access)
+    }
+
+    /// Access check without the "type has a chat" rule: `send` answers an
+    /// `ad_register` request with a reject code instead of `Forbidden`.
+    async fn load_access(&self, caller: &Identity, request_id: i64) -> Result<Access, AppError> {
         let readers = self.readers.clone();
         let access = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
@@ -132,9 +191,6 @@ impl ChatService {
         })
         .await
         .map_err(internal)??;
-        if !request_type_has_chat(&access.request_type) {
-            return Err(AppError::Forbidden);
-        }
         if !is_staff(caller) {
             // Employee without a user id has no identity to match (Pitfall 7).
             let Some(uid) = caller.user_id else {
@@ -210,26 +266,12 @@ impl ChatService {
         // (sort tuple, item)
         let mut rows: Vec<((i64, u8, i64, String), ChatItemDto)> = Vec::new();
         for m in &messages {
-            let role = m.author_role.as_deref().and_then(|r| {
-                author_role_label(
-                    r,
-                    m.author_user_id.is_some() && m.author_user_id == access.requested_by,
-                    m.author_user_id
-                        .is_some_and(|u| access.participants.contains(&u)),
-                )
-            });
-            let dto = ChatMessageDto {
-                key: format!("m{}", m.id),
-                id: m.id,
-                created_at_utc: m.created_at_utc,
-                actor_user_id: m.author_user_id,
-                actor_name: m.author_name.clone(),
-                author_role: role.map(str::to_string),
-                is_own: caller_id.is_some() && m.author_user_id == caller_id,
-                text: m.body.clone(),
-                moved_from_request_id: m.moved_from_request_id,
-                attachments: by_message.remove(&m.id).unwrap_or_default(),
-            };
+            let dto = message_dto(
+                m,
+                &access,
+                caller_id,
+                by_message.remove(&m.id).unwrap_or_default(),
+            );
             rows.push((
                 (m.created_at_utc, 1, m.id, dto.key.clone()),
                 ChatItemDto::Message(dto),
@@ -367,5 +409,216 @@ impl ChatService {
             requests_with_unread: items.len() as i32,
             items,
         })
+    }
+    /// Sends a message with optional files promoted from drafts, atomically
+    /// (D-07, D-08, D-14, D-16). Reject codes come back as `Ok`; `Forbidden`
+    /// and `NotFound` are errors. The status is re-read inside the writer
+    /// closure, so closing the request races safely with sending.
+    pub async fn send(
+        &self,
+        caller: &Identity,
+        request_id: i64,
+        text: &str,
+        draft_attachment_ids: &[i64],
+    ) -> Result<ChatSendOutcomeDto, AppError> {
+        let access = self.load_access(caller, request_id).await?;
+        if !request_type_has_chat(&access.request_type) {
+            return Ok(reject(ChatRejectCode::NoChat));
+        }
+        let Some(user_id) = caller.user_id else {
+            return Err(AppError::Forbidden);
+        };
+        let body = normalize_text(text);
+        if exceeds_limit(&body) {
+            return Ok(reject(ChatRejectCode::TooLong));
+        }
+        let mut ids: Vec<i64> = Vec::with_capacity(draft_attachment_ids.len());
+        for id in draft_attachment_ids {
+            if !ids.contains(id) {
+                ids.push(*id);
+            }
+        }
+        if body.is_empty() && ids.is_empty() {
+            return Ok(reject(ChatRejectCode::Empty));
+        }
+
+        let repo = self.repo.clone();
+        let audit_repo = self.attachments.audit_repo.clone();
+        let now = self.clock.unix_seconds();
+        let written = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                // TOCTOU: the status is read here, in the writer, not before.
+                let status: Option<(String, Option<i64>)> = {
+                    use rusqlite::OptionalExtension;
+                    tx.query_row(
+                        "SELECT status, deleted_at_utc FROM requests WHERE id = ?1",
+                        params![request_id],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?
+                };
+                match status {
+                    Some((st, None)) if can_post_status(&st) => {}
+                    Some((_, _)) => return Ok(Written::Closed),
+                    None => {
+                        return Err(AppError::NotFound {
+                            entity: "request",
+                            id: request_id,
+                        })
+                    }
+                }
+                let message_id = repo.insert_message_on(
+                    &tx,
+                    &ChatMessageNew {
+                        request_id,
+                        author_user_id: Some(user_id),
+                        body: &body,
+                        created_at_utc: now,
+                        moved_from_request_id: None,
+                    },
+                )?;
+                let promoted =
+                    repo.promote_drafts_on(&tx, request_id, user_id, &ids, message_id)?;
+                for a in &promoted {
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "request",
+                            entity_id: request_id,
+                            action: "custom:attachment_added",
+                            user_id: Some(user_id),
+                            before_json: None,
+                            after_json: None,
+                            payload_json: Some(
+                                serde_json::json!({
+                                    "attachment_id": a.id,
+                                    "name": a.original_name,
+                                    "message_id": message_id,
+                                })
+                                .to_string(),
+                            ),
+                            created_at_utc: now,
+                        },
+                    )?;
+                }
+                let row = repo
+                    .get_message_on(&tx, message_id)?
+                    .ok_or(AppError::NotFound {
+                        entity: "chat_message",
+                        id: message_id,
+                    })?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(Written::Sent(row, promoted))
+            })
+            .await?;
+
+        let (row, promoted) = match written {
+            Written::Closed => {
+                // The drafts of a closed request are of no use any more.
+                self.discard_inner(request_id, user_id).await?;
+                return Ok(reject(ChatRejectCode::Closed));
+            }
+            Written::Sent(row, promoted) => (row, promoted),
+        };
+
+        // D-23: only after the writer returned Ok; ids and the author name only.
+        let fresh = self.load_access(caller, request_id).await?;
+        if let Some(tx) = &self.ws_tx {
+            let _ = tx.send(WsEvent::ChatMessage {
+                request_id,
+                message_id: row.id,
+                actor_user_id: row.author_user_id,
+                actor_name: row.author_name.clone(),
+                requested_by_user_id: fresh.requested_by,
+                participant_user_ids: fresh.participants.clone(),
+            });
+            if !promoted.is_empty() {
+                let _ = tx.send(WsEvent::AttachmentsChanged {
+                    parent_kind: "request".to_string(),
+                    parent_id: request_id,
+                    requested_by_user_id: fresh.requested_by,
+                    participant_user_ids: fresh.participants.clone(),
+                });
+            }
+        }
+        let atts = promoted
+            .iter()
+            .map(|a| {
+                let mut dto = self.attachments.to_dto(a);
+                dto.from_message = true;
+                dto
+            })
+            .collect();
+        let message = message_dto(&row, &fresh, caller.user_id, atts);
+        Ok(ChatSendOutcomeDto {
+            message: Some(message),
+            reject_code: None,
+        })
+    }
+
+    /// Drops the caller's drafts of a request (cancelled compose, closed
+    /// request). Writes no audit and sends no event.
+    pub async fn discard_drafts(&self, caller: &Identity, request_id: i64) -> Result<(), AppError> {
+        self.authorize(caller, request_id).await?;
+        let Some(user_id) = caller.user_id else {
+            return Err(AppError::Forbidden);
+        };
+        self.discard_inner(request_id, user_id).await
+    }
+
+    async fn discard_inner(&self, request_id: i64, user_id: i64) -> Result<(), AppError> {
+        let repo = self.repo.clone();
+        self.delete_drafts(move |conn| repo.list_drafts_on(conn, request_id, user_id))
+            .await
+            .map(|_| ())
+    }
+
+    /// Startup cleanup: drafts older than `older_than_secs` (D-14).
+    pub async fn purge_stale_drafts(&self, older_than_secs: i64) -> Result<usize, AppError> {
+        let before = self.clock.unix_seconds() - older_than_secs;
+        let repo = self.repo.clone();
+        self.delete_drafts(move |conn| repo.list_stale_drafts_on(conn, before))
+            .await
+    }
+
+    /// Deletes the selected draft rows; a blob goes away only when no other
+    /// row references its hash. Count and removal run in the writer, so a
+    /// concurrent upload of the same bytes is serialized with them.
+    async fn delete_drafts<F>(&self, select: F) -> Result<usize, AppError>
+    where
+        F: FnOnce(&rusqlite::Connection) -> Result<Vec<AttachmentRow>, AppError> + Send + 'static,
+    {
+        let repo = self.repo.clone();
+        let store = self.attachments.store().clone();
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let rows = select(&tx)?;
+                let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
+                repo.delete_draft_rows_on(&tx, &ids)?;
+                let mut orphans: Vec<String> = Vec::new();
+                for r in &rows {
+                    if !orphans.contains(&r.content_hash)
+                        && SqliteAttachmentRepository.count_by_hash_on(
+                            &tx,
+                            &r.content_hash,
+                            None,
+                        )? == 0
+                    {
+                        orphans.push(r.content_hash.clone());
+                    }
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                for hash in orphans {
+                    if let Err(e) = store.remove_blob(&hash) {
+                        tracing::warn!("draft blob cleanup failed: {e}");
+                    }
+                }
+                Ok(rows.len())
+            })
+            .await
     }
 }
