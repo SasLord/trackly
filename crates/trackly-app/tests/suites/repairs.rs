@@ -15,6 +15,8 @@ mod repair_accept;
 mod repair_act_render;
 #[path = "../repair_cancel_reject.rs"]
 mod repair_cancel_reject;
+#[path = "../repair_chat_merge.rs"]
+mod repair_chat_merge;
 #[path = "../repair_complete.rs"]
 mod repair_complete;
 #[path = "../repair_create.rs"]
