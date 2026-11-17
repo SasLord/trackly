@@ -65,7 +65,8 @@ fn v050_creates_table_indexes_and_keeps_children() {
             "uploaded_by_user_id",
             "created_at_utc",
             "deleted_at_utc",
-            "deleted_by_user_id"
+            "deleted_by_user_id",
+            "message_id"
         ]
     );
     for idx in ["idx_attachments_parent", "idx_attachments_hash"] {

@@ -29,6 +29,8 @@ mod cartridges_code_unique_migration;
 mod cartridges_place_path_short;
 #[path = "../cartridges_place_search.rs"]
 mod cartridges_place_search;
+#[path = "../chat_migration.rs"]
+mod chat_migration;
 #[path = "../config_example_test.rs"]
 mod config_example_test;
 #[path = "../config_test.rs"]
