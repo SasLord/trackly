@@ -93,3 +93,10 @@ disallowed_types = "deny"
 # `cargo build`/`cargo tauri dev` (профиль dev) не затронуты.
 [profile.test]
 debug = 0
+
+# Внешние зависимости тестов — с оптимизацией: SQLite (bundled C), argon2, tokio и т.п.
+# на -O0 делали выполнение тестов в ~2,5 раза медленнее (замер: прогон после правки
+# lib 236 → 97 с). Код воркспейса остаётся -O0 с debug-assertions и overflow-checks —
+# проверки тестов не меняются. "*" не затрагивает члены воркспейса.
+[profile.test.package."*"]
+opt-level = 2

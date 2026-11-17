@@ -65,6 +65,9 @@ mod my_new_test;
 
 ## Почему так (замеры, macOS M-серия)
 
+- `[profile.test.package."*"] opt-level = 2`: внешние зависимости (SQLite, argon2, tokio)
+  оптимизированы, код воркспейса — нет. Выполнение тестов ускорилось в ~2,5 раза.
+
 - `[profile.test] debug = 0` (корневой `Cargo.toml`). С отладочной информацией dev-профиль
   на macOS оставляет `*.rcgu.o` в `target/debug/deps` (`split-debuginfo = "unpacked"`),
   и cargo их не удаляет: один полный прогон добавлял ~22–26 тыс. файлов. Когда их
