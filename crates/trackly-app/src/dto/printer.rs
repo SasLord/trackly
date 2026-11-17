@@ -377,6 +377,31 @@ pub enum WsEvent {
         #[specta(type = Vec<i32>)]
         participant_user_ids: Vec<i64>,
     },
+    /// New chat message on a request (Phase 41.5, D-23). Carries ids and the
+    /// author name only, never the message text. Visibility mirrors
+    /// `AttachmentsChanged` (Admin | Manager, author, participants).
+    #[serde(rename_all = "camelCase")]
+    ChatMessage {
+        #[specta(type = i32)]
+        request_id: i64,
+        #[specta(type = i32)]
+        message_id: i64,
+        #[specta(type = Option<i32>)]
+        actor_user_id: Option<i64>,
+        actor_name: Option<String>,
+        #[specta(type = Option<i32>)]
+        requested_by_user_id: Option<i64>,
+        #[serde(default)]
+        #[specta(type = Vec<i32>)]
+        participant_user_ids: Vec<i64>,
+    },
+    /// Read marker of a user changed (Phase 41.5, D-19). Visible only to the
+    /// marker owner: even Admin does not see other users' markers.
+    #[serde(rename_all = "camelCase")]
+    ChatReadChanged {
+        #[specta(type = i32)]
+        user_id: i64,
+    },
 }
 
 impl WsEvent {
@@ -396,6 +421,9 @@ impl WsEvent {
     /// - `EntitiesChanged` (Phase 41.7, D-02) → Admin | Manager only — the
     ///   roles that can open the places/groups trees; no field inspection and
     ///   no author branching (do NOT model this on `RequestStatusChanged`).
+    /// - `AttachmentsChanged` (Phase 41.3) / `ChatMessage` (Phase 41.5, D-23) →
+    ///   Admin | Manager, request author, or participant.
+    /// - `ChatReadChanged` (Phase 41.5, D-19) → only the marker owner.
     pub fn is_visible_to(&self, identity: &Identity) -> bool {
         match self {
             WsEvent::PrinterAlert { .. } => {
@@ -432,6 +460,18 @@ impl WsEvent {
                         .user_id
                         .is_some_and(|u| participant_user_ids.contains(&u))
             }
+            WsEvent::ChatMessage {
+                requested_by_user_id,
+                participant_user_ids,
+                ..
+            } => {
+                matches!(identity.role, Role::Admin | Role::Manager)
+                    || (requested_by_user_id.is_some() && identity.user_id == *requested_by_user_id)
+                    || identity
+                        .user_id
+                        .is_some_and(|u| participant_user_ids.contains(&u))
+            }
+            WsEvent::ChatReadChanged { user_id } => identity.user_id == Some(*user_id),
         }
     }
 }
@@ -577,6 +617,60 @@ mod tests {
         assert!(!none.is_visible_to(&identity(Some(42), Role::Employee)));
         assert!(!none.is_visible_to(&identity(None, Role::Employee)));
         assert!(none.is_visible_to(&identity(None, Role::Admin)));
+    }
+
+    #[test]
+    fn chat_message_visibility() {
+        let e = WsEvent::ChatMessage {
+            request_id: 5,
+            message_id: 9,
+            actor_user_id: Some(8),
+            actor_name: Some("Петров П.П.".to_string()),
+            requested_by_user_id: Some(42),
+            participant_user_ids: vec![8],
+        };
+        assert!(e.is_visible_to(&identity(None, Role::Admin)));
+        assert!(e.is_visible_to(&identity(Some(9), Role::Manager)));
+        assert!(e.is_visible_to(&identity(Some(42), Role::Employee)));
+        assert!(e.is_visible_to(&identity(Some(8), Role::Employee)));
+        assert!(!e.is_visible_to(&identity(Some(7), Role::Employee)));
+        assert!(!e.is_visible_to(&identity(None, Role::Employee)));
+    }
+
+    #[test]
+    fn chat_read_changed_visible_only_to_owner() {
+        let e = WsEvent::ChatReadChanged { user_id: 42 };
+        assert!(e.is_visible_to(&identity(Some(42), Role::Employee)));
+        assert!(!e.is_visible_to(&identity(Some(1), Role::Admin)));
+        assert!(!e.is_visible_to(&identity(None, Role::Admin)));
+    }
+
+    #[test]
+    fn chat_events_serialize_camel_case() {
+        let e = WsEvent::ChatMessage {
+            request_id: 5,
+            message_id: 9,
+            actor_user_id: Some(8),
+            actor_name: Some("Петров П.П.".to_string()),
+            requested_by_user_id: Some(42),
+            participant_user_ids: vec![8],
+        };
+        assert_eq!(
+            serde_json::to_value(&e).unwrap(),
+            serde_json::json!({
+                "type": "chat_message",
+                "requestId": 5,
+                "messageId": 9,
+                "actorUserId": 8,
+                "actorName": "Петров П.П.",
+                "requestedByUserId": 42,
+                "participantUserIds": [8]
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(WsEvent::ChatReadChanged { user_id: 3 }).unwrap(),
+            serde_json::json!({"type": "chat_read_changed", "userId": 3})
+        );
     }
 
     #[test]
