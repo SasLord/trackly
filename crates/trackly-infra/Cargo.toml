@@ -8,6 +8,8 @@ license.workspace = true
 # cargo-deny's `allow-wildcard-paths` apply: that setting is scoped to
 # private crates, since crates.io forbids path deps in published ones.
 publish = false
+# Цели интеграционных тестов перечислены в [[test]] ниже (suite-бинарник).
+autotests = false
 description = "Adapters and I/O for Trackly: SQLite repos, refinery migrations, paths.rs, single-writer worker."
 
 [lints]
@@ -40,3 +42,17 @@ hickory-resolver = "0.26.1"
 # `network_client`/rustls path) to keep the portable Windows build free of a
 # mandatory native crypto toolchain dependency — CI proves whether this holds.
 sspi = { version = "0.21", default-features = false }
+
+# Интеграционные тесты собраны в несколько бинарников (suite) вместо одного
+# бинарника на файл: каждый бинарник линкует весь крейт, и ~200 линковок плюс
+# проверка каждого свежего бинарника в macOS съедали часы локального прогона.
+# Файлы тестов остаются на своих местах в `tests/` (их читают гейты по путям),
+# корень suite подключает их через `#[path]`. Новый файл `tests/*.rs` нужно
+# добавить строкой в один из `tests/suites/*.rs` — иначе краснеет гейт
+# `suite_wiring` (trackly-app). Отдельными целями остаются файлы, которым
+# нужен свой процесс (меняют env/глобальный subscriber) или чьё имя цели
+# вызывают по `--test` (`export_bindings`, `attachments_heic`).
+
+[[test]]
+name = "infra_tests"
+path = "tests/suites/infra.rs"
