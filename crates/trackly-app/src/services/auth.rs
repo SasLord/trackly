@@ -255,7 +255,7 @@ impl AuthService {
 
     /// Проверяет, нужна ли начальная настройка (нет ни одного admin-пользователя).
     ///
-    /// Возвращает `true` если в таблице `users` нет активных admin-пользователей.
+    /// Возвращает `true` если в таблице `users` нет admin-пользователей (системный «Администратор» считается).
     pub async fn needs_bootstrap(&self) -> Result<bool, AppError> {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
@@ -2385,10 +2385,15 @@ impl AuthService {
 /// «нужна начальная настройка» — им пользуются и `needs_bootstrap`, и
 /// `bootstrap_first_admin` (D-12): расхождение предикатов открыло бы публичный
 /// маршрут там, где мастер уже не показывается (или наоборот).
+///
+/// Системный «Администратор» (`is_system`) СЧИТАЕТСЯ: он создаётся при каждом
+/// старте (`ensure_system_admin`), поэтому на рабочем приложении мастер первого
+/// запуска не показывается и `bootstrap_first_admin` отказывает. Для D-Desktop-02
+/// и guard «последний администратор» системный, наоборот, исключается отдельно.
 fn count_active_admins(conn: &rusqlite::Connection) -> Result<i64, AppError> {
     conn.query_row(
         "SELECT COUNT(*) FROM users \
-         WHERE role = 'admin' AND deleted_at_utc IS NULL AND is_system = 0",
+         WHERE role = 'admin' AND deleted_at_utc IS NULL",
         [],
         |r| r.get(0),
     )

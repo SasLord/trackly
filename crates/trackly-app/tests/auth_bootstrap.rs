@@ -41,6 +41,17 @@ async fn build_test_components() -> anyhow::Result<(axum::Router, AppCtx)> {
         Ok::<_, anyhow::Error>(guard)
     })?;
     let ctx = AppCtx::build(paths, config, log_guard).await?;
+    // Старт создаёт системного «Администратора» (он закрывает мастер первого
+    // запуска). Эти тесты проверяют сам предикат «админов нет», поэтому
+    // возвращаем БД в состояние без админов; закрытие мастера системным админом
+    // проверяет `desktop_system_admin`.
+    ctx.writer
+        .execute(|conn| {
+            conn.execute("DELETE FROM users WHERE is_system = 1", [])
+                .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await?;
     let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
     let router = build_router(&ctx, session_store);
     Ok((router, ctx))

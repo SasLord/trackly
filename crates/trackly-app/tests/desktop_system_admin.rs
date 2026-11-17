@@ -89,10 +89,12 @@ async fn fresh_db_has_exactly_one_idempotent_system_admin() {
 }
 
 #[tokio::test]
-async fn needs_bootstrap_ignores_system_admin_and_bootstrap_passes() {
+async fn system_admin_closes_first_run_wizard() {
     let (ctx, _dir) = make_test_ctx().await;
-    assert!(ctx.auth.needs_bootstrap().await.unwrap());
-    ctx.auth
+    // Системный «Администратор» создан при старте -> мастер не нужен.
+    assert!(!ctx.auth.needs_bootstrap().await.unwrap());
+    let err = ctx
+        .auth
         .bootstrap_first_admin(UserNew {
             login: "ivanov".into(),
             full_name: "Иванов И.И.".into(),
@@ -101,8 +103,18 @@ async fn needs_bootstrap_ignores_system_admin_and_bootstrap_passes() {
             email: None,
         })
         .await
-        .expect("bootstrap");
-    assert!(!ctx.auth.needs_bootstrap().await.unwrap());
+        .expect_err("bootstrap closed");
+    assert!(matches!(err, AppError::Conflict { .. }), "{err:?}");
+    let n: i64 = ctx
+        .readers
+        .acquire()
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE login = 'ivanov'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0);
 }
 
 #[tokio::test]
