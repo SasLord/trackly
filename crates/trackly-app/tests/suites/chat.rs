@@ -7,3 +7,7 @@
 
 #[path = "../chat_access.rs"]
 mod chat_access;
+#[path = "../chat_feed.rs"]
+mod chat_feed;
+#[path = "../chat_unread.rs"]
+mod chat_unread;
