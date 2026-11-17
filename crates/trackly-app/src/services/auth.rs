@@ -1844,6 +1844,29 @@ impl AuthService {
                         }
                     })?;
 
+                // Системного «Администратора» нельзя понизить или деактивировать.
+                let target_is_system: i64 = tx
+                    .query_row(
+                        "SELECT is_system FROM users WHERE id = ?1 AND deleted_at_utc IS NULL",
+                        rusqlite::params![id],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0);
+                if target_is_system == 1 {
+                    if matches!(patch.role.as_deref(), Some(r) if r != "admin") {
+                        return Err(AppError::Validation {
+                            field: "role".to_string(),
+                            message: SYSTEM_ADMIN_NO_DEMOTE.to_string(),
+                        });
+                    }
+                    if patch.is_active == Some(false) {
+                        return Err(AppError::Validation {
+                            field: "is_active".to_string(),
+                            message: SYSTEM_ADMIN_NO_DEMOTE.to_string(),
+                        });
+                    }
+                }
+
                 if current_version != version {
                     return Err(AppError::Conflict {
                         reason: format!(
@@ -1863,7 +1886,8 @@ impl AuthService {
                     let active_admins: i64 = tx
                         .query_row(
                             "SELECT COUNT(*) FROM users \
-                             WHERE role = 'admin' AND is_active = 1 AND deleted_at_utc IS NULL",
+                             WHERE role = 'admin' AND is_active = 1 AND deleted_at_utc IS NULL \
+                               AND is_system = 0",
                             [],
                             |r| r.get(0),
                         )
@@ -1952,11 +1976,28 @@ impl AuthService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
+                let target_is_system: i64 = tx
+                    .query_row(
+                        "SELECT is_system FROM users WHERE id = ?1 AND deleted_at_utc IS NULL",
+                        rusqlite::params![id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?
+                    .unwrap_or(0);
+                if target_is_system == 1 {
+                    return Err(AppError::Validation {
+                        field: "id".to_string(),
+                        message: SYSTEM_ADMIN_NO_DELETE.to_string(),
+                    });
+                }
+
                 // CR-04: refuse to soft-delete the LAST active admin.
                 let active_admins: i64 = tx
                     .query_row(
                         "SELECT COUNT(*) FROM users \
-                         WHERE role = 'admin' AND is_active = 1 AND deleted_at_utc IS NULL",
+                         WHERE role = 'admin' AND is_active = 1 AND deleted_at_utc IS NULL \
+                               AND is_system = 0",
                         [],
                         |r| r.get(0),
                     )
@@ -2123,9 +2164,12 @@ impl AuthService {
 
     /// Возвращает идентификатор для десктоп-режима без входа.
     ///
-    /// **D-Desktop-01:** если в БД ровно один активный admin — атрибутирует
-    /// его (`user_id = Some(id)`). При 0 или 2+ admin'ах — `trusted_admin()`
-    /// (user_id = None). Используется LIMIT 2 для эффективности.
+    /// **D-Desktop-01/02:** если в БД ровно один активный НЕ-системный admin —
+    /// атрибутирует его (`user_id = Some(id)`). Иначе — системный
+    /// «Администратор» (`system_admin_identity`); `trusted_admin()` (user_id =
+    /// None) остаётся лишь аварийным вариантом, если системного не удалось
+    /// получить. Системный исключён из подсчёта, чтобы не маскировать
+    /// отсутствие/множественность настоящих админов.
     pub async fn desktop_identity(&self) -> Identity {
         let readers = self.readers.clone();
         let result = tokio::task::spawn_blocking(move || -> Result<Vec<i64>, AppError> {
@@ -2134,6 +2178,7 @@ impl AuthService {
                 .prepare(
                     "SELECT id FROM users \
                      WHERE role = 'admin' AND deleted_at_utc IS NULL AND is_active = 1 \
+                       AND is_system = 0 \
                      LIMIT 2",
                 )
                 .map_err(map_rusqlite)?;
@@ -2151,8 +2196,105 @@ impl AuthService {
                 user_id: Some(ids[0]),
                 role: Role::Admin,
             },
-            _ => Identity::trusted_admin(),
+            _ => self
+                .system_admin_identity()
+                .await
+                .unwrap_or_else(|_| Identity::trusted_admin()),
         }
+    }
+
+    /// Identity системного пользователя «Администратор» (десктоп без входа).
+    /// Если строки нет или она неактивна — создаёт/чинит через `ensure_system_admin`.
+    pub async fn system_admin_identity(&self) -> Result<Identity, AppError> {
+        let readers = self.readers.clone();
+        let found = tokio::task::spawn_blocking(move || -> Result<Option<i64>, AppError> {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT id FROM users WHERE is_system = 1 AND is_active = 1 \
+                   AND deleted_at_utc IS NULL AND role = 'admin'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(map_rusqlite)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking system_admin_identity: {e}"),
+        })??;
+        let id = match found {
+            Some(id) => id,
+            None => self.ensure_system_admin().await?,
+        };
+        Ok(Identity {
+            user_id: Some(id),
+            role: Role::Admin,
+        })
+    }
+
+    /// Идемпотентно гарантирует ровно одного системного пользователя
+    /// «Администратор» (role admin, без пароля — войти по LAN нельзя, пока
+    /// пароль не задан). Логин `admin`, если свободен (включая мягко удалённые
+    /// строки), иначе `admin-system`, `admin-system-2`… Чужую строку не
+    /// присваивает. Повреждённую системную (удалена/неактивна/не admin) чинит.
+    pub async fn ensure_system_admin(&self) -> Result<i64, AppError> {
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let existing: Option<(i64, Option<i64>, i64, String)> = tx
+                    .query_row(
+                        "SELECT id, deleted_at_utc, is_active, role FROM users WHERE is_system = 1",
+                        [],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?;
+                let id = if let Some((id, deleted, active, role)) = existing {
+                    if deleted.is_some() || active != 1 || role != "admin" {
+                        tx.execute(
+                            "UPDATE users SET deleted_at_utc = NULL, is_active = 1, \
+                             role = 'admin', updated_at_utc = ?1, version = version + 1 \
+                             WHERE id = ?2",
+                            rusqlite::params![now, id],
+                        )
+                        .map_err(map_rusqlite)?;
+                    }
+                    id
+                } else {
+                    let mut n = 0u32;
+                    let login = loop {
+                        let candidate = match n {
+                            0 => "admin".to_string(),
+                            1 => "admin-system".to_string(),
+                            k => format!("admin-system-{k}"),
+                        };
+                        let taken: Option<i64> = tx
+                            .query_row(
+                                "SELECT 1 FROM users WHERE login = ?1",
+                                rusqlite::params![candidate],
+                                |r| r.get(0),
+                            )
+                            .optional()
+                            .map_err(map_rusqlite)?;
+                        if taken.is_none() {
+                            break candidate;
+                        }
+                        n += 1;
+                    };
+                    tx.execute(
+                        "INSERT INTO users (login, full_name, password_hash, role, ad_user, \
+                         is_system, is_active, created_at_utc, updated_at_utc, version) \
+                         VALUES (?1, 'Администратор', NULL, 'admin', 0, 1, 1, ?2, ?2, 1)",
+                        rusqlite::params![login, now],
+                    )
+                    .map_err(map_rusqlite)?;
+                    tx.last_insert_rowid()
+                };
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(id)
+            })
+            .await
     }
 
     // -----------------------------------------------------------------------
@@ -2246,12 +2388,17 @@ impl AuthService {
 fn count_active_admins(conn: &rusqlite::Connection) -> Result<i64, AppError> {
     conn.query_row(
         "SELECT COUNT(*) FROM users \
-         WHERE role = 'admin' AND deleted_at_utc IS NULL",
+         WHERE role = 'admin' AND deleted_at_utc IS NULL AND is_system = 0",
         [],
         |r| r.get(0),
     )
     .map_err(map_rusqlite)
 }
+
+const SYSTEM_ADMIN_NO_DEMOTE: &str =
+    "Системного пользователя «Администратор» нельзя понизить или деактивировать — от него зависит работа десктопа.";
+const SYSTEM_ADMIN_NO_DELETE: &str =
+    "Системного пользователя «Администратор» нельзя удалить — от него зависит работа десктопа.";
 
 fn bootstrap_closed() -> AppError {
     AppError::Conflict {

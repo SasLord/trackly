@@ -95,11 +95,11 @@ fn v052_renames_existing_duplicates_instead_of_failing() {
     insert_visit(&conn, 6, "РЕМ-000003").unwrap();
 
     let report = migrations::run(&mut conn).expect("V052 must not fail on duplicates");
-    assert_eq!(report.schema_version, 52);
+    assert_eq!(report.schema_version, 53);
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
             .unwrap(),
-        52
+        53
     );
 
     assert_eq!(act_number(&conn, 1), "РЕМ-000001", "ранний визит не тронут");

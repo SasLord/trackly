@@ -98,7 +98,7 @@ async fn scalar_i64(ctx: &AppCtx, sql: &'static str) -> i64 {
 async fn admin_count(ctx: &AppCtx) -> i64 {
     scalar_i64(
         ctx,
-        "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at_utc IS NULL",
+        "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at_utc IS NULL AND is_system = 0",
     )
     .await
 }
@@ -184,7 +184,7 @@ async fn bootstrap_route_closed_after_first_user() {
         );
         assert_eq!(admin_count(&ctx).await, 1, "второго админа быть не должно");
         assert_eq!(
-            scalar_i64(&ctx, "SELECT COUNT(*) FROM users").await,
+            scalar_i64(&ctx, "SELECT COUNT(*) FROM users WHERE is_system = 0").await,
             1,
             "отказанный запрос не оставляет пользователя"
         );
@@ -318,7 +318,10 @@ async fn users_create_still_requires_session() {
             "users_create без сессии обязан давать 401 даже при needs_bootstrap, тело: {}",
             String::from_utf8_lossy(&bytes)
         );
-        assert_eq!(scalar_i64(&ctx, "SELECT COUNT(*) FROM users").await, 0);
+        assert_eq!(
+            scalar_i64(&ctx, "SELECT COUNT(*) FROM users WHERE is_system = 0").await,
+            0
+        );
 
         ctx.shutdown.cancel();
     })

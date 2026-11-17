@@ -144,9 +144,10 @@ async fn desktop_identity_attribution() {
         let (svc, _dir) = make_auth_service();
         let caller = Identity::trusted_admin();
 
-        // 0 admins → None
+        // 0 админов → системный «Администратор» (а не None)
         let id0 = svc.desktop_identity().await;
-        assert_eq!(id0.user_id, None, "0 admins → user_id = None");
+        let sys_id = id0.user_id;
+        assert!(sys_id.is_some(), "0 admins → системный админ");
 
         // Create 1 admin
         let dto1 = svc
@@ -171,7 +172,7 @@ async fn desktop_identity_attribution() {
 
         // 2 admins → None
         let id2 = svc.desktop_identity().await;
-        assert_eq!(id2.user_id, None, "2 admins → user_id = None");
+        assert_eq!(id2.user_id, sys_id, "2 admins → системный админ");
     })
     .await
     .expect("test exceeded 30s budget");

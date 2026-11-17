@@ -459,6 +459,9 @@ impl AppCtx {
             )
             .with_admin_logins(config.ad.admin_logins.clone()),
         );
+        // Системный пользователь «Администратор» (quick 261117-w2q): от его
+        // имени действует десктоп без входа. Идемпотентно; ошибку не глотаем.
+        auth.ensure_system_admin().await?;
 
         // Phase 6 Plan 03: SNMP client + PrinterService + RequestService +
         // background poll task.

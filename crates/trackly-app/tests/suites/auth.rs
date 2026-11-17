@@ -23,6 +23,8 @@ mod auth_bootstrap;
 mod auth_remember_cookie;
 #[path = "../auth_smoke.rs"]
 mod auth_smoke;
+#[path = "../desktop_system_admin.rs"]
+mod desktop_system_admin;
 #[path = "../downgrade_protection.rs"]
 mod downgrade_protection;
 #[path = "../requests_ad_register.rs"]
