@@ -17,6 +17,8 @@ pub enum ParentKind {
     Request,
     Device,
     Cartridge,
+    /// Черновик сообщения чата (41.5): файл до отправки сообщения.
+    MessageDraft,
 }
 
 impl ParentKind {
@@ -25,15 +27,18 @@ impl ParentKind {
             ParentKind::Request => "request",
             ParentKind::Device => "device",
             ParentKind::Cartridge => "cartridge",
+            ParentKind::MessageDraft => "message_draft",
         }
     }
 
-    /// `None` для неизвестного значения (в том числе `message` — это 41.5).
+    /// `None` для неизвестного значения (в том числе `message`: родитель файла
+    /// сообщения остаётся заявкой, добавлен только `message_draft`).
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "request" => Some(ParentKind::Request),
             "device" => Some(ParentKind::Device),
             "cartridge" => Some(ParentKind::Cartridge),
+            "message_draft" => Some(ParentKind::MessageDraft),
             _ => None,
         }
     }
@@ -93,9 +98,11 @@ mod tests {
             ParentKind::Request,
             ParentKind::Device,
             ParentKind::Cartridge,
+            ParentKind::MessageDraft,
         ] {
             assert_eq!(ParentKind::parse(k.as_str()), Some(k));
         }
+        assert_eq!(ParentKind::MessageDraft.as_str(), "message_draft");
         assert_eq!(ParentKind::parse("message"), None);
         assert_eq!(ParentKind::parse(""), None);
     }

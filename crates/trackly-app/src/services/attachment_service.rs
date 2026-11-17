@@ -161,7 +161,7 @@ enum Prepared {
 
 fn audit_entity(kind: ParentKind) -> &'static str {
     match kind {
-        ParentKind::Request => "request",
+        ParentKind::Request | ParentKind::MessageDraft => "request",
         ParentKind::Device => "device",
         ParentKind::Cartridge => "cartridge",
     }
@@ -920,7 +920,8 @@ fn load_parent(
     parent: ParentRef,
 ) -> Result<(Option<i64>, Vec<i64>), AppError> {
     let (entity, sql): (&'static str, &str) = match parent.kind {
-        ParentKind::Request => (
+        // MessageDraft: временно как Request (полная логика - план 04).
+        ParentKind::Request | ParentKind::MessageDraft => (
             "request",
             "SELECT requested_by_user_id FROM requests WHERE id = ?1 AND deleted_at_utc IS NULL",
         ),
@@ -941,7 +942,7 @@ fn load_parent(
         entity,
         id: parent.id,
     })?;
-    let participants = if parent.kind == ParentKind::Request {
+    let participants = if matches!(parent.kind, ParentKind::Request | ParentKind::MessageDraft) {
         trackly_infra::repos::repairs_sqlite::SqliteRepairRepository
             .participant_user_ids(conn, parent.id)?
     } else {
@@ -958,6 +959,10 @@ fn decide(
     caller: &Identity,
     intent: Intent,
 ) -> Result<Perms, AppError> {
+    // MessageDraft: до плана 04 любой доступ запрещён.
+    if parent.kind == ParentKind::MessageDraft {
+        return Err(AppError::Forbidden);
+    }
     let staff = matches!(caller.role, Role::Admin | Role::Manager);
     let admin = matches!(caller.role, Role::Admin);
     let readable = if staff {
@@ -965,7 +970,7 @@ fn decide(
     } else {
         match parent.kind {
             // Author or participant (D-20), in any request status (D-02).
-            ParentKind::Request => {
+            ParentKind::Request | ParentKind::MessageDraft => {
                 (request_author.is_some() && caller.user_id == request_author)
                     || caller.user_id.is_some_and(|u| participants.contains(&u))
             }

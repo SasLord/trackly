@@ -5,6 +5,7 @@
 pub mod acts;
 pub mod attachments;
 pub mod cartridges;
+pub mod chat;
 pub mod devices;
 pub mod group_values;
 pub mod groups;
