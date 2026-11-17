@@ -112,7 +112,7 @@ fn v051_upgrade_preserves_data_and_adds_schema() {
         .collect();
     assert_eq!(ctx_before.len(), 5);
 
-    migrations::run(&mut conn).expect("upgrade to V051");
+    migrations::run_up_to(&mut conn, 51).expect("upgrade to V051");
 
     // (1)
     assert_eq!(count(&conn, "PRAGMA user_version"), 51);
@@ -189,7 +189,7 @@ fn v051_upgrade_preserves_data_and_adds_schema() {
 #[test]
 fn v051_repair_request_constraints() {
     let (mut conn, _g) = seeded_v050();
-    migrations::run(&mut conn).expect("upgrade");
+    migrations::run_up_to(&mut conn, 51).expect("upgrade");
     let ins = |conn: &Connection, ty: &str, st: &str, dev: Option<i64>| {
         conn.execute(
             "INSERT INTO requests (request_type, status, requested_by_user_id, printer_device_id,
@@ -259,7 +259,7 @@ fn v051_repair_request_constraints() {
 #[test]
 fn v051_hides_repair_category() {
     let (mut conn, _g) = seeded_v050();
-    migrations::run(&mut conn).expect("upgrade");
+    migrations::run_up_to(&mut conn, 51).expect("upgrade");
     // (9)
     assert_eq!(
         count(

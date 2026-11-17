@@ -70,6 +70,9 @@ fn add_request(
 }
 
 fn visit_new(request_id: i64, device_id: i64, place: i64) -> RepairVisitNew {
+    // Номер акта уникален на уровне БД (V052) — каждому визиту свой.
+    static NEXT_ACT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let act = NEXT_ACT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     RepairVisitNew {
         request_id,
         device_id,
@@ -79,7 +82,7 @@ fn visit_new(request_id: i64, device_id: i64, place: i64) -> RepairVisitNew {
         giver_name: "Иванов И.И.".into(),
         receiver_name: "Петров П.П.".into(),
         fault_description: "Не включается".into(),
-        act_number: "РЕМ-000001".into(),
+        act_number: format!("РЕМ-{act:06}"),
         created_by_user_id: None,
     }
 }

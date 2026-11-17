@@ -111,7 +111,7 @@ async fn seed(ctx: &AppCtx) -> Seeded {
                      sent_at_utc, returned_at_utc, giver_name, receiver_name, fault_description, \
                      works_done, cost_kopecks, act_number, created_at_utc, updated_at_utc) \
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'Иванов И.И.', 'Петров П.П.', ?7, \
-                     'замена блока питания', ?8, 'РЕМ-000001', ?5, ?5)",
+                     'замена блока питания', ?8, 'РЕМ-' || ?1 || '-' || ?3, ?5, ?5)",
                     rusqlite::params![rid, dev, seq, service, sent, returned, fault, cost],
                 )
                 .map_err(map_rusqlite)?;

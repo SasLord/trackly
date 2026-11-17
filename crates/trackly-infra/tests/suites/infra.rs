@@ -87,6 +87,8 @@ mod place_path_settings;
 mod places_crud;
 #[path = "../places_group_members.rs"]
 mod places_group_members;
+#[path = "../repair_act_number_unique_migration.rs"]
+mod repair_act_number_unique_migration;
 #[path = "../repairs_migration.rs"]
 mod repairs_migration;
 #[path = "../repairs_repo.rs"]
