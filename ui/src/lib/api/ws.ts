@@ -6,7 +6,10 @@
 //
 // WsEvent union is synchronised with Rust dto/printer.rs WsEvent enum:
 //   { type: 'new_request' | 'request_status_changed' | 'printer_alert'
-//          | 'number_space_changed' | 'entities_changed' | 'attachments_changed' }
+//          | 'number_space_changed' | 'entities_changed' | 'attachments_changed'
+//          | 'chat_message' | 'chat_read_changed' }
+// Видимость событий фильтруется на сервере (is_visible_to, D-23); клиент решает
+// только, что перечитать.
 // Фаза 41.7 (D-18): сокет теперь открывает и оболочка Admin/Manager (Layout.svelte),
 // поэтому тост «Соединение с сервером потеряно» (showReconnectingToast) может
 // появиться на любом экране админа — принято, придушивание по экранам отвергнуто.

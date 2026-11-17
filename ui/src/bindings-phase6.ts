@@ -254,4 +254,14 @@ export type WsEvent =
       parentId: number;
       requestedByUserId: number | null;
       participantUserIds: number[];
-    };
+    }
+  | {
+      type: 'chat_message';
+      requestId: number;
+      messageId: number;
+      actorUserId: number | null;
+      actorName: string | null;
+      requestedByUserId: number | null;
+      participantUserIds: number[];
+    }
+  | { type: 'chat_read_changed'; userId: number };
