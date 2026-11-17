@@ -128,6 +128,22 @@ impl SqliteChatRepository {
         Ok(conn.last_insert_rowid())
     }
 
+    /// D-09: перенос всех сообщений заявки `from` в `to` с сохранением id и
+    /// `created_at_utc`; `moved_from_request_id` помечает происхождение.
+    pub fn move_messages_on(
+        &self,
+        conn: &Connection,
+        from_request_id: i64,
+        to_request_id: i64,
+    ) -> Result<usize, AppError> {
+        conn.execute(
+            "UPDATE chat_messages SET request_id = ?2, moved_from_request_id = ?1 \
+             WHERE request_id = ?1",
+            params![from_request_id, to_request_id],
+        )
+        .map_err(map_rusqlite)
+    }
+
     pub fn get_message_on(
         &self,
         conn: &Connection,

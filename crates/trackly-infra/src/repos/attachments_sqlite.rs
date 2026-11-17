@@ -182,6 +182,16 @@ impl SqliteAttachmentRepository {
         Ok(n > 0)
     }
 
+    /// Обнулить привязку вложения к сообщению (D-09: сообщение уехало в другую заявку).
+    pub fn clear_message_id_on(&self, conn: &Connection, id: i64) -> Result<(), AppError> {
+        conn.execute(
+            "UPDATE attachments SET message_id = NULL WHERE id = ?1",
+            params![id],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
     /// Жёсткое удаление строки.
     pub fn delete_row_on(&self, conn: &Connection, id: i64) -> Result<bool, AppError> {
         let n = conn

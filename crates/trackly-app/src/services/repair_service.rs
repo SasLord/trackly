@@ -27,6 +27,7 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::attachments_sqlite::{AttachmentNew, SqliteAttachmentRepository};
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
+use trackly_infra::repos::chat_sqlite::SqliteChatRepository;
 use trackly_infra::repos::repairs_sqlite::SqliteRepairRepository;
 use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 
@@ -1669,6 +1670,10 @@ impl RepairService {
     /// `MAX_DESCRIPTION_CHARS`), живые вложения поглощаемой заявки копируются строками
     /// с тем же хешем (файлы на диске не трогаются; хранилище адресуется по хешу, purge
     /// считает строки), по цели уходит `AttachmentsChanged`.
+    ///
+    /// D-09: сообщения чата поглощаемой заявки переносятся в целевую с исходным
+    /// временем (`moved_from_request_id`); копии вложений сохраняют `message_id`,
+    /// у оригиналов он обнуляется.
     pub async fn merge_into_open(
         &self,
         dto: RepairMergeDto,
@@ -1794,6 +1799,8 @@ impl RepairService {
                 }
                 // D-35: живые вложения поглощаемой -> новые строки у цели (тот же хеш).
                 let attachment_repo = SqliteAttachmentRepository;
+                // D-09: сначала переносим сообщения (FK message_id у копий вложений).
+                SqliteChatRepository.move_messages_on(&tx, request_id, target)?;
                 let mut copied: usize = 0;
                 for a in attachment_repo.list_by_parent_on(&tx, "request", request_id, false)? {
                     let new_id = attachment_repo.insert_on(
@@ -1807,9 +1814,10 @@ impl RepairService {
                             content_hash: &a.content_hash,
                             uploaded_by_user_id: a.uploaded_by_user_id,
                             created_at_utc: a.created_at_utc,
-                            message_id: None,
+                            message_id: a.message_id,
                         },
                     )?;
+                    attachment_repo.clear_message_id_on(&tx, a.id)?;
                     audit_repo.insert(
                         &tx,
                         AuditEntry {
