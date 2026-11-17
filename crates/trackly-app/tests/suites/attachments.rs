@@ -11,6 +11,8 @@
 
 #[path = "../attachments_access.rs"]
 mod attachments_access;
+#[path = "../attachments_draft.rs"]
+mod attachments_draft;
 #[path = "../attachments_http.rs"]
 mod attachments_http;
 #[path = "../attachments_integrity.rs"]
