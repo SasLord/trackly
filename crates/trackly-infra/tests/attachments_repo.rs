@@ -43,6 +43,7 @@ fn new<'a>(
         content_hash: hash,
         uploaded_by_user_id: user,
         created_at_utc: at,
+        message_id: None,
     }
 }
 
@@ -116,4 +117,29 @@ fn delete_row_and_totals() {
     assert!(r.delete_row_on(&c, a).unwrap());
     assert!(!r.delete_row_on(&c, a).unwrap());
     assert_eq!(r.count_by_hash_on(&c, H1, None).unwrap(), 1);
+}
+
+#[test]
+fn message_id_roundtrips_through_insert_get_and_list() {
+    let (c, _g) = fresh_db();
+    let r = SqliteAttachmentRepository;
+    let mut n = new("request", 5, H1, NOW, None);
+    n.message_id = Some(7);
+    let with = r.insert_on(&c, &n).unwrap();
+    let without = r
+        .insert_on(&c, &new("request", 5, H2, NOW + 1, None))
+        .unwrap();
+    assert_eq!(
+        r.get_by_id_on(&c, with).unwrap().unwrap().message_id,
+        Some(7)
+    );
+    assert_eq!(
+        r.get_by_id_on(&c, without).unwrap().unwrap().message_id,
+        None
+    );
+    let rows = r.list_by_parent_on(&c, "request", 5, false).unwrap();
+    assert_eq!(
+        rows.iter().map(|x| x.message_id).collect::<Vec<_>>(),
+        [Some(7), None]
+    );
 }

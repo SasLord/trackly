@@ -25,6 +25,8 @@ pub struct AttachmentNew<'a> {
     pub content_hash: &'a str,
     pub uploaded_by_user_id: Option<i64>,
     pub created_at_utc: i64,
+    /// Сообщение чата, к которому прикреплён файл (V054); родитель остаётся заявкой.
+    pub message_id: Option<i64>,
 }
 
 /// Строка вложения с именами пользователей (LEFT JOIN users).
@@ -43,11 +45,12 @@ pub struct AttachmentRow {
     pub deleted_at_utc: Option<i64>,
     pub deleted_by_user_id: Option<i64>,
     pub deleted_by_name: Option<String>,
+    pub message_id: Option<i64>,
 }
 
 const SELECT: &str = "SELECT a.id, a.parent_kind, a.parent_id, a.original_name, a.mime, \
     a.size_bytes, a.content_hash, a.uploaded_by_user_id, u.full_name, a.created_at_utc, \
-    a.deleted_at_utc, a.deleted_by_user_id, d.full_name \
+    a.deleted_at_utc, a.deleted_by_user_id, d.full_name, a.message_id \
     FROM attachments a \
     LEFT JOIN users u ON u.id = a.uploaded_by_user_id \
     LEFT JOIN users d ON d.id = a.deleted_by_user_id";
@@ -67,6 +70,7 @@ fn map_row(r: &Row<'_>) -> rusqlite::Result<AttachmentRow> {
         deleted_at_utc: r.get(10)?,
         deleted_by_user_id: r.get(11)?,
         deleted_by_name: r.get(12)?,
+        message_id: r.get(13)?,
     })
 }
 
@@ -75,8 +79,8 @@ impl SqliteAttachmentRepository {
     pub fn insert_on(&self, conn: &Connection, n: &AttachmentNew<'_>) -> Result<i64, AppError> {
         conn.execute(
             "INSERT INTO attachments (parent_kind, parent_id, original_name, mime, size_bytes, \
-             content_hash, uploaded_by_user_id, created_at_utc) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             content_hash, uploaded_by_user_id, created_at_utc, message_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 n.parent_kind,
                 n.parent_id,
@@ -86,6 +90,7 @@ impl SqliteAttachmentRepository {
                 n.content_hash,
                 n.uploaded_by_user_id,
                 n.created_at_utc,
+                n.message_id,
             ],
         )
         .map_err(map_rusqlite)?;

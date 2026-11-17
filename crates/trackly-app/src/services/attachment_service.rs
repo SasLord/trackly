@@ -500,6 +500,7 @@ impl AttachmentService {
                         content_hash: &hash,
                         uploaded_by_user_id: user_id,
                         created_at_utc: now,
+                        message_id: None,
                     },
                 )?;
                 audit_repo.insert(

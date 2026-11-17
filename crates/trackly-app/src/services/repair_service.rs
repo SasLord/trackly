@@ -1807,6 +1807,7 @@ impl RepairService {
                             content_hash: &a.content_hash,
                             uploaded_by_user_id: a.uploaded_by_user_id,
                             created_at_utc: a.created_at_utc,
+                            message_id: None,
                         },
                     )?;
                     audit_repo.insert(

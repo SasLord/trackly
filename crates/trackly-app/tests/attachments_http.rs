@@ -149,6 +149,7 @@ async fn seed_attachment(
                     content_hash: &h,
                     uploaded_by_user_id: Some(uploader),
                     created_at_utc: NOW,
+                    message_id: None,
                 },
             )
         })
