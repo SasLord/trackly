@@ -535,6 +535,24 @@
 | EDT-06 | Phase 44 | Pending |
 | LIV-01 | Phase 45 | Pending |
 | LIV-02 | Phase 45 | Pending |
+| MAPX-01 | TBD | TBD |
+| MAPX-02 | TBD | TBD |
+| MAPX-03 | TBD | TBD |
+| MAPX-04 | TBD | TBD |
+| GRPX-02 | TBD | TBD |
+| GRPX-03 | TBD | TBD |
+| GRPX-04 | TBD | TBD |
+| QA-05 | TBD | TBD |
+| INT-02 | TBD | TBD |
+| DOC-12 | TBD | TBD |
+| PRIV-03 | TBD | TBD |
+
+Строки MAPX-01…PRIV-03 — отложенные требования (раздел «v2 Requirements»), в покрытие v1 не входят.
+Ни одно не назначено фазе: MAPX — Backlog ROADMAP (отложено 2026-08-22); GRPX-02/03 — вынесены
+из Фазы 41 (41-SPEC.md); GRPX-04 — текст требования ссылается на Фазу 43, но в списке Requirements
+Фазы 43 в ROADMAP его нет; QA-05, INT-02, DOC-12, PRIV-03 — долг v1.3.3, Backlog ROADMAP
+(36-VALIDATION.md всё ещё `nyquist_compliant: false`). INT-02 здесь — дублированный Paged.js-хендлер
+из аудита v1.3.3, не одноимённая находка INT-02 Фазы 41.7 (поиск акта возврата по номеру).
 
 **Coverage:**
 - v1 requirements: 88 total (32 исходных + PLC-07/PLC-08, добавлены 2026-08-28 с Фазой 39.1, + NUM-01..16, добавлены 2026-09-18 с Фазой 40.2, + GRP/GRD/GAM/ATT/REP/MSG/EMP — 36 требований вместо снятых WKS-01..07, 2026-10-04 с Фазами 41–41.6, + PGR-01..04, добавлены 2026-10-28 с Фазой 41.13, + REP-08..11 и GRPX-01 из отложенных, 2026-11-10 с Фазой 41.4)
