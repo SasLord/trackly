@@ -11,6 +11,7 @@
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import type { WsEvent } from '../../bindings-phase6';
 
@@ -86,10 +87,12 @@
         // WS connection is non-fatal — graceful-degrade, no notifications.
       });
     const unsubscribe = onWsEvent(handleEmployeeWsEvent);
+    const stopChat = startChatRealtime();
 
     return () => {
       disposed = true;
       unsubscribe();
+      stopChat();
       unlisten?.();
     };
   });

@@ -2,6 +2,7 @@
   import { onMount, type Snippet } from 'svelte';
   import { router } from 'svelte-spa-router';
   import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
   import { notifyEntitiesChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { WsEvent } from '../../bindings-phase6';
   import Sidebar from './Sidebar.svelte';
@@ -45,10 +46,12 @@
         // Сбой сокета не фатален: локальные вызовы инвалидации продолжают работать.
       });
     const unsubscribe = onWsEvent(handleEntitiesWsEvent);
+    const stopChat = startChatRealtime();
 
     return () => {
       disposed = true;
       unsubscribe();
+      stopChat();
       unlisten?.();
     };
   });

@@ -6339,6 +6339,7 @@ fn employee_ui_commands() -> Vec<(&'static str, serde_json::Value)> {
             json!({ "parentKind": "request", "parentId": 1 }),
         ),
         ("auth_logout", json!({})),
+        ("chat_unread_summary", json!({})),
         ("dashboard_get_all_widgets", json!({ "period": null })),
         (
             "repairs_cancel_by_author",

@@ -2,6 +2,7 @@
   "attachments_history",
   "attachments_list",
   "auth_logout",
+  "chat_unread_summary",
   "dashboard_get_all_widgets",
   "repairs_cancel_by_author",
   "repairs_create",
