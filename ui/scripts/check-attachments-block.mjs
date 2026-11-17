@@ -30,7 +30,8 @@
 //        added/deleted/restored/purged и не сравнивает с полной строкой;
 //   [G13] (UAT G2) подпись автора/удалившего идёт через actorLabel (пустой id —
 //        действие из приложения, а не удалённая учётная запись), литерал
-//        «Пользователь удалён» в плитке и просмотрщике не встречается.
+//        «Пользователь удалён» в плитке и просмотрщике не встречается;
+//   [G14] (41.5 D-16) плитка показывает значок «Из чата» по item.fromMessage.
 //
 // Счёт имён слеп к порядку, поэтому G4/G5 сравнивают ПОЗИЦИИ в теле функции,
 // а самопроверка (--selftest) включает мутации-перестановки, не только удаление.
@@ -276,6 +277,10 @@ export function check(files) {
       v.push({ code: 'G13', msg: `${name}: подпись автора не через actorLabel()` });
     }
   }
+  const tile = src['AttachmentTile.svelte'];
+  if (!/\{#if item\.fromMessage\}/.test(tile) || !tile.includes('Из чата')) {
+    v.push({ code: 'G14', msg: 'AttachmentTile: нет значка «Из чата» по item.fromMessage (D-16)' });
+  }
   return v;
 }
 
@@ -519,6 +524,18 @@ function selftest(files) {
           'actorLabel(current.uploadedByName, current.uploadedById)',
           "current.uploadedByName ?? 'Пользователь удалён'",
           'viewer actor',
+        ),
+    },
+    {
+      name: 'плитка потеряла значок «Из чата»',
+      expect: 'G14',
+      make: () =>
+        mutate(
+          files,
+          'AttachmentTile.svelte',
+          '{#if item.fromMessage}',
+          '{#if false}',
+          'tile from-chat',
         ),
     },
     {

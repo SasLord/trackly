@@ -64,6 +64,8 @@
         ? `Открыть «${item.originalName}»`
         : `Скачать «${item.originalName}»`,
   );
+  // D-16: файл пришёл из сообщения чата.
+  const ariaLabelFull = $derived(item.fromMessage ? `${ariaLabel}, из чата` : ariaLabel);
 
   function activate() {
     if (tileState === 'uploading') return;
@@ -84,7 +86,12 @@
       </div>
     </div>
   {:else}
-    <button type="button" class="tile-body tile-button" aria-label={ariaLabel} onclick={activate}>
+    <button
+      type="button"
+      class="tile-body tile-button"
+      aria-label={ariaLabelFull}
+      onclick={activate}
+    >
       <span class="preview" class:preview-sunken={!showThumb}>
         {#if showThumb}
           <img
@@ -103,6 +110,24 @@
         {/if}
         {#if tileState === 'deleted'}
           <span class="deleted-badge"><Badge variant="default" size="sm">Удалено</Badge></span>
+        {/if}
+        {#if item.fromMessage}
+          <span class="from-chat" title="Из чата" aria-hidden="true">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z"
+              />
+            </svg>
+          </span>
         {/if}
       </span>
       <span class="caption">
@@ -211,6 +236,20 @@
     position: absolute;
     top: var(--tr-space-xs);
     left: var(--tr-space-xs);
+  }
+  .from-chat {
+    position: absolute;
+    left: var(--tr-space-xs);
+    bottom: var(--tr-space-xs);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--tr-border);
+    border-radius: var(--tr-radius-full);
+    background: var(--tr-surface-raised);
+    color: var(--tr-text-secondary);
   }
   .caption {
     display: flex;
