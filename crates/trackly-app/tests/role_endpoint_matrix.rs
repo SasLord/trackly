@@ -6418,8 +6418,8 @@ async fn employee_allowed_fixture_sound() {
         assert_eq!(
             on_disk, rendered,
             "пересоздайте ui/scripts/fixtures/employee-allowed-commands.json \
-             (TRACKLY_UPDATE_FIXTURES=1 cargo test -p trackly-app --test role_endpoint_matrix \
-             employee_allowed_fixture_sound); ожидаемое содержимое файла — выше (right)"
+             (TRACKLY_UPDATE_FIXTURES=1 cargo test -p trackly-app --test app_auth \
+             role_endpoint_matrix::employee_allowed_fixture_sound); ожидаемое содержимое файла — выше (right)"
         );
         env.ctx.shutdown.cancel();
     })

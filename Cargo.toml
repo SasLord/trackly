@@ -80,3 +80,16 @@ snmp2 = { version = "0.5", features = ["crypto-rust", "tokio"] }
 [workspace.lints.clippy]
 disallowed_methods = "deny"
 disallowed_types = "deny"
+
+# Профиль `cargo test` (на него же переходят все зависимости при сборке тестов).
+# debug = 0 — как в CI (`CARGO_PROFILE_DEV_DEBUG=0`). Причина локальная и macOS-специфичная:
+# с отладочной информацией dev-профиль на macOS по умолчанию `split-debuginfo = "unpacked"`
+# — rustc оставляет объектники `*.rcgu.o` в `target/debug/deps` рядом с каждым тестовым
+# бинарником, а у каждой пересборки они получают новые хеши и cargo их не удаляет.
+# За ~70 полных прогонов там накопилось 1,9 млн файлов (434 ГБ), и каждый вызов rustc/
+# rustdoc читал весь каталог при поиске крейтов (30 с вместо 0,5 с) — полный прогон тестов
+# растянулся до 8–10 часов. Нужны номера строк в бэктрейсе — разово:
+# `CARGO_PROFILE_TEST_DEBUG=line-tables-only cargo test ...`.
+# `cargo build`/`cargo tauri dev` (профиль dev) не затронуты.
+[profile.test]
+debug = 0

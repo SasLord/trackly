@@ -8,6 +8,8 @@ license.workspace = true
 # cargo-deny's `allow-wildcard-paths` apply: that setting is scoped to
 # private crates, since crates.io forbids path deps in published ones.
 publish = false
+# Цели интеграционных тестов перечислены в [[test]] ниже (suite-бинарники).
+autotests = false
 description = "Composition root for Trackly: Tauri 2 shell + axum HTTP (Phase 5) + AppCtx wiring."
 
 [lints]
@@ -114,3 +116,81 @@ pdf-extract = "^0.10"
 # Tauri/wry stack) to avoid a new resolver entry.
 tokio-tungstenite = "0.29"
 futures-util = "0.3"
+
+# Интеграционные тесты собраны в несколько бинарников (suite) вместо одного
+# бинарника на файл: каждый бинарник линкует весь крейт, и ~200 линковок плюс
+# проверка каждого свежего бинарника в macOS съедали часы локального прогона.
+# Файлы тестов остаются на своих местах в `tests/` (их читают гейты по путям),
+# корень suite подключает их через `#[path]`. Новый файл `tests/*.rs` нужно
+# добавить строкой в один из `tests/suites/*.rs` — иначе краснеет гейт
+# `suite_wiring` (trackly-app). Отдельными целями остаются файлы, которым
+# нужен свой процесс (меняют env/глобальный subscriber) или чьё имя цели
+# вызывают по `--test` (`export_bindings`, `attachments_heic`).
+
+[[test]]
+name = "app_acts"
+path = "tests/suites/acts.rs"
+
+[[test]]
+name = "app_attachments"
+path = "tests/suites/attachments.rs"
+
+[[test]]
+name = "app_auth"
+path = "tests/suites/auth.rs"
+
+[[test]]
+name = "app_cartridges"
+path = "tests/suites/cartridges.rs"
+
+[[test]]
+name = "app_devices"
+path = "tests/suites/devices.rs"
+
+[[test]]
+name = "app_gates"
+path = "tests/suites/gates.rs"
+
+[[test]]
+name = "app_groups"
+path = "tests/suites/groups.rs"
+
+[[test]]
+name = "app_places"
+path = "tests/suites/places.rs"
+
+[[test]]
+name = "app_repairs"
+path = "tests/suites/repairs.rs"
+
+[[test]]
+name = "app_reports"
+path = "tests/suites/reports.rs"
+
+[[test]]
+name = "app_server"
+path = "tests/suites/server.rs"
+
+[[test]]
+name = "attachments_heic"
+path = "tests/attachments_heic.rs"
+
+[[test]]
+name = "export_bindings"
+path = "tests/export_bindings.rs"
+
+[[test]]
+name = "health_smoke"
+path = "tests/health_smoke.rs"
+
+[[test]]
+name = "phase06_stubs"
+path = "tests/phase06_stubs.rs"
+
+[[test]]
+name = "template_edit"
+path = "tests/template_edit.rs"
+
+[[test]]
+name = "templates_status"
+path = "tests/templates_status.rs"
