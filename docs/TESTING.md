@@ -24,6 +24,7 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools TRACKLY_AD_MOCK=1 TRACKLY_SNMP
 | `app_attachments` | вложения, резервные копии, реквизиты организации                |
 | `app_auth`        | вход, AD, пользователи, матрица ролей, заголовки безопасности   |
 | `app_cartridges`  | картриджи, принтеры, дашборд, конкурентные записи               |
+| `app_chat`        | чат заявок: доступ, лента, непрочитанное, отправка, черновики, HTTP |
 | `app_devices`     | устройства                                                      |
 | `app_gates`       | гейты-сканеры исходников и реестры, `suite_wiring`              |
 | `app_groups`      | группы и типы групп                                             |

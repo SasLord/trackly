@@ -10,6 +10,7 @@ pub mod act;
 pub mod attachment;
 pub mod auth;
 pub mod cartridge;
+pub mod chat;
 pub mod device;
 pub mod device_status;
 pub mod device_type;

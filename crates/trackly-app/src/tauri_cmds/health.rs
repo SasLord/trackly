@@ -169,6 +169,15 @@ mod tests {
             )
             .with_ws_tx(ws_broadcast.clone()),
         );
+        let chat = Arc::new(
+            crate::services::ChatService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                attachments.clone(),
+            )
+            .with_ws_tx(ws_broadcast.clone()),
+        );
         let repairs = Arc::new(crate::services::RepairService::new(
             writer.clone(),
             readers.clone(),
@@ -188,6 +197,7 @@ mod tests {
             place_movements,
             number_templates,
             attachments,
+            chat,
             paths: paths_arc,
             org_db,
             reports,

@@ -144,6 +144,12 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         clock.clone(),
         dir.path().join("attachments"),
     ));
+    let chat = Arc::new(trackly_app::services::ChatService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+        attachments.clone(),
+    ));
     let repairs = Arc::new(trackly_app::services::RepairService::new(
         writer.clone(),
         readers.clone(),
@@ -163,6 +169,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         place_movements,
         number_templates,
         attachments,
+        chat,
         paths: paths_arc,
         org_db,
         reports,

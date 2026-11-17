@@ -36,7 +36,7 @@ use crate::server::ServerHandle;
 use crate::services::attachment_store::AttachmentStore;
 use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AttachmentService, AuthService,
-    BackupService, CartridgeService, DashboardService, DeviceService, GroupService,
+    BackupService, CartridgeService, ChatService, DashboardService, DeviceService, GroupService,
     GroupTypeService, NumberTemplateService, OrgDbService, OrganizationService,
     PlaceMovementService, PlaceService, PrinterService, RepairActRenderer, RepairService,
     ReportService, RequestService, TemplateService,
@@ -138,6 +138,8 @@ pub struct AppCtx {
     pub number_templates: Arc<NumberTemplateService>,
     /// Attachment service - read side (list/open/authorize). Phase 41.3 Plan 05.
     pub attachments: Arc<AttachmentService>,
+    /// Request chat service (Phase 41.5): feed, read marks, unread summary.
+    pub chat: Arc<ChatService>,
 }
 
 impl AppCtx {
@@ -313,6 +315,15 @@ impl AppCtx {
                 readers.clone(),
                 clock.clone(),
                 attachment_store,
+            )
+            .with_ws_tx(ws_broadcast.clone()),
+        );
+        let chat = Arc::new(
+            ChatService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                attachments.clone(),
             )
             .with_ws_tx(ws_broadcast.clone()),
         );
@@ -548,6 +559,7 @@ impl AppCtx {
             place_movements,
             number_templates,
             attachments,
+            chat,
         })
     }
 }

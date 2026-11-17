@@ -196,6 +196,34 @@ impl SqliteChatRepository {
         Ok(rows)
     }
 
+    /// События вложений заявки (без файлов сообщений) с id аудита:
+    /// `(audit_id, user_id, action, created_at_utc, payload_json)`; нужны для
+    /// вычисления первого непрочитанного элемента ленты (D-18).
+    #[allow(clippy::type_complexity)]
+    pub fn list_attachment_audit_on(
+        &self,
+        conn: &Connection,
+        request_id: i64,
+    ) -> Result<Vec<(i64, Option<i64>, String, i64, Option<String>)>, AppError> {
+        let sql = format!(
+            "SELECT a.id, a.user_id, a.action, a.created_at_utc, a.payload_json \
+               FROM audit_log a \
+              WHERE a.entity_type = 'request' AND a.entity_id = ?1 \
+                AND a.action LIKE 'custom:attachment_%' \
+                AND {MESSAGE_MARKER_FILTER} \
+              ORDER BY a.created_at_utc ASC, a.id ASC"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![request_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
     /// Id вложений заявки, привязанных к сообщениям (включая мягко удалённые).
     pub fn message_attachment_ids_on(
         &self,

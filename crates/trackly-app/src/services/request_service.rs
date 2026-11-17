@@ -51,6 +51,23 @@ pub struct RequestService {
     pub(crate) ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
 }
 
+/// Linked request id from an audit payload (`into_request_id` / `merged_request_id`).
+/// Shared by `get_history` and the chat feed so both read the payload the same way.
+pub(crate) fn related_request_id_of(payload_json: Option<&str>) -> Option<i64> {
+    let v = serde_json::from_str::<serde_json::Value>(payload_json?).ok()?;
+    v.get("into_request_id")
+        .and_then(|n| n.as_i64())
+        .or_else(|| v.get("merged_request_id").and_then(|n| n.as_i64()))
+}
+
+/// `notes` text from an audit payload (reject/complete transitions).
+pub(crate) fn notes_of(payload_json: Option<&str>) -> Option<String> {
+    let v = serde_json::from_str::<serde_json::Value>(payload_json?).ok()?;
+    v.get("notes")
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string())
+}
+
 impl RequestService {
     pub fn new(
         writer: Arc<WriterHandle>,
@@ -223,27 +240,14 @@ impl RequestService {
             Ok(rows
                 .into_iter()
                 .map(|r| RequestHistoryEntryDto {
-                    related_request_id: r.payload_json.as_deref().and_then(|p| {
-                        let v = serde_json::from_str::<serde_json::Value>(p).ok()?;
-                        v.get("into_request_id")
-                            .and_then(|n| n.as_i64())
-                            .or_else(|| v.get("merged_request_id").and_then(|n| n.as_i64()))
-                    }),
+                    related_request_id: related_request_id_of(r.payload_json.as_deref()),
                     id: r.id,
                     action: r.action,
                     created_at_utc: r.created_at_utc,
                     actor_name: r.actor_name,
                     // `notes` is carried in payload_json as {"notes": "..."} for
                     // reject/complete transitions; absent for create/accept.
-                    notes: r.payload_json.as_deref().and_then(|p| {
-                        serde_json::from_str::<serde_json::Value>(p)
-                            .ok()
-                            .and_then(|v| {
-                                v.get("notes")
-                                    .and_then(|n| n.as_str())
-                                    .map(|s| s.to_string())
-                            })
-                    }),
+                    notes: notes_of(r.payload_json.as_deref()),
                 })
                 .collect())
         })
