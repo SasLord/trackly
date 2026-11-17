@@ -31,6 +31,8 @@ mod cartridges_place_path_short;
 mod cartridges_place_search;
 #[path = "../chat_migration.rs"]
 mod chat_migration;
+#[path = "../chat_repo.rs"]
+mod chat_repo;
 #[path = "../config_example_test.rs"]
 mod config_example_test;
 #[path = "../config_test.rs"]

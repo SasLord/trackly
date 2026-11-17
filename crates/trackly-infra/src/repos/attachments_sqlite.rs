@@ -133,6 +133,25 @@ impl SqliteAttachmentRepository {
         Ok(rows)
     }
 
+    /// Вложения сообщений заявки (message_id NOT NULL), включая удалённые; по id.
+    pub fn list_message_attachments_on(
+        &self,
+        conn: &Connection,
+        request_id: i64,
+    ) -> Result<Vec<AttachmentRow>, AppError> {
+        let sql = format!(
+            "{SELECT} WHERE a.parent_kind = 'request' AND a.parent_id = ?1 \
+             AND a.message_id IS NOT NULL ORDER BY a.id"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![request_id], map_row)
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
     /// Мягкое удаление; `false`, если строка уже удалена или не существует.
     pub fn soft_delete_on(
         &self,
