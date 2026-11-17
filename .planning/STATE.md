@@ -187,7 +187,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-17
+Last activity: 2026-11-17 - Completed quick task 261117-w2q: системный «Администратор» для десктопа
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1609,6 +1609,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 | Date | Slug | Summary | Status |
 |------|------|---------|--------|
+| 2026-11-17 | desktop-system-admin | 261117-w2q: системный пользователь «Администратор» (V053 `users.is_system`, ensure при старте) — десктоп действует от него; убран `unwrap_or(1)` (FK на пустой БД); повтор D-19 в ремонтном create только при UNIQUE-гонке; Gap 1: мастер первого запуска закрыт. Живая UAT 7/7. | complete ✓ |
+| 2026-11-17 | test-speed-merge | Вне GSD: смёржена ветка `claude/test-speed-e3b0b1` (87ff8c60) — 20 suite-бинарников вместо 228, `[profile.test]`, гейт `suite_wiring`; новые tests/*.rs подключать в tests/suites/*.rs (docs/TESTING.md). | complete ✓ |
 | 2026-11-17 | traceability-deferred-reqs | REQUIREMENTS.md Traceability: 11 отложенных REQ-ID (MAPX-01..04, GRPX-02..04, QA-05, INT-02, DOC-12, PRIV-03) внесены как TBD — ни одно не назначено фазе; GRPX-04 расходится с ROADMAP Фазы 43. | complete ✓ |
 | 2026-11-17 | repair-act-number-unique | W-1 ф.41.4: V052 делает номер акта ремонта UNIQUE (trim + кириллический регистр), дубли старых БД → `ДУБЛЬ-NNNNNN (…)` с аудитом; тест отказа БД. Попутно `trackly-infra/build.rs`: новый `.sql` не пересобирал крейт (сплошной прогон шёл без V052). Сплошной прогон 2602/0. | complete ✓ |
 | 2026-11-17 | macos-date-align | Дата в `<input type="date">` на macOS (WKWebView) стояла по центру из-за UA-шного `align-items: center` WebKit в flex-колонке; явный `align-items: stretch` в DatePicker, гейт check-date-picker-layout требует его. Проверено снимком системного WKWebView; в `cargo tauri dev` подтверждено пользователем. | complete ✓ |
