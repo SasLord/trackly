@@ -10,6 +10,7 @@ pub mod acts;
 pub mod attachments;
 pub mod auth;
 pub mod cartridges;
+pub mod chat;
 pub mod dashboard;
 pub mod devices;
 pub mod fs_helpers;

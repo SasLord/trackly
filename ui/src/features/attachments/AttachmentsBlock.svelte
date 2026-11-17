@@ -134,6 +134,7 @@
       deletedByName: null,
       deletedById: null,
       deletedAtUtc: null,
+      fromMessage: false,
     };
   }
 

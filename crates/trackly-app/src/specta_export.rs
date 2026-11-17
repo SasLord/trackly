@@ -281,5 +281,10 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::attachments::attachments_get_limit,
         crate::tauri_cmds::attachments::attachments_set_limit,
         crate::tauri_cmds::attachments::attachments_report,
+        crate::tauri_cmds::chat::chat_feed,
+        crate::tauri_cmds::chat::chat_send,
+        crate::tauri_cmds::chat::chat_mark_read,
+        crate::tauri_cmds::chat::chat_unread_summary,
+        crate::tauri_cmds::chat::chat_discard_drafts,
     ])
 }
