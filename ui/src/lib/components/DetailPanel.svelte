@@ -13,6 +13,10 @@
     emptyTitle?: string;
     emptyBody?: string;
     actions?: Snippet;
+    /** Полоса под заголовком (вкладки), во всю ширину шапки. */
+    subheader?: Snippet;
+    /** Тело не прокручивается целиком: дочерний компонент сам управляет высотой. */
+    fill?: boolean;
     emptyActions?: Snippet;
     children?: Snippet;
   }
@@ -23,12 +27,14 @@
     emptyTitle,
     emptyBody,
     actions,
+    subheader,
+    fill = false,
     emptyActions,
     children,
   }: Props = $props();
 </script>
 
-<div class="detail-panel">
+<div class="detail-panel" class:fill>
   {#if empty}
     <div class="empty">
       {#if emptyTitle}
@@ -40,13 +46,31 @@
       {@render emptyActions?.()}
     </div>
   {:else}
-    <header class="detail-header">
-      <h2 class="detail-title">{title}</h2>
-      <div class="actions">
-        {@render actions?.()}
-      </div>
+    <header class="detail-header" class:with-subheader={!!subheader}>
+      {#if subheader}
+        <div class="header-row">
+          <h2 class="detail-title">{title}</h2>
+          <div class="actions">
+            {@render actions?.()}
+          </div>
+        </div>
+        <div class="subheader">
+          {@render subheader()}
+        </div>
+      {:else}
+        <h2 class="detail-title">{title}</h2>
+        <div class="actions">
+          {@render actions?.()}
+        </div>
+      {/if}
     </header>
-    {@render children?.()}
+    {#if fill}
+      <div class="fill-body">
+        {@render children?.()}
+      </div>
+    {:else}
+      {@render children?.()}
+    {/if}
   {/if}
 </div>
 
@@ -59,6 +83,17 @@
     // top padding, that gap would sit ABOVE the sticky header and let scrolled
     // content peek through it.
     padding: 0 var(--tr-space-xl) var(--tr-space-xl);
+  }
+
+  .detail-panel.fill {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  .fill-body {
+    flex: 1;
+    min-height: 0;
   }
 
   .empty {
@@ -110,6 +145,27 @@
     z-index: 3;
     background: var(--tr-surface-raised);
     border-bottom: 1px solid var(--tr-border);
+  }
+  .detail-header.with-subheader {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: var(--tr-space-sm);
+    padding-bottom: 0;
+    margin-bottom: var(--tr-space-xl);
+  }
+  .detail-panel.fill .detail-header {
+    flex: none;
+  }
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--tr-space-md);
+    flex-wrap: wrap;
+  }
+  .subheader {
+    width: 100%;
   }
   .detail-title {
     margin: 0;

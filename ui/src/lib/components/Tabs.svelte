@@ -1,8 +1,12 @@
 <script lang="ts">
+  import UnreadBadge from './UnreadBadge.svelte';
+
   interface Tab {
     key: string;
     label: string;
     count?: number;
+    /** Счётчик непрочитанного (UnreadBadge); не заменяет count. */
+    badge?: number;
     disabled?: boolean;
   }
 
@@ -31,6 +35,9 @@
       class:active={tab.key === active}
       disabled={tab.disabled}
       role={variant === 'segmented' ? undefined : 'tab'}
+      aria-label={tab.badge && tab.badge > 0
+        ? `${tab.label}, непрочитанных: ${tab.badge}`
+        : undefined}
       aria-selected={variant === 'segmented' ? undefined : tab.key === active}
       aria-pressed={variant === 'segmented' ? tab.key === active : undefined}
       onclick={() => selectTab(tab)}
@@ -38,6 +45,9 @@
       {tab.label}
       {#if variant === 'underline' && tab.count != null}
         <span class="tab-count">{tab.count}</span>
+      {/if}
+      {#if variant === 'underline' && tab.badge}
+        <UnreadBadge count={tab.badge} />
       {/if}
     </button>
   {/each}
