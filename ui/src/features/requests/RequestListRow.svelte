@@ -10,6 +10,8 @@
   // entry point, mirroring the previous single-div tab-stop).
   import Badge from '$lib/components/Badge.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
+  import UnreadBadge from '$lib/components/UnreadBadge.svelte';
+  import { unreadFor } from './chat/unreadStore.svelte';
   import type { RequestDto } from '../../bindings-phase6';
 
   interface Props {
@@ -84,6 +86,9 @@
     return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
   }
 
+  // Счётчик — серверный (D-19); у заявок ad_register чата нет (D-05).
+  const unread = $derived(request.requestType === 'ad_register' ? 0 : unreadFor(request.id));
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -97,6 +102,7 @@
        keyboard entry point (role=button/tabindex/onkeydown) lives here. -->
   <td
     class="cell cell-author"
+    class:has-unread={unread > 0}
     role="button"
     tabindex="0"
     aria-pressed={selected}
@@ -121,7 +127,10 @@
   </td>
   <td class="cell cell-desc" title={shortDesc} {onclick}>{shortDesc}</td>
   <td class="cell cell-status" {onclick}>
-    <Badge variant={statusVariant}>{statusLabel}</Badge>
+    <div class="status-badges">
+      <Badge variant={statusVariant}>{statusLabel}</Badge>
+      <UnreadBadge count={unread} label="Непрочитанных в чате" />
+    </div>
   </td>
 </TableRow>
 
@@ -181,6 +190,17 @@
   // Статус: fixed-width column (base .cell supplies nowrap/ellipsis; the width
   // override wins the column budget, same pattern as ActListRow's .cell-count).
   .cell-status {
-    width: 110px;
+    width: 150px;
+  }
+
+  .status-badges {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
+  }
+
+  // Второй, не цветовой признак непрочитанного (WCAG 1.4.1).
+  .cell-author.has-unread {
+    font-weight: var(--tr-font-weight-semibold);
   }
 </style>

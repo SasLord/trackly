@@ -6,6 +6,8 @@
   import type { UserRole } from '$lib/stores/auth.svelte';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
   import { apiCall } from '$lib/api/client';
+  import UnreadBadge from '$lib/components/UnreadBadge.svelte';
+  import { unreadStore } from '../requests/chat/unreadStore.svelte';
 
   const visibleItems = $derived(getVisibleItems((authStore.user?.role as UserRole | null) ?? null));
 
@@ -55,7 +57,10 @@
             use:active={{ path: sidebarActivePattern(entry.route), className: 'is-active' }}
             class="nav-link"
           >
-            {entry.label}
+            <span class="nav-label">{entry.label}</span>
+            {#if entry.counter === 'requestsUnread'}
+              <UnreadBadge count={unreadStore.requestsWithUnread} label="Заявок с непрочитанным" />
+            {/if}
           </a>
         </li>
       {/if}
@@ -133,7 +138,9 @@
   }
 
   .nav-link {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 0 12px;
     height: 38px;
     line-height: 38px;

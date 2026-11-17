@@ -7,6 +7,8 @@ export type SidebarItem = {
   phase?: number | string;
   /** If set, only users with one of these roles see this item. Omit = visible to all. */
   roles?: UserRole[];
+  /** Серверный счётчик у пункта (Фаза 41.5). */
+  counter?: 'requestsUnread';
 };
 export type SidebarDivider = { kind: 'divider' };
 export type SidebarEntry = SidebarItem | SidebarDivider;
@@ -24,7 +26,7 @@ export const SIDEBAR_ITEMS: SidebarEntry[] = [
   { kind: 'divider' },
   { kind: 'item', route: '/printers', label: 'Принтеры', phase: 6 },
   { kind: 'item', route: '/cartridges', label: 'Картриджи' },
-  { kind: 'item', route: '/requests', label: 'Заявки', phase: 6 },
+  { kind: 'item', route: '/requests', label: 'Заявки', phase: 6, counter: 'requestsUnread' },
   { kind: 'divider' },
   { kind: 'item', route: '/reports', label: 'Отчёты', phase: 7 },
   { kind: 'item', route: '/users', label: 'Пользователи', phase: 5, roles: ['admin'] },
