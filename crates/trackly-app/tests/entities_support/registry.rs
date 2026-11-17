@@ -119,7 +119,7 @@ pub const OUT_OF_SCOPE_WRITERS: &[(&str, &str)] = &[
     ),
     (
         "chat_service.rs",
-        "переписка по заявкам: отметка прочтения в chat_reads (и сообщения в chat_messages); места, состав, устройства, картриджи и группы не затрагиваются; сигнал отдельное событие ChatReadChanged (D-19)",
+        "переписка по заявкам: отметка прочтения в chat_reads, сообщения в chat_messages и черновики вложений; места, состав, устройства, картриджи и группы не затрагиваются; сигнал отдельные события ChatMessage и ChatReadChanged (D-19, D-23), черновики без сигнала",
     ),
     (
         "number_template_service.rs",
@@ -411,6 +411,6 @@ pub const REGISTRY: &[Entry] = &[
     ex(
         REPAIR,
         "merge_into_open",
-        "слияние заявок не меняет места, устройства и группы; сигнал отдельным WsEvent RequestStatusChanged участникам обеих заявок; вложения цели (D-35) сигналятся отдельным WsEvent AttachmentsChanged",
+        "слияние заявок не меняет места, устройства и группы; сообщения чата поглощаемой заявки переносятся в целевую (D-09); сигнал отдельным WsEvent RequestStatusChanged участникам обеих заявок; вложения цели (D-35) сигналятся отдельным WsEvent AttachmentsChanged",
     ),
 ];

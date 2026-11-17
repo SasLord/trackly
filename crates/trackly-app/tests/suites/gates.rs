@@ -11,6 +11,10 @@
 
 #[path = "../attachments_changed_gate.rs"]
 mod attachments_changed_gate;
+#[path = "../chat_audit_signal_inventory.rs"]
+mod chat_audit_signal_inventory;
+#[path = "../chat_changed_gate.rs"]
+mod chat_changed_gate;
 #[path = "../device_status_vocabulary_gate.rs"]
 mod device_status_vocabulary_gate;
 #[path = "../device_type_label_gate.rs"]
