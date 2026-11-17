@@ -8,8 +8,8 @@
   // используйте `isoToUnix` / `unixToIso` helpers из существующих модулей.
   // DatePicker — pure value-pass-through.
   //
-  // WebKit (Tauri WKWebView на macOS, Safari): значение центрируется псевдоэлементом
-  // ::-webkit-date-and-time-value (выравниваем влево), а нативного индикатора календаря
+  // WebKit (Tauri WKWebView на macOS, Safari): значение центрирует UA-шный
+  // align-items: center (снимаем явным stretch в .date-picker), а нативного индикатора календаря
   // у input type=date нет — рисуем свою кнопку. Выбор по User-Agent (needsOwnCalendarIcon):
   // API, сообщающего о наличии индикатора, у поля нет. В Chromium/WebView2/Firefox кнопки
   // в DOM нет вовсе (не скрыта CSS) — иначе был бы дубль иконки.
@@ -133,9 +133,15 @@
     // flex БЕЗ align-items. Строчный flex на input (display:flex / align-items:center
     // в колонке) сжимает внутренний контейнер Chromium по содержимому, и иконка
     // календаря встаёт сразу за датой. Держит гейт scripts/check-date-picker-layout.mjs.
+    //
+    // align-items: stretch — ЯВНО и обязательно: UA-стиль WebKit задаёт input type=date
+    // `align-items: center`, и в колонке это центрирует дату по горизонтали (WKWebView
+    // на macOS). ::-webkit-date-and-time-value тут не помогает — macOS-WebKit рисует
+    // значение через ::-webkit-datetime-edit (quick 261117-urn, проверено в WKWebView).
     display: flex;
     flex-direction: column;
     justify-content: center;
+    align-items: stretch;
     width: 100%;
     height: 36px;
     padding: 0 var(--tr-space-md);

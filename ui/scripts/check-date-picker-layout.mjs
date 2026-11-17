@@ -9,8 +9,10 @@
 // svelte-check и build этого не видят.
 //
 // Допустимо: display:block; display:grid без justify-items кроме stretch/normal;
-// display:flex ТОЛЬКО с flex-direction:column и без align-items кроме stretch/normal
-// (в колонке align-items:center снова сжимает контейнер по ширине).
+// display:flex ТОЛЬКО с flex-direction:column и с ЯВНЫМ align-items: stretch|normal
+// (в колонке align-items:center снова сжимает контейнер по ширине; а UA-стиль WebKit
+// сам задаёт input type=date align-items:center — без явного объявления дата в
+// WKWebView на macOS стоит по центру, quick 261117-urn).
 // Переопределения :global(.date-picker) в любом .svelte не должны включать
 // flex/grid (размеры — можно).
 //
@@ -108,6 +110,11 @@ export function check(raw) {
         bad.push(`display: flex без flex-direction: column — ${WHY}`);
       } else if (ai && !NEUTRAL.has(ai)) {
         bad.push(`display: flex column с align-items: ${ai} — ${WHY}`);
+      } else if (!ai) {
+        bad.push(
+          'display: flex column без явного align-items: stretch — UA-стиль WebKit ставит ' +
+            'align-items: center, и WKWebView на macOS центрирует дату по горизонтали',
+        );
       }
     } else if (display === 'grid') {
       const ji = d['justify-items'];
@@ -343,7 +350,7 @@ export const CLEAN = `<script lang="ts">
 <style lang="scss">
   .date-picker-btn { color: var(--tr-text-secondary); &:hover { color: var(--tr-text-primary); } }
   .date-picker {
-    display: flex; flex-direction: column;
+    display: flex; flex-direction: column; align-items: stretch;
     &::-webkit-date-and-time-value { text-align: left; }
   }
 </style>`;
@@ -402,10 +409,12 @@ function selftest() {
     wrap('display: flex; flex-direction: row; justify-content: center;'),
     wrap('display: grid; justify-items: start;'),
     wrap('display: inline-grid;'),
+    // без явного align-items WebKit подставляет UA-шный center (quick 261117-urn)
+    wrap('display: flex; flex-direction: column; justify-content: center;'),
   ];
   const good = [
-    wrap('display: flex; flex-direction: column; justify-content: center;'),
-    wrap('display: flex; flex-direction: column; align-items: stretch;'),
+    wrap('display: flex; flex-direction: column; justify-content: center; align-items: stretch;'),
+    wrap('display: flex; flex-direction: column; align-items: normal;'),
     wrap('display: grid; align-items: center;'),
     wrap('display: block;'),
     wrap('width: 100%;'),
