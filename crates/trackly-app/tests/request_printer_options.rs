@@ -360,3 +360,188 @@ async fn empty_printer_list_returns_empty_array() {
     .await
     .expect("empty_printer_list_returns_empty_array exceeded 30s budget");
 }
+
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    let req = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .header("cookie", cookie)
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    let status = res.status();
+    let bytes = axum::body::to_bytes(res.into_body(), 64 * 1024)
+        .await
+        .unwrap_or_default();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+/// Phase 41.4, D-41 по транспорту HTTP: сервер сам режет список принтеров сотрудника
+/// и отказывает при создании заявки на чужой принтер кодом 403 `FORBIDDEN` (по этому коду
+/// форма показывает ошибку у поля «Принтер»); персонал видит все принтеры.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn employee_scope_and_forbidden_code_over_http() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let trusted = Identity::trusted_admin();
+        let mk = |login: &str, name: &str, role: &str| UserNew {
+            login: login.to_string(),
+            full_name: name.to_string(),
+            password: "password123".to_string(),
+            role: role.to_string(),
+            email: None,
+        };
+        let employee = ctx
+            .auth
+            .create_user(mk("scope_employee", "Сидоров С.С.", "employee"), &trusted)
+            .await
+            .expect("employee");
+        let manager = ctx
+            .auth
+            .create_user(mk("scope_manager", "Петров П.П.", "manager"), &trusted)
+            .await
+            .expect("manager");
+
+        seed_printer_devices(
+            &ctx,
+            &[
+                ("Принтер свой", Some("Офис А")),
+                ("Принтер чужой", Some("Офис А")),
+            ],
+        )
+        .await;
+        let own: i64 = ctx
+            .writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT id FROM devices WHERE name = 'Принтер свой'",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)
+            })
+            .await
+            .expect("own id");
+        let foreign: i64 = ctx
+            .writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT id FROM devices WHERE name = 'Принтер чужой'",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)
+            })
+            .await
+            .expect("foreign id");
+        repair_support::seed_user_group(&ctx, employee.id, "Комплект сотрудника", &[own]).await;
+
+        let store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let emp_cookie = create_session_cookie(&store, employee.id, Role::Employee)
+            .await
+            .expect("employee session");
+        let mgr_cookie = create_session_cookie(&store, manager.id, Role::Manager)
+            .await
+            .expect("manager session");
+        let app = || {
+            build_router(
+                &ctx,
+                RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()),
+            )
+        };
+
+        // Список: сотруднику только свой принтер, персоналу оба.
+        let (st, body) = post_json(
+            app(),
+            "/api/v1/request_printer_options",
+            &emp_cookie,
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{body}");
+        let got: Vec<i64> = body
+            .as_array()
+            .expect("array")
+            .iter()
+            .map(|i| i["id"].as_i64().unwrap())
+            .collect();
+        assert_eq!(
+            got,
+            vec![own],
+            "сотрудник видит только принтер области: {body}"
+        );
+        let (st, body) = post_json(
+            app(),
+            "/api/v1/request_printer_options",
+            &mgr_cookie,
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{body}");
+        assert_eq!(
+            body.as_array().map(|a| a.len()),
+            Some(2),
+            "персонал видит все: {body}"
+        );
+
+        // Создание: чужой принтер -> 403 с кодом FORBIDDEN и без записи.
+        let create = |printer: i64| {
+            serde_json::json!({ "dto": {
+                "requestType": "cartridge_replace", "printerDeviceId": printer,
+                "cartridgeModelId": null, "categoryId": null, "description": null
+            } })
+        };
+        let rows_before: i64 = ctx
+            .writer
+            .execute(|conn| {
+                conn.query_row("SELECT COUNT(*) FROM requests", [], |r| r.get(0))
+                    .map_err(trackly_infra::error_conversions::map_rusqlite)
+            })
+            .await
+            .expect("count");
+        let (st, body) = post_json(
+            app(),
+            "/api/v1/requests_create",
+            &emp_cookie,
+            create(foreign),
+        )
+        .await;
+        assert_eq!(st, StatusCode::FORBIDDEN, "{body}");
+        assert_eq!(body["code"], "FORBIDDEN", "{body}");
+        let rows_after: i64 = ctx
+            .writer
+            .execute(|conn| {
+                conn.query_row("SELECT COUNT(*) FROM requests", [], |r| r.get(0))
+                    .map_err(trackly_infra::error_conversions::map_rusqlite)
+            })
+            .await
+            .expect("count");
+        assert_eq!(rows_before, rows_after, "отказ не пишет заявку");
+
+        // Свой принтер создаётся, персонал создаёт на любой.
+        let (st, body) =
+            post_json(app(), "/api/v1/requests_create", &emp_cookie, create(own)).await;
+        assert_eq!(st, StatusCode::OK, "{body}");
+        let (st, body) = post_json(
+            app(),
+            "/api/v1/requests_create",
+            &mgr_cookie,
+            create(foreign),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{body}");
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("employee_scope_and_forbidden_code_over_http exceeded 60s budget");
+}

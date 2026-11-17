@@ -37,6 +37,10 @@ async fn seed_place(ctx: &AppCtx, name: &str) -> i64 {
         .expect("seed place")
 }
 
+async fn seed_printer(ctx: &AppCtx, name: &str, inv: &str, place: i64) -> i64 {
+    seed_device(ctx, PRINTER, name, inv, Some(place), None).await
+}
+
 /// Строка `printers` с USB-хостом: принтер входит в область владельца хоста.
 async fn make_usb(ctx: &AppCtx, printer: i64, host: i64) {
     ctx.writer
@@ -453,6 +457,123 @@ async fn free_form_checks_printer_scope_too() {
         .create(dto("free_form", Some(w.net_a)), &emp(w.ivanov))
         .await
         .expect("free_form on own printer");
+}
+
+/// Мягко удалить устройство (`devices`) или группу (`groups`) прямым SQL.
+async fn soft_delete(ctx: &AppCtx, table: &'static str, id: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            let sql = format!("UPDATE {table} SET deleted_at_utc = 1700000100 WHERE id = ?1");
+            conn.execute(&sql, params![id]).map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("soft delete");
+}
+
+/// D-41 («только живые»): удалённые принтеры и удалённые группы не расширяют область
+/// сотрудника ни в списке, ни при создании заявки. Каждый из пяти источников области
+/// (живость связующей группы, вложенной группы, члена, ссылки, USB-принтера и его хоста)
+/// проверяется отдельным принтером: убрать любой фильтр `deleted_at_utc` в
+/// `employee_device_ids` значит увидеть соответствующий принтер.
+#[tokio::test]
+async fn employee_scope_ignores_deleted_printers_hosts_and_groups() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let pa = seed_place(&ctx, "Кабинет А").await;
+    let ivanov = seed_user(&ctx, "ivanov", "Иванов И.И.").await;
+    let petrov = seed_user(&ctx, "petrov", "Петров П.П.").await;
+
+    let host = seed_device(&ctx, DEVICE, "Системный блок", "INV-L1", Some(pa), None).await;
+    let dead_host = seed_device(&ctx, DEVICE, "Удалённый блок", "INV-L2", Some(pa), None).await;
+    let live = seed_printer(&ctx, "Принтер живой", "INV-L3", pa).await;
+    let dead_member = seed_printer(&ctx, "Принтер удалённый член", "INV-L4", pa).await;
+    let dead_ref = seed_printer(&ctx, "Принтер удалённая ссылка", "INV-L5", pa).await;
+    let dead_usb = seed_printer(&ctx, "Принтер удалённый USB", "INV-L6", pa).await;
+    let usb_of_dead_host = seed_printer(&ctx, "Принтер USB мёртвого хоста", "INV-L7", pa).await;
+    let in_dead_child = seed_printer(&ctx, "Принтер в удалённой вложенной", "INV-L8", pa).await;
+    let in_dead_group = seed_printer(&ctx, "Принтер в удалённой группе", "INV-L9", pa).await;
+    make_usb(&ctx, dead_usb, host).await;
+    make_usb(&ctx, usb_of_dead_host, dead_host).await;
+
+    let ga = seed_user_group(
+        &ctx,
+        ivanov,
+        "Комплект Иванова",
+        &[host, dead_host, live, dead_member],
+    )
+    .await;
+    add_ref(&ctx, ga, dead_ref).await;
+    let dead_child = seed_child_group(&ctx, ga, &[in_dead_child]).await;
+    let gb = seed_user_group(&ctx, petrov, "Комплект Петрова", &[in_dead_group]).await;
+
+    // Контроль до удаления: живая область видна целиком, значит тест не вакуумный.
+    let before = ids(&ctx
+        .requests
+        .printer_options(&emp(ivanov))
+        .await
+        .expect("options before"));
+    for p in [
+        live,
+        dead_member,
+        dead_ref,
+        dead_usb,
+        usb_of_dead_host,
+        in_dead_child,
+    ] {
+        assert!(
+            before.contains(&p),
+            "до удаления принтер {p} должен быть виден"
+        );
+    }
+
+    for (table, id) in [
+        ("devices", dead_member),
+        ("devices", dead_ref),
+        ("devices", dead_usb),
+        ("devices", dead_host),
+        ("groups", dead_child),
+        ("groups", gb),
+    ] {
+        soft_delete(&ctx, table, id).await;
+    }
+
+    let after = ids(&ctx
+        .requests
+        .printer_options(&emp(ivanov))
+        .await
+        .expect("options after"));
+    assert_eq!(after, BTreeSet::from([live]), "{after:?}");
+    let petrov_after = ctx
+        .requests
+        .printer_options(&emp(petrov))
+        .await
+        .expect("petrov options");
+    assert!(
+        petrov_after.is_empty(),
+        "все группы Петрова удалены: {petrov_after:?}"
+    );
+
+    let before_rows = rows(&ctx).await;
+    for (who, p) in [
+        (ivanov, dead_member),
+        (ivanov, dead_ref),
+        (ivanov, dead_usb),
+        (ivanov, usb_of_dead_host),
+        (ivanov, in_dead_child),
+        (petrov, in_dead_group),
+    ] {
+        let err = ctx
+            .requests
+            .create(dto("cartridge_replace", Some(p)), &emp(who))
+            .await
+            .expect_err("deleted scope source");
+        assert!(matches!(err, AppError::Forbidden), "{p}: {err:?}");
+    }
+    assert_eq!(rows(&ctx).await, before_rows, "отказ ничего не пишет");
+    ctx.requests
+        .create(dto("cartridge_replace", Some(live)), &emp(ivanov))
+        .await
+        .expect("живой принтер области остаётся доступным");
 }
 
 #[tokio::test]

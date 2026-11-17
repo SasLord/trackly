@@ -256,6 +256,58 @@ async fn two_visits_get_distinct_act_numbers() {
     assert_eq!(visits[1].act_number, "РЕМ-000002");
 }
 
+/// Security W-1 (T-41.4-42): в БД нет UNIQUE на номер акта ремонта, уникальность держит
+/// выдача внутри транзакции единственного писателя. Шесть одновременных отправок по
+/// разным заявкам обязаны получить шесть разных номеров без пропусков и дублей.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_sends_get_distinct_act_numbers() {
+    let (ctx, _d) = make_test_ctx().await;
+    let room = seed_place(&ctx, "Кабинет 12").await;
+    let service = seed_place(&ctx, "Сервис Альфа").await;
+    let mut reqs = Vec::new();
+    for i in 0..6 {
+        let dev = seed_device(
+            &ctx,
+            1,
+            &format!("ПК-0010{i}"),
+            &format!("INV-C{i}"),
+            Some(room),
+            None,
+        )
+        .await;
+        reqs.push(accepted(&ctx, dev).await);
+    }
+    let mut tasks = Vec::new();
+    for (req, v) in reqs.clone() {
+        let svc = ctx.repairs.clone();
+        tasks.push(tokio::spawn(async move {
+            svc.send(send_dto(req, v, service), &admin()).await
+        }));
+    }
+    let mut numbers = Vec::new();
+    for t in tasks {
+        let out = t.await.expect("join").expect("send ok");
+        assert_eq!(out.state.visits.len(), 1);
+        numbers.push(out.state.visits[0].act_number.clone());
+    }
+    numbers.sort();
+    let expected: Vec<String> = (1..=6).map(|n| format!("РЕМ-{n:06}")).collect();
+    assert_eq!(numbers, expected, "номера без дублей и пропусков");
+    let distinct = ctx
+        .writer
+        .execute(|conn| {
+            conn.query_row(
+                "SELECT COUNT(DISTINCT lower(trim(act_number))) FROM repair_visits",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("distinct");
+    assert_eq!(distinct, 6, "в repair_visits шесть разных номеров");
+}
+
 #[tokio::test]
 async fn workplace_receive_is_atomic_on_failure() {
     let (ctx, _d) = make_test_ctx().await;
