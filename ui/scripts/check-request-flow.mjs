@@ -5,7 +5,7 @@
 // svelte-check и build его тоже не видят; живая проверка в UAT.
 //
 // Правила:
-//  [A] RequestDetail: mergedIntoId() отдаёт relatedRequestId только для
+//  [A] historyLabels.ts / RequestDetail: mergedIntoId() отдаёт relatedRequestId только для
 //      'repair_merged_into'; в истории Button variant="link" внутри
 //      {#if mergedIntoId(...)} зовёт openRequest(...); onMerged зовёт openRequest,
 //      а не openRepairRequest напрямую.
@@ -39,15 +39,17 @@ const DIR = path.resolve(__dirname, '../src/features/requests');
 const TAG = '[check-request-flow]';
 
 /** @returns {string[]} нарушения */
-export function check({ detail, form, page, send }) {
+export function check({ detail, labels, form, page, send }) {
   const bad = [];
   const d = stripComments(detail);
+  const lb = stripComments(labels);
   const f = stripComments(form);
   const p = stripComments(page);
   const s = stripComments(send);
 
   // [A]
-  const fn = /function mergedIntoId\([^)]*\)[^{]*\{([\s\S]*?)\n {2}\}/.exec(d);
+  // 41.5-10: словарь подписей вынесен из RequestDetail в historyLabels.ts.
+  const fn = /function mergedIntoId\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(lb);
   if (!fn) bad.push('[A] нет функции mergedIntoId');
   else if (!/'repair_merged_into'/.test(fn[1]) || !/relatedRequestId/.test(fn[1]))
     bad.push('[A] mergedIntoId не привязана к repair_merged_into и relatedRequestId');
@@ -145,6 +147,7 @@ function load() {
   const rd = (n) => fs.readFileSync(path.join(DIR, n), 'utf8');
   return {
     detail: rd('RequestDetail.svelte'),
+    labels: rd('historyLabels.ts'),
     form: rd('RequestFormModal.svelte'),
     page: rd('RequestsPage.svelte'),
     send: rd('RepairSendModal.svelte'),
@@ -166,6 +169,11 @@ function selftest() {
   const results = [['real', check(real).length === 0]];
   const mutants = {
     'onSuccess-no-arg': mut('form', 'onSuccess(res.request)', 'onSuccess()'),
+    'merged-fn-unbound': mut(
+      'labels',
+      "!== 'repair_merged_into') return null;",
+      "!== 'x') return null;",
+    ),
     'link-no-merged-cond': mut('detail', '{#if mergedIntoId(row.entry) !== null}', '{#if true}'),
     'no-pre-wrap': mut('detail', 'white-space: pre-wrap;', ''),
     'onMerged-direct': mut(

@@ -52,6 +52,7 @@
   import type { RequestDto } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
   import type { RequestHistoryEntry } from './api';
+  import { entryText, mergedIntoId } from './historyLabels';
   import type { AdSettingsDto, ApproveAdRegisterDto } from '../../bindings-phase9';
   import type { CartridgeDto } from '../../bindings';
 
@@ -401,62 +402,6 @@
   function formatFullDate(utcSeconds: number): string {
     const d = new Date(utcSeconds * 1000);
     return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-  }
-
-  function actionLabel(action: string): string {
-    const labels: Record<string, string> = {
-      create: 'Создана',
-      accept: 'Принята в работу',
-      complete: 'Выполнена',
-      reject: 'Отклонена',
-      cancel: 'Отменена',
-      'custom:create': 'Создана',
-      'custom:accept': 'Принята в работу',
-      'custom:complete': 'Выполнена',
-      'custom:reject': 'Отклонена',
-      'custom:cancel': 'Отменена',
-    };
-    return labels[action] ?? action;
-  }
-
-  // D-35: id целевой заявки для записи «объединена с…»; иначе null.
-  function mergedIntoId(e: RequestHistoryEntry): number | null {
-    if (e.action.replace(/^custom:/, '') !== 'repair_merged_into') return null;
-    return e.relatedRequestId ?? null;
-  }
-
-  // REP-07: строка истории без даты. События ремонта читаемо, место/сервис/описание
-  // приходят в notes (пишутся сервером при записи события); сырые коды не показываем.
-  function entryText(e: RequestHistoryEntry): string {
-    const code = e.action.replace(/^custom:/, '');
-    const note = e.notes?.trim() ? e.notes.trim() : null;
-    const who = e.actorName ? `; ${e.actorName}` : '';
-    const q = (v: string | null) => (v ? `«${v}»` : '');
-    switch (code) {
-      case 'repair_accept':
-        return `Принята в работу${who}${note ? `; Устройство перемещено: ${q(note)}` : ''}`;
-      case 'repair_move':
-        return `Устройство перемещено${note ? `: ${q(note)}` : ''}${who}`;
-      case 'repair_send':
-        return `Устройство передано в сервис${note ? ` ${q(note)}` : ''}${who}`;
-      case 'repair_receive':
-        return `Устройство возвращено из сервиса${who}`;
-      case 'repair_cancel':
-        return `Ремонт отменён${who}`;
-      case 'repair_join':
-        return `Присоединился к заявке${who}${note ? `; ${note}` : ''}`;
-      case 'repair_merge':
-        return `К заявке присоединена другая заявка${who}${note ? `; ${note}` : ''}`;
-      case 'repair_merged_into':
-        return `Заявка объединена с другой${who}`;
-      case 'repair_assign_device':
-        return `Указано устройство${who}`;
-      default:
-        if (code.startsWith('repair_') && code !== 'repair_complete') {
-          return `Изменение заявки${who}`;
-        }
-        return `${actionLabel(e.action)}${who}${note ? `; ${note}` : ''}`;
-    }
   }
 
   // --- Lifecycle actions ---
