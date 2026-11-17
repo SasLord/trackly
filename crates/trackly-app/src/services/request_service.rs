@@ -393,8 +393,8 @@ impl RequestService {
         // D-41: сотрудник создаёт заявку только на принтер своей области (BOLA); область
         // единая с формой «Ремонт» (`employee_device_ids`). Проверка до записи и не
         // зависит от типа заявки. Персонал создаёт на любой принтер. Не-персонал без
-        // user_id отклоняется явно — подстановка `unwrap_or(1)` ниже только для
-        // доверенного администратора.
+        // user_id отклоняется явно — отсутствие user_id ниже отклоняется
+        // (десктоп несёт системного администратора).
         let staff = is_staff(caller);
         if !staff {
             let uid = caller.user_id.ok_or(AppError::Forbidden)?;
@@ -422,9 +422,15 @@ impl RequestService {
         let request_repo = self.request_repo.clone();
         let audit_repo = self.audit_repo.clone();
 
+        // Автор заявки обязателен: десктоп действует от системного администратора
+        // (resolve_tauri_identity), HTTP всегда несёт user_id. Подмены id=1 нет.
+        let requested_by = user_id.ok_or_else(|| AppError::Validation {
+            field: "requested_by".to_string(),
+            message: "Не удалось определить автора заявки.".to_string(),
+        })?;
         let new = RequestNew {
             request_type: payload.request_type.clone(),
-            requested_by_user_id: user_id.unwrap_or(1), // trusted_admin fallback
+            requested_by_user_id: requested_by,
             printer_device_id: payload.printer_device_id.map(|id| id as i64),
             cartridge_model_id: payload.cartridge_model_id.map(|id| id as i64),
             category_id: payload.category_id.map(|id| id as i64),

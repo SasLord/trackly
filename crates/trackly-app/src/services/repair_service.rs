@@ -352,7 +352,7 @@ impl RepairService {
                 None => conn
                     .query_row(
                         "SELECT full_name FROM users \
-                         WHERE role = 'admin' AND deleted_at_utc IS NULL \
+                         WHERE role = 'admin' AND deleted_at_utc IS NULL AND is_system = 0 \
                          ORDER BY id LIMIT 1",
                         [],
                         |r| r.get::<_, Option<String>>(0),
@@ -661,9 +661,15 @@ impl RepairService {
         let request_repo = self.request_repo.clone();
         let audit_repo = self.audit_repo.clone();
 
+        // Автор заявки обязателен: десктоп действует от системного администратора
+        // (resolve_tauri_identity), HTTP всегда несёт user_id. Подмены id=1 нет.
+        let requested_by = user_id.ok_or_else(|| AppError::Validation {
+            field: "requested_by".to_string(),
+            message: "Не удалось определить автора заявки.".to_string(),
+        })?;
         let new = RequestNew {
             request_type: REPAIR_REQUEST_TYPE.to_string(),
-            requested_by_user_id: user_id.unwrap_or(1), // trusted_admin fallback
+            requested_by_user_id: requested_by,
             printer_device_id: device_id,
             cartridge_model_id: None,
             category_id: None, // D-24: категория «Ремонт техники» не назначается
@@ -713,7 +719,11 @@ impl RepairService {
                 };
                 match attempt(conn, true) {
                     // D-19: проигравший гонку присоединяется, а не получает ошибку.
-                    Err(AppError::Conflict { .. }) if device_id.is_some() => attempt(conn, false),
+                    Err(AppError::Conflict { ref reason })
+                        if device_id.is_some() && is_unique_race(reason) =>
+                    {
+                        attempt(conn, false)
+                    }
                     other => other,
                 }
             })
@@ -2394,4 +2404,10 @@ fn status_code_for_place(conn: &Connection, place_id: i64) -> Result<&'static st
     } else {
         DEVICE_STATUS_CODE_IN_USE
     })
+}
+
+/// D-19: повторять (присоединяться) можно только при гонке по UNIQUE (открытая
+/// ремонтная заявка на устройство). FK и прочие ограничения возвращаются как есть.
+fn is_unique_race(reason: &str) -> bool {
+    reason.contains("UNIQUE constraint failed") || reason.contains("uq_requests_open_repair_device")
 }

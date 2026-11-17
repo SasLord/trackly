@@ -3,7 +3,7 @@
 //! Реализует D-Desktop-01/02: identity resolution зависит от desktop_lock_enabled.
 //!
 //! `resolve_tauri_identity()` определяет caller:
-//! - lock=OFF → `Identity::trusted_admin()` (D-Desktop-01)
+//! - lock=OFF → системный «Администратор» (D-Desktop-01)
 //! - lock=ON  → `ctx.auth.desktop_identity()` (D-Desktop-02: verified desktop identity)
 //!
 //! **ВАЖНО:** НЕ использовать hardcoded `Identity::trusted_admin()` напрямую в
@@ -25,8 +25,9 @@ use trackly_core::error::AppError;
 
 /// Определить Identity для Tauri-команд.
 ///
-/// - desktop_lock_enabled=false → trusted_admin() (D-Desktop-01 unlocked mode)
-/// - desktop_lock_enabled=true  → desktop_identity() (D-Desktop-02 locked mode)
+/// - desktop_lock_enabled=false → системный «Администратор» (D-Desktop-01 unlocked mode)
+/// - desktop_lock_enabled=true  → desktop_identity() (D-Desktop-02 locked mode;
+///   без единственного настоящего админа откатывается на системного)
 ///
 /// Это единственное место, где desktop_lock_enabled проверяется для users CRUD.
 /// НЕ инлайнить в handlers — нарушение T-05-DL.
@@ -35,7 +36,7 @@ pub async fn resolve_tauri_identity(ctx: &AppCtx) -> Result<Identity, AppError> 
     if lock {
         Ok(ctx.auth.desktop_identity().await)
     } else {
-        Ok(Identity::trusted_admin())
+        ctx.auth.system_admin_identity().await
     }
 }
 

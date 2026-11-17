@@ -116,9 +116,14 @@ async fn staff_create_requires_live_device() {
         .await
         .expect("manager create");
     assert!(!ok.joined);
+    let sys = ctx
+        .auth
+        .system_admin_identity()
+        .await
+        .expect("system admin");
     let err = ctx
         .repairs
-        .create(dto(Some(999_999), "Нет такого"), &admin())
+        .create(dto(Some(999_999), "Нет такого"), &sys)
         .await
         .expect_err("missing device");
     assert!(matches!(err, AppError::NotFound { .. }), "{err:?}");

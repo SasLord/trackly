@@ -584,8 +584,14 @@ async fn staff_creates_on_any_printer() {
         .create(dto("cartridge_replace", Some(w.net_b)), &manager(w.petrov))
         .await
         .expect("manager");
+    // Десктоп действует от системного администратора (у trusted_admin нет user_id).
+    let sys = ctx
+        .auth
+        .system_admin_identity()
+        .await
+        .expect("system admin");
     ctx.requests
-        .create(dto("cartridge_replace", Some(w.free)), &admin())
+        .create(dto("cartridge_replace", Some(w.free)), &sys)
         .await
         .expect("admin");
     // Фикстура использует поле `ivanov` только для сотрудника; убеждаемся, что оно значимо.
