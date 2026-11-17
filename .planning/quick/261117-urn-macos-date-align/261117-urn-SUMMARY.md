@@ -29,4 +29,4 @@ completed: 2026-11-17
   Снимок сделан и на собранном `ui/dist` CSS, для формы и для С/По в PeriodSelector.
 - Гейт: selftest OK, реальный исходник OK, мутация (удалить stretch) — FAIL, как и ожидалось.
 - `pnpm --dir ui lint` — exit 0; `svelte-check` — 0 errors, 75 warnings (базовая линия).
-- Внутри запущенного `cargo tauri dev` не смотрел — ожидается взгляд пользователя.
+- Живая проверка в `cargo tauri dev` (macOS): пользователь подтвердил 2026-11-17, дата слева.
