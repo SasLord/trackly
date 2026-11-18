@@ -38,6 +38,15 @@ pub async fn build_chat_mark_read(
     ctx.chat.mark_read(caller, request_id).await
 }
 
+pub async fn build_chat_set_muted(
+    ctx: &AppCtx,
+    caller: &Identity,
+    request_id: i64,
+    muted: bool,
+) -> Result<(), AppError> {
+    ctx.chat.set_muted(caller, request_id, muted).await
+}
+
 pub async fn build_chat_unread_summary(
     ctx: &AppCtx,
     caller: &Identity,
@@ -90,6 +99,17 @@ pub async fn chat_mark_read(
 ) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_chat_mark_read(state.inner(), &caller, request_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn chat_set_muted(
+    state: tauri::State<'_, AppCtx>,
+    request_id: i32,
+    muted: bool,
+) -> Result<(), AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_chat_set_muted(state.inner(), &caller, request_id as i64, muted).await
 }
 
 #[tauri::command]

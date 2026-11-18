@@ -284,6 +284,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::chat::chat_feed,
         crate::tauri_cmds::chat::chat_send,
         crate::tauri_cmds::chat::chat_mark_read,
+        crate::tauri_cmds::chat::chat_set_muted,
         crate::tauri_cmds::chat::chat_unread_summary,
         crate::tauri_cmds::chat::chat_discard_drafts,
     ])

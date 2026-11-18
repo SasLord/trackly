@@ -15,7 +15,7 @@ use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::chat::{
     build_chat_discard_drafts, build_chat_feed, build_chat_mark_read, build_chat_send,
-    build_chat_unread_summary,
+    build_chat_set_muted, build_chat_unread_summary,
 };
 
 #[derive(serde::Deserialize)]
@@ -62,6 +62,24 @@ pub async fn handler_mark_read(
     Ok(Json(build_chat_mark_read(&ctx, &who, p.request_id).await?))
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetMutedPayload {
+    pub request_id: i64,
+    pub muted: bool,
+}
+
+pub async fn handler_set_muted(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<SetMutedPayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    let who = session_identity(&session).await?;
+    Ok(Json(
+        build_chat_set_muted(&ctx, &who, p.request_id, p.muted).await?,
+    ))
+}
+
 pub async fn handler_unread_summary(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -86,6 +104,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/chat_feed", post(handler_feed))
         .route("/api/v1/chat_send", post(handler_send))
         .route("/api/v1/chat_mark_read", post(handler_mark_read))
+        .route("/api/v1/chat_set_muted", post(handler_set_muted))
         .route("/api/v1/chat_unread_summary", post(handler_unread_summary))
         .route("/api/v1/chat_discard_drafts", post(handler_discard_drafts))
 }
