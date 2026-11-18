@@ -1,7 +1,7 @@
 <script lang="ts">
   // Пузырь сообщения (D-10, D-09, D-15, D-22, D-25; UI-SPEC §7).
   // Чужие слева, ФИО внутри облака (только у начала группы), роль не показывается;
-  // свои справа без ФИО. Время справа в одной строке с автором. Меню правки и галочек нет.
+  // свои справа без ФИО. Время: у начала группы чужих — справа в шапке с автором, иначе внизу пузыря справа. Меню правки и галочек нет.
   // Текст — только интерполяцией (linkify → <a>/текст), без raw-HTML.
   import { formatDateTimeShort } from '$lib/utils/date';
   import type { AttachmentDto, ChatMessageDto } from '../../../bindings';
@@ -24,15 +24,19 @@
   const time = $derived(timeHHmm(item.createdAtUtc));
   const fullTime = $derived(formatDateTimeShort(item.createdAtUtc));
   const segments = $derived(linkify(item.text));
+  // Шапка (ФИО + время) — только у начала группы чужих; у своих и у продолжений время — внизу (.foot).
+  const nameShown = $derived(groupStart && !item.isOwn);
   const srPrefix = $derived(item.isOwn ? `Вы, ${time}:` : `${authorName}, ${time}:`);
 </script>
 
 <li class="msg" class:own={item.isOwn} class:group-start={groupStart}>
   <div class="bubble" class:bubble-own={item.isOwn} class:tail={groupStart}>
-    <div class="head">
-      {#if groupStart && !item.isOwn}<span class="author-name">{authorName}</span>{/if}
-      <span class="time" title={fullTime}>{time}</span>
-    </div>
+    {#if nameShown}
+      <div class="head">
+        <span class="author-name">{authorName}</span>
+        <span class="time" title={fullTime}>{time}</span>
+      </div>
+    {/if}
     <span class="sr-only">{srPrefix}</span>
     {#if item.movedFromRequestId !== null}
       <p class="moved">
@@ -70,6 +74,9 @@
             >{:else}{seg.value}{/if}{/each}</span
       >
     {/if}
+    {#if !nameShown}
+      <div class="foot"><span class="time" title={fullTime}>{time}</span></div>
+    {/if}
   </div>
 </li>
 
@@ -78,20 +85,30 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    margin: var(--tr-space-2xs) 0 0;
+    margin: 0;
     list-style: none;
-    &.group-start {
-      margin-top: var(--tr-space-md);
-    }
     &.own {
       align-items: flex-end;
     }
+  }
+  .msg.group-start {
+    margin-top: var(--tr-space-md);
+  }
+  // Зазор ленты (gap md, см. .chat-feed в RequestChat) гасится отрицательным полем:
+  // видимый зазор внутри группы = 4px. Связано с gap ленты (--chat-row-gap).
+  .msg:not(.group-start) {
+    margin-top: calc(var(--tr-space-2xs) - var(--chat-row-gap, var(--tr-space-md)));
   }
   .head {
     display: flex;
     align-items: baseline;
     gap: var(--tr-space-md);
     margin: 0 0 var(--tr-space-2xs);
+  }
+  .foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--tr-space-3xs);
   }
   .author-name {
     flex: 1 1 auto;

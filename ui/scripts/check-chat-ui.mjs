@@ -19,7 +19,8 @@
 //   [C7] RequestDetail: <RequestChat ровно один раз внутри ветки вкладки «Чат»; showTabs исключает ad_register;
 //   [C9] ChatMessage: pre-wrap только на .text (не на .bubble); шапка .head — внутри .bubble и до
 //        sr-only-префикса (якорь верхней границы пузыря); нет <p class="author">, author-role, ROLES;
-//        ровно один class="time", и он внутри .head;
+//        class="time" ровно два: в .head (под {#if nameShown}) и в .foot (под {#if !nameShown}, после .text);
+//        nameShown = groupStart && !item.isOwn; .msg:not(.group-start) с margin-top calc(2xs - …);
 //   [C10] переключатель оповещений: <ChatMuteToggle ровно один раз, внутри сниппета tabsSubheader, который
 //        подключается только под showTabs; в ChatMuteToggle: aria-pressed, обе подписи, toggleMute(, без $effect;
 //   [C8] счётный минимум: сработало не меньше 8 различных правил.
@@ -289,13 +290,33 @@ export function check(files) {
     const hAt = cm.indexOf('class="head"');
     // верхняя граница пузыря для шапки — sr-only-префикс, всегда идущий сразу после шапки
     const sAt = cm.indexOf('<span class="sr-only">');
+    const tAt = cm.indexOf('class="text"');
+    const fAt = cm.indexOf('class="foot"');
+    const endAt = cm.indexOf('</li>');
     if (bAt < 0 || hAt < 0 || sAt < 0) fail('C9', 'ChatMessage: нет .bubble / .head / sr-only');
     else {
       if (!(bAt < hAt && hAt < sAt)) fail('C9', 'ChatMessage: шапка .head не внутри .bubble');
       const timeInHead = count(cm.slice(hAt, sAt), 'class="time"');
-      if (timeInHead !== 1 || count(cm, 'class="time"') !== 1)
-        fail('C9', 'ChatMessage: class="time" должен быть ровно один и внутри .head');
+      if (timeInHead !== 1 || count(cm, 'class="time"') !== 2)
+        fail('C9', 'ChatMessage: class="time" должен быть ровно два: в .head и в .foot');
+      if (!cm.slice(cm.lastIndexOf('{#if', hAt)).startsWith('{#if nameShown}'))
+        fail('C9', 'ChatMessage: шапка .head не под {#if nameShown}');
     }
+    if (fAt < 0 || tAt < 0 || endAt < 0) fail('C9', 'ChatMessage: нет .foot / .text');
+    else {
+      if (!(tAt < fAt && fAt < endAt))
+        fail('C9', 'ChatMessage: подвал .foot должен стоять ПОСЛЕ .text, внутри пузыря');
+      if (count(cm.slice(fAt, endAt), 'class="time"') !== 1)
+        fail('C9', 'ChatMessage: время должно быть внутри .foot');
+      if (!cm.slice(cm.lastIndexOf('{#if', fAt)).startsWith('{#if !nameShown}'))
+        fail('C9', 'ChatMessage: подвал .foot не под {#if !nameShown}');
+    }
+    const ns = /\bnameShown\s*=\s*\$derived\(([^)]*)\)/.exec(cm);
+    if (ns === null || !ns[1].includes('groupStart') || !ns[1].includes('!item.isOwn'))
+      fail('C9', 'ChatMessage: nameShown не равен groupStart && !item.isOwn');
+    const contCss = funcBody(cm, /\.msg:not\(\.group-start\)\s*\{/);
+    if (contCss === null || !/margin-top:\s*calc\(var\(--tr-space-2xs\)\s*-\s/.test(contCss))
+      fail('C9', 'ChatMessage: нет .msg:not(.group-start) с margin-top: calc(2xs - …) (плотная группа)');
     if (/<p class="author"/.test(cm) || cm.includes('author-role') || /\bROLES\b/.test(cm))
       fail('C9', 'ChatMessage: автор вне облака или показана роль');
   }
@@ -501,6 +522,48 @@ function selftest(files) {
         `${CHAT}ChatMessage.svelte`,
         '<span class="sr-only">',
         '<span class="time">x</span><span class="sr-only">',
+      ),
+    },
+    {
+      name: 'C9: перестановка — подвал со временем выше .text',
+      expect: 'C9',
+      make: reorder(
+        `${CHAT}ChatMessage.svelte`,
+        '    {#if !nameShown}\n      <div class="foot"><span class="time" title={fullTime}>{time}</span></div>\n    {/if}\n',
+        '<span class="sr-only">{srPrefix}</span>',
+      ),
+    },
+    {
+      name: 'C9: подвал без условия',
+      expect: 'C9',
+      make: swapText(`${CHAT}ChatMessage.svelte`, '{#if !nameShown}', '{#if true}'),
+    },
+    {
+      name: 'C9: шапка без условия',
+      expect: 'C9',
+      make: swapText(`${CHAT}ChatMessage.svelte`, '{#if nameShown}', '{#if true}'),
+    },
+    {
+      name: 'C9: nameShown без !item.isOwn',
+      expect: 'C9',
+      make: swapText(
+        `${CHAT}ChatMessage.svelte`,
+        'const nameShown = $derived(groupStart && !item.isOwn);',
+        'const nameShown = $derived(groupStart);',
+      ),
+    },
+    {
+      name: 'C9: удалено правило плотной группы',
+      expect: 'C9',
+      make: swapText(`${CHAT}ChatMessage.svelte`, '.msg:not(.group-start) {', '.msg-x {'),
+    },
+    {
+      name: 'C9: знак в calc зазора заменён на +',
+      expect: 'C9',
+      make: swapText(
+        `${CHAT}ChatMessage.svelte`,
+        'calc(var(--tr-space-2xs) - var(--chat-row-gap',
+        'calc(var(--tr-space-2xs) + var(--chat-row-gap',
       ),
     },
     {

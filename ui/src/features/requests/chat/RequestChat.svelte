@@ -498,7 +498,9 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: var(--tr-space-md);
+    // Зазор строк ленты; ChatMessage гасит его внутри группы (margin-top continuation).
+    --chat-row-gap: var(--tr-space-md);
+    gap: var(--chat-row-gap);
     white-space: normal;
     text-align: left;
   }
