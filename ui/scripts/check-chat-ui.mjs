@@ -27,6 +27,10 @@
 //        (не в .subheader, не на самом .detail-header.with-subheader), базовая линия .detail-header цела;
 //        на вкладке «Чат» лента вплотную (.fill .fill-body с отрицательным полем, margin-bottom: 0 у шапки);
 //        боковой отступ xl у .chat-feed и .composer;
+//   [C11] путь клика по уведомлению (UAT 41.5 R2-1): обёртка systemNotify (onclick → focus/close/runOrOffer,
+//        модалка раньше activate, notify_desktop раньше sendNotification, запасной механизм только не-Windows
+//        и только предлагает), цель в chatNotifications/EmployeeLayout (тост ВСЕГДА + уведомление, без else),
+//        tab=info|chat в RequestsPage, уникальный n в ссылке, Rust-команда без AUMID/реестра/.lnk, паритет имени события;
 //   [C8] счётный минимум: сработало не меньше 8 различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
@@ -55,7 +59,16 @@ const REQUIRED = [
   'features/requests/RequestDetail.svelte',
   'features/layout/sidebar-config.ts',
   'lib/components/DetailPanel.svelte',
+  'lib/platform/systemNotify.ts',
+  'features/requests/requestTarget.ts',
+  'features/layout/EmployeeLayout.svelte',
+  'features/requests/RequestsPage.svelte',
 ];
+const RUST_REL = '@rust/system_notify.rs';
+const RUST_ABS = path.resolve(
+  __dirname,
+  '../../crates/trackly-app/src/tauri_cmds/system_notify.rs',
+);
 const MIN_RULES = 8;
 const WS_EVENTS = [
   'chat_message',
@@ -71,6 +84,7 @@ function readFiles() {
     const p = path.join(SRC, rel);
     if (fs.existsSync(p)) files[rel] = fs.readFileSync(p, 'utf8');
   }
+  if (fs.existsSync(RUST_ABS)) files[RUST_REL] = fs.readFileSync(RUST_ABS, 'utf8');
   // все svelte в chat/ — для C1
   const dir = path.join(SRC, CHAT);
   if (fs.existsSync(dir)) {
@@ -104,7 +118,7 @@ export function check(files) {
   const get = (rel) => (files[rel] === undefined ? null : stripComments(files[rel]));
 
   // C0
-  for (const rel of REQUIRED) {
+  for (const rel of [...REQUIRED, RUST_REL]) {
     if (files[rel] === undefined) fail('C0', `обязательный файл отсутствует: ${rel}`);
   }
   fired.add('C0');
@@ -383,6 +397,144 @@ export function check(files) {
   }
   fired.add('C12');
 
+  // C11
+  const sn = get('lib/platform/systemNotify.ts');
+  if (sn !== null) {
+    if (
+      !/export async function showSystemNotification\(\s*title: string,\s*body: string,\s*target\?: NotifyTarget/.test(
+        sn,
+      )
+    )
+      fail('C11', 'systemNotify: showSystemNotification без третьего параметра target');
+    const sb = funcBody(sn, /export async function showSystemNotification\([^)]*\)[^{]*\{/);
+    if (sb === null) fail('C11', 'systemNotify: showSystemNotification не найден');
+    else {
+      if (!/const n = new Notification\(/.test(sb))
+        fail('C11', 'systemNotify: результат new Notification( не сохранён в переменную');
+      const oc = funcBody(sb, /n\.onclick = \(\) => \{/);
+      if (oc === null) fail('C11', 'systemNotify: у уведомления нет обработчика .onclick');
+      else {
+        if (!oc.includes('window.focus()')) fail('C11', 'systemNotify: onclick без window.focus()');
+        if (!oc.includes('n.close()'))
+          fail('C11', 'systemNotify: onclick не закрывает уведомление');
+        if (!oc.includes('runOrOffer('))
+          fail('C11', 'systemNotify: onclick не вызывает runOrOffer(');
+        if (/\bactivate\(/.test(oc))
+          fail('C11', 'systemNotify: onclick вызывает activate() напрямую, мимо охраны модалки');
+      }
+      const nd = sb.indexOf('commands.notifyDesktop(');
+      const sp = sb.indexOf('sendNotification({');
+      if (nd < 0) fail('C11', 'systemNotify: нет вызова commands.notifyDesktop(');
+      else if (sp < 0) fail('C11', 'systemNotify: нет вызова sendNotification({');
+      else if (nd > sp) fail('C11', 'systemNotify: sendNotification стоит РАНЬШЕ notifyDesktop');
+      if (!/if \(target && !isWindowsDesktop\(\)\) void armFocusFallback\(/.test(sb))
+        fail('C11', 'systemNotify: запасной механизм по фокусу не ограничен не-Windows');
+    }
+    const lb = funcBody(sn, /await listen<number>\('trackly-notify-activated', \(e\) => \{/);
+    if (lb === null) fail('C11', "systemNotify: нет слушателя 'trackly-notify-activated'");
+    else {
+      if (!lb.includes('runOrOffer('))
+        fail('C11', 'systemNotify: активация ОС не идёт через runOrOffer(');
+      if (/\bactivate\(/.test(lb))
+        fail('C11', 'systemNotify: активация ОС вызывает activate() напрямую');
+    }
+    if (!sn.includes('[role="dialog"][aria-modal="true"]'))
+      fail('C11', 'systemNotify: нет селектора модального окна');
+    const rb = funcBody(sn, /function runOrOffer\([^)]*\)[^{]*\{/);
+    if (rb === null) fail('C11', 'systemNotify: runOrOffer не найден');
+    else {
+      const mq = rb.indexOf('MODAL_SELECTOR');
+      const of = rb.indexOf('offer(');
+      const ac = rb.search(/\btarget\.activate\(/);
+      if (mq < 0 || of < 0 || ac < 0)
+        fail('C11', 'systemNotify: runOrOffer без MODAL_SELECTOR / offer( / target.activate(');
+      else if (mq > ac || of > ac)
+        fail('C11', 'systemNotify: переход activate() стоит РАНЬШЕ проверки модального окна');
+    }
+    const ob = funcBody(sn, /function offer\([^)]*\)[^{]*\{/);
+    if (ob === null || !ob.includes('pushToast('))
+      fail('C11', 'systemNotify: offer() не показывает тост');
+    const wb = funcBody(sn, /function isWindowsDesktop\(\)[^{]*\{/);
+    if (wb === null || !/\/Windows\/\.test\(navigator\.userAgent\)/.test(wb))
+      fail('C11', 'systemNotify: isWindowsDesktop не проверяет Windows в userAgent');
+    const fb = funcBody(sn, /onFocusChanged\(\(\{[^}]*\}\) => \{/);
+    if (fb === null) fail('C11', 'systemNotify: нет обработчика onFocusChanged');
+    else {
+      if (!fb.includes('offer('))
+        fail('C11', 'systemNotify: запасной механизм не предлагает (offer)');
+      if (/\bactivate\b/.test(fb))
+        fail('C11', 'systemNotify: запасной механизм по фокусу переходит сам (activate)');
+    }
+    if (!/const FOCUS_FALLBACK_MS = \d/.test(sn))
+      fail('C11', 'systemNotify: нет константы FOCUS_FALLBACK_MS');
+    if (/features\//.test(sn)) fail('C11', 'systemNotify: обёртка знает про features/');
+  }
+  if (cn !== null) {
+    if (
+      !/showSystemNotification\('Trackly', text, \{\s*activate: \(\) => openRequestTarget\(ev\.requestId, 'chat'\)/.test(
+        cn,
+      )
+    )
+      fail('C11', 'chatNotifications: уведомление без цели openRequestTarget(ev.requestId, chat)');
+    if (!cn.includes("const href = requestTargetHref(ev.requestId, 'chat');"))
+      fail('C11', 'chatNotifications: ссылка тоста не через requestTargetHref');
+    if (cn.includes('#/requests?id='))
+      fail('C11', 'chatNotifications: ссылка собрана вручную, без уникального n');
+  }
+  const el = get('features/layout/EmployeeLayout.svelte');
+  if (el !== null) {
+    if (el.includes('new Notification(')) fail('C11', 'EmployeeLayout: прямой new Notification(');
+    if (/\bdocument\.hidden\b/.test(el))
+      fail('C11', 'EmployeeLayout: document.hidden вместо фокуса');
+    const eb = funcBody(el, /function handleEmployeeWsEvent\([^)]*\)[^{]*\{/);
+    if (eb === null) fail('C11', 'EmployeeLayout: handleEmployeeWsEvent не найден');
+    else {
+      const pt = eb.indexOf('pushToast(');
+      const fo = eb.indexOf('if (!appHasFocus())');
+      const sy = eb.indexOf('showSystemNotification(');
+      if (pt < 0 || fo < 0 || sy < 0)
+        fail(
+          'C11',
+          'EmployeeLayout: нет pushToast( / if (!appHasFocus()) / showSystemNotification(',
+        );
+      else {
+        if (pt > fo) fail('C11', 'EmployeeLayout: тост стоит ПОСЛЕ проверки фокуса');
+        if (sy < fo) fail('C11', 'EmployeeLayout: уведомление вне проверки фокуса');
+        if (/\belse\b/.test(eb)) fail('C11', 'EmployeeLayout: «тост ИЛИ уведомление» (else)');
+        if (!eb.slice(pt, fo).includes("requestTargetHref(event.requestId, 'info')"))
+          fail('C11', 'EmployeeLayout: у тоста статуса нет ссылки на вкладку «Информация»');
+        if (!eb.slice(sy).includes("openRequestTarget(event.requestId, 'info')"))
+          fail('C11', 'EmployeeLayout: у уведомления статуса нет цели «Информация»');
+      }
+    }
+  }
+  const rp = get('features/requests/RequestsPage.svelte');
+  if (rp !== null) {
+    if (!/tab === 'chat' \|\| tab === 'info'/.test(rp) || !/setTab\(tab\)/.test(rp))
+      fail('C11', 'RequestsPage: ссылка не выбирает вкладку и для chat, и для info');
+  }
+  const rt = get('features/requests/requestTarget.ts');
+  if (rt !== null && (!rt.includes('&n=${Date.now()') || !rt.includes('seq')))
+    fail('C11', 'requestTarget: у ссылки нет уникального параметра n');
+  const rs = files[RUST_REL] === undefined ? null : stripComments(files[RUST_REL]);
+  if (rs !== null) {
+    if (!rs.includes('on_activated')) fail('C11', 'system_notify.rs: нет on_activated');
+    if (!rs.includes('"trackly-notify-activated"'))
+      fail('C11', 'system_notify.rs: нет имени события trackly-notify-activated');
+    if (sn !== null && !sn.includes("'trackly-notify-activated'"))
+      fail('C11', 'systemNotify: имя события расходится с Rust');
+    for (const bad of [
+      'windows_registry',
+      'CURRENT_USER',
+      'AppUserModelId\\',
+      '.lnk',
+      'APPDATA',
+      'SetCurrentProcessExplicitAppUserModelID',
+    ])
+      if (rs.includes(bad)) fail('C11', `system_notify.rs: запрещённая строка ${bad} (portable)`);
+  }
+  fired.add('C11');
+
   // C8
   if (fired.size < MIN_RULES) fail('C8', `сработало ${fired.size} правил из ${MIN_RULES}`);
   return v;
@@ -476,7 +628,7 @@ function selftest(files) {
       make: reorder(
         `${CHAT}chatNotifications.svelte.ts`,
         'if (isMuted(ev.requestId)) return;',
-        "void showSystemNotification('Trackly', text);",
+        "void showSystemNotification('Trackly', text, {",
       ),
     },
     {
@@ -502,8 +654,8 @@ function selftest(files) {
       expect: 'C5',
       make: swapText(
         `${CHAT}chatNotifications.svelte.ts`,
-        "void showSystemNotification('Trackly', text);",
-        "new Notification('Trackly', { body: text });",
+        "void showSystemNotification('Trackly', text, {",
+        "new Notification('Trackly', { body: text });\n    void showSystemNotification('Trackly', text, {",
       ),
     },
     {
@@ -747,6 +899,169 @@ function selftest(files) {
         'subheader={showTabs && request ? tabsSubheader : undefined}',
         'subheader={request ? tabsSubheader : undefined}',
       ),
+    },
+    {
+      name: 'C11: снят .onclick',
+      expect: 'C11',
+      make: swapText('lib/platform/systemNotify.ts', 'n.onclick = () => {', 'n.onclickx = () => {'),
+    },
+    {
+      name: 'C11: перестановка — sendNotification раньше notifyDesktop',
+      expect: 'C11',
+      make: reorder(
+        'lib/platform/systemNotify.ts',
+        '      sendNotification({ title, body });\n',
+        '      if (!(await isPermissionGranted())) return false;',
+      ),
+    },
+    {
+      name: 'C11: перестановка — activate раньше проверки модалки',
+      expect: 'C11',
+      make: reorder(
+        'lib/platform/systemNotify.ts',
+        '    target.activate();\n',
+        '  try {\n    if (document.querySelector(MODAL_SELECTOR)) {',
+      ),
+    },
+    {
+      name: 'C11: onclick зовёт activate мимо runOrOffer',
+      expect: 'C11',
+      make: swapText(
+        'lib/platform/systemNotify.ts',
+        '        runOrOffer(target, body);\n      };',
+        '        target.activate();\n      };',
+      ),
+    },
+    {
+      name: 'C11: активация ОС зовёт activate мимо runOrOffer',
+      expect: 'C11',
+      make: swapText(
+        'lib/platform/systemNotify.ts',
+        'if (rec) runOrOffer(rec.target, rec.body);',
+        'if (rec) rec.target.activate();',
+      ),
+    },
+    {
+      name: 'C11: запасной механизм на Windows тоже',
+      expect: 'C11',
+      make: swapText(
+        'lib/platform/systemNotify.ts',
+        'if (target && !isWindowsDesktop()) void armFocusFallback(',
+        'if (target) void armFocusFallback(',
+      ),
+    },
+    {
+      name: 'C11: запасной механизм навигирует',
+      expect: 'C11',
+      make: swapText(
+        'lib/platform/systemNotify.ts',
+        '        offer(p.target, p.body);',
+        '        p.target.activate();',
+      ),
+    },
+    {
+      name: 'C11: снята проверка модалки',
+      expect: 'C11',
+      make: swapText(
+        'lib/platform/systemNotify.ts',
+        'if (document.querySelector(MODAL_SELECTOR)) {',
+        'if (false) {',
+      ),
+    },
+    {
+      name: 'C11: вызов без цели в chatNotifications',
+      expect: 'C11',
+      make: swapText(
+        `${CHAT}chatNotifications.svelte.ts`,
+        "activate: () => openRequestTarget(ev.requestId, 'chat'),",
+        'activate: () => {},',
+      ),
+    },
+    {
+      name: 'C11: ссылка тоста собрана вручную (без n)',
+      expect: 'C11',
+      make: swapText(
+        `${CHAT}chatNotifications.svelte.ts`,
+        "const href = requestTargetHref(ev.requestId, 'chat');",
+        'const href = `#/requests?id=${ev.requestId}&tab=chat`;',
+      ),
+    },
+    {
+      name: 'C11: EmployeeLayout возвращён к «тост ИЛИ уведомление»',
+      expect: 'C11',
+      make: swapText(
+        'features/layout/EmployeeLayout.svelte',
+        '    if (!appHasFocus()) {\n      void showSystemNotification',
+        '    else if (!appHasFocus()) {\n      void showSystemNotification',
+      ),
+    },
+    {
+      name: 'C11: EmployeeLayout снова document.hidden',
+      expect: 'C11',
+      make: swapText(
+        'features/layout/EmployeeLayout.svelte',
+        'if (!appHasFocus()) {',
+        'if (document.hidden) {',
+      ),
+    },
+    {
+      name: 'C11: перестановка — уведомление раньше тоста в EmployeeLayout',
+      expect: 'C11',
+      make: reorder(
+        'features/layout/EmployeeLayout.svelte',
+        "    pushToast(negative ? 'info' : 'success', text, {\n      link: { label: 'Открыть заявку', href: requestTargetHref(event.requestId, 'info') },\n    });\n",
+        '        label: `Открыть заявку №${event.requestId}`,\n      });\n    }\n',
+      ),
+    },
+    {
+      name: 'C11: EmployeeLayout без цели «Информация»',
+      expect: 'C11',
+      make: swapText(
+        'features/layout/EmployeeLayout.svelte',
+        "activate: () => openRequestTarget(event.requestId, 'info'),",
+        "activate: () => openRequestTarget(event.requestId, 'chat'),",
+      ),
+    },
+    {
+      name: 'C11: RequestsPage не понимает tab=info',
+      expect: 'C11',
+      make: swapText(
+        'features/requests/RequestsPage.svelte',
+        "tab === 'chat' || tab === 'info'",
+        "tab === 'chat'",
+      ),
+    },
+    {
+      name: 'C11: ссылка без уникального n',
+      expect: 'C11',
+      make: swapText('features/requests/requestTarget.ts', '&n=${Date.now()', '&x=${Date.now()'),
+    },
+    {
+      name: 'C11: Rust — регистрация AUMID',
+      expect: 'C11',
+      make: () => ({
+        ...files,
+        [RUST_REL]: files[RUST_REL] + '\nfn x() { SetCurrentProcessExplicitAppUserModelID(); }\n',
+      }),
+    },
+    {
+      name: 'C11: Rust — запись в реестр (CURRENT_USER)',
+      expect: 'C11',
+      make: () => ({ ...files, [RUST_REL]: files[RUST_REL] + '\nconst K: u32 = CURRENT_USER;\n' }),
+    },
+    {
+      name: 'C11: Rust — имя события разошлось',
+      expect: 'C11',
+      make: swapText(RUST_REL, '"trackly-notify-activated"', '"trackly-notify-clicked"'),
+    },
+    {
+      name: 'C11: пропал Rust-файл',
+      expect: 'C0',
+      make: () => {
+        const copy = { ...files };
+        delete copy[RUST_REL];
+        return copy;
+      },
     },
     {
       name: 'пропал файл (не «пропуск», а красный)',
