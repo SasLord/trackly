@@ -31,10 +31,14 @@ function revokeAll(): void {
 
 /** Полный сброс: текст, чипы (с очисткой object URL) и ошибки. */
 export function clearDraft(): void {
-  revokeAll();
-  draft.text = '';
-  draft.chips = [];
-  draft.errors = [];
+  // Идемпотентно: на пустом черновике ничего не пишем в $state (запись нового
+  // пустого массива будила подписчиков и зацикливала эффекты).
+  if (draft.chips.length > 0) {
+    revokeAll();
+    draft.chips = [];
+  }
+  if (draft.text !== '') draft.text = '';
+  if (draft.errors.length > 0) draft.errors = [];
 }
 
 /** Привязать черновик к заявке; смена заявки отбрасывает прежний. */

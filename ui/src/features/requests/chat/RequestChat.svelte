@@ -229,7 +229,9 @@
 
   // Закрытая заявка: черновик пропадает без отправки (D-07).
   $effect(() => {
-    if (feed !== null && !feed.canPost) clearDraft();
+    // Единственная зависимость — feed/canPost; clearDraft читает и пишет draft.chips,
+    // без untrack эффект подписался бы на них и перезапускался бесконечно.
+    if (feed !== null && !feed.canPost) untrack(() => clearDraft());
   });
 
   // Фокус в поле при открытии вкладки, если писать можно.
