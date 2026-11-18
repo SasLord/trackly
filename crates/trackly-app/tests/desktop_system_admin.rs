@@ -173,7 +173,8 @@ fn v053_on_pre_existing_db_keeps_user_id_1() {
     let v: i64 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(v, 53);
+    // Не ниже V053: последующие миграции поднимают версию дальше.
+    assert!(v >= 53, "user_version {v}");
 }
 
 #[tokio::test]

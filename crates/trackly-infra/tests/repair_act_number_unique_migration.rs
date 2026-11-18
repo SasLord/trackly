@@ -95,12 +95,16 @@ fn v052_renames_existing_duplicates_instead_of_failing() {
     insert_visit(&conn, 6, "РЕМ-000003").unwrap();
 
     let report = migrations::run(&mut conn).expect("V052 must not fail on duplicates");
-    assert_eq!(report.schema_version, 53);
-    assert_eq!(
-        conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
-        53
+    // Не ниже V053: последующие миграции поднимают версию дальше.
+    assert!(
+        report.schema_version >= 53,
+        "schema_version {}",
+        report.schema_version
     );
+    let uv: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(uv, i64::from(report.schema_version));
 
     assert_eq!(act_number(&conn, 1), "РЕМ-000001", "ранний визит не тронут");
     assert_eq!(act_number(&conn, 2), "ДУБЛЬ-000001 (рем-000001)");
