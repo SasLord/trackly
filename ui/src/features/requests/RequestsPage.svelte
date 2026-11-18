@@ -72,8 +72,10 @@
     const params = new URLSearchParams(router.querystring ?? '');
     const raw = params.get('id');
     const n = raw === null ? NaN : Number(raw);
-    if (params.get('tab') === 'chat') {
-      untrack(() => setTab('chat'));
+    // n в ссылке игнорируется: он нужен только, чтобы hashchange срабатывал каждый раз.
+    const tab = params.get('tab');
+    if (tab === 'chat' || tab === 'info') {
+      untrack(() => setTab(tab));
     }
     if (Number.isInteger(n) && n > 0) {
       untrack(() => {

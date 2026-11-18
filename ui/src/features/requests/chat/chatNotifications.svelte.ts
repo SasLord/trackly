@@ -13,6 +13,7 @@ import {
   armPermissionPrompt,
   showSystemNotification,
 } from '$lib/platform/systemNotify';
+import { openRequestTarget, requestTargetHref } from '../requestTarget';
 import { isMuted, startUnreadRealtime, unreadStore } from './unreadStore.svelte';
 
 const toastByRequest = new Map<number, string>();
@@ -29,7 +30,7 @@ export function handleChatMessageEvent(ev: WsEvent): void {
   if (unreadStore.activeChatRequestId === ev.requestId) return;
   if (isMuted(ev.requestId)) return;
 
-  const href = `#/requests?id=${Number(ev.requestId)}&tab=chat`;
+  const href = requestTargetHref(ev.requestId, 'chat');
   const text = `Новое сообщение в заявке №${ev.requestId} · ${ev.actorName ?? 'Участник'}`;
 
   const prev = toastByRequest.get(ev.requestId);
@@ -38,7 +39,13 @@ export function handleChatMessageEvent(ev: WsEvent): void {
     toastByRequest.set(ev.requestId, id);
   }
   // D-G1: оба канала. Уведомление ОС — когда окно не в фокусе (не document.hidden).
-  if (!appHasFocus()) void showSystemNotification('Trackly', text);
+  if (!appHasFocus()) {
+    void showSystemNotification('Trackly', text, {
+      activate: () => openRequestTarget(ev.requestId, 'chat'),
+      href: requestTargetHref(ev.requestId, 'chat'),
+      label: `Открыть заявку №${ev.requestId}`,
+    });
+  }
 }
 
 export function startChatRealtime(): () => void {

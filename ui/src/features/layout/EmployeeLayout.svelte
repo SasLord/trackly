@@ -13,6 +13,8 @@
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { appHasFocus, showSystemNotification } from '$lib/platform/systemNotify';
+  import { openRequestTarget, requestTargetHref } from '../requests/requestTarget';
   import type { WsEvent } from '../../bindings-phase6';
 
   interface Props {
@@ -50,16 +52,19 @@
   function handleEmployeeWsEvent(event: WsEvent) {
     if (event.type !== 'request_status_changed') return;
 
+    // D-G1: тост со ссылкой — всегда; уведомление ОС — дополнительно при потере фокуса
+    // окна (не document.hidden). Только простой текст, не HTML (T-11-03-T).
     const text = statusToastText(event.newStatus);
-    const canNotify =
-      'Notification' in window && window.isSecureContext && Notification.permission === 'granted';
-
-    if (document.hidden && canNotify) {
-      // Plain-text body only — never HTML (T-11-03-T).
-      new Notification('Trackly', { body: text });
-    } else {
-      const negative = event.newStatus === 'rejected' || event.newStatus === 'cancelled';
-      pushToast(negative ? 'info' : 'success', text);
+    const negative = event.newStatus === 'rejected' || event.newStatus === 'cancelled';
+    pushToast(negative ? 'info' : 'success', text, {
+      link: { label: 'Открыть заявку', href: requestTargetHref(event.requestId, 'info') },
+    });
+    if (!appHasFocus()) {
+      void showSystemNotification('Trackly', text, {
+        activate: () => openRequestTarget(event.requestId, 'info'),
+        href: requestTargetHref(event.requestId, 'info'),
+        label: `Открыть заявку №${event.requestId}`,
+      });
     }
   }
 
