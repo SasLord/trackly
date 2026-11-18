@@ -176,9 +176,11 @@ export async function showSystemNotification(
         const token = registerActivation(target, body);
         void ensureActivationListener();
         try {
-          const { commands } = await import('../../bindings');
-          const res = await commands.notifyDesktop(title, body, token);
-          if (res.status === 'ok' && res.data === true) return true;
+          // apiCall, а не сгенерированный bindings.ts: на Windows-CI он не создаётся
+          // (export_bindings там отключён), а динамический import ломает vite build.
+          const { apiCall } = await import('$lib/api/client');
+          const delivered = await apiCall<boolean>('notify_desktop', { title, body, token });
+          if (delivered === true) return true;
         } catch {
           /* команда недоступна — остаётся путь плагина */
         }

@@ -422,9 +422,13 @@ export function check(files) {
         if (/\bactivate\(/.test(oc))
           fail('C11', 'systemNotify: onclick вызывает activate() напрямую, мимо охраны модалки');
       }
-      const nd = sb.indexOf('commands.notifyDesktop(');
+      const nd = sb.indexOf("apiCall<boolean>('notify_desktop'");
       const sp = sb.indexOf('sendNotification({');
-      if (nd < 0) fail('C11', 'systemNotify: нет вызова commands.notifyDesktop(');
+      if (nd < 0)
+        fail(
+          'C11',
+          "systemNotify: нет вызова apiCall<boolean>('notify_desktop' (bindings.ts не создаётся в Windows-CI)",
+        );
       else if (sp < 0) fail('C11', 'systemNotify: нет вызова sendNotification({');
       else if (nd > sp) fail('C11', 'systemNotify: sendNotification стоит РАНЬШЕ notifyDesktop');
       if (!/if \(target && !isWindowsDesktop\(\)\) void armFocusFallback\(/.test(sb))
