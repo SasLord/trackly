@@ -1,6 +1,7 @@
 <script lang="ts">
   // Пузырь сообщения (D-10, D-09, D-15, D-22, D-25; UI-SPEC §7).
-  // Чужие слева с ФИО и ролью, свои справа без ФИО. Меню правки и галочек нет.
+  // Чужие слева, ФИО внутри облака (только у начала группы), роль не показывается;
+  // свои справа без ФИО. Время справа в одной строке с автором. Меню правки и галочек нет.
   // Текст — только интерполяцией (linkify → <a>/текст), без raw-HTML.
   import { formatDateTimeShort } from '$lib/utils/date';
   import type { AttachmentDto, ChatMessageDto } from '../../../bindings';
@@ -18,34 +19,20 @@
 
   const { item, groupStart, onOpenAttachment, onDownloadAttachment }: Props = $props();
 
-  const ROLES: Record<string, string> = {
-    admin: 'Администратор',
-    manager: 'Специалист',
-    requester: 'Автор заявки',
-    participant: 'Участник',
-  };
-
   const deletedAuthor = $derived(item.actorName === null);
   const authorName = $derived(deletedAuthor ? 'Пользователь удалён' : item.actorName);
-  const roleLabel = $derived(
-    deletedAuthor || item.authorRole === null ? null : (ROLES[item.authorRole] ?? null),
-  );
   const time = $derived(timeHHmm(item.createdAtUtc));
   const fullTime = $derived(formatDateTimeShort(item.createdAtUtc));
   const segments = $derived(linkify(item.text));
-  const srPrefix = $derived(
-    item.isOwn ? `Вы, ${time}:` : `${authorName}${roleLabel ? `, ${roleLabel}` : ''}, ${time}:`,
-  );
+  const srPrefix = $derived(item.isOwn ? `Вы, ${time}:` : `${authorName}, ${time}:`);
 </script>
 
 <li class="msg" class:own={item.isOwn} class:group-start={groupStart}>
-  {#if groupStart && !item.isOwn}
-    <p class="author">
-      <span class="author-name">{authorName}</span>
-      {#if roleLabel}<span class="author-role">{roleLabel}</span>{/if}
-    </p>
-  {/if}
   <div class="bubble" class:bubble-own={item.isOwn} class:tail={groupStart}>
+    <div class="head">
+      {#if groupStart && !item.isOwn}<span class="author-name">{authorName}</span>{/if}
+      <span class="time" title={fullTime}>{time}</span>
+    </div>
     <span class="sr-only">{srPrefix}</span>
     {#if item.movedFromRequestId !== null}
       <p class="moved">
@@ -83,7 +70,6 @@
             >{:else}{seg.value}{/if}{/each}</span
       >
     {/if}
-    <span class="time" title={fullTime}>{time}</span>
   </div>
 </li>
 
@@ -101,19 +87,20 @@
       align-items: flex-end;
     }
   }
-  .author {
+  .head {
     display: flex;
     align-items: baseline;
-    gap: var(--tr-space-2xs);
+    gap: var(--tr-space-md);
     margin: 0 0 var(--tr-space-2xs);
   }
   .author-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
     font: var(--tr-text-label);
     color: var(--tr-text-primary);
-  }
-  .author-role {
-    font: var(--tr-text-caption);
-    color: var(--tr-text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .bubble {
     position: relative;
@@ -127,7 +114,7 @@
     background: var(--tr-surface);
     color: var(--tr-text-primary);
     font: var(--tr-text-body);
-    white-space: pre-wrap;
+    white-space: normal;
     overflow-wrap: anywhere;
     text-align: left;
   }
@@ -151,13 +138,17 @@
     color: var(--tr-text-secondary);
     white-space: normal;
   }
+  .text {
+    display: block;
+    white-space: pre-wrap;
+  }
   .text a {
     color: var(--tr-accent-text);
     text-decoration: underline;
   }
   .time {
-    float: right;
-    margin-left: var(--tr-space-xs);
+    flex: 0 0 auto;
+    margin-left: auto;
     font: var(--tr-text-caption);
     color: var(--tr-text-secondary);
     white-space: nowrap;
