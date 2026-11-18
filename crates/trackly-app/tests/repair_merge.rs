@@ -14,7 +14,9 @@ use rusqlite::params;
 use tower::ServiceExt;
 use trackly_app::context::AppCtx;
 use trackly_app::dto::printer::WsEvent;
-use trackly_app::dto::repair::{RepairCreateDto, RepairMergeDto, RepairMoveChoiceDto};
+use trackly_app::dto::repair::{
+    RepairCompleteDto, RepairCreateDto, RepairMergeDto, RepairMoveChoiceDto,
+};
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::tauri_cmds::repairs::build_repairs_merge_into_open;
@@ -847,4 +849,72 @@ async fn history_exposes_related_request_id_for_merge_events() {
             .all(|e| e.related_request_id.is_none()),
         "{on_target:?}"
     );
+}
+
+/// R2-3 (41.5-31): после объединения и настоящего `complete` устройство свободно,
+/// новая заявка не присоединяется к закрытой (решает сервер, не клиентский флаг).
+#[tokio::test]
+async fn device_free_after_merge_and_complete() {
+    let fx = fixture().await;
+    fx.ctx
+        .repairs
+        .merge_into_open(dto(&fx), &manager(fx.petrov))
+        .await
+        .expect("merge");
+
+    // Контроль до закрытия: устройство занято, create присоединяет к целевой.
+    let busy = fx.ctx.repairs.device_options(&admin()).await.expect("opts");
+    assert!(
+        busy.iter().any(|o| o.id == fx.device && o.in_repair),
+        "{busy:?}"
+    );
+    let joined = fx
+        .ctx
+        .repairs
+        .create(
+            RepairCreateDto {
+                device_id: Some(fx.device),
+                description: "Ещё раз".into(),
+            },
+            &manager(fx.petrov),
+        )
+        .await
+        .expect("join");
+    assert!(joined.joined);
+    assert_eq!(joined.request.id, fx.target);
+
+    // Настоящее закрытие (версия перечитывается).
+    let (_, version, _) = req_state(&fx, fx.target).await;
+    fx.ctx
+        .repairs
+        .complete(
+            RepairCompleteDto {
+                request_id: fx.target,
+                version,
+                place_id: None,
+                notes: None,
+            },
+            &admin(),
+        )
+        .await
+        .expect("complete");
+
+    let free = fx.ctx.repairs.device_options(&admin()).await.expect("opts");
+    let opt = free.iter().find(|o| o.id == fx.device).expect("device");
+    assert!(!opt.in_repair, "{opt:?}");
+    let fresh = fx
+        .ctx
+        .repairs
+        .create(
+            RepairCreateDto {
+                device_id: Some(fx.device),
+                description: "После закрытия".into(),
+            },
+            &manager(fx.petrov),
+        )
+        .await
+        .expect("fresh");
+    assert!(!fresh.joined);
+    assert_ne!(fresh.request.id, fx.target);
+    assert_ne!(fresh.request.id, fx.source);
 }
