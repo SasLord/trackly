@@ -5417,6 +5417,86 @@ async fn attachments_role_matrix_http() {
     .expect("attachments_role_matrix_http exceeded 60s");
 }
 
+/// Чат заявки (Phase 41.5 plan 17, MSG-03, T-41.5-30/34): сотрудник-автор и
+/// Manager/Admin допущены, посторонний сотрудник получает 403 на четырёх
+/// маршрутах с requestId. Отдельная функция: фильтр cargo не видит кейсы в монолите.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chat_role_matrix_http() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let employee_id = env.employee.user_id.unwrap();
+        let admin_id = env.admin.user_id.unwrap();
+        let (_other, other_id) =
+            gt_make_user(&env.ctx, "chat_matrix_other", "Кузнецов К.К.", Role::Employee).await;
+        let other_cookie = {
+            let store = RusqliteSessionStore::new(env.ctx.writer.clone(), env.ctx.readers.clone());
+            create_session_cookie(&store, other_id, Role::Employee)
+                .await
+                .expect("other session")
+        };
+        // Заявка сотрудника и заявка администратора (чужая для сотрудника).
+        for author in [employee_id, admin_id] {
+            gt_db_exec(
+                &env.ctx,
+                "INSERT INTO requests (request_type, status, requested_by_user_id, \
+                 created_at_utc, updated_at_utc) VALUES ('free_form', 'open', ?1, 1700000000, 1700000000)",
+                vec![gt_int(author)],
+            )
+            .await;
+        }
+        let own = gt_db_i64(
+            &env.ctx,
+            "SELECT id FROM requests WHERE requested_by_user_id = ?1",
+            vec![gt_int(employee_id)],
+        )
+        .await;
+        let foreign = gt_db_i64(
+            &env.ctx,
+            "SELECT id FROM requests WHERE requested_by_user_id = ?1",
+            vec![gt_int(admin_id)],
+        )
+        .await;
+        let bodies = |rid: i64| {
+            vec![
+                ("chat_feed", json!({ "requestId": rid })),
+                (
+                    "chat_send",
+                    json!({ "requestId": rid, "text": "Привет", "draftAttachmentIds": [] }),
+                ),
+                ("chat_mark_read", json!({ "requestId": rid })),
+                ("chat_discard_drafts", json!({ "requestId": rid })),
+            ]
+        };
+        // Автор-сотрудник и Manager/Admin: допущены.
+        for (who, cookie, rid) in [
+            ("employee(own)", &env.employee_cookie, own),
+            ("manager", &env.manager_cookie, own),
+            ("admin", &env.admin_cookie, own),
+            ("admin(foreign)", &env.admin_cookie, foreign),
+        ] {
+            for (name, body) in bodies(rid) {
+                let (st, resp) = gt_post(&env, cookie, name, body).await;
+                assert_eq!(st, StatusCode::OK, "{who} -> {name}: {st} {resp}");
+            }
+        }
+        let (st, resp) = gt_post(&env, &env.employee_cookie, "chat_unread_summary", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "employee -> chat_unread_summary: {resp}");
+        // Посторонний сотрудник (и автор чужой заявки): 403.
+        for (who, cookie, rid) in [
+            ("other employee", &other_cookie, own),
+            ("employee(foreign)", &env.employee_cookie, foreign),
+        ] {
+            for (name, body) in bodies(rid) {
+                let (st, resp) = gt_post(&env, cookie, name, body).await;
+                assert_eq!(st, StatusCode::FORBIDDEN, "{who} -> {name}: {st} {resp}");
+            }
+        }
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("chat_role_matrix_http exceeded 60s");
+}
+
 /// Три чтения списка «Устройства» с контейнерами (Phase 41.9 plan 05, T-41.9-13/14/15):
 /// без сессии 401, Employee 403, Manager/Admin получают JSON нужной формы (а не
 /// index.html от `spa_fallback`, тоже отдающий 200). Отдельная функция: фильтр cargo
@@ -6339,6 +6419,13 @@ fn employee_ui_commands() -> Vec<(&'static str, serde_json::Value)> {
             json!({ "parentKind": "request", "parentId": 1 }),
         ),
         ("auth_logout", json!({})),
+        ("chat_discard_drafts", json!({ "requestId": 1 })),
+        ("chat_feed", json!({ "requestId": 1 })),
+        ("chat_mark_read", json!({ "requestId": 1 })),
+        (
+            "chat_send",
+            json!({ "requestId": 1, "text": "Здравствуйте", "draftAttachmentIds": [] }),
+        ),
         ("chat_unread_summary", json!({})),
         ("dashboard_get_all_widgets", json!({ "period": null })),
         (

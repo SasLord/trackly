@@ -11,6 +11,8 @@ mod chat_access;
 mod chat_drafts;
 #[path = "../chat_feed.rs"]
 mod chat_feed;
+#[path = "../chat_http.rs"]
+mod chat_http;
 #[path = "../chat_send.rs"]
 mod chat_send;
 #[path = "../chat_unread.rs"]
