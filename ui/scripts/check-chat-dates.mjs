@@ -7,8 +7,11 @@
 //   node scripts/check-chat-dates.mjs
 //   node scripts/check-chat-dates.mjs --selftest   (мутант: UTC вместо локального)
 
+import { Buffer } from 'node:buffer';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TAG = '[check-chat-dates]';
@@ -60,9 +63,21 @@ export function runChecks(dates, pres) {
   return failed;
 }
 
+// Node 20 в CI не импортирует .ts напрямую (ERR_UNKNOWN_FILE_EXTENSION): снимаем типы
+// через typescript (прямой devDependency ui/); оба модуля без import.
+async function loadTs(file) {
+  const ts = createRequire(import.meta.url)('typescript');
+  const js = ts.transpileModule(fs.readFileSync(path.join(CHAT, file), 'utf8'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    fileName: file,
+    reportDiagnostics: false,
+  }).outputText;
+  return import(`data:text/javascript;base64,${Buffer.from(js, 'utf8').toString('base64')}`);
+}
+
 async function main() {
-  const dates = await import(pathToFileURL(path.join(CHAT, 'chatDates.ts')).href);
-  const pres = await import(pathToFileURL(path.join(CHAT, 'eventPresentation.ts')).href);
+  const dates = await loadTs('chatDates.ts');
+  const pres = await loadTs('eventPresentation.ts');
   if (process.argv.includes('--selftest')) {
     // Мутант: время по UTC. Красный в любом поясе, где смещение не нулевое; чтобы быть
     // независимым от пояса, мутант ещё и меняет таблицу тонов.

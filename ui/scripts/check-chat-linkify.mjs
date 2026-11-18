@@ -7,8 +7,11 @@
 //   node scripts/check-chat-linkify.mjs
 //   node scripts/check-chat-linkify.mjs --selftest   (мутант, пропускающий javascript:)
 
+import { Buffer } from 'node:buffer';
+import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TAG = '[check-chat-linkify]';
@@ -61,7 +64,17 @@ export function runChecks(linkify) {
 }
 
 async function main() {
-  const { linkify } = await import(pathToFileURL(TARGET).href);
+  // Node 20 в CI не импортирует .ts напрямую (ERR_UNKNOWN_FILE_EXTENSION):
+  // снимаем типы через typescript (прямой devDependency ui/), модуль без import.
+  const ts = createRequire(import.meta.url)('typescript');
+  const js = ts.transpileModule(fs.readFileSync(TARGET, 'utf8'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    fileName: 'linkify.ts',
+    reportDiagnostics: false,
+  }).outputText;
+  const { linkify } = await import(
+    `data:text/javascript;base64,${Buffer.from(js, 'utf8').toString('base64')}`
+  );
   if (process.argv.includes('--selftest')) {
     // Мутант: javascript:… считается ссылкой.
     const mutant = (text) =>
