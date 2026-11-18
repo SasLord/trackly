@@ -9,6 +9,8 @@
 // тестов остаются самодостаточными и не правились при сборке в suite.
 #![allow(clippy::duplicate_mod)]
 
+#[path = "../chat_ws_fanout.rs"]
+mod chat_ws_fanout;
 #[path = "../graceful_shutdown_drain.rs"]
 mod graceful_shutdown_drain;
 #[path = "../request_accept_assignee.rs"]
