@@ -392,9 +392,11 @@ impl ChatService {
         let staff = is_staff(caller);
         let readers = self.readers.clone();
         let repo = self.repo.clone();
-        let rows = tokio::task::spawn_blocking(move || {
+        let (rows, muted_request_ids) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.unread_summary_on(&conn, user_id, staff)
+            let rows = repo.unread_summary_on(&conn, user_id, staff)?;
+            let muted = repo.muted_request_ids_on(&conn, user_id)?;
+            Ok::<_, AppError>((rows, muted))
         })
         .await
         .map_err(internal)??;
@@ -408,8 +410,33 @@ impl ChatService {
         Ok(UnreadSummaryDto {
             requests_with_unread: items.len() as i32,
             items,
+            muted_request_ids,
         })
     }
+
+    /// D-G3: per-user mute of chat notifications for one request. Access is the
+    /// chat access check (D-06); only the owner's devices get the signal.
+    pub async fn set_muted(
+        &self,
+        caller: &Identity,
+        request_id: i64,
+        muted: bool,
+    ) -> Result<(), AppError> {
+        self.authorize(caller, request_id).await?;
+        let Some(user_id) = caller.user_id else {
+            return Err(AppError::Forbidden);
+        };
+        let repo = self.repo.clone();
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| repo.set_muted_on(conn, user_id, request_id, muted, now))
+            .await?;
+        if let Some(tx) = &self.ws_tx {
+            let _ = tx.send(WsEvent::ChatReadChanged { user_id });
+        }
+        Ok(())
+    }
+
     /// Sends a message with optional files promoted from drafts, atomically
     /// (D-07, D-08, D-14, D-16). Reject codes come back as `Ok`; `Forbidden`
     /// and `NotFound` are errors. The status is re-read inside the writer

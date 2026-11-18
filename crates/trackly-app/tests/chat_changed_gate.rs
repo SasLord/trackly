@@ -34,6 +34,11 @@ const VERDICTS: &[(&str, bool, &str)] = &[
         "read mark moves: ChatReadChanged to own devices",
     ),
     (
+        "set_muted",
+        true,
+        "mute toggled: ChatReadChanged to own devices",
+    ),
+    (
         "delete_drafts",
         false,
         "drafts are invisible to everybody but the author; no counter moves",
@@ -442,8 +447,9 @@ fn mutation_broadcast_entities_turns_gate_c_red() {
         v.iter().any(|x| x.contains("broadcast_entities(")),
         "{v:#?}"
     );
-    let m = replace_once(
+    let m = mutate_in_fn(
         &src,
+        "pub async fn mark_read(",
         "let _ = tx.send(WsEvent::ChatReadChanged { user_id });",
         "let _e = WsEvent::EntitiesChanged;",
     );
@@ -466,4 +472,63 @@ fn mutation_status_check_outside_the_closure_turns_gate_d_red() {
     );
     let v = check_toctou(&m);
     assert!(!v.is_empty(), "gate D stayed green");
+}
+
+// ------------------------------------------------- set_muted (plan 41.5-22)
+
+#[test]
+fn mutation_set_muted_without_verdict_turns_gate_b_red() {
+    assert!(VERDICTS.iter().any(|(n, _, _)| *n == "set_muted"));
+    let src = read(SERVICE);
+    // Rename the fn in the source: the old verdict now has no owner, and the new
+    // name has no verdict.
+    let m = replace_once(&src, "pub async fn set_muted(", "pub async fn set_muted_x(");
+    let v = check_order_and_inventory(&m);
+    assert!(
+        v.iter()
+            .any(|x| x.starts_with("B:") && x.contains("set_muted_x")),
+        "{v:#?}"
+    );
+}
+
+#[test]
+fn mutation_set_muted_send_before_the_writer_turns_gate_a_red() {
+    let src = read(SERVICE);
+    let before = normalize(&src).matches(".send(").count();
+    let m = mutate_in_fn(
+        &src,
+        "pub async fn set_muted(",
+        "self.writer",
+        "if let Some(t) = &self.ws_tx { let _ = t.send(WsEvent::ChatReadChanged { user_id }); }\n        self.writer",
+    );
+    let m = mutate_in_fn(
+        &m,
+        "pub async fn set_muted(",
+        "let _ = tx.send(WsEvent::ChatReadChanged { user_id });",
+        "let _ = tx.try_probe(WsEvent::ChatReadChanged { user_id });",
+    );
+    assert_eq!(normalize(&m).matches(".send(").count(), before);
+    let v = check_order_and_inventory(&m);
+    assert!(
+        v.iter()
+            .any(|x| x.contains("`set_muted`") && x.contains("before/inside")),
+        "{v:#?}"
+    );
+}
+
+#[test]
+fn mutation_set_muted_removed_send_turns_gate_b_red() {
+    let src = read(SERVICE);
+    let m = mutate_in_fn(
+        &src,
+        "pub async fn set_muted(",
+        "let _ = tx.send(WsEvent::ChatReadChanged { user_id });",
+        "let _ = tx;",
+    );
+    let v = check_order_and_inventory(&m);
+    assert!(
+        v.iter()
+            .any(|x| x.contains("`set_muted`") && x.contains("never sends")),
+        "{v:#?}"
+    );
 }
