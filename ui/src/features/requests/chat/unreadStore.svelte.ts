@@ -6,6 +6,7 @@
 // layout'ы (refcount-singleton в ws.ts).
 import { onWsEvent } from '$lib/api/ws';
 import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+import { pushToast } from '$lib/stores/toast.svelte';
 import { chat } from './api';
 
 export const unreadStore = $state({
@@ -13,7 +14,11 @@ export const unreadStore = $state({
   requestsWithUnread: 0,
   loaded: false,
   activeChatRequestId: null as number | null,
+  /** Заявки с отключёнными оповещениями (серверное состояние, на пользователя; D-G2/D-G3). */
+  mutedIds: {} as Record<number, true>,
 });
+
+const muteInFlight = new Set<number>();
 
 let token = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -28,10 +33,16 @@ registerUserScopedReset(() => {
   unreadStore.requestsWithUnread = 0;
   unreadStore.loaded = false;
   unreadStore.activeChatRequestId = null;
+  unreadStore.mutedIds = {};
+  muteInFlight.clear();
 });
 
 export function unreadFor(requestId: number): number {
   return unreadStore.byRequest[requestId] ?? 0;
+}
+
+export function isMuted(requestId: number): boolean {
+  return unreadStore.mutedIds[requestId] === true;
 }
 
 function recount(): void {
@@ -46,6 +57,31 @@ export function setActiveChat(requestId: number | null): void {
     delete next[requestId];
     unreadStore.byRequest = next;
     recount();
+  }
+}
+
+function withMuted(requestId: number, muted: boolean): Record<number, true> {
+  const next = { ...unreadStore.mutedIds };
+  if (muted) next[requestId] = true;
+  else delete next[requestId];
+  return next;
+}
+
+/** Оптимистично меняет «отключить оповещения» по заявке; при ошибке откатывает. */
+export async function toggleMute(requestId: number, muted: boolean): Promise<boolean> {
+  if (muteInFlight.has(requestId)) return false;
+  muteInFlight.add(requestId);
+  const prev = isMuted(requestId);
+  unreadStore.mutedIds = withMuted(requestId, muted);
+  try {
+    await chat.setMuted(requestId, muted);
+    return true;
+  } catch {
+    unreadStore.mutedIds = withMuted(requestId, prev);
+    pushToast('error', 'Не удалось изменить оповещения');
+    return false;
+  } finally {
+    muteInFlight.delete(requestId);
   }
 }
 
@@ -71,6 +107,14 @@ export async function refreshUnread(): Promise<void> {
     }
     unreadStore.byRequest = map;
     recount();
+    // Старый сервер поля не присылает: тогда никто не заглушён.
+    const muted: Record<number, true> = {};
+    if (Array.isArray(res.mutedRequestIds)) {
+      for (const id of res.mutedRequestIds) {
+        if (typeof id === 'number') muted[id] = true;
+      }
+    }
+    unreadStore.mutedIds = muted;
     unreadStore.loaded = true;
   } catch {
     // Сбой сети не фатален: прежние числа остаются.
