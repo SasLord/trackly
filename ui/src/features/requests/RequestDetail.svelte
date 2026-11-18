@@ -53,6 +53,11 @@
   import type { CurrentUser } from '$lib/stores/auth.svelte';
   import type { RequestHistoryEntry } from './api';
   import { entryText, mergedIntoId } from './historyLabels';
+  import Tabs from '$lib/components/Tabs.svelte';
+  import RequestChat from './chat/RequestChat.svelte';
+  import { tabStore, setTab } from './chat/tabStore.svelte';
+  import { unreadFor } from './chat/unreadStore.svelte';
+  import { useDraftFor } from './chat/draftStore.svelte';
   import type { AdSettingsDto, ApproveAdRegisterDto } from '../../bindings-phase9';
   import type { CartridgeDto } from '../../bindings';
 
@@ -139,6 +144,14 @@
   // ad_register requests are admin-only (REQ-06, T-09-21) — manager cannot act on them.
   const isAdmin = $derived(identity?.role === 'admin');
   const isAdRegister = $derived(request?.requestType === 'ad_register');
+  // D-05: у заявок «Регистрация в AD» вкладок и чата нет.
+  const showTabs = $derived(request !== null && !isAdRegister);
+  const activeTab = $derived(tabStore.active);
+  // Черновик чата привязан к заявке: смена заявки его сбрасывает (UI-SPEC §10.6).
+  $effect(() => {
+    const id = request?.id;
+    if (id !== undefined && showTabs) useDraftFor(id);
+  });
   const isAdRestore = $derived(isAdRegister && request?.adSubtype === 'restore');
 
   // GAP-12-07/A4: UI-level ownership check (cosmetic only — server-side
@@ -670,6 +683,21 @@
   }
 </script>
 
+{#snippet tabsSubheader()}
+  {#if request}
+    <Tabs
+      variant="underline"
+      ariaLabel="Разделы заявки"
+      tabs={[
+        { key: 'info', label: 'Информация' },
+        { key: 'chat', label: 'Чат', badge: unreadFor(request.id) },
+      ]}
+      active={activeTab}
+      onchange={setTab}
+    />
+  {/if}
+{/snippet}
+
 {#if loading}
   <div class="detail-loading" aria-live="polite">
     <Spinner size="md" />
@@ -681,6 +709,8 @@
     empty={request === null}
     emptyTitle="Выберите заявку"
     emptyBody="Выберите заявку слева, чтобы увидеть детали и историю."
+    fill={showTabs && activeTab === 'chat'}
+    subheader={showTabs && request ? tabsSubheader : undefined}
   >
     {#snippet actions()}
       {#if request}
@@ -827,7 +857,11 @@
       {/if}
     {/snippet}
 
-    {#if request}
+    {#if request && showTabs && activeTab === 'chat'}
+      <div class="chat-panel" role="tabpanel" aria-label="Чат">
+        <RequestChat requestId={request.id} {isAdmin} />
+      </div>
+    {:else if request}
       <!-- Header (D-01): title-row (2 Badge) + meta-row, verbatim — PrinterDetail
            title-badges precedent, does not fit DetailPanel's plain-string title. -->
       <div class="title-row">
@@ -1200,6 +1234,11 @@
     min-height: 320px;
     text-align: center;
     color: var(--tr-text-secondary);
+  }
+
+  .chat-panel {
+    height: 100%;
+    min-height: 0;
   }
 
   .title-row {
