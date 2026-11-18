@@ -55,6 +55,7 @@
   import { entryText, mergedIntoId } from './historyLabels';
   import Tabs from '$lib/components/Tabs.svelte';
   import RequestChat from './chat/RequestChat.svelte';
+  import ChatMuteToggle from './chat/ChatMuteToggle.svelte';
   import { tabStore, setTab } from './chat/tabStore.svelte';
   import { unreadFor } from './chat/unreadStore.svelte';
   import { useDraftFor } from './chat/draftStore.svelte';
@@ -685,16 +686,19 @@
 
 {#snippet tabsSubheader()}
   {#if request}
-    <Tabs
-      variant="underline"
-      ariaLabel="Разделы заявки"
-      tabs={[
-        { key: 'info', label: 'Информация' },
-        { key: 'chat', label: 'Чат', badge: unreadFor(request.id) },
-      ]}
-      active={activeTab}
-      onchange={setTab}
-    />
+    <div class="tabs-row">
+      <Tabs
+        variant="underline"
+        ariaLabel="Разделы заявки"
+        tabs={[
+          { key: 'info', label: 'Информация' },
+          { key: 'chat', label: 'Чат', badge: unreadFor(request.id) },
+        ]}
+        active={activeTab}
+        onchange={setTab}
+      />
+      <ChatMuteToggle requestId={request.id} />
+    </div>
   {/if}
 {/snippet}
 
@@ -1222,6 +1226,13 @@
 {/if}
 
 <style lang="scss">
+  .tabs-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--tr-space-sm);
+    width: 100%;
+  }
   .detail-loading {
     height: 100%;
     overflow: auto;
