@@ -200,6 +200,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::settings_org::settings_open_db_folder,
         crate::tauri_cmds::settings_org::settings_move_db,
         crate::tauri_cmds::settings_org::app_restart,
+        // Phase 41.5 gap R2-1: уведомление ОС с кликом, только десктоп.
+        crate::tauri_cmds::system_notify::notify_desktop,
         crate::tauri_cmds::settings_org::settings_get_low_stock_threshold,
         crate::tauri_cmds::settings_org::settings_set_low_stock_threshold,
         crate::tauri_cmds::settings_org::settings_get_low_stock_basis,
