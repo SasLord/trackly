@@ -27,6 +27,7 @@
       "identifier": "fs:allow-write-text-file",
       "allow": [{ "path": "$TEMP/*.html" }, { "path": "$TEMP/**/*.html" }]
     },
-    "shell:allow-open"
+    "shell:allow-open",
+    "notification:default"
   ]
 }

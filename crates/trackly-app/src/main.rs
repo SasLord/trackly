@@ -257,6 +257,8 @@ fn main() -> anyhow::Result<()> {
             .plugin(tauri_plugin_dialog::init())
             // Phase 3.1 Plan 05 — G-8b PDF preview actions.
             .plugin(tauri_plugin_shell::init())
+            // Phase 41.5 gap-closure, D-G1 — системные уведомления десктопа.
+            .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_fs::init())
             // Phase 7 Plan 07 — app_restart command (D-19 DB move workflow).
             .plugin(tauri_plugin_process::init())
