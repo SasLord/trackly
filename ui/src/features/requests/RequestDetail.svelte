@@ -150,7 +150,7 @@
   // Черновик чата привязан к заявке: смена заявки его сбрасывает (UI-SPEC §10.6).
   $effect(() => {
     const id = request?.id;
-    if (id !== undefined && showTabs) useDraftFor(id);
+    if (id !== undefined && showTabs) untrack(() => useDraftFor(id));
   });
   const isAdRestore = $derived(isAdRegister && request?.adSubtype === 'restore');
 
