@@ -13,9 +13,9 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { saveFile } from '$lib/utils/saveFile';
-  import { formatFileSize } from '$lib/utils/formatFileSize';
   import AttachmentTile from './AttachmentTile.svelte';
   import AttachmentViewer from './AttachmentViewer.svelte';
+  import { rejectLine } from './rejectText';
   import { attachments, fetchAttachmentBytes, uploadAttachment } from './api';
   import type { AttachmentDto, AttachmentListDto } from '../../bindings';
 
@@ -138,27 +138,6 @@
     };
   }
 
-  function limitMb(): number {
-    return Math.floor(maxBytes / (1024 * 1024));
-  }
-
-  function rejectLine(name: string, code: string, size: number): string {
-    switch (code) {
-      case 'too_large':
-        return `«${name}» — больше ${limitMb()} МБ (размер файла ${formatFileSize(size)}).`;
-      case 'empty':
-        return `«${name}» — файл пустой.`;
-      case 'type_not_allowed':
-        return `«${name}» — такой файл приложить нельзя. Подходят фото (JPEG, PNG, WebP, GIF, HEIC), PDF, документы Word, Excel и OpenDocument, TXT, CSV, LOG, архивы ZIP и 7z.`;
-      case 'heic_failed':
-        return `«${name}» — не удалось преобразовать фото HEIC. Сохраните его в JPEG и приложите снова.`;
-      case 'forbidden':
-        return `«${name}» — нет доступа к карточке или она удалена.`;
-      default:
-        return `«${name}» — не удалось загрузить. Проверьте подключение и попробуйте ещё раз.`;
-    }
-  }
-
   function enqueue(files: globalThis.File[], folderNames: string[] = []) {
     if (destroyed) return;
     const lines: string[] = folderNames.map((n) => `«${n}» — это папка. Приложите файлы из неё.`);
@@ -166,7 +145,7 @@
     let accepted = 0;
     for (const file of files) {
       if (file.size === 0) {
-        lines.push(rejectLine(file.name, 'empty', 0));
+        lines.push(rejectLine(file.name, 'empty', 0, maxBytes));
         continue;
       }
       if (maxBytes > 0 && file.size > maxBytes) {
@@ -201,7 +180,7 @@
     const fits = files.filter((f) => !(maxBytes > 0 && f.size > maxBytes));
     const lines = files
       .filter((f) => maxBytes > 0 && f.size > maxBytes)
-      .map((f) => rejectLine(f.name, 'too_large', f.size));
+      .map((f) => rejectLine(f.name, 'too_large', f.size, maxBytes));
     if (lines.length > 0) errors = [...errors, ...lines];
     if (fits.length > 0) enqueue(fits);
   }
@@ -219,7 +198,7 @@
           if (res.rejectCode === 'too_large' && !destroyed) await load(true);
           errors = [
             ...errors,
-            rejectLine(entry.file.name, res.rejectCode ?? 'network', entry.file.size),
+            rejectLine(entry.file.name, res.rejectCode ?? 'network', entry.file.size, maxBytes),
           ];
         } else {
           batchDone += 1;
