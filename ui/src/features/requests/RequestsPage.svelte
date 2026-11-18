@@ -18,6 +18,7 @@
   import RequestFormModal from './RequestFormModal.svelte';
   import StatWidget from '../dashboard/StatWidget.svelte';
   import { requests } from './api';
+  import { setTab } from './chat/tabStore.svelte';
   import type { RequestCountsDto, RequestDto, RequestFilter, WsEvent } from '../../bindings-phase6';
   import type { DashboardWidgetDto } from '../../bindings';
 
@@ -68,8 +69,12 @@
   // Ссылка `#/requests?id=N` (отчёт «Ремонты», «Открыть заявку №…») открывает
   // карточку заявки. Эффект читает только querystring и пишет selectedId.
   $effect(() => {
-    const raw = new URLSearchParams(router.querystring ?? '').get('id');
+    const params = new URLSearchParams(router.querystring ?? '');
+    const raw = params.get('id');
     const n = raw === null ? NaN : Number(raw);
+    if (params.get('tab') === 'chat') {
+      untrack(() => setTab('chat'));
+    }
     if (Number.isInteger(n) && n > 0) {
       untrack(() => {
         selectedId = n;
