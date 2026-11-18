@@ -134,6 +134,9 @@
   // Form instance counter — resets form on each open.
   let openInstanceCounter = $state(0);
   let _wasOpen = $state(false);
+  // Поколение загрузки списка устройств ремонта: ответ прошлого открытия формы
+  // не должен перезаписать свежий список (R2-3). Не $state: в разметке не участвует.
+  let repairLoadGen = 0;
 
   $effect(() => {
     const isOpen = open;
@@ -148,6 +151,10 @@
       printersLoaded = false;
       descError = '';
       repairChoice = null;
+      // R2-3: список устройств ремонта перечитывается при каждом открытии.
+      repairDevices = [];
+      repairDevicesLoading = false;
+      repairLoadGen += 1;
       repairQuery = '';
       repairDeviceError = '';
       repairDescError = '';
@@ -174,13 +181,15 @@
   }
 
   async function loadRepairDevices() {
+    const gen = ++repairLoadGen;
     repairDevicesLoading = true;
     try {
-      repairDevices = await repairs.deviceOptions();
+      const list = await repairs.deviceOptions();
+      if (gen === repairLoadGen) repairDevices = list;
     } catch {
       // Non-fatal — список устройств остаётся пустым, доступно «Другое».
     } finally {
-      repairDevicesLoading = false;
+      if (gen === repairLoadGen) repairDevicesLoading = false;
     }
   }
 

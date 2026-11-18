@@ -24,6 +24,11 @@
 //      условии; printersLoaded = true только сразу после await requests.printerOptions()
 //      (не в finally); клиентского отбора availablePrinters (.filter/.slice) нет:
 //      область принтеров определяет сервер.
+//  [G] RequestFormModal (R2-3): внутри блока `if (isOpen && !_wasOpen) {` есть
+//      `repairDevices = [];` и `repairLoadGen += 1`; в loadRepairDevices присваивание
+//      `repairDevices =` стоит под проверкой `gen === repairLoadGen` (проверка раньше).
+//      RepairAssignDeviceModal: эффект зовёт repairs.deviceOptions() после
+//      `if (!open) return;` и без кэширующего `devices.length`.
 //
 // Usage:
 //   node scripts/check-request-flow.mjs
@@ -39,13 +44,14 @@ const DIR = path.resolve(__dirname, '../src/features/requests');
 const TAG = '[check-request-flow]';
 
 /** @returns {string[]} нарушения */
-export function check({ detail, labels, form, page, send }) {
+export function check({ detail, labels, form, page, send, assign }) {
   const bad = [];
   const d = stripComments(detail);
   const lb = stripComments(labels);
   const f = stripComments(form);
   const p = stripComments(page);
   const s = stripComments(send);
+  const a = stripComments(assign);
 
   // [A]
   // 41.5-10: словарь подписей вынесен из RequestDetail в historyLabels.ts.
@@ -140,6 +146,34 @@ export function check({ detail, labels, form, page, send }) {
   }
   if (/availablePrinters\s*(\.filter\(|\.slice\(|=\s*availablePrinters\b)/.test(f))
     bad.push('[F] клиентский отбор availablePrinters запрещён (D-41: область у сервера)');
+
+  // [G]
+  const ob = /if \(isOpen && !_wasOpen\) \{([\s\S]*?)\n {4}\}\n/.exec(f);
+  if (!ob) bad.push('[G] нет блока if (isOpen && !_wasOpen)');
+  else {
+    if (!/repairDevices = \[\];/.test(ob[1]))
+      bad.push('[G] блок открытия не сбрасывает repairDevices = []');
+    if (!/repairLoadGen \+= 1/.test(ob[1]))
+      bad.push('[G] блок открытия не увеличивает repairLoadGen');
+  }
+  const lr = /async function loadRepairDevices\(\)[^{]*\{([\s\S]*?)\n {2}\}\n/.exec(f);
+  if (!lr) bad.push('[G] нет loadRepairDevices');
+  else {
+    const guard = lr[1].search(/gen === repairLoadGen/);
+    const assignAt = lr[1].search(/repairDevices = /);
+    if (guard < 0 || assignAt < 0 || guard > assignAt)
+      bad.push('[G] присваивание repairDevices не под проверкой gen === repairLoadGen');
+  }
+  const ae = /\$effect\(\(\) => \{([\s\S]*?repairs\.deviceOptions\(\)[\s\S]*?)\n {2}\}\);/.exec(a);
+  if (!ae) bad.push('[G] RepairAssignDeviceModal: нет эффекта с repairs.deviceOptions()');
+  else {
+    const op = ae[1].search(/if \(!open\) return;/);
+    const call = ae[1].indexOf('repairs.deviceOptions()');
+    if (op < 0 || op > call)
+      bad.push('[G] RepairAssignDeviceModal: нет if (!open) return; до загрузки');
+    if (/devices\.length/.test(ae[1]))
+      bad.push('[G] RepairAssignDeviceModal: кэширующее условие devices.length');
+  }
   return bad;
 }
 
@@ -151,6 +185,7 @@ function load() {
     form: rd('RequestFormModal.svelte'),
     page: rd('RequestsPage.svelte'),
     send: rd('RepairSendModal.svelte'),
+    assign: rd('RepairAssignDeviceModal.svelte'),
   };
 }
 
@@ -214,6 +249,26 @@ function selftest() {
       'options={availablePrinters.filter((p) => p.id > 0)}',
     ),
     'no-selectedId': mut('page', '      selectedId = created.id;', ''),
+    'g-no-reset': mut('form', '      repairDevices = [];\n', ''),
+    'g-reset-outside-block': (() => {
+      const m = mut('form', '      repairDevices = [];\n', '');
+      const anchor = '    _wasOpen = isOpen;\n';
+      if (count(m.form, anchor) !== 1) {
+        console.error(`${TAG} FAIL: selftest: якорь _wasOpen не уникален`);
+        process.exit(1);
+      }
+      return { ...m, form: m.form.replace(anchor, anchor + '    repairDevices = [];\n') };
+    })(),
+    'g-no-gen-guard': mut(
+      'form',
+      'if (gen === repairLoadGen) repairDevices = list;',
+      'repairDevices = list;',
+    ),
+    'g-assign-cached': mut(
+      'assign',
+      '    if (!open) return;\n    let cancelled = false;',
+      '    if (!open) return;\n    if (devices.length > 0) return;\n    let cancelled = false;',
+    ),
     'no-onOpenRequest': mut('page', 'onOpenRequest={(id) => (selectedId = id)}', ''),
   };
   for (const [n, m] of Object.entries(mutants)) results.push([n, check(m).length > 0]);
