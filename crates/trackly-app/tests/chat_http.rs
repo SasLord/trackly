@@ -164,6 +164,7 @@ async fn chat_http_access_by_role() {
             ("chat_feed", json!({ "requestId": rid })),
             ("chat_send", send_body(rid, "Привет")),
             ("chat_mark_read", json!({ "requestId": rid })),
+            ("chat_set_muted", json!({ "requestId": rid, "muted": true })),
             ("chat_discard_drafts", json!({ "requestId": rid })),
         ] {
             let (st, resp) = post(&env, name, stranger, body).await;
@@ -183,6 +184,7 @@ async fn chat_http_access_by_role() {
             ("chat_feed", json!({ "requestId": rid })),
             ("chat_send", send_body(rid, "Привет")),
             ("chat_mark_read", json!({ "requestId": rid })),
+            ("chat_set_muted", json!({ "requestId": rid, "muted": true })),
             ("chat_unread_summary", json!({})),
             ("chat_discard_drafts", json!({ "requestId": rid })),
         ] {
@@ -264,6 +266,7 @@ async fn chat_http_routes_are_json_not_spa() {
             ("chat_feed", json!({ "requestId": rid })),
             ("chat_send", send_body(rid, "Привет")),
             ("chat_mark_read", json!({ "requestId": rid })),
+            ("chat_set_muted", json!({ "requestId": rid, "muted": true })),
             ("chat_unread_summary", json!({})),
             ("chat_discard_drafts", json!({ "requestId": rid })),
         ] {
@@ -317,4 +320,70 @@ async fn chat_http_unread_summary_only_own_requests() {
     })
     .await
     .expect("chat_http_unread_summary_only_own_requests exceeded 60s");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chat_http_set_muted_roundtrip() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = env().await;
+        let rid = env.request_id;
+        let muted_ids = |v: &Value| -> Vec<i64> {
+            v["mutedRequestIds"]
+                .as_array()
+                .unwrap_or_else(|| panic!("нет mutedRequestIds: {v}"))
+                .iter()
+                .map(|i| i.as_i64().unwrap())
+                .collect()
+        };
+        let (st, _) = post(&env, "chat_unread_summary", Some(&env.author), json!({})).await;
+        assert_eq!(st, StatusCode::OK);
+
+        let (st, body) = post(
+            &env,
+            "chat_set_muted",
+            Some(&env.author),
+            json!({ "requestId": rid, "muted": true }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{body}");
+        let (_, sum) = post(&env, "chat_unread_summary", Some(&env.author), json!({})).await;
+        assert_eq!(muted_ids(&sum), vec![rid], "{sum}");
+
+        // D-G2: счётчик растёт и при заглушённой заявке.
+        chat_support::message(&env.ctx, rid, None, "Ответ", 1_700_000_200, None).await;
+        let (_, sum) = post(&env, "chat_unread_summary", Some(&env.author), json!({})).await;
+        let ids: Vec<i64> = sum["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["requestId"].as_i64().unwrap())
+            .collect();
+        assert!(ids.contains(&rid), "непрочитанное скрыто при mute: {sum}");
+
+        // Посторонний не видит чужой mute и не может его менять.
+        let (st, _) = post(
+            &env,
+            "chat_set_muted",
+            Some(&env.stranger),
+            json!({ "requestId": rid, "muted": false }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::FORBIDDEN);
+        let (_, sum) = post(&env, "chat_unread_summary", Some(&env.author), json!({})).await;
+        assert_eq!(muted_ids(&sum), vec![rid], "{sum}");
+
+        let (st, _) = post(
+            &env,
+            "chat_set_muted",
+            Some(&env.author),
+            json!({ "requestId": rid, "muted": false }),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let (_, sum) = post(&env, "chat_unread_summary", Some(&env.author), json!({})).await;
+        assert!(muted_ids(&sum).is_empty(), "{sum}");
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("chat_http_set_muted_roundtrip exceeded 60s");
 }

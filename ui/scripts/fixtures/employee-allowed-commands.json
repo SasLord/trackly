@@ -6,6 +6,7 @@
   "chat_feed",
   "chat_mark_read",
   "chat_send",
+  "chat_set_muted",
   "chat_unread_summary",
   "dashboard_get_all_widgets",
   "repairs_cancel_by_author",

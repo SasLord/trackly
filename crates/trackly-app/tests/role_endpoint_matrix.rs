@@ -5464,6 +5464,10 @@ async fn chat_role_matrix_http() {
                     json!({ "requestId": rid, "text": "Привет", "draftAttachmentIds": [] }),
                 ),
                 ("chat_mark_read", json!({ "requestId": rid })),
+                (
+                    "chat_set_muted",
+                    json!({ "requestId": rid, "muted": true }),
+                ),
                 ("chat_discard_drafts", json!({ "requestId": rid })),
             ]
         };
@@ -6426,6 +6430,7 @@ fn employee_ui_commands() -> Vec<(&'static str, serde_json::Value)> {
             "chat_send",
             json!({ "requestId": 1, "text": "Здравствуйте", "draftAttachmentIds": [] }),
         ),
+        ("chat_set_muted", json!({ "requestId": 1, "muted": true })),
         ("chat_unread_summary", json!({})),
         ("dashboard_get_all_widgets", json!({ "period": null })),
         (
