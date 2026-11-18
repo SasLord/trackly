@@ -23,6 +23,10 @@
 //        nameShown = groupStart && !item.isOwn; .msg:not(.group-start) с margin-top calc(2xs - …);
 //   [C10] переключатель оповещений: <ChatMuteToggle ровно один раз, внутри сниппета tabsSubheader, который
 //        подключается только под showTabs; в ChatMuteToggle: aria-pressed, обе подписи, toggleMute(, без $effect;
+//   [C12] DetailPanel/RequestChat/ChatComposer (UAT 41.5 R2-4): в режиме subheader линия под .header-row
+//        (не в .subheader, не на самом .detail-header.with-subheader), базовая линия .detail-header цела;
+//        на вкладке «Чат» лента вплотную (.fill .fill-body с отрицательным полем, margin-bottom: 0 у шапки);
+//        боковой отступ xl у .chat-feed и .composer;
 //   [C8] счётный минимум: сработало не меньше 8 различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
@@ -50,6 +54,7 @@ const REQUIRED = [
   `${CHAT}linkify.ts`,
   'features/requests/RequestDetail.svelte',
   'features/layout/sidebar-config.ts',
+  'lib/components/DetailPanel.svelte',
 ];
 const MIN_RULES = 8;
 const WS_EVENTS = [
@@ -316,11 +321,67 @@ export function check(files) {
       fail('C9', 'ChatMessage: nameShown не равен groupStart && !item.isOwn');
     const contCss = funcBody(cm, /\.msg:not\(\.group-start\)\s*\{/);
     if (contCss === null || !/margin-top:\s*calc\(var\(--tr-space-2xs\)\s*-\s/.test(contCss))
-      fail('C9', 'ChatMessage: нет .msg:not(.group-start) с margin-top: calc(2xs - …) (плотная группа)');
+      fail(
+        'C9',
+        'ChatMessage: нет .msg:not(.group-start) с margin-top: calc(2xs - …) (плотная группа)',
+      );
     if (/<p class="author"/.test(cm) || cm.includes('author-role') || /\bROLES\b/.test(cm))
       fail('C9', 'ChatMessage: автор вне облака или показана роль');
   }
   fired.add('C9');
+
+  // C12
+  const dp = get('lib/components/DetailPanel.svelte');
+  if (dp !== null) {
+    const blk = (re) => funcBody(dp, re);
+    const base = blk(/(?:^|\n)[ \t]*\.detail-header\s*\{/);
+    if (base === null || !/border-bottom:\s*1px solid var\(--tr-border\)/.test(base))
+      fail('C12', 'DetailPanel: у базового .detail-header нет линии (другие страницы задеты)');
+    const wsh = blk(/(?:^|\n)[ \t]*\.detail-header\.with-subheader\s*\{/);
+    if (wsh === null) fail('C12', 'DetailPanel: нет блока .detail-header.with-subheader');
+    else {
+      if (!/border-bottom:\s*none/.test(wsh))
+        fail('C12', 'DetailPanel: у .detail-header.with-subheader нет border-bottom: none');
+      if (/border-bottom:\s*1px/.test(wsh))
+        fail(
+          'C12',
+          'DetailPanel: линия на .detail-header.with-subheader (должна быть под .header-row)',
+        );
+    }
+    const hr = blk(/(?:^|\n)[ \t]*\.detail-header\.with-subheader \.header-row\s*\{/);
+    if (hr === null || !/border-bottom:\s*1px solid var\(--tr-border\)/.test(hr))
+      fail(
+        'C12',
+        'DetailPanel: у .with-subheader .header-row нет линии (она должна быть под заголовком)',
+      );
+    const subRe = /\.subheader\b[^{};]*\{/g;
+    let sm;
+    while ((sm = subRe.exec(dp)) !== null) {
+      const body = funcBody(dp.slice(sm.index), /^[^{]*\{/);
+      if (body !== null && /border-(bottom|top)/.test(body))
+        fail('C12', 'DetailPanel: граница в блоке .subheader (линия не под заголовком)');
+    }
+    const fb = blk(/\.detail-panel\.fill \.fill-body\s*\{/);
+    if (fb === null || !/margin:[^;]*calc\(var\(--tr-space-xl\) \* -1\)/.test(fb))
+      fail(
+        'C12',
+        'DetailPanel: .fill .fill-body без отрицательного бокового поля (лента не вплотную)',
+      );
+    const fh = blk(/\.detail-panel\.fill \.detail-header\.with-subheader\s*\{/);
+    if (fh === null || !/margin-bottom:\s*0\s*;/.test(fh))
+      fail('C12', 'DetailPanel: у шапки вкладки «Чат» margin-bottom не 0 (зазор до ленты)');
+  }
+  if (rc !== null) {
+    const feed = funcBody(rc, /(?:^|\n)[ \t]*\.chat-feed\s*\{/);
+    if (feed === null || !/padding:[^;]*var\(--tr-space-xl\)/.test(feed))
+      fail('C12', 'RequestChat: у .chat-feed нет бокового отступа --tr-space-xl');
+  }
+  if (comp !== null) {
+    const cb = funcBody(comp, /(?:^|\n)[ \t]*\.composer\s*\{/);
+    if (cb === null || !/padding:[^;]*var\(--tr-space-xl\)/.test(cb))
+      fail('C12', 'ChatComposer: у .composer нет бокового отступа --tr-space-xl');
+  }
+  fired.add('C12');
 
   // C8
   if (fired.size < MIN_RULES) fail('C8', `сработало ${fired.size} правил из ${MIN_RULES}`);
@@ -564,6 +625,86 @@ function selftest(files) {
         `${CHAT}ChatMessage.svelte`,
         'calc(var(--tr-space-2xs) - var(--chat-row-gap',
         'calc(var(--tr-space-2xs) + var(--chat-row-gap',
+      ),
+    },
+    {
+      name: 'C12: перестановка — линия переехала из .header-row в .subheader',
+      expect: 'C12',
+      make: () => {
+        const rel = 'lib/components/DetailPanel.svelte';
+        const src = files[rel];
+        const hrOpen = '.detail-header.with-subheader .header-row {';
+        const subOpen = '.detail-header.with-subheader .subheader {';
+        const line = '    border-bottom: 1px solid var(--tr-border);\n';
+        uniq(src, hrOpen);
+        uniq(src, subOpen);
+        const a = src.indexOf(line, src.indexOf(hrOpen));
+        const cut = src.slice(0, a) + src.slice(a + line.length);
+        const at = cut.indexOf(subOpen) + subOpen.length;
+        return { ...files, [rel]: cut.slice(0, at) + '\n' + line + cut.slice(at) };
+      },
+    },
+    {
+      name: 'C12: линия возвращена на with-subheader (под вкладки)',
+      expect: 'C12',
+      make: swapText(
+        'lib/components/DetailPanel.svelte',
+        'border-bottom: none;',
+        'border-bottom: 1px solid var(--tr-border);',
+      ),
+    },
+    {
+      name: 'C12: у .header-row снята линия',
+      expect: 'C12',
+      make: swapText(
+        'lib/components/DetailPanel.svelte',
+        '    padding: 0 var(--tr-space-xl) var(--tr-space-md);\n    border-bottom: 1px solid var(--tr-border);',
+        '    padding: 0 var(--tr-space-xl) var(--tr-space-md);',
+      ),
+    },
+    {
+      name: 'C12: fill-body без отрицательного поля',
+      expect: 'C12',
+      make: swapText(
+        'lib/components/DetailPanel.svelte',
+        '.detail-panel.fill .fill-body {\n    margin: 0 calc(var(--tr-space-xl) * -1);',
+        '.detail-panel.fill .fill-body {\n    margin: 0;',
+      ),
+    },
+    {
+      name: 'C12: у шапки «Чата» вернулся нижний зазор',
+      expect: 'C12',
+      make: swapText(
+        'lib/components/DetailPanel.svelte',
+        '.detail-panel.fill .detail-header.with-subheader {\n    margin-bottom: 0;',
+        '.detail-panel.fill .detail-header.with-subheader {\n    margin-bottom: var(--tr-space-xl);',
+      ),
+    },
+    {
+      name: 'C12: padding ленты без бокового xl',
+      expect: 'C12',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        'padding: var(--tr-space-sm) var(--tr-space-xl);\n    list-style',
+        'padding: var(--tr-space-sm);\n    list-style',
+      ),
+    },
+    {
+      name: 'C12: padding композера без бокового xl',
+      expect: 'C12',
+      make: swapText(
+        `${CHAT}ChatComposer.svelte`,
+        'padding: var(--tr-space-md) var(--tr-space-xl);\n    background: var(--tr-surface-raised);',
+        'padding: var(--tr-space-md);\n    background: var(--tr-surface-raised);',
+      ),
+    },
+    {
+      name: 'C12: снята линия с базового .detail-header (регрессия других страниц)',
+      expect: 'C12',
+      make: swapText(
+        'lib/components/DetailPanel.svelte',
+        '    background: var(--tr-surface-raised);\n    border-bottom: 1px solid var(--tr-border);\n  }',
+        '    background: var(--tr-surface-raised);\n  }',
       ),
     },
     {

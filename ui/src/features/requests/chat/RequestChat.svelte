@@ -494,7 +494,7 @@
     min-height: 0;
     overflow-y: auto;
     margin: 0;
-    padding: var(--tr-space-sm);
+    padding: var(--tr-space-sm) var(--tr-space-xl);
     list-style: none;
     display: flex;
     flex-direction: column;
@@ -570,7 +570,7 @@
 
   .jump {
     position: absolute;
-    right: var(--tr-space-sm);
+    right: var(--tr-space-xl);
     bottom: var(--tr-space-sm);
     box-shadow: var(--tr-elev-2);
     border-radius: var(--tr-radius-sm);

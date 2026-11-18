@@ -352,7 +352,7 @@
 <style lang="scss">
   .composer {
     flex-shrink: 0;
-    padding: var(--tr-space-md);
+    padding: var(--tr-space-md) var(--tr-space-xl);
     background: var(--tr-surface-raised);
     border-top: 1px solid var(--tr-border);
   }
@@ -363,7 +363,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--tr-space-xs);
-    padding: var(--tr-space-md);
+    padding: var(--tr-space-md) var(--tr-space-xl);
     background: var(--tr-surface-sunken);
     border-top: 1px solid var(--tr-border);
     color: var(--tr-text-secondary);

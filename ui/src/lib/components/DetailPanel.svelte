@@ -95,6 +95,10 @@
     flex: 1;
     min-height: 0;
   }
+  // Вкладка «Чат»: лента вплотную к стенкам панели (боковой padding панели гасится).
+  .detail-panel.fill .fill-body {
+    margin: 0 calc(var(--tr-space-xl) * -1);
+  }
 
   .empty {
     display: flex;
@@ -150,12 +154,17 @@
     flex-direction: column;
     align-items: stretch;
     flex-wrap: nowrap;
-    gap: var(--tr-space-sm);
+    gap: 0;
     padding-bottom: 0;
     margin-bottom: var(--tr-space-xl);
+    // Линия — под строкой «заголовок + кнопки» (.header-row), не под вкладками.
+    border-bottom: none;
   }
   .detail-panel.fill .detail-header {
     flex: none;
+  }
+  .detail-panel.fill .detail-header.with-subheader {
+    margin-bottom: 0;
   }
   .header-row {
     display: flex;
@@ -164,8 +173,16 @@
     gap: var(--tr-space-md);
     flex-wrap: wrap;
   }
+  .detail-header.with-subheader .header-row {
+    margin: 0 calc(var(--tr-space-xl) * -1);
+    padding: 0 var(--tr-space-xl) var(--tr-space-md);
+    border-bottom: 1px solid var(--tr-border);
+  }
   .subheader {
     width: 100%;
+  }
+  .detail-header.with-subheader .subheader {
+    margin-top: var(--tr-space-xs);
   }
   .detail-title {
     margin: 0;
