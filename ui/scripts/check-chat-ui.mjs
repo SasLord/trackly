@@ -20,6 +20,8 @@
 //   [C9] ChatMessage: pre-wrap только на .text (не на .bubble); шапка .head — внутри .bubble и до
 //        sr-only-префикса (якорь верхней границы пузыря); нет <p class="author">, author-role, ROLES;
 //        ровно один class="time", и он внутри .head;
+//   [C10] переключатель оповещений: <ChatMuteToggle ровно один раз, внутри сниппета tabsSubheader, который
+//        подключается только под showTabs; в ChatMuteToggle: aria-pressed, обе подписи, toggleMute(, без $effect;
 //   [C8] счётный минимум: сработало не меньше 8 различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
@@ -37,6 +39,7 @@ const REQUIRED = [
   `${CHAT}RequestChat.svelte`,
   `${CHAT}ChatComposer.svelte`,
   `${CHAT}ChatMessage.svelte`,
+  `${CHAT}ChatMuteToggle.svelte`,
   `${CHAT}ChatEvent.svelte`,
   `${CHAT}ChatAttachmentEvent.svelte`,
   `${CHAT}chatNotifications.svelte.ts`,
@@ -241,6 +244,35 @@ export function check(files) {
   if (tb !== null && !tb.includes('trackly:request-detail-tab'))
     fail('C7', 'tabStore: нет ключа trackly:request-detail-tab');
   fired.add('C7');
+
+  // C10
+  const mt = get(`${CHAT}ChatMuteToggle.svelte`);
+  if (rd !== null) {
+    const n = count(rd, '<ChatMuteToggle');
+    if (n !== 1) fail('C10', `RequestDetail: <ChatMuteToggle встречается ${n} раз, нужен 1`);
+    else {
+      const sStart = rd.indexOf('{#snippet tabsSubheader()}');
+      const sEnd = rd.indexOf('{/snippet}', sStart);
+      const at = rd.indexOf('<ChatMuteToggle');
+      if (sStart < 0 || sEnd < 0 || !(sStart < at && at < sEnd))
+        fail('C10', 'RequestDetail: <ChatMuteToggle вне сниппета tabsSubheader (полосы вкладок)');
+    }
+    if (!rd.includes('subheader={showTabs && request ? tabsSubheader : undefined}'))
+      fail('C10', 'RequestDetail: tabsSubheader подключён не только под showTabs');
+  }
+  if (mt !== null) {
+    const code = stripComments(mt);
+    if (!code.includes('aria-pressed={')) fail('C10', 'ChatMuteToggle: нет aria-pressed');
+    if (
+      !code.includes('Отключить оповещения по этой заявке') ||
+      !code.includes('Включить оповещения по этой заявке')
+    )
+      fail('C10', 'ChatMuteToggle: нет обеих aria-подписей');
+    if (!/onclick=\{[^}]*toggleMute\(/.test(code))
+      fail('C10', 'ChatMuteToggle: onclick не вызывает toggleMute(');
+    if (code.includes('$effect')) fail('C10', 'ChatMuteToggle: $effect запрещён');
+  }
+  fired.add('C10');
 
   // C9
   const cm = get(`${CHAT}ChatMessage.svelte`);
@@ -469,6 +501,47 @@ function selftest(files) {
         `${CHAT}ChatMessage.svelte`,
         '<span class="sr-only">',
         '<span class="time">x</span><span class="sr-only">',
+      ),
+    },
+    {
+      name: 'C10: перестановка — ChatMuteToggle вынесен перед сниппетом полосы вкладок',
+      expect: 'C10',
+      make: reorder(
+        'features/requests/RequestDetail.svelte',
+        '<ChatMuteToggle requestId={request.id} />',
+        '</script>',
+      ),
+    },
+    {
+      name: 'C10: пустой обработчик вместо toggleMute',
+      expect: 'C10',
+      make: swapText(
+        `${CHAT}ChatMuteToggle.svelte`,
+        'onclick={() => void toggleMute(requestId, !muted)}',
+        'onclick={() => void 0}',
+      ),
+    },
+    {
+      name: 'C10: снят aria-pressed',
+      expect: 'C10',
+      make: swapText(`${CHAT}ChatMuteToggle.svelte`, 'aria-pressed={muted}', 'data-x={muted}'),
+    },
+    {
+      name: 'C10: $effect в ChatMuteToggle',
+      expect: 'C10',
+      make: swapText(
+        `${CHAT}ChatMuteToggle.svelte`,
+        'const muted = $derived(',
+        '$effect(() => {});\n  const muted = $derived(',
+      ),
+    },
+    {
+      name: 'C10: сниппет полосы вкладок без showTabs',
+      expect: 'C10',
+      make: swapText(
+        'features/requests/RequestDetail.svelte',
+        'subheader={showTabs && request ? tabsSubheader : undefined}',
+        'subheader={request ? tabsSubheader : undefined}',
       ),
     },
     {
