@@ -16,6 +16,9 @@
 //        текст сообщения в уведомление не передаётся;
 //   [C6] unreadStore: registerUserScopedReset, Array.isArray, пять WS-событий; счётчик requestsUnread в сайдбаре;
 //   [C7] RequestDetail: <RequestChat ровно один раз внутри ветки вкладки «Чат»; showTabs исключает ad_register;
+//   [C9] ChatMessage: pre-wrap только на .text (не на .bubble); шапка .head — внутри .bubble и до
+//        sr-only-префикса (якорь верхней границы пузыря); нет <p class="author">, author-role, ROLES;
+//        ровно один class="time", и он внутри .head;
 //   [C8] счётный минимум: сработало не меньше 8 различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
@@ -216,6 +219,33 @@ export function check(files) {
     fail('C7', 'tabStore: нет ключа trackly:request-detail-tab');
   fired.add('C7');
 
+  // C9
+  const cm = get(`${CHAT}ChatMessage.svelte`);
+  if (cm !== null) {
+    const bubbleCss = funcBody(cm, /\.bubble\s*\{/);
+    const textCss = funcBody(cm, /\.text\s*\{/);
+    if (bubbleCss === null) fail('C9', 'ChatMessage: CSS-блок .bubble не найден');
+    else if (/white-space:\s*pre-wrap/.test(bubbleCss))
+      fail('C9', 'ChatMessage: white-space: pre-wrap на .bubble (красная строка)');
+    if (textCss === null) fail('C9', 'ChatMessage: CSS-блок .text не найден');
+    else if (!/white-space:\s*pre-wrap/.test(textCss))
+      fail('C9', 'ChatMessage: у .text нет white-space: pre-wrap (переносы строк теряются)');
+    const bAt = cm.indexOf('<div class="bubble"');
+    const hAt = cm.indexOf('class="head"');
+    // верхняя граница пузыря для шапки — sr-only-префикс, всегда идущий сразу после шапки
+    const sAt = cm.indexOf('<span class="sr-only">');
+    if (bAt < 0 || hAt < 0 || sAt < 0) fail('C9', 'ChatMessage: нет .bubble / .head / sr-only');
+    else {
+      if (!(bAt < hAt && hAt < sAt)) fail('C9', 'ChatMessage: шапка .head не внутри .bubble');
+      const timeInHead = count(cm.slice(hAt, sAt), 'class="time"');
+      if (timeInHead !== 1 || count(cm, 'class="time"') !== 1)
+        fail('C9', 'ChatMessage: class="time" должен быть ровно один и внутри .head');
+    }
+    if (/<p class="author"/.test(cm) || cm.includes('author-role') || /\bROLES\b/.test(cm))
+      fail('C9', 'ChatMessage: автор вне облака или показана роль');
+  }
+  fired.add('C9');
+
   // C8
   if (fired.size < MIN_RULES) fail('C8', `сработало ${fired.size} правил из ${MIN_RULES}`);
   return v;
@@ -311,6 +341,49 @@ function selftest(files) {
       name: 'текст сообщения в уведомление',
       expect: 'C5',
       make: swapText(`${CHAT}chatNotifications.svelte.ts`, '{ body: text }', '{ body: ev.text }'),
+    },
+    {
+      name: 'C9: pre-wrap возвращён на .bubble',
+      expect: 'C9',
+      make: swapText(
+        `${CHAT}ChatMessage.svelte`,
+        'white-space: normal;\n    overflow-wrap: anywhere;',
+        'white-space: pre-wrap;\n    overflow-wrap: anywhere;',
+      ),
+    },
+    {
+      name: 'C9: перестановка — шапка автора снова над облаком',
+      expect: 'C9',
+      make: () => {
+        const rel = `${CHAT}ChatMessage.svelte`;
+        const src = files[rel];
+        const start = src.indexOf('    <div class="head">');
+        const end = src.indexOf('</div>', start) + '</div>\n'.length;
+        uniq(src, '    <div class="head">');
+        uniq(src, '<div class="bubble"');
+        const head = src.slice(start, end);
+        const cut = src.slice(0, start) + src.slice(end);
+        const at = cut.indexOf('  <div class="bubble"');
+        return { ...files, [rel]: cut.slice(0, at) + head + cut.slice(at) };
+      },
+    },
+    {
+      name: 'C9: роль возвращена',
+      expect: 'C9',
+      make: swapText(
+        `${CHAT}ChatMessage.svelte`,
+        '<div class="head">',
+        '<div class="head"><span class="author-role">x</span>',
+      ),
+    },
+    {
+      name: 'C9: второе время в конце пузыря',
+      expect: 'C9',
+      make: swapText(
+        `${CHAT}ChatMessage.svelte`,
+        '<span class="sr-only">',
+        '<span class="time">x</span><span class="sr-only">',
+      ),
     },
     {
       name: 'пропал файл (не «пропуск», а красный)',
