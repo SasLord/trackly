@@ -12,7 +12,8 @@
 //   [C3] ChatComposer.send: uploadDraft раньше chat.send, есть discardDrafts;
 //   [C4] RequestChat: присваивание firstUnreadId раньше markRead; setActiveChat ставится/снимается;
 //        ровно один <AttachmentViewer, не внутри <ol;
-//   [C5] chatNotifications: сравнение actorUserId раньше pushToast/new Notification;
+//   [C5] chatNotifications: порядок actorUserId → isMuted → pushToast → showSystemNotification, фокус через appHasFocus,
+//        без document.hidden / ветки роли / прямого new Notification;
 //        текст сообщения в уведомление не передаётся;
 //   [C6] unreadStore: registerUserScopedReset, Array.isArray, пять WS-событий; счётчик requestsUnread в сайдбаре;
 //   [C7] RequestDetail: <RequestChat ровно один раз внутри ветки вкладки «Чат»; showTabs исключает ad_register;
@@ -167,15 +168,34 @@ export function check(files) {
   // C5
   const cn = get(`${CHAT}chatNotifications.svelte.ts`);
   if (cn !== null) {
-    const a = cn.indexOf('actorUserId');
-    const pt = cn.indexOf('pushToast(', cn.indexOf('export function handleChatMessageEvent'));
-    const nn = cn.indexOf('new Notification(');
-    if (a < 0) fail('C5', 'chatNotifications: нет сравнения actorUserId');
+    const body = funcBody(cn, /export function handleChatMessageEvent\([^)]*\)[^{]*\{/);
+    if (body === null) fail('C5', 'chatNotifications: handleChatMessageEvent не найден');
     else {
-      if (pt >= 0 && a > pt) fail('C5', 'chatNotifications: actorUserId ПОСЛЕ pushToast(');
-      if (nn >= 0 && a > nn) fail('C5', 'chatNotifications: actorUserId ПОСЛЕ new Notification(');
-      if (pt < 0 && nn < 0) fail('C5', 'chatNotifications: нет pushToast( / new Notification(');
+      const a = body.indexOf('actorUserId');
+      const mu = body.indexOf('isMuted(');
+      const pt = body.indexOf('pushToast(');
+      const sn = body.indexOf('showSystemNotification(');
+      if (a < 0) fail('C5', 'chatNotifications: нет сравнения actorUserId');
+      if (mu < 0) fail('C5', 'chatNotifications: нет проверки isMuted(');
+      if (pt < 0) fail('C5', 'chatNotifications: нет pushToast(');
+      if (sn < 0) fail('C5', 'chatNotifications: нет showSystemNotification(');
+      if (a >= 0 && mu >= 0 && a > mu) fail('C5', 'chatNotifications: actorUserId ПОСЛЕ isMuted(');
+      if (a >= 0 && pt >= 0 && a > pt)
+        fail('C5', 'chatNotifications: actorUserId ПОСЛЕ pushToast(');
+      if (a >= 0 && sn >= 0 && a > sn)
+        fail('C5', 'chatNotifications: actorUserId ПОСЛЕ showSystemNotification(');
+      if (mu >= 0 && pt >= 0 && mu > pt) fail('C5', 'chatNotifications: isMuted( ПОСЛЕ pushToast(');
+      if (mu >= 0 && sn >= 0 && mu > sn)
+        fail('C5', 'chatNotifications: isMuted( ПОСЛЕ showSystemNotification(');
+      if (!body.includes('appHasFocus('))
+        fail('C5', 'chatNotifications: фокус не проверяется через appHasFocus(');
+      if (/\.role\b/.test(body))
+        fail('C5', 'chatNotifications: ветка по роли (все роли уведомляются)');
     }
+    if (/\bdocument\.hidden\b/.test(cn))
+      fail('C5', 'chatNotifications: document.hidden вместо фокуса окна');
+    if (cn.includes('new Notification('))
+      fail('C5', 'chatNotifications: прямой new Notification( (только через systemNotify)');
     if (/\bev\.(text|body|message|content)\b/.test(cn))
       fail('C5', 'chatNotifications: текст сообщения попадает в уведомление');
     fired.add('C5');
@@ -188,6 +208,9 @@ export function check(files) {
       fail('C6', 'unreadStore: нет registerUserScopedReset(');
     if (!us.includes('Array.isArray'))
       fail('C6', 'unreadStore: нет проверки формы ответа (Array.isArray)');
+    if (!/Array\.isArray\(res\.mutedRequestIds\)/.test(us))
+      fail('C6', 'unreadStore: не читается mutedRequestIds (режим «отключено»)');
+    if (!us.includes('export function isMuted(')) fail('C6', 'unreadStore: нет экспорта isMuted(');
     for (const e of WS_EVENTS)
       if (!us.includes(`'${e}'`)) fail('C6', `unreadStore: нет подписки на WS-событие ${e}`);
   }
@@ -316,6 +339,69 @@ function selftest(files) {
       ),
     },
     {
+      name: 'перестановка: isMuted после pushToast',
+      expect: 'C5',
+      make: reorder(
+        `${CHAT}chatNotifications.svelte.ts`,
+        'if (isMuted(ev.requestId)) return;',
+        'toastByRequest.set(ev.requestId, id);',
+      ),
+    },
+    {
+      name: 'перестановка: actorUserId после isMuted',
+      expect: 'C5',
+      make: reorder(
+        `${CHAT}chatNotifications.svelte.ts`,
+        'if (ev.actorUserId !== null && ev.actorUserId === me.id) return;',
+        'if (isMuted(ev.requestId)) return;',
+      ),
+    },
+    {
+      name: 'перестановка: isMuted после showSystemNotification',
+      expect: 'C5',
+      make: reorder(
+        `${CHAT}chatNotifications.svelte.ts`,
+        'if (isMuted(ev.requestId)) return;',
+        "void showSystemNotification('Trackly', text);",
+      ),
+    },
+    {
+      name: 'возврат document.hidden',
+      expect: 'C5',
+      make: swapText(
+        `${CHAT}chatNotifications.svelte.ts`,
+        'if (!appHasFocus())',
+        'if (document.hidden)',
+      ),
+    },
+    {
+      name: 'возврат ветки по роли',
+      expect: 'C5',
+      make: swapText(
+        `${CHAT}chatNotifications.svelte.ts`,
+        'const href =',
+        "if (me.role === 'employee') return;\n  const href =",
+      ),
+    },
+    {
+      name: 'прямой new Notification(',
+      expect: 'C5',
+      make: swapText(
+        `${CHAT}chatNotifications.svelte.ts`,
+        "void showSystemNotification('Trackly', text);",
+        "new Notification('Trackly', { body: text });",
+      ),
+    },
+    {
+      name: 'unreadStore не читает mutedRequestIds',
+      expect: 'C6',
+      make: swapText(
+        `${CHAT}unreadStore.svelte.ts`,
+        'Array.isArray(res.mutedRequestIds)',
+        'Array.isArray(res.items)',
+      ),
+    },
+    {
       name: 'внесён {@html}',
       expect: 'C1',
       make: () => ({
@@ -340,7 +426,7 @@ function selftest(files) {
     {
       name: 'текст сообщения в уведомление',
       expect: 'C5',
-      make: swapText(`${CHAT}chatNotifications.svelte.ts`, '{ body: text }', '{ body: ev.text }'),
+      make: swapText(`${CHAT}chatNotifications.svelte.ts`, "ev.actorName ?? 'Участник'", 'ev.text'),
     },
     {
       name: 'C9: pre-wrap возвращён на .bubble',
