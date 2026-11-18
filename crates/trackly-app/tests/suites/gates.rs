@@ -51,3 +51,5 @@ mod number_space_broadcast_gate;
 mod specta_roundtrip;
 #[path = "../suite_wiring.rs"]
 mod suite_wiring;
+#[path = "../tauri_shell_scope.rs"]
+mod tauri_shell_scope;

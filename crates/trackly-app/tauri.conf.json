@@ -41,7 +41,7 @@
   },
   "plugins": {
     "shell": {
-      "open": "^(https?://|file://|/|[A-Za-z]:[\\\\/]).*trackly-print-\\d+\\.html$"
+      "open": "^(https?://\\S+|(file://|/|[A-Za-z]:[\\\\/]).*trackly-print-\\d+\\.html)$"
     }
   }
 }
