@@ -143,3 +143,36 @@ fn v054_indexes_and_pk() {
         .collect();
     assert_eq!(pk, ["user_id", "request_id"]);
 }
+
+#[test]
+fn v055_creates_chat_mutes_and_ends_with_user_version() {
+    let (conn, _d) = migrated();
+    assert!(count(&conn, "PRAGMA user_version") >= 55);
+    assert_eq!(
+        cols(&conn, "chat_mutes"),
+        ["user_id", "request_id", "muted_at_utc"]
+    );
+    let pk: Vec<String> = conn
+        .prepare("SELECT name FROM pragma_table_info('chat_mutes') WHERE pk > 0 ORDER BY pk")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(pk, ["user_id", "request_id"]);
+
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/V055__chat_mutes.sql"
+    );
+    let sql = std::fs::read_to_string(path).expect("read V055");
+    let last = sql.lines().rev().find(|l| !l.trim().is_empty()).unwrap();
+    assert_eq!(last.trim(), "PRAGMA user_version = 55;");
+    let code: String = sql
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_uppercase();
+    assert!(!code.contains("DROP"), "V055 must not rebuild tables");
+}

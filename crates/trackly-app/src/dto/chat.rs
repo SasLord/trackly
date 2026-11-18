@@ -120,4 +120,7 @@ pub struct UnreadItemDto {
 pub struct UnreadSummaryDto {
     pub items: Vec<UnreadItemDto>,
     pub requests_with_unread: i32,
+    /// D-G3: requests whose notifications the caller muted (server-side, all devices).
+    #[specta(type = Vec<i32>)]
+    pub muted_request_ids: Vec<i64>,
 }

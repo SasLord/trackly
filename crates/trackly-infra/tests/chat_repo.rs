@@ -354,3 +354,19 @@ fn list_and_delete_drafts() {
     r.delete_draft_rows_on(&c, &[mine]).unwrap();
     assert!(r.list_drafts_on(&c, 1, 2).unwrap().is_empty());
 }
+
+#[test]
+fn mutes_idempotent_isolated_and_skip_deleted() {
+    let (c, _d) = fresh_db();
+    let r = SqliteChatRepository;
+    r.set_muted_on(&c, 2, 1, true, NOW).unwrap();
+    r.set_muted_on(&c, 2, 1, true, NOW + 5).unwrap();
+    r.set_muted_on(&c, 2, 4, true, NOW).unwrap();
+    r.set_muted_on(&c, 3, 2, true, NOW).unwrap();
+    assert_eq!(r.muted_request_ids_on(&c, 2).unwrap(), vec![1]);
+    assert_eq!(r.muted_request_ids_on(&c, 3).unwrap(), vec![2]);
+    assert!(r.muted_request_ids_on(&c, 1).unwrap().is_empty());
+    r.set_muted_on(&c, 2, 1, false, NOW).unwrap();
+    r.set_muted_on(&c, 2, 1, false, NOW).unwrap();
+    assert!(r.muted_request_ids_on(&c, 2).unwrap().is_empty());
+}

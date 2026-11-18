@@ -384,6 +384,52 @@ impl SqliteChatRepository {
         Ok(rows)
     }
 
+    /// D-G3: включает/снимает «заглушено» для пары (пользователь, заявка); идемпотентно.
+    pub fn set_muted_on(
+        &self,
+        conn: &Connection,
+        user_id: i64,
+        request_id: i64,
+        muted: bool,
+        now: i64,
+    ) -> Result<(), AppError> {
+        if muted {
+            conn.execute(
+                "INSERT OR IGNORE INTO chat_mutes (user_id, request_id, muted_at_utc) \
+                 VALUES (?1, ?2, ?3)",
+                params![user_id, request_id, now],
+            )
+        } else {
+            conn.execute(
+                "DELETE FROM chat_mutes WHERE user_id = ?1 AND request_id = ?2",
+                params![user_id, request_id],
+            )
+        }
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
+    /// Заглушённые заявки пользователя по возрастанию id (без удалённых заявок).
+    pub fn muted_request_ids_on(
+        &self,
+        conn: &Connection,
+        user_id: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.request_id FROM chat_mutes m \
+                   JOIN requests r ON r.id = m.request_id \
+                  WHERE m.user_id = ?1 AND r.deleted_at_utc IS NULL ORDER BY m.request_id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![user_id], |r| r.get::<_, i64>(0))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
     /// Черновики вложений пользователя по заявке.
     pub fn list_drafts_on(
         &self,
