@@ -3,6 +3,7 @@
   // (переживает переключение вкладок). Отправка — одна операция: сначала файлы-
   // черновики, затем chat_send; отказ любого файла — сообщение не создаётся.
   // Ошибки выводятся по машинному коду, серверные тексты не показываются.
+  import { untrack } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import { parseAppError } from '$lib/api/errors';
   import { formatFileSize } from '$lib/utils/formatFileSize';
@@ -36,6 +37,8 @@
   let textareaEl = $state<HTMLTextAreaElement | null>(null);
   let fileInput = $state<HTMLInputElement | null>(null);
   let sending = $state(false);
+  // Превью, которое не загрузилось (например, CSP): вместо битой картинки — значок типа.
+  let failedPreviews = $state<Record<string, boolean>>({});
 
   const hasContent = $derived(draft.text.trim().length > 0 || draft.chips.length > 0);
   const showCounter = $derived(draft.text.length >= 3800);
@@ -46,7 +49,7 @@
   // Закрытая заявка: несохранённый черновик пропадает без отправки (D-07).
   $effect(() => {
     if (!canPost && (draft.text !== '' || draft.chips.length > 0)) {
-      clearDraft();
+      untrack(() => clearDraft());
     }
   });
 
@@ -236,8 +239,13 @@
       <ul class="chips">
         {#each draft.chips as chip (chip.id)}
           <li class="chip" class:rejected={chip.rejected}>
-            {#if chip.previewUrl}
-              <img class="chip-thumb" src={chip.previewUrl} alt="" />
+            {#if chip.previewUrl && !failedPreviews[chip.id]}
+              <img
+                class="chip-thumb"
+                src={chip.previewUrl}
+                alt=""
+                onerror={() => (failedPreviews[chip.id] = true)}
+              />
             {:else}
               <span class="chip-icon">
                 <AttachmentTypeIcon kind={iconKindForMime(chip.file.type, chip.file.name)} />

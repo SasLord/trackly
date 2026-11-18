@@ -41,13 +41,8 @@ const REQUIRED = [
 ];
 const MUST_WRITERS = ['clearDraft', 'useDraftFor', 'addFiles', 'removeChip'];
 
-// Освобождения: файл -> причина. ChatComposer: эффект охраняется условием
-// «черновик непуст», а clearDraft идемпотентен, поэтому цикла нет (запись
-// происходит один раз и условие гаснет). Правка ChatComposer — в плане 21/27.
-export const EXEMPT = {
-  [`${CHAT}ChatComposer.svelte`]:
-    'эффект под условием непустого черновика, clearDraft идемпотентен — сходится за один проход',
-};
+// Освобождения: файл -> причина. Пусто (ChatComposer исправлен в плане 21).
+export const EXEMPT = {};
 
 function readFiles() {
   const files = {};

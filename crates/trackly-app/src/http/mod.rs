@@ -242,6 +242,10 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             // blocked in the LAN-browser preview and print (desktop opens file:// in the
             // system browser outside this CSP, so it was unaffected — LAN-only symptom).
             // data: images cannot execute scripts, so this does not weaken XSS defense.
+            // Plan 41.5-21: img-src also lists blob: — chat composer chips preview pasted/
+            // dropped images via URL.createObjectURL (object URL made by the page itself).
+            // Desktop has csp: null, so the blocked preview was a LAN-browser-only symptom.
+            // blob: images run no scripts; script-src is untouched.
             // PRV-CSP (Phase 33, D-14): sha256 hash-source for the Paged.js preview
             // bootstrap <script> inlined into PdfPreviewModal's srcdoc (see
             // ui/src/lib/pdfPreview/pagedPreviewBootstrap.ts, PAGED_PREVIEW_INLINE_SCRIPT).
@@ -255,7 +259,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             // attacker-supplied inline script (e.g. via a maliciously edited act/report
             // HTML template) produces a different hash and stays blocked.
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self' 'sha256-6wkoSifejjaWrl5F3KgLYcILveSKjI6XHk3LiJ+I7No='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
+                "default-src 'self'; script-src 'self' 'sha256-6wkoSifejjaWrl5F3KgLYcILveSKjI6XHk3LiJ+I7No='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
             ),
         ));
 

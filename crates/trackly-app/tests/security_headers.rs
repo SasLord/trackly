@@ -97,6 +97,19 @@ async fn security_headers_present() {
             "CSP must include img-src with data: for the act logo, got: {csp}"
         );
 
+        // Phase 41.5 Plan 21: chat composer chips preview pasted images through
+        // URL.createObjectURL (blob:). img-src must list blob: next to data:.
+        let img_src = csp
+            .split(';')
+            .map(str::trim)
+            .find(|d| d.starts_with("img-src"))
+            .unwrap_or("");
+        assert!(
+            img_src.split_whitespace().any(|t| t == "blob:")
+                && img_src.split_whitespace().any(|t| t == "data:"),
+            "img-src must allow blob: and data:, got: {img_src}"
+        );
+
         // PRV-CSP regression (Phase 33, D-14): script-src must grant the Paged.js
         // preview bootstrap script a sha256- hash-source, and must NOT widen to
         // 'unsafe-inline' — isolate the script-src segment specifically, since
