@@ -26,5 +26,6 @@ pub mod repairs;
 pub mod reports;
 pub mod requests;
 pub mod settings_org;
+pub mod system_notify;
 pub mod templates;
 pub mod users;

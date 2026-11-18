@@ -101,6 +101,10 @@ rust-embed = { version = "8", features = ["mime-guess"] }
 # a direct dep explicitly, adding zero new supply-chain surface.
 base64 = "0.22"
 
+# Phase 41.5 gap R2-1: notify_desktop with on_activated (Windows only).
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = { workspace = true }
+
 [build-dependencies]
 tauri-build = { workspace = true }
 

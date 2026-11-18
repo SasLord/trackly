@@ -75,6 +75,8 @@ rfd = { version = "0.16", default-features = false }
 tauri-plugin-single-instance = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2"
+# Phase 41.5 gap R2-1: Windows toast click handler (already locked transitively at 0.8.1).
+tauri-winrt-notification = "0.8.1"
 tauri-plugin-fs = "2"
 snmp2 = { version = "0.5", features = ["crypto-rust", "tokio"] }
 
