@@ -157,8 +157,8 @@
     gap: 0;
     padding-bottom: 0;
     margin-bottom: var(--tr-space-xl);
-    // Линия — под строкой «заголовок + кнопки» (.header-row), не под вкладками.
-    border-bottom: none;
+    // Две линии: под строкой «заголовок + кнопки» (.header-row, R2-4) и под строкой вкладок (нижняя граница шапки, R3-3); цвет тот же, что у базовой шапки.
+    border-bottom: 1px solid var(--tr-border);
   }
   .detail-panel.fill .detail-header {
     flex: none;

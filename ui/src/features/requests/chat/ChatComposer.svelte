@@ -332,12 +332,11 @@
         Отправить
       </Button>
     </div>
-    <div class="foot">
-      <span class="hint">Enter — отправить, Shift+Enter — новая строка</span>
-      {#if showCounter}
+    {#if showCounter}
+      <div class="foot">
         <span class="counter" class:over={draft.text.length >= MAX_LEN}>{counterText}</span>
-      {/if}
-    </div>
+      </div>
+    {/if}
     {#if draft.errors.length > 0}
       <div class="errors" role="alert">
         <ul>
@@ -413,14 +412,10 @@
 
   .foot {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: var(--tr-space-sm);
     margin-top: var(--tr-space-2xs);
     font-size: var(--tr-font-size-caption);
-  }
-
-  .hint {
-    color: var(--tr-text-tertiary);
   }
 
   .counter {

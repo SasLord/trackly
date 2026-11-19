@@ -23,15 +23,17 @@
 //        nameShown = groupStart && !item.isOwn; .msg:not(.group-start) с margin-top calc(2xs - …);
 //   [C10] переключатель оповещений: <ChatMuteToggle ровно один раз, внутри сниппета tabsSubheader, который
 //        подключается только под showTabs; в ChatMuteToggle: aria-pressed, обе подписи, toggleMute(, без $effect;
-//   [C12] DetailPanel/RequestChat/ChatComposer (UAT 41.5 R2-4): в режиме subheader линия под .header-row
-//        (не в .subheader, не на самом .detail-header.with-subheader), базовая линия .detail-header цела;
+//   [C12] DetailPanel/RequestChat/ChatComposer (UAT 41.5 R2-4, R3-3): в режиме subheader две линии: под .header-row
+//        и под вкладками (border-bottom на .detail-header.with-subheader; не в .subheader), базовая линия цела;
 //        на вкладке «Чат» лента вплотную (.fill .fill-body с отрицательным полем, margin-bottom: 0 у шапки);
 //        боковой отступ xl у .chat-feed и .composer;
 //   [C11] путь клика по уведомлению (UAT 41.5 R2-1): обёртка systemNotify (onclick → focus/close/runOrOffer,
 //        модалка раньше activate, notify_desktop раньше sendNotification, запасной механизм только не-Windows
 //        и только предлагает), цель в chatNotifications/EmployeeLayout (тост ВСЕГДА + уведомление, без else),
 //        tab=info|chat в RequestsPage, уникальный n в ссылке, Rust-команда без AUMID/реестра/.lnk, паритет имени события;
-//   [C8] счётный минимум: сработало не меньше 8 различных правил.
+//   [C15] ChatComposer (R3-4): нет подсказки клавиш; строка .foot только внутри {#if showCounter};
+//        вертикальный padding .composer симметричен (1–2 значения);
+//   [C8] счётный минимум: сработало не меньше MIN_RULES различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
 
@@ -69,7 +71,7 @@ const RUST_ABS = path.resolve(
   __dirname,
   '../../crates/trackly-app/src/tauri_cmds/system_notify.rs',
 );
-const MIN_RULES = 8;
+const MIN_RULES = 13;
 const WS_EVENTS = [
   'chat_message',
   'request_status_changed',
@@ -354,12 +356,12 @@ export function check(files) {
     const wsh = blk(/(?:^|\n)[ \t]*\.detail-header\.with-subheader\s*\{/);
     if (wsh === null) fail('C12', 'DetailPanel: нет блока .detail-header.with-subheader');
     else {
-      if (!/border-bottom:\s*none/.test(wsh))
-        fail('C12', 'DetailPanel: у .detail-header.with-subheader нет border-bottom: none');
-      if (/border-bottom:\s*1px/.test(wsh))
+      if (!/border-bottom:\s*1px solid var\(--tr-border\)/.test(wsh))
+        fail('C12', 'DetailPanel: нет линии под вкладками (.detail-header.with-subheader, R3-3)');
+      if (/border-bottom:\s*none/.test(wsh))
         fail(
           'C12',
-          'DetailPanel: линия на .detail-header.with-subheader (должна быть под .header-row)',
+          'DetailPanel: border-bottom: none у шапки с вкладками (линия под вкладками снята)',
         );
     }
     const hr = blk(/(?:^|\n)[ \t]*\.detail-header\.with-subheader \.header-row\s*\{/);
@@ -396,6 +398,27 @@ export function check(files) {
       fail('C12', 'ChatComposer: у .composer нет бокового отступа --tr-space-xl');
   }
   fired.add('C12');
+
+  // C15 (R3-4): композер без подсказки клавиш; строка под полем — только вместе со счётчиком
+  if (comp !== null) {
+    if (comp.includes('Enter — отправить') || /class="hint"/.test(comp) || /\.hint\b/.test(comp))
+      fail('C15', 'ChatComposer: вернулась подсказка клавиш (R3-4)');
+    const ifOpen = comp.indexOf('{#if showCounter}');
+    const foot = comp.indexOf('<div class="foot">');
+    const ifClose = ifOpen < 0 ? -1 : comp.indexOf('{/if}', ifOpen);
+    if (ifOpen < 0 || foot < 0 || !(foot > ifOpen && foot < ifClose))
+      fail(
+        'C15',
+        'ChatComposer: строка .foot не внутри {#if showCounter} (пустая строка под полем)',
+      );
+    const cb15 = funcBody(comp, /(?:^|\n)[ \t]*\.composer\s*\{/);
+    if (
+      cb15 === null ||
+      !/padding:\s*var\(--tr-space-[a-z0-9]+\)(\s+var\(--tr-space-[a-z0-9]+\))?\s*;/.test(cb15)
+    )
+      fail('C15', 'ChatComposer: у .composer вертикальный padding сверху и снизу разный');
+  }
+  fired.add('C15');
 
   // C11
   const sn = get('lib/platform/systemNotify.ts');
@@ -801,12 +824,69 @@ function selftest(files) {
       },
     },
     {
-      name: 'C12: линия возвращена на with-subheader (под вкладки)',
+      name: 'C12: линия под вкладками снята (border-bottom: none)',
       expect: 'C12',
       make: swapText(
         'lib/components/DetailPanel.svelte',
-        'border-bottom: none;',
-        'border-bottom: 1px solid var(--tr-border);',
+        '    // Две линии: под строкой «заголовок + кнопки» (.header-row, R2-4) и под строкой вкладок (нижняя граница шапки, R3-3); цвет тот же, что у базовой шапки.\n    border-bottom: 1px solid var(--tr-border);',
+        '    border-bottom: none;',
+      ),
+    },
+    {
+      name: 'C12: перестановка — линия под вкладками переехала в .subheader',
+      expect: 'C12',
+      make: () => {
+        const rel = 'lib/components/DetailPanel.svelte';
+        const src = files[rel];
+        const wsOpen = '\n  .detail-header.with-subheader {';
+        const subOpen = '.detail-header.with-subheader .subheader {';
+        const line = '    border-bottom: 1px solid var(--tr-border);\n';
+        uniq(src, wsOpen);
+        uniq(src, subOpen);
+        const a = src.indexOf(line, src.indexOf(wsOpen));
+        if (a < 0 || a > src.indexOf(subOpen)) {
+          console.error(`${TAG} SELFTEST FAIL — линия with-subheader не найдена`);
+          process.exit(1);
+        }
+        const cut = src.slice(0, a) + src.slice(a + line.length);
+        const at = cut.indexOf(subOpen) + subOpen.length;
+        return { ...files, [rel]: cut.slice(0, at) + '\n' + line + cut.slice(at) };
+      },
+    },
+    {
+      name: 'C15: вернулась подсказка клавиш',
+      expect: 'C15',
+      make: swapText(
+        `${CHAT}ChatComposer.svelte`,
+        '<div class="foot">',
+        '<div class="foot"><span class="hint">Enter — отправить, Shift+Enter — новая строка</span>',
+      ),
+    },
+    {
+      name: 'C15: перестановка — {#if showCounter} внутри .foot',
+      expect: 'C15',
+      make: () => {
+        const rel = `${CHAT}ChatComposer.svelte`;
+        const src = files[rel];
+        uniq(src, '{#if showCounter}\n      <div class="foot">');
+        const m = src.replace(
+          /\{#if showCounter\}(\s*)<div class="foot">(\s*)(<span class="counter"[^\n]*<\/span>)(\s*)<\/div>(\s*)\{\/if\}/,
+          '<div class="foot">{#if showCounter}$3{/if}</div>',
+        );
+        if (m === src) {
+          console.error(`${TAG} SELFTEST FAIL — перестановка C15 не применилась`);
+          process.exit(1);
+        }
+        return { ...files, [rel]: m };
+      },
+    },
+    {
+      name: 'C15: разный padding композера',
+      expect: 'C15',
+      make: swapText(
+        `${CHAT}ChatComposer.svelte`,
+        'padding: var(--tr-space-md) var(--tr-space-xl);\n    background: var(--tr-surface-raised);',
+        'padding: var(--tr-space-md) var(--tr-space-xl) var(--tr-space-lg);\n    background: var(--tr-surface-raised);',
       ),
     },
     {
