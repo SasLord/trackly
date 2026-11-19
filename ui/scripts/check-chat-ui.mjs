@@ -28,7 +28,9 @@
 //        на вкладке «Чат» лента вплотную (.fill .fill-body с отрицательным полем, margin-bottom: 0 у шапки);
 //        боковой отступ xl у .chat-feed и .composer;
 //   [C11] путь клика по уведомлению (UAT 41.5 R2-1): обёртка systemNotify (onclick → focus/close/runOrOffer,
-//        модалка раньше activate, notify_desktop раньше sendNotification, запасной механизм только не-Windows
+//        модалка раньше activate, notify_desktop раньше sendNotification, запасной механизм только не-Windows;
+//        R3-1: AUMID по виду запуска (uninstall.exe, PORTABLE_AUMID), проба Setting до Toast::new, Disabled → suppressed
+//        без плагина, тост как у плагина, логи без текста/путей
 //        и только предлагает), цель в chatNotifications/EmployeeLayout (тост ВСЕГДА + уведомление, без else),
 //        tab=info|chat в RequestsPage, уникальный n в ссылке, Rust-команда без AUMID/реестра/.lnk, паритет имени события;
 //   [C15] ChatComposer (R3-4): нет подсказки клавиш; строка .foot только внутри {#if showCounter};
@@ -110,6 +112,16 @@ function funcBody(src, headerRe) {
   for (let i = open; i < src.length; i++) {
     if (src[i] === '{') depth++;
     else if (src[i] === '}' && --depth === 0) return src.slice(open, i + 1);
+  }
+  return null;
+}
+
+/** Содержимое круглых скобок с балансом; `open` — индекс '('. */
+function parenBody(src, open) {
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '(') depth++;
+    else if (src[i] === ')' && --depth === 0) return src.slice(open, i + 1);
   }
   return null;
 }
@@ -524,15 +536,27 @@ export function check(files) {
         if (/\bactivate\(/.test(oc))
           fail('C11', 'systemNotify: onclick вызывает activate() напрямую, мимо охраны модалки');
       }
-      const nd = sb.indexOf("apiCall<boolean>('notify_desktop'");
+      const nd = sb.indexOf("apiCall<NotifyDesktopOutcome>('notify_desktop'");
       const sp = sb.indexOf('sendNotification({');
       if (nd < 0)
         fail(
           'C11',
-          "systemNotify: нет вызова apiCall<boolean>('notify_desktop' (bindings.ts не создаётся в Windows-CI)",
+          "systemNotify: нет вызова apiCall<NotifyDesktopOutcome>('notify_desktop' (bindings.ts не создаётся в Windows-CI)",
         );
       else if (sp < 0) fail('C11', 'systemNotify: нет вызова sendNotification({');
       else if (nd > sp) fail('C11', 'systemNotify: sendNotification стоит РАНЬШЕ notifyDesktop');
+      const sup = sb.indexOf("outcome === 'suppressed'");
+      if (sup < 0) fail('C11', "systemNotify: нет ветки outcome === 'suppressed'");
+      else {
+        if (sup < nd || (sp >= 0 && sup > sp))
+          fail(
+            'C11',
+            "systemNotify: ветка 'suppressed' не между notify_desktop и sendNotification",
+          );
+        const sBlock = sb.slice(sup, sb.indexOf('}', sup));
+        if (!/\breturn false\b/.test(sBlock))
+          fail('C11', "systemNotify: ветка 'suppressed' не возвращает false");
+      }
       if (!/if \(target && !isWindowsDesktop\(\)\) void armFocusFallback\(/.test(sb))
         fail('C11', 'systemNotify: запасной механизм по фокусу не ограничен не-Windows');
     }
@@ -638,6 +662,61 @@ export function check(files) {
       'SetCurrentProcessExplicitAppUserModelID',
     ])
       if (rs.includes(bad)) fail('C11', `system_notify.rs: запрещённая строка ${bad} (portable)`);
+    for (const must of [
+      'uninstall.exe',
+      'PORTABLE_AUMID',
+      '.text2(',
+      '.sound(None)',
+      'Duration::Short',
+      'on_dismissed',
+      'async_runtime::spawn(',
+      '.Setting()',
+    ])
+      if (!rs.includes(must)) fail('C11', `system_notify.rs: нет ${must} (R3-1)`);
+    if (rs.includes('spawn_blocking')) fail('C11', 'system_notify.rs: вернулся spawn_blocking');
+    if (rs.includes('.text1(&body)')) fail('C11', 'system_notify.rs: text1(&body) вместо text2');
+    const nb = funcBody(rs, /pub async fn notify_desktop\s*\(/);
+    if (nb === null) fail('C11', 'system_notify.rs: notify_desktop не найден');
+    else {
+      const pd = count(nb, 'probe_decision(');
+      const tn = nb.indexOf('Toast::new(');
+      if (pd < 2)
+        fail('C11', 'system_notify.rs: в notify_desktop меньше двух вызовов probe_decision(');
+      else if (tn < 0 || nb.lastIndexOf('probe_decision(') > tn)
+        fail('C11', 'system_notify.rs: probe_decision( стоит ПОСЛЕ Toast::new( в notify_desktop');
+      if (
+        !nb.includes('ProbeDecision::Suppress') ||
+        !nb.includes('NotifyDesktopOutcome::Suppressed')
+      )
+        fail('C11', 'system_notify.rs: notify_desktop не возвращает Suppressed при Suppress');
+      const act = funcBody(nb, /\.on_activated\(move \|_action\| \{/);
+      if (act === null || !/tracing::\w+!\(/.test(act))
+        fail('C11', 'system_notify.rs: on_activated без tracing-вызова');
+      const dis = funcBody(nb, /\.on_dismissed\(move \|reason\| \{/);
+      if (dis === null || !/tracing::\w+!\(/.test(dis))
+        fail('C11', 'system_notify.rs: on_dismissed без tracing-вызова');
+    }
+    const pb = funcBody(rs, /pub fn probe_decision\s*\(/);
+    if (pb === null) fail('C11', 'system_notify.rs: probe_decision не найден');
+    else {
+      const arms = [...pb.matchAll(/ProbeKind::Disabled\)?\s*=>\s*ProbeDecision::(\w+)/g)];
+      if (arms.length === 0) fail('C11', 'system_notify.rs: в probe_decision нет ветки Disabled');
+      for (const a of arms)
+        if (a[1] !== 'Suppress')
+          fail('C11', `system_notify.rs: Disabled ведёт к ${a[1]}, а не к Suppress`);
+    }
+    // Приватность логов: ни текста, ни путей.
+    const logCalls = [...rs.matchAll(/tracing::(?:trace|debug|info|warn|error)!\(/g)];
+    let notifyLogs = 0;
+    for (const m of logCalls) {
+      const call = parenBody(rs, m.index + m[0].length - 1);
+      if (call === null) continue;
+      if (call.includes('notify_desktop:')) notifyLogs++;
+      if (/\b(title|body|exe_dir|app_id)\b/.test(call) || call.includes('display()'))
+        fail('C11', 'system_notify.rs: в tracing-вызове текст уведомления или путь');
+    }
+    if (notifyLogs < 6)
+      fail('C11', `system_notify.rs: tracing «notify_desktop:» ${notifyLogs} < 6`);
   }
   fired.add('C11');
 
@@ -1216,6 +1295,102 @@ function selftest(files) {
       name: 'C11: Rust — имя события разошлось',
       expect: 'C11',
       make: swapText(RUST_REL, '"trackly-notify-activated"', '"trackly-notify-clicked"'),
+    },
+    {
+      name: 'C11: Rust — вернулся spawn_blocking',
+      expect: 'C11',
+      make: swapText(
+        RUST_REL,
+        'tauri::async_runtime::spawn(async move',
+        'tauri::async_runtime::spawn_blocking(async move',
+      ),
+    },
+    {
+      name: 'C11: Rust — text1(&body) вместо text2',
+      expect: 'C11',
+      make: swapText(RUST_REL, '.text2(&body)', '.text1(&body)'),
+    },
+    {
+      name: 'C11: Rust — без маркера uninstall.exe',
+      expect: 'C11',
+      make: swapText(
+        RUST_REL,
+        'const NSIS_UNINSTALLER: &str = "uninstall.exe";',
+        'const NSIS_UNINSTALLER: &str = "x.bin";',
+      ),
+    },
+    {
+      name: 'C11: Rust — перестановка: второй probe_decision после Toast::new',
+      expect: 'C11',
+      make: reorder(
+        RUST_REL,
+        '            decision = probe_decision(choice, probe_kind);\n',
+        'Toast::new(&aumid)',
+      ),
+    },
+    {
+      name: 'C11: Rust — откат при Disabled',
+      expect: 'C11',
+      make: swapText(
+        RUST_REL,
+        '(_, ProbeKind::Disabled) => ProbeDecision::Suppress,',
+        '(_, ProbeKind::Disabled) => ProbeDecision::FallbackToPowershell,',
+      ),
+    },
+    {
+      name: 'C11: Rust — в лог попал body',
+      expect: 'C11',
+      make: swapText(
+        RUST_REL,
+        'probe = %probe_desc, decision = ?decision, "notify_desktop: probe");\n        if decision',
+        'probe = %probe_desc, body = %body, decision = ?decision, "notify_desktop: probe");\n        if decision',
+      ),
+    },
+    {
+      name: 'C11: Rust — в лог попал путь',
+      expect: 'C11',
+      make: swapText(
+        RUST_REL,
+        'tracing::info!(token, "notify_desktop: called");',
+        'tracing::info!(token, "notify_desktop: called");\n    tracing::info!(dir = %exe_dir.display(), "notify_desktop: x");',
+      ),
+    },
+    {
+      name: 'C11: Rust — on_dismissed без лога',
+      expect: 'C11',
+      make: swapText(
+        RUST_REL,
+        'tracing::info!(token, reason = ?reason, "notify_desktop: toast dismissed");',
+        'let _ = reason;',
+      ),
+    },
+    {
+      name: 'C11: TS — suppressed после sendNotification',
+      expect: 'C11',
+      make: () => {
+        const src = files['lib/platform/systemNotify.ts'];
+        const blk = src.slice(
+          src.indexOf("          if (outcome === 'suppressed') {"),
+          src.indexOf('        } catch {\n          /* команда недоступна'),
+        );
+        uniq(src, blk);
+        const cut = src.replace(blk, '');
+        const k = '      sendNotification({ title, body });\n';
+        const i = cut.indexOf(k) + k.length;
+        return {
+          ...files,
+          ['lib/platform/systemNotify.ts']: cut.slice(0, i) + blk + cut.slice(i),
+        };
+      },
+    },
+    {
+      name: 'C11: TS — нет ветки suppressed',
+      expect: 'C11',
+      make: swapText(
+        'lib/platform/systemNotify.ts',
+        "outcome === 'suppressed'",
+        "outcome === 'other'",
+      ),
     },
     {
       name: 'C11: пропал Rust-файл',
