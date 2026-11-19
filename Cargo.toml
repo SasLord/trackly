@@ -77,6 +77,9 @@ tauri-plugin-shell = "2"
 tauri-plugin-notification = "2"
 # Phase 41.5 gap R2-1: Windows toast click handler (already locked transitively at 0.8.1).
 tauri-winrt-notification = "0.8.1"
+# Phase 41.5 gap R3-1: read-only ToastNotifier::Setting probe; 0.62.2 already locked via
+# tauri-winrt-notification - dependency edge only, no new package.
+windows = { version = "0.62", default-features = false, features = ["UI_Notifications"] }
 tauri-plugin-fs = "2"
 snmp2 = { version = "0.5", features = ["crypto-rust", "tokio"] }
 

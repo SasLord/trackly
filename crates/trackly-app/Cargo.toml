@@ -104,6 +104,8 @@ base64 = "0.22"
 # Phase 41.5 gap R2-1: notify_desktop with on_activated (Windows only).
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = { workspace = true }
+# Phase 41.5 gap R3-1: Setting() probe before showing a toast (read-only).
+windows = { workspace = true }
 
 [build-dependencies]
 tauri-build = { workspace = true }

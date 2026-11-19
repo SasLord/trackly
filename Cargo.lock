@@ -7559,6 +7559,7 @@ dependencies = [
  "trackly-infra",
  "ttf-parser",
  "uuid",
+ "windows 0.62.2",
 ]
 
 [[package]]

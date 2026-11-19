@@ -9,6 +9,9 @@
 
 import { pushToast } from '$lib/stores/toast.svelte';
 
+// Исход команды notify_desktop (локальный тип: bindings.ts в рантайме не импортируется).
+type NotifyDesktopOutcome = 'shown' | 'suppressed' | 'unavailable';
+
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 let promptArmed = false;
@@ -179,8 +182,17 @@ export async function showSystemNotification(
           // apiCall, а не сгенерированный bindings.ts: на Windows-CI он не создаётся
           // (export_bindings там отключён), а динамический import ломает vite build.
           const { apiCall } = await import('$lib/api/client');
-          const delivered = await apiCall<boolean>('notify_desktop', { title, body, token });
-          if (delivered === true) return true;
+          const outcome = await apiCall<NotifyDesktopOutcome>('notify_desktop', {
+            title,
+            body,
+            token,
+          });
+          if (outcome === 'shown') return true;
+          if (outcome === 'suppressed') {
+            // Уведомления отключены в Windows пользователем или политикой: путь плагина не вызывать.
+            activations.delete(token);
+            return false;
+          }
         } catch {
           /* команда недоступна — остаётся путь плагина */
         }
