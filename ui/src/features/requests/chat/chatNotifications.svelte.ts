@@ -6,7 +6,7 @@
 import { onWsEvent } from '$lib/api/ws';
 import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
-import { pushToast, toastStore } from '$lib/stores/toast.svelte';
+import { pushToast, removeToast, toastStore } from '$lib/stores/toast.svelte';
 import type { WsEvent } from '../../../bindings-phase6';
 import {
   appHasFocus,
@@ -21,6 +21,14 @@ const toastByRequest = new Map<number, string>();
 registerUserScopedReset(() => {
   toastByRequest.clear();
 });
+
+/** Открытие чата заявки любым путём снимает её тост (R3-5). Тост показывается как прежде (D-G1). */
+export function dismissChatToast(requestId: number): void {
+  const id = toastByRequest.get(requestId);
+  if (id === undefined) return;
+  removeToast(id);
+  toastByRequest.delete(requestId);
+}
 
 export function handleChatMessageEvent(ev: WsEvent): void {
   if (ev.type !== 'chat_message') return;

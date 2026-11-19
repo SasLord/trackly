@@ -33,6 +33,9 @@
 //        tab=info|chat в RequestsPage, уникальный n в ссылке, Rust-команда без AUMID/реестра/.lnk, паритет имени события;
 //   [C15] ChatComposer (R3-4): нет подсказки клавиш; строка .foot только внутри {#if showCounter};
 //        вертикальный padding .composer симметричен (1–2 значения);
+//   [C13] RequestChat (R3-2): onloadcapture/onerrorcapture на ленте → tick() → проверка followBottom → scrollToBottom;
+//        followBottom не $state и не в $effect; onFeedScroll сравнивает с lastScrollTop РАНЬШЕ присваивания;
+//   [C14] (R3-5) dismissChatToast: get раньше delete, removeToast; вызов внутри untrack эффекта смены заявки;
 //   [C8] счётный минимум: сработало не меньше MIN_RULES различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
@@ -71,7 +74,7 @@ const RUST_ABS = path.resolve(
   __dirname,
   '../../crates/trackly-app/src/tauri_cmds/system_notify.rs',
 );
-const MIN_RULES = 13;
+const MIN_RULES = 15;
 const WS_EVENTS = [
   'chat_message',
   'request_status_changed',
@@ -419,6 +422,82 @@ export function check(files) {
       fail('C15', 'ChatComposer: у .composer вертикальный padding сверху и снизу разный');
   }
   fired.add('C15');
+
+  // C13 (R3-2): лента докручивается вниз после догрузки картинок, пока пользователь «следует за низом»
+  if (rc !== null) {
+    const olAt = rc.indexOf('class="chat-feed"');
+    const olStart = olAt < 0 ? -1 : rc.lastIndexOf('<ol', olAt);
+    const olTag = olStart < 0 ? '' : rc.slice(olStart, rc.indexOf('>', olAt));
+    const onLoad = /onloadcapture=\{(\w+)\}/.exec(olTag);
+    const onErr = /onerrorcapture=\{(\w+)\}/.exec(olTag);
+    if (!onLoad || !onErr)
+      fail('C13', 'RequestChat: у <ol class="chat-feed"> нет onloadcapture/onerrorcapture (R3-2)');
+    else if (onLoad[1] !== onErr[1])
+      fail('C13', 'RequestChat: onloadcapture и onerrorcapture ведут в разные обработчики');
+    if (!/let followBottom = true;/.test(rc) || /followBottom\s*=\s*\$state/.test(rc))
+      fail(
+        'C13',
+        'RequestChat: followBottom должен быть обычной переменной (let followBottom = true;)',
+      );
+    if (onLoad) {
+      const h = funcBody(rc, new RegExp(`function ${onLoad[1]}\\(`));
+      const t = h === null ? -1 : h.indexOf('tick()');
+      const f = h === null ? -1 : h.indexOf('followBottom');
+      const sc = h === null ? -1 : h.indexOf('scrollToBottom(');
+      if (h === null || t < 0 || f < 0 || sc < 0 || !(t < f && f < sc))
+        fail(
+          'C13',
+          'RequestChat: обработчик догрузки — порядок tick() → проверка followBottom → scrollToBottom( нарушен',
+        );
+    }
+    const stb = funcBody(rc, /function scrollToBottom\(/);
+    if (stb === null || !stb.includes('followBottom = true'))
+      fail('C13', 'RequestChat: scrollToBottom не ставит followBottom = true');
+    const ofs = funcBody(rc, /function onFeedScroll\(/);
+    const cmp = ofs === null ? -1 : ofs.indexOf('< lastScrollTop');
+    const asg = ofs === null ? -1 : ofs.indexOf('lastScrollTop = ');
+    if (ofs === null || cmp < 0 || asg < 0 || asg < cmp || !ofs.includes('followBottom = false'))
+      fail(
+        'C13',
+        'RequestChat: onFeedScroll — сравнение с lastScrollTop должно идти РАНЬШЕ его присваивания, и снимать followBottom',
+      );
+    const rnd = funcBody(rc, /function revealNewDivider\(/);
+    if (rnd === null || !rnd.includes('followBottom = false'))
+      fail('C13', 'RequestChat: revealNewDivider не снимает followBottom');
+    const effRe = /\$effect(?:\.pre)?\(\(\) => \{/g;
+    let em;
+    while ((em = effRe.exec(rc)) !== null) {
+      const eb = funcBody(rc.slice(em.index), /^[^{]*\{/);
+      if (eb !== null && eb.includes('followBottom'))
+        fail('C13', 'RequestChat: followBottom в $effect (флаг не реактивен, петля рун)');
+    }
+  }
+  fired.add('C13');
+
+  // C14 (R3-5): открытие чата заявки снимает её тост
+  if (cn !== null && rc !== null) {
+    const dj = funcBody(cn, /export function dismissChatToast\(/);
+    if (dj === null) fail('C14', 'chatNotifications: нет export function dismissChatToast(');
+    else {
+      const g = dj.indexOf('toastByRequest.get(');
+      const d = dj.indexOf('toastByRequest.delete(');
+      if (!dj.includes('removeToast(')) fail('C14', 'dismissChatToast: нет removeToast(');
+      if (g < 0 || d < 0 || g > d)
+        fail('C14', 'dismissChatToast: toastByRequest.get( должен быть раньше .delete(');
+    }
+    if (!/import\s*\{[^}]*dismissChatToast[^}]*\}\s*from '\.\/chatNotifications\.svelte'/.test(rc))
+      fail('C14', 'RequestChat: нет импорта dismissChatToast');
+    const sAt = rc.indexOf('setActiveChat(id)');
+    const eAt = sAt < 0 ? -1 : rc.lastIndexOf('$effect(', sAt);
+    const eff = eAt < 0 ? null : funcBody(rc.slice(eAt), /^[^{]*\{/);
+    const ut = eff === null ? null : funcBody(eff, /untrack\(\(\) => \{/);
+    if (ut === null || !ut.includes('dismissChatToast(id)'))
+      fail(
+        'C14',
+        'RequestChat: dismissChatToast(id) не вызывается внутри untrack эффекта смены заявки',
+      );
+  }
+  fired.add('C14');
 
   // C11
   const sn = get('lib/platform/systemNotify.ts');
@@ -1146,6 +1225,119 @@ function selftest(files) {
         delete copy[RUST_REL];
         return copy;
       },
+    },
+    {
+      name: 'C13: удалён onloadcapture у ленты',
+      expect: 'C13',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        '        onloadcapture={onFeedMediaSettled}\n',
+        '',
+      ),
+    },
+    {
+      name: 'C13: перестановка — scrollToBottom раньше проверки followBottom',
+      expect: 'C13',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        '      if (followBottom) scrollToBottom(false);\n',
+        '      scrollToBottom(false);\n      if (followBottom) showJump = false;\n',
+      ),
+    },
+    {
+      name: 'C13: прокрутка синхронно, без tick()',
+      expect: 'C13',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        '    void tick().then(() => {\n      if (followBottom) scrollToBottom(false);\n    });\n',
+        '    if (followBottom) scrollToBottom(false);\n    void tick();\n',
+      ),
+    },
+    {
+      name: 'C13: followBottom стал $state',
+      expect: 'C13',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        'let followBottom = true;',
+        'let followBottom = $state(true);',
+      ),
+    },
+    {
+      name: 'C13: scrollToBottom не ставит followBottom = true (позиционно внутри тела)',
+      expect: 'C13',
+      make: () => {
+        const rel = `${CHAT}RequestChat.svelte`;
+        const src = files[rel];
+        const body = funcBody(src, /function scrollToBottom\(/);
+        uniq(src, body);
+        const inner = body.replace('followBottom = true;', '');
+        if (inner === body) {
+          console.error(`${TAG} SELFTEST FAIL — в scrollToBottom нет followBottom = true`);
+          process.exit(1);
+        }
+        return { ...files, [rel]: src.replace(body, inner) };
+      },
+    },
+    {
+      name: 'C13: перестановка — lastScrollTop присваивается раньше сравнения в onFeedScroll',
+      expect: 'C13',
+      make: () => {
+        const rel = `${CHAT}RequestChat.svelte`;
+        const src = files[rel];
+        const body = funcBody(src, /function onFeedScroll\(/);
+        uniq(src, body);
+        const line = '      lastScrollTop = el.scrollTop;\n';
+        uniq(body, line);
+        const head = '    if (el) {\n';
+        uniq(body, head);
+        const moved = body.replace(line, '').replace(head, head + line);
+        return { ...files, [rel]: src.replace(body, moved) };
+      },
+    },
+    {
+      name: 'C13: followBottom читается в $effect',
+      expect: 'C13',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        '      generation += 1;\n      feed = null;',
+        '      generation += 1;\n      if (followBottom) showJump = false;\n      feed = null;',
+      ),
+    },
+    {
+      name: 'C14: удалён вызов dismissChatToast(id)',
+      expect: 'C14',
+      make: swapText(`${CHAT}RequestChat.svelte`, '      dismissChatToast(id);\n', ''),
+    },
+    {
+      name: 'C14: перестановка — вызов dismissChatToast перенесён в cleanup эффекта',
+      expect: 'C14',
+      make: () => {
+        const rel = `${CHAT}RequestChat.svelte`;
+        const src = files[rel];
+        const call = '      dismissChatToast(id);\n';
+        const cleanup = '    return () => {\n      setActiveChat(null);\n';
+        uniq(src, call);
+        uniq(src, cleanup);
+        const cut = src.replace(call, '');
+        return {
+          ...files,
+          [rel]: cut.replace(cleanup, cleanup + '      dismissChatToast(requestId);\n'),
+        };
+      },
+    },
+    {
+      name: 'C14: в dismissChatToast удалён removeToast(',
+      expect: 'C14',
+      make: swapText(`${CHAT}chatNotifications.svelte.ts`, '  removeToast(id);\n', ''),
+    },
+    {
+      name: 'C14: перестановка — toastByRequest.delete( раньше .get(',
+      expect: 'C14',
+      make: swapText(
+        `${CHAT}chatNotifications.svelte.ts`,
+        '  const id = toastByRequest.get(requestId);\n  if (id === undefined) return;',
+        '  toastByRequest.delete(requestId);\n  const id = toastByRequest.get(requestId);\n  if (id === undefined) return;',
+      ),
     },
     {
       name: 'пропал файл (не «пропуск», а красный)',

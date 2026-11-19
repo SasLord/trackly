@@ -20,6 +20,7 @@
   import { dayKey, dayLabel, sameGroup } from './chatDates';
   import { chat } from './api';
   import { clearDraft, useDraftFor } from './draftStore.svelte';
+  import { dismissChatToast } from './chatNotifications.svelte';
   import { setActiveChat } from './unreadStore.svelte';
 
   interface Props {
@@ -48,6 +49,10 @@
   let composer = $state<ReturnType<typeof ChatComposer> | null>(null);
 
   let loadToken = 0;
+  // «Следовать за низом» (R3-2): не реактивно — меняется только в обработчиках событий и в
+  // scrollToBottom/revealNewDivider; в эффектах не участвует, поэтому петли рун нет.
+  let followBottom = true;
+  let lastScrollTop = 0;
   let generation = 0;
 
   const canPost = $derived(feed?.canPost ?? false);
@@ -110,11 +115,29 @@
     if (!el) return;
     if (smooth && !reducedMotion()) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     else el.scrollTop = el.scrollHeight;
+    followBottom = true;
     showJump = false;
   }
 
   function onFeedScroll() {
+    const el = feedEl;
+    if (el) {
+      // Прокрутка пользователя вверх снимает слежение; возврат к низу — возвращает.
+      if (el.scrollTop < lastScrollTop - 2 && !nearBottom()) followBottom = false;
+      else if (nearBottom()) followBottom = true;
+      lastScrollTop = el.scrollTop;
+    }
     if (showJump && nearBottom()) showJump = false;
+  }
+
+  // Высота картинок неизвестна до загрузки превью (load) или замены на иконку (error): после
+  // догрузки лента остаётся прижатой к низу, если пользователь следует за низом (R3-2).
+  // Прокрутка — после tick(): обработчик фазы захвата срабатывает раньше обновления DOM.
+  function onFeedMediaSettled(e: Event) {
+    if (!(e.target instanceof globalThis.HTMLImageElement)) return;
+    void tick().then(() => {
+      if (followBottom) scrollToBottom(false);
+    });
   }
 
   async function markRead() {
@@ -187,7 +210,10 @@
     const mark = el.querySelector<HTMLElement>('[data-new-divider]');
     if (!mark) return;
     const top = mark.getBoundingClientRect().top - el.getBoundingClientRect().top;
-    if (top < 0) el.scrollTop += top - 8;
+    if (top < 0) {
+      followBottom = false;
+      el.scrollTop += top - 8;
+    }
   }
 
   // Смена заявки: сбросить состояние, загрузить ленту, отметить активный чат.
@@ -204,6 +230,7 @@
       dragDepth = 0;
       useDraftFor(id);
       setActiveChat(id);
+      dismissChatToast(id);
       void load(true);
     });
     return () => {
@@ -386,6 +413,8 @@
         aria-relevant="additions"
         bind:this={feedEl}
         onscroll={onFeedScroll}
+        onloadcapture={onFeedMediaSettled}
+        onerrorcapture={onFeedMediaSettled}
       >
         {#each rows as row (row.key)}
           {#if row.type === 'day'}
