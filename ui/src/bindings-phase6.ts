@@ -228,7 +228,13 @@ export type RequestCountsDto = {
  * (`entities_changed`) — an aggregated invalidation signal sent after a
  * committed places/groups/devices/acts mutation. Empty `placeIds` means
  * "reload everything"; `deviceIds`/`groupIds` are a slot for Phases 43-45.
- * Admin|Manager only. No Rust<->TS gate covers WsEvent — the JSON-literal
+ * Admin|Manager only.
+ *
+ * Phase 41.6 D-19 added `WsEvent::EmployeeScopeChanged` (`employee_scope_changed`):
+ * a payload-less signal, visible only to Employee, meaning "re-read your own
+ * devices" (no ids leak). `entities_changed` stays invisible to Employee.
+ *
+ * No Rust<->TS gate covers WsEvent — the JSON-literal
  * unit test in `dto/printer.rs` is the safety net.
  *
  * Phase 41.3 added `WsEvent::AttachmentsChanged { parentKind, parentId,
@@ -248,6 +254,7 @@ export type WsEvent =
   | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string }
   | { type: 'number_space_changed'; contexts: string[] }
   | { type: 'entities_changed'; placeIds: number[]; deviceIds: number[]; groupIds: number[] }
+  | { type: 'employee_scope_changed' }
   | {
       type: 'attachments_changed';
       parentKind: string;
