@@ -628,15 +628,20 @@ async fn employee_devices_dto_shape_has_no_network_fields() {
     let pc = seed_device(&ctx, 1, "ПК-1", "INV-1", None, None).await;
     let prn = seed_device(&ctx, 2, "Принтер 2-го этажа", "INV-2", None, None).await;
     let quiet = seed_device(&ctx, 2, "Принтер без чтений", "INV-3", None, None).await;
-    // У принтера есть сетевые данные: они не должны попасть в ответ.
+    let net = seed_device(&ctx, 2, "Сетевой принтер", "INV-4", None, None).await;
     let pid = make_printer(&ctx, prn, Some(pc)).await;
     make_printer(&ctx, quiet, None).await;
+    // У отдельного принтера есть сетевые данные: они не должны попасть в ответ.
+    // Показания для проверки «последнего чтения» живут на принтере без адреса:
+    // при TRACKLY_SNMP_MOCK=1 (как в ci) опрос дописывает принтеру с адресом
+    // своё показание с текущим временем, и сравнение по времени становится гонкой.
+    let net_pid = make_printer(&ctx, net, None).await;
     ctx.writer
         .execute(move |conn| {
             conn.execute(
                 "UPDATE printers SET ip_address = '192.0.2.10', community = 'secret-c' \
                  WHERE id = ?1",
-                params![pid],
+                params![net_pid],
             )
             .map_err(map_rusqlite)?;
             Ok(())
@@ -646,8 +651,16 @@ async fn employee_devices_dto_shape_has_no_network_fields() {
     member(&ctx, g, pc).await;
     member(&ctx, g, prn).await;
     member(&ctx, g, quiet).await;
-    add_reading(&ctx, pid, NOW + 10, r#"{"black":10}"#).await;
-    add_reading(&ctx, pid, NOW + 20, r#"{"black":45,"cyan":-2}"#).await;
+    member(&ctx, g, net).await;
+    // Время показаний — текущее, а не NOW (2023): фоновая задача хранения
+    // показаний удаляет старые чтения, и тонер пропадал из ответа (гонка).
+    let fresh = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs() as i64
+        - 60;
+    add_reading(&ctx, pid, fresh + 10, r#"{"black":10}"#).await;
+    add_reading(&ctx, pid, fresh + 20, r#"{"black":45,"cyan":-2}"#).await;
 
     let dto = list(&ctx, &emp(ivanov)).await;
     let v = serde_json::to_value(&dto).expect("json");
@@ -678,7 +691,7 @@ async fn employee_devices_dto_shape_has_no_network_fields() {
         .expect("toner");
     assert_eq!(
         toner.polled_at_utc,
-        Some(NOW + 20),
+        Some(fresh + 20),
         "берётся последнее чтение"
     );
     let lv = |l: &str| toner.levels.iter().find(|x| x.label == l).unwrap().percent;
