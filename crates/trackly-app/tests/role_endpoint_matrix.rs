@@ -6586,3 +6586,250 @@ async fn employee_allowed_fixture_sound() {
     .await
     .expect("employee_allowed_fixture_sound exceeded 60s");
 }
+
+// ===========================================================================
+// Quick 261121-57x (INT-29): маршруты вне роль-матрицы. Принтеры (discover /
+// admit / refresh / acknowledge_alert), вложения (delete / set_limit /
+// get_limit / upload) и превью разбиения групп при возврате. Данные вымышленные.
+// ===========================================================================
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Int29Roles {
+    /// Admin и Manager допущены, Employee — 403.
+    Staff,
+    /// Только Admin (`Action::ManageSettings`); Manager и Employee — 403.
+    AdminOnly,
+}
+
+fn int29_return_dto() -> serde_json::Value {
+    json!({
+        "bulk_condition": null, "bulk_place_id": null, "apply_to_all": true, "items": []
+    })
+}
+
+fn int29_update_return_dto() -> serde_json::Value {
+    json!({
+        "id": 999999, "expected_version": 1,
+        "giver_name": "Иванов И.И.", "receiver_name": "Петров П.П.",
+        "place_id": null, "notes": null, "deadline_utc": null,
+        "handover_date_utc": 1700000000,
+        "bulk_condition": null, "bulk_place_id": null, "apply_to_all": true, "items": []
+    })
+}
+
+/// (имя маршрута, допущенные роли, payload). `attachments_delete` и
+/// `attachments_upload` строятся отдельно: им нужен существующий родитель.
+fn int29_cases(attachment_id: i64) -> Vec<(&'static str, Int29Roles, serde_json::Value)> {
+    vec![
+        (
+            "printers_discover",
+            Int29Roles::Staff,
+            json!({ "ipStart": "192.0.2.1", "ipEnd": "192.0.2.2", "community": "public" }),
+        ),
+        (
+            "printers_admit",
+            Int29Roles::Staff,
+            json!({ "selectedIps": [], "community": "public" }),
+        ),
+        // ReadPrinters (Admin|Manager): refresh отправляет опрос, но не пишет.
+        (
+            "printers_refresh",
+            Int29Roles::Staff,
+            json!({ "id": 999999 }),
+        ),
+        (
+            "printers_acknowledge_alert",
+            Int29Roles::Staff,
+            json!({ "printerId": 999999 }),
+        ),
+        // Родитель — устройство: Employee его не читает, отказ детерминирован (403).
+        (
+            "attachments_delete",
+            Int29Roles::Staff,
+            json!({ "id": attachment_id }),
+        ),
+        (
+            "attachments_set_limit",
+            Int29Roles::AdminOnly,
+            json!({ "bytes": 5 * 1024 * 1024 }),
+        ),
+        ("attachments_get_limit", Int29Roles::AdminOnly, json!({})),
+        (
+            "acts_return_group_split_preview",
+            Int29Roles::Staff,
+            json!({ "actId": 999999, "payload": int29_return_dto() }),
+        ),
+        (
+            "acts_update_return_group_split_preview",
+            Int29Roles::Staff,
+            json!({ "payload": int29_update_return_dto() }),
+        ),
+    ]
+}
+
+fn int29_not_gate_or_shape_error(status: StatusCode) -> bool {
+    ![
+        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        StatusCode::UNPROCESSABLE_ENTITY,
+    ]
+    .contains(&status)
+}
+
+/// Устройство-родитель и вложение к нему: для Employee отказ детерминирован.
+async fn int29_seed_device_attachment(env: &GtEnv) -> (i64, i64) {
+    use trackly_core::domain::attachments::ParentKind;
+    use trackly_infra::repos::attachments_sqlite::{AttachmentNew, SqliteAttachmentRepository};
+    let device_id = gt_seed_device_i29(env).await;
+    let h = "ab".repeat(32);
+    let path = env.ctx.attachments.store().blob_path(&h).unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"x").unwrap();
+    let id = env
+        .ctx
+        .writer
+        .execute(move |conn| {
+            SqliteAttachmentRepository.insert_on(
+                conn,
+                &AttachmentNew {
+                    parent_kind: ParentKind::Device.as_str(),
+                    parent_id: device_id,
+                    original_name: "scan.png",
+                    mime: "image/png",
+                    size_bytes: 1,
+                    content_hash: &h,
+                    uploaded_by_user_id: None,
+                    created_at_utc: 1_700_000_000,
+                    message_id: None,
+                },
+            )
+        })
+        .await
+        .expect("seed attachment");
+    (device_id, id)
+}
+
+async fn gt_seed_device_i29(env: &GtEnv) -> i64 {
+    gt_db_exec(
+        &env.ctx,
+        "INSERT INTO devices (type_id, name, inventory_number, place_id, status_id, \
+         created_at_utc, updated_at_utc, version) \
+         VALUES (1, 'Тест-устройство', 'I29-001', NULL, 1, 1700000000, 1700000000, 1)",
+        vec![],
+    )
+    .await;
+    gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM devices WHERE inventory_number = 'I29-001'",
+        vec![],
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn int29_role_matrix_http() {
+    let env = gt_env().await;
+    let (_device_id, attachment_id) = int29_seed_device_attachment(&env).await;
+    for (name, roles, payload) in int29_cases(attachment_id) {
+        // Без сессии — 401.
+        let status = post_with_cookie(
+            gt_app(&env.ctx),
+            &format!("/api/v1/{name}"),
+            payload.clone(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "INT-29: {name} без сессии"
+        );
+
+        // Employee — 403 всегда (проверяем ДО мутирующих вызовов допущенных ролей).
+        let (status, _) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "INT-29: Employee → {name}");
+
+        // Manager.
+        let (status, body) = gt_post(&env, &env.manager_cookie, name, payload.clone()).await;
+        match roles {
+            Int29Roles::Staff => assert!(
+                int29_not_gate_or_shape_error(status),
+                "INT-29: Manager → {name} → получил {status} ({body})"
+            ),
+            Int29Roles::AdminOnly => assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "INT-29: Manager → {name} (ManageSettings) → ожидали 403"
+            ),
+        }
+
+        // Admin: гейт пропускает, форма payload'а принята (иначе проверки отказа вакуумны).
+        let (status, body) = gt_post(&env, &env.admin_cookie, name, payload.clone()).await;
+        assert!(
+            int29_not_gate_or_shape_error(status),
+            "INT-29: Admin → {name} → получил {status} ({body})"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn int29_attachments_upload_role_gate() {
+    const BOUNDARY: &str = "----trackly-int29-boundary";
+    let env = gt_env().await;
+    let (device_id, _) = int29_seed_device_attachment(&env).await;
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; \
+             filename=\"scan.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(b"data");
+    body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
+
+    let upload = |cookie: Option<String>| {
+        let app = gt_app(&env.ctx);
+        let body = body.clone();
+        async move {
+            let mut b = Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/attachments_upload?parent_kind=device&parent_id={device_id}"
+                ))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={BOUNDARY}"),
+                )
+                .header("content-length", body.len().to_string());
+            if let Some(c) = cookie {
+                b = b.header("cookie", c);
+            }
+            app.oneshot(b.body(Body::from(body)).unwrap())
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+
+    assert_eq!(upload(None).await, StatusCode::UNAUTHORIZED, "без сессии");
+    // Родитель — устройство: Employee его не читает (employee_can_read_device = false).
+    assert_eq!(
+        upload(Some(env.employee_cookie.clone())).await,
+        StatusCode::FORBIDDEN,
+        "Employee"
+    );
+    for (who, cookie) in [
+        ("Admin", &env.admin_cookie),
+        ("Manager", &env.manager_cookie),
+    ] {
+        let st = upload(Some(cookie.clone())).await;
+        assert!(
+            int29_not_gate_or_shape_error(st),
+            "INT-29: {who} → attachments_upload → {st}"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
