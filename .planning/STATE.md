@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-11-20T12:16:53.027Z"
-last_activity: 2026-11-20 -- Phase 41.6 execution started
+status: ready_to_plan
+last_updated: 2026-11-20T19:26:44.479Z
+last_activity: 2026-11-21 -- Phase 41.6 complete (UAT approved, verification passed 10/10)
 progress:
   total_phases: 27
   completed_phases: 20
   total_plans: 389
-  completed_plans: 386
+  completed_plans: 389
   percent: 74
+stopped_at: Phase 41.6 complete (12/12, UAT approved 2026-11-21) — next Phase 41.8
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.6 — employee-devices-section
+**Current focus:** Phase 41.8 — «Группы» как рабочее место
 
 ## Current Position
 
-Phase: 41.6 (employee-devices-section) — EXECUTING
-Plan: 9 of 12 завершён
-Status: Executing Phase 41.6
+Phase: 41.8 (41.7 закрыта ранее; SDK phase.complete ошибочно назвал её следующей)
+Plan: Not started
+Status: Ready to plan
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
 показаны так, как остальные группы (нет строки с шевроном и раскрытием состава), — это сбивает с
@@ -186,7 +187,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-20 -- Phase 41.6 execution started
+Last activity: 2026-11-21 -- Phase 41.6 complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -200,7 +201,7 @@ Last activity: 2026-11-20 -- Phase 41.6 execution started
 
 **Velocity:**
 
-- Total plans completed: 431
+- Total plans completed: 443
 - Average duration: —
 - Total execution time: —
 
@@ -250,6 +251,7 @@ Last activity: 2026-11-20 -- Phase 41.6 execution started
 | 41.9 | 12 | - | - |
 | 41.4 | 51 | - | - |
 | 41.5 | 35 | - | - |
+| 41.6 | 12 | - | - |
 
 **Recent Trend:**
 
