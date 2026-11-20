@@ -199,7 +199,7 @@
 | 41.10. «История» вместо «Истории перемещений» *(после 41.8)* | v1.4 | 0/TBD | Not started | - |
 | 41.4. Заявки: Ремонт | v1.4 | 51/51 | Complete    | 2026-11-17 |
 | 41.5. Переписка в заявке | v1.4 | 35/35 | Complete    | 2026-11-20 |
-| 41.6. Раздел «Устройства» для сотрудника | v1.4 | 3/12 | In Progress|  |
+| 41.6. Раздел «Устройства» для сотрудника | v1.4 | 4/12 | In Progress|  |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
 | 44. Карта — редактор планов | v1.4 | 0/TBD | Not started | - |
@@ -2007,7 +2007,7 @@ Plans:
 
 - [x] 41.6-01-PLAN.md — infra: `employee_device_origins` (АРМ + происхождение USB > ссылка > состав) рядом с `employee_device_ids`, константа «Списано», инвариант-тесты
 - [x] 41.6-03-PLAN.md — UI-основы: `PrinterMark.isPrinter`, формула заливки тонера, чистая карта тонов статуса, `TonerMini`
-- [ ] 41.6-04-PLAN.md — `RequestFormModal`: `prefill` (тип + устройство) и `joined` в onSuccess; гейт `check-request-prefill`
+- [x] 41.6-04-PLAN.md — `RequestFormModal`: `prefill` (тип + устройство) и `joined` в onSuccess; гейт `check-request-prefill`
 
 *Wave 2*
 
