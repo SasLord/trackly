@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: planning
-last_updated: "2026-11-20T10:08:04.723Z"
-last_activity: 2026-11-20
+status: executing
+last_updated: "2026-11-20T10:39:07.161Z"
+last_activity: 2026-11-20 -- Phase 41.6 planning complete
 progress:
   total_phases: 27
   completed_phases: 20
-  total_plans: 377
+  total_plans: 389
   completed_plans: 377
   percent: 74
 ---
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41.6
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
 показаны так, как остальные группы (нет строки с шевроном и раскрытием состава), — это сбивает с
@@ -186,7 +186,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-20
+Last activity: 2026-11-20 -- Phase 41.6 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1676,9 +1676,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-20T10:08:04.712Z
-Stopped at: Phase 41.6 context gathered
-Resume file: .planning/phases/41.6-employee-devices-section/41.6-CONTEXT.md
+Last session: 2026-11-20T10:25:36.859Z
+Stopped at: Phase 41.6 UI-SPEC approved
+Resume file: .planning/phases/41.6-employee-devices-section/41.6-UI-SPEC.md
 
 None
 
