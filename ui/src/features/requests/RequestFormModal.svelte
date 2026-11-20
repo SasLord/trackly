@@ -13,6 +13,7 @@
   import GroupedPrinterSelect from '$lib/components/GroupedPrinterSelect.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Badge from '$lib/components/Badge.svelte';
+  import { tick } from 'svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { parseAppError } from '$lib/api/errors';
   import { requests, repairs } from './api';
@@ -24,10 +25,13 @@
     onClose: () => void;
     // Минимум, нужный странице: id и статус созданной заявки (repairs.create и
     // requests.create возвращают разные генерированные RequestDto).
-    onSuccess: (request: { id: number; status: string }) => void;
+    // joined: ремонт присоединил к уже открытой заявке (D-11/D-13).
+    onSuccess: (request: { id: number; status: string; joined?: boolean }) => void;
+    // D-12: предзаполнение из строки списка «Устройства». Тип и устройство остаются изменяемыми.
+    prefill?: { type: 'repair' | 'cartridge_replace'; deviceId: number };
   }
 
-  const { open, onClose, onSuccess }: Props = $props();
+  const { open, onClose, onSuccess, prefill }: Props = $props();
 
   type RequestType = 'cartridge_replace' | 'repair' | 'free_form';
 
@@ -159,11 +163,47 @@
       repairDeviceError = '';
       repairDescError = '';
       // Load printers + categories list.
-      loadPrinters();
+      const printersDone = loadPrinters();
       loadCategories();
+      // D-12: предзаполнение СТРОГО после сброса (иначе сброс его затрёт).
+      const pf = prefill;
+      if (pf) {
+        const instance = openInstanceCounter;
+        requestType = pf.type;
+        if (pf.type === 'repair') {
+          void applyRepairPrefill(pf.deviceId, instance);
+        } else {
+          void applyPrinterPrefill(pf.deviceId, printersDone, instance);
+        }
+        void focusDescription(pf.type);
+      }
     }
     _wasOpen = isOpen;
   });
+
+  // Подстановка выбранного устройства — только если оно есть в списке, который отдал
+  // сервер (область сотрудника); иначе поле пустое и действует штатная ошибка формы.
+  async function applyRepairPrefill(deviceId: number, instance: number) {
+    const fresh = await loadRepairDevices();
+    if (!fresh || instance !== openInstanceCounter || repairChoice !== null) return;
+    if (repairDevices.some((d) => d.id === deviceId)) repairChoice = String(deviceId);
+  }
+
+  async function applyPrinterPrefill(
+    deviceId: number,
+    printersDone: Promise<void>,
+    instance: number,
+  ) {
+    await printersDone;
+    if (instance !== openInstanceCounter || printerDeviceId !== null) return;
+    if (availablePrinters.some((p) => p.id === deviceId)) printerDeviceId = deviceId;
+  }
+
+  // В режиме prefill фокус — в поле описания.
+  async function focusDescription(type: 'repair' | 'cartridge_replace') {
+    await tick();
+    document.getElementById(type === 'repair' ? 'req-repair-desc' : 'req-comment')?.focus();
+  }
 
   async function loadPrinters() {
     // D-PRN-01: minimal {id,name,location} list from the CreateRequest-gated
@@ -180,7 +220,8 @@
     }
   }
 
-  async function loadRepairDevices() {
+  // true — ответ актуален (не вытеснен более новой загрузкой) и список записан.
+  async function loadRepairDevices(): Promise<boolean> {
     const gen = ++repairLoadGen;
     repairDevicesLoading = true;
     try {
@@ -191,6 +232,7 @@
     } finally {
       if (gen === repairLoadGen) repairDevicesLoading = false;
     }
+    return gen === repairLoadGen;
   }
 
   async function loadCategories() {
@@ -275,12 +317,15 @@
           deviceId: selectedRepairDevice ? selectedRepairDevice.id : null,
           description: description.trim(),
         });
-        pushToast(
-          'success',
-          res.joined ? 'Вы присоединились к заявке на ремонт' : 'Заявка отправлена',
-        );
+        // D-13: в режиме prefill единственный тост показывает страница (со ссылкой).
+        if (!prefill) {
+          pushToast(
+            'success',
+            res.joined ? 'Вы присоединились к заявке на ремонт' : 'Заявка отправлена',
+          );
+        }
         maybeRequestNotifyPermission();
-        onSuccess(res.request);
+        onSuccess({ ...res.request, joined: res.joined });
         onClose();
         return;
       }
@@ -291,7 +336,7 @@
         categoryId: requestType === 'free_form' ? categoryId : null,
         description: description.trim() || null,
       });
-      pushToast('success', 'Заявка отправлена');
+      if (!prefill) pushToast('success', 'Заявка отправлена');
       maybeRequestNotifyPermission();
       onSuccess(created);
       onClose();

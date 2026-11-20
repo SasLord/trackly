@@ -11,7 +11,7 @@
 //      а не openRepairRequest напрямую.
 //  [B] RequestDetail: .description-text :global(.field-value) { white-space: pre-wrap },
 //      класс description-text стоит на обёртке DetailField label="Описание" (обе ветки).
-//  [C] RequestFormModal: каждый onSuccess( с аргументом, в ветке repair — res.request.
+//  [C] RequestFormModal: каждый onSuccess( с аргументом, в ветке repair — res.request (41.6-04: с признаком joined).
 //      RequestsPage: onSuccess формы присваивает selectedId из аргумента и не зовёт
 //      handleStatusFilterChange; RequestDetail получает onOpenRequest, ставящий selectedId.
 //  [D] RepairSendModal: receiverName предзаполняется из lastReceiverName.
@@ -86,8 +86,8 @@ export function check({ detail, labels, form, page, send, assign }) {
   if (real.length < 2) bad.push('[C] RequestFormModal: меньше двух вызовов onSuccess(...)');
   if (real.some((c) => c === 'onSuccess()'))
     bad.push('[C] RequestFormModal: onSuccess() без аргумента');
-  if (!/onSuccess\(res\.request\)/.test(f))
-    bad.push('[C] ветка repair не передаёт onSuccess(res.request)');
+  if (!/onSuccess\(\{ \.\.\.res\.request, joined: res\.joined \}\)/.test(f))
+    bad.push('[C] ветка repair не передаёт onSuccess({ ...res.request, joined })');
   const h = /<RequestFormModal[\s\S]*?onSuccess=\{\((\w+)\) => \{([\s\S]*?)\n {2}\}\}\s*\/>/.exec(
     p,
   );
@@ -203,7 +203,11 @@ function selftest() {
   };
   const results = [['real', check(real).length === 0]];
   const mutants = {
-    'onSuccess-no-arg': mut('form', 'onSuccess(res.request)', 'onSuccess()'),
+    'onSuccess-no-arg': mut(
+      'form',
+      'onSuccess({ ...res.request, joined: res.joined })',
+      'onSuccess()',
+    ),
     'merged-fn-unbound': mut(
       'labels',
       "!== 'repair_merged_into') return null;",
