@@ -13,6 +13,7 @@ pub mod cartridges;
 pub mod chat;
 pub mod dashboard;
 pub mod devices;
+pub mod employee_devices;
 pub mod fs_helpers;
 pub mod group_types;
 pub mod groups;

@@ -90,6 +90,8 @@ pub struct AppCtx {
     pub cartridges: Arc<CartridgeService>,
     /// Repair service — ремонтные заявки: чтение и создание/присоединение (Phase 41.4).
     pub repairs: Arc<RepairService>,
+    /// Phase 41.6: раздел «Устройства» сотрудника (только чтение).
+    pub employee_devices: Arc<crate::services::EmployeeDeviceService>,
     /// Phase 41.4: HTML акта передачи в ремонт (D-27/D-28).
     pub repair_acts: Arc<RepairActRenderer>,
     /// Auth service — login/logout, user CRUD, argon2id hashing, RBAC authorize().
@@ -385,6 +387,11 @@ impl AppCtx {
                 .with_ws_tx(ws_broadcast.clone()),
         );
 
+        let employee_devices = Arc::new(crate::services::EmployeeDeviceService::new(
+            readers.clone(),
+            Arc::new(trackly_infra::repos::repairs_sqlite::SqliteRepairRepository),
+        ));
+
         let repair_acts = Arc::new(RepairActRenderer::new(
             readers.clone(),
             organization.clone(),
@@ -552,6 +559,7 @@ impl AppCtx {
             pdf,
             cartridges,
             repairs,
+            employee_devices,
             repair_acts,
             auth,
             server_ctl: Arc::new(tokio::sync::Mutex::new(None)),

@@ -183,6 +183,10 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let employee_devices = Arc::new(crate::services::EmployeeDeviceService::new(
+            readers.clone(),
+            Arc::new(trackly_infra::repos::repairs_sqlite::SqliteRepairRepository),
+        ));
         let repair_acts = Arc::new(crate::services::RepairActRenderer::new(
             readers.clone(),
             organization.clone(),
@@ -215,6 +219,7 @@ mod tests {
             pdf,
             cartridges,
             repairs,
+            employee_devices,
             repair_acts,
             auth,
             server_ctl: Arc::new(tokio::sync::Mutex::new(None)),

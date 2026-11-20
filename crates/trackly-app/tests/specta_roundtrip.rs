@@ -150,6 +150,10 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         readers.clone(),
         clock.clone(),
     ));
+    let employee_devices = Arc::new(trackly_app::services::EmployeeDeviceService::new(
+        readers.clone(),
+        Arc::new(trackly_infra::repos::repairs_sqlite::SqliteRepairRepository),
+    ));
     let repair_acts = Arc::new(trackly_app::services::RepairActRenderer::new(
         readers.clone(),
         organization.clone(),
@@ -182,6 +186,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         pdf,
         cartridges,
         repairs,
+        employee_devices,
         repair_acts,
         auth,
         server_ctl: Arc::new(tokio::sync::Mutex::new(None)),

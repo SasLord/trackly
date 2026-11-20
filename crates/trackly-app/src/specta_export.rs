@@ -67,6 +67,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 3.1 Plan 02 — G-5 person autocomplete
         crate::tauri_cmds::acts::acts_suggest_person,
         // Phase 41.4 — ремонтные заявки (plan 14)
+        crate::tauri_cmds::employee_devices::employee_devices_list,
         crate::tauri_cmds::repairs::repairs_device_options,
         crate::tauri_cmds::repairs::repairs_create,
         crate::tauri_cmds::repairs::repairs_get_state,

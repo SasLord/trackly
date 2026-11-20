@@ -14,6 +14,7 @@ pub mod cartridges;
 pub mod chat;
 pub mod dashboard;
 pub mod devices;
+pub mod employee_devices;
 pub mod fs_helpers;
 pub mod group_types;
 pub mod groups;
@@ -188,6 +189,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(place_movements::router())
         .merge(acts::router())
         .merge(repairs::router())
+        .merge(employee_devices::router())
         .merge(attachments::router())
         .merge(chat::router())
         .merge(cartridges::router())
