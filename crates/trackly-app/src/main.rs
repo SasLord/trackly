@@ -28,7 +28,7 @@
 //! 7. Self-test branch: print diagnostics, drop AppCtx (which cancels shutdown + drops log_guard), exit 0.
 //! 8. Normal branch: stub message (Plan 05/Phase 2 wires Tauri Builder).
 
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use trackly_app::context::AppCtx;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::server::{start_server_on_addr, ServerHandle};
@@ -299,38 +299,31 @@ fn main() -> anyhow::Result<()> {
                 // wrap/rename, so existing `event.type === '...'` handlers
                 // keep working unchanged.
                 //
-                // WR-05 (visibility boundary): unlike the browser WS path
-                // (`http/ws.rs`), this bridge does NOT call
-                // `event.is_visible_to(&identity)` per event, and this is
-                // intentional — not an oversight:
-                //
-                //   * The desktop shell only ever operates under an
-                //     admin/manager-tier identity. In unlocked mode it is
-                //     `Identity::trusted_admin()`; in locked mode it is the
-                //     verified desktop admin (`AuthService::desktop_identity`).
-                //     Every arm of `WsEvent::is_visible_to` already passes for
-                //     Admin/Manager, so filtering here would be a no-op today.
-                //
-                //   * The correct desktop identity is resolved *per operation*
-                //     via `resolve_tauri_identity` (it depends on the runtime
-                //     `desktop_lock_enabled` setting and an async DB lookup, and
-                //     can change while the app runs). Snapshotting a single
-                //     identity once here, for the lifetime of this long-lived
-                //     bridge task, would be stale-by-construction and is the
-                //     wrong shape for a per-event gate.
-                //
-                // If the desktop shell is ever allowed to run under a non-admin
-                // identity, OR a future `WsEvent` variant carries data not meant
-                // for the desktop operator, this bridge MUST be changed to
-                // resolve the live identity per event and gate on
-                // `event.is_visible_to(&identity)` to match `http/ws.rs`.
+                // WR-05 / T-41.5-06 (visibility boundary): like the browser
+                // WS path (`http/ws.rs`), every event is gated on
+                // `event.is_visible_to(&identity)` before it reaches the
+                // webview. The desktop identity is resolved PER EVENT inside
+                // `desktop_event_visible` (it depends on the runtime
+                // `desktop_lock_enabled` setting and can change while the app
+                // runs), never snapshotted once for this long-lived task.
+                // Needed since `WsEvent::ChatReadChanged` is visible only to
+                // the marker owner — even the desktop Admin must not receive
+                // other users' read/mute markers.
                 let app_handle = app.handle().clone();
+                let bridge_ctx = app.state::<AppCtx>().inner().clone();
                 let mut rx = ws_broadcast.subscribe();
                 tauri::async_runtime::spawn(async move {
                     loop {
                         match rx.recv().await {
                             Ok(event) => {
-                                let _ = app_handle.emit("trackly-event", &event);
+                                if trackly_app::desktop_event_bridge::desktop_event_visible(
+                                    &bridge_ctx,
+                                    &event,
+                                )
+                                .await
+                                {
+                                    let _ = app_handle.emit("trackly-event", &event);
+                                }
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                                 // Slow consumer — skipped n events. Continue,

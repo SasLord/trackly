@@ -7,6 +7,8 @@
 
 #[path = "../chat_access.rs"]
 mod chat_access;
+#[path = "../chat_desktop_bridge.rs"]
+mod chat_desktop_bridge;
 #[path = "../chat_drafts.rs"]
 mod chat_drafts;
 #[path = "../chat_feed.rs"]

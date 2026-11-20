@@ -22,6 +22,7 @@ pub mod attachments_protocol;
 pub mod config_recovery;
 pub mod context;
 pub mod csv;
+pub mod desktop_event_bridge;
 pub mod dto;
 pub mod error_axum;
 pub mod http;
