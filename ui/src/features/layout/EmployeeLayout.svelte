@@ -32,7 +32,8 @@
   let loggingOut = $state(false);
 
   // UAT 41.6 п.14: на узком экране шапка не влезала в строку — ФИО, роль, тема и
-  // «Выйти» уходят в меню за квадратной кнопкой-кебабом (≤767px).
+  // «Выйти» уходят в меню за квадратной кнопкой-кебабом (≤959px: ниже роль, тема и
+  // «Выйти» не помещаются в строку с вкладками).
   const themeOptions = [
     { key: 'light' as const, label: 'Светлая тема' },
     { key: 'system' as const, label: 'Системная тема' },
@@ -240,7 +241,8 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-lg);
-    min-width: 0;
+    // UAT 41.6: вкладки не сжимаются — иначе ФИО наезжало на «Устройства».
+    flex-shrink: 0;
   }
 
   .employee-tabs {
@@ -288,9 +290,12 @@
 
   .employee-header-actions {
     display: flex;
+    flex: 1 1 auto;
+    justify-content: flex-end;
     align-items: center;
     gap: var(--tr-space-md);
     min-width: 0;
+    margin-left: var(--tr-space-lg);
   }
 
   .user-name {
@@ -346,7 +351,7 @@
     width: 1.2em;
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 959px) {
     .employee-header {
       padding: 0 var(--tr-space-md);
       gap: var(--tr-space-sm);
