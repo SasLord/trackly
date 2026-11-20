@@ -9,7 +9,7 @@ progress:
   total_phases: 27
   completed_phases: 20
   total_plans: 389
-  completed_plans: 384
+  completed_plans: 386
   percent: 74
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.6 (employee-devices-section) — EXECUTING
-Plan: 6 of 12 завершён
+Plan: 8 of 12 завершён
 Status: Executing Phase 41.6
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
