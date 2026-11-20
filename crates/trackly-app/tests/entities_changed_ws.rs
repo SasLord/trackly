@@ -211,11 +211,27 @@ async fn admin_and_manager_receive_entities_changed_employee_does_not() {
             );
         }
 
-        // employee: за SILENCE не приходит НИЧЕГО.
+        // admin и manager: сигнал сотрудника (D-19) им не виден - тишина.
+        for (who, ws) in [("admin", &mut ws_admin), ("manager", &mut ws_manager)] {
+            let silent = tokio::time::timeout(SILENCE, ws.next()).await;
+            assert!(
+                silent.is_err(),
+                "{who} получил кадр, хотя employee_scope_changed ему не виден: {silent:?}"
+            );
+        }
+
+        // employee: entities_changed ему не виден, зато приходит РОВНО один
+        // payload-less employee_scope_changed (D-19), без id.
+        let scope = next_json(&mut ws_employee, "employee").await;
+        assert_eq!(
+            scope,
+            serde_json::json!({ "type": "employee_scope_changed" }),
+            "employee: кадр employee_scope_changed без данных"
+        );
         let silent = tokio::time::timeout(SILENCE, ws_employee.next()).await;
         assert!(
             silent.is_err(),
-            "employee получил кадр, хотя entities_changed ему не виден: {silent:?}"
+            "employee получил лишний кадр (entities_changed ему не виден): {silent:?}"
         );
 
         // Негатив осмысленный: сокет сотрудника жив, и следующий кадр — только что

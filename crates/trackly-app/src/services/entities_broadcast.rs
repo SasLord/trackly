@@ -1,4 +1,6 @@
-//! Single owner of the `WsEvent::EntitiesChanged` send rule (Phase 41.7, D-03).
+//! Single owner of the `WsEvent::EntitiesChanged` send rule (Phase 41.7, D-03)
+//! and of the payload-less `WsEvent::EmployeeScopeChanged` (Phase 41.6, D-19),
+//! which is sent right after it under the same emptiness rule.
 //!
 //! Contract for callers:
 //! - Send ONLY after the writer closure's `.await?` and OUTSIDE the closure
@@ -51,6 +53,9 @@ pub(crate) fn send_entities_changed(
         device_ids,
         group_ids,
     });
+    // Phase 41.6 D-19: payload-less signal for Employee sessions (the only
+    // role that sees it); EntitiesChanged stays invisible to them.
+    let _ = ws_tx.send(WsEvent::EmployeeScopeChanged {});
 }
 
 #[cfg(test)]
@@ -82,6 +87,11 @@ mod tests {
             }
             other => panic!("unexpected variant: {other:?}"),
         }
+        // D-19: the payload-less employee signal follows, then nothing else.
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(WsEvent::EmployeeScopeChanged {})
+        ));
         assert!(matches!(
             rx.try_recv(),
             Err(broadcast::error::TryRecvError::Empty)

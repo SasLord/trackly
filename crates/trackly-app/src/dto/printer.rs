@@ -362,6 +362,13 @@ pub enum WsEvent {
         #[specta(type = Vec<i32>)]
         group_ids: Vec<i64>,
     },
+    /// Phase 41.6 D-19: payload-less signal "re-read your devices". Visible
+    /// ONLY to Employee; carries no ids so nothing about foreign places,
+    /// devices or groups leaks. Sent from `send_entities_changed` next to
+    /// `EntitiesChanged` (whose visibility is deliberately NOT widened).
+    ///
+    /// Wire format: `{ "type": "employee_scope_changed" }`
+    EmployeeScopeChanged {},
     /// Attachments of a parent changed (Phase 41.3, D-25). NOT
     /// `EntitiesChanged`: Employee must see it for their own request.
     /// Sent after commit and outside `writer.execute` (D-15).
@@ -421,6 +428,8 @@ impl WsEvent {
     /// - `EntitiesChanged` (Phase 41.7, D-02) → Admin | Manager only — the
     ///   roles that can open the places/groups trees; no field inspection and
     ///   no author branching (do NOT model this on `RequestStatusChanged`).
+    /// - `EmployeeScopeChanged` (Phase 41.6, D-19) → Employee only; no payload,
+    ///   the client re-reads its own devices.
     /// - `AttachmentsChanged` (Phase 41.3) / `ChatMessage` (Phase 41.5, D-23) →
     ///   Admin | Manager, request author, or participant.
     /// - `ChatReadChanged` (Phase 41.5, D-19) → only the marker owner.
@@ -449,6 +458,7 @@ impl WsEvent {
             WsEvent::EntitiesChanged { .. } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
             }
+            WsEvent::EmployeeScopeChanged {} => matches!(identity.role, Role::Employee),
             WsEvent::AttachmentsChanged {
                 requested_by_user_id,
                 participant_user_ids,
@@ -783,6 +793,20 @@ mod tests {
         assert!(event.is_visible_to(&identity(None, Role::Admin)));
         assert!(event.is_visible_to(&identity(Some(99), Role::Manager)));
         assert!(!event.is_visible_to(&identity(Some(42), Role::Employee)));
+    }
+
+    #[test]
+    fn employee_scope_changed_visible_only_to_employee() {
+        let event = WsEvent::EmployeeScopeChanged {};
+        assert!(event.is_visible_to(&identity(Some(42), Role::Employee)));
+        assert!(!event.is_visible_to(&identity(None, Role::Admin)));
+        assert!(!event.is_visible_to(&identity(Some(99), Role::Manager)));
+    }
+
+    #[test]
+    fn employee_scope_changed_wire_has_no_ids() {
+        let json = serde_json::to_string(&WsEvent::EmployeeScopeChanged {}).unwrap();
+        assert_eq!(json, r#"{"type":"employee_scope_changed"}"#);
     }
 
     #[test]
