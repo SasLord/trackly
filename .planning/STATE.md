@@ -187,7 +187,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-21 -- Phase 41.6 complete
+Last activity: 2026-11-21 -- Quick 261121-4nz: закрыты NEW-1 и N1 аудита v1.4
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1611,6 +1611,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 | Date | Slug | Summary | Status |
 |------|------|---------|--------|
+| 2026-11-21 | close-audit-new-1-n1 | 261121-4nz: аудит v1.4 раунд 6 — NEW-1: «Переместить БД» копирует attachments/ при пустом attachments_path ДО смены db_path (сбой копии — конфиг прежний), текст диалога; N1: удалён мёртвый printers_create (Tauri+HTTP+specta+DTO+create_from_device, тест n13) — R-05 снят. Точечно: app_attachments 75, devices_printer_network 14, app_gates 244, role_endpoint_matrix 28; живьём диалог не проверен. | complete ✓ |
 | 2026-11-17 | desktop-system-admin | 261117-w2q: системный пользователь «Администратор» (V053 `users.is_system`, ensure при старте) — десктоп действует от него; убран `unwrap_or(1)` (FK на пустой БД); повтор D-19 в ремонтном create только при UNIQUE-гонке; Gap 1: мастер первого запуска закрыт. Живая UAT 7/7. | complete ✓ |
 | 2026-11-17 | test-speed-merge | Вне GSD: смёржена ветка `claude/test-speed-e3b0b1` (87ff8c60) — 20 suite-бинарников вместо 228, `[profile.test]`, гейт `suite_wiring`; новые tests/*.rs подключать в tests/suites/*.rs (docs/TESTING.md). | complete ✓ |
 | 2026-11-17 | traceability-deferred-reqs | REQUIREMENTS.md Traceability: 11 отложенных REQ-ID (MAPX-01..04, GRPX-02..04, QA-05, INT-02, DOC-12, PRIV-03) внесены как TBD — ни одно не назначено фазе; GRPX-04 расходится с ROADMAP Фазы 43. | complete ✓ |
