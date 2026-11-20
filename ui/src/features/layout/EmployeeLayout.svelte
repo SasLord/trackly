@@ -6,7 +6,11 @@
   // только формирует честный UX.
   import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
+  import active from 'svelte-spa-router/active';
   import Button from '$lib/components/Button.svelte';
+  import UnreadBadge from '$lib/components/UnreadBadge.svelte';
+  import { unreadStore } from '../requests/chat/unreadStore.svelte';
+  import { sidebarActivePattern } from './sidebar-config';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -24,6 +28,15 @@
   const { children }: Props = $props();
 
   let loggingOut = $state(false);
+
+  // D-01: две вкладки-ссылки. Активность подсвечивает use:active (класс), а aria-current
+  // считается от того же шаблона по текущему маршруту (хвост querystring допускается).
+  const requestsPattern = sidebarActivePattern('/requests');
+  const devicesPattern = sidebarActivePattern('/devices');
+  const currentPath = () => window.location.hash.replace(/^#/, '') || '/';
+  let routePath = $state(currentPath());
+  const requestsCurrent = $derived(requestsPattern.test(routePath));
+  const devicesCurrent = $derived(devicesPattern.test(routePath));
 
   // D-WS-01: realtime delivery of the admin's response to the employee's OWN
   // request — toast while the tab is active, system Notification when the
@@ -118,11 +131,34 @@
   }
 </script>
 
+<svelte:window onhashchange={() => (routePath = currentPath())} />
+
 <a href="#main" class="skip-link">Перейти к основному содержимому</a>
 
 <div class="employee-shell">
   <header class="employee-header">
-    <span class="employee-brand">Trackly</span>
+    <div class="employee-header-main">
+      <span class="employee-brand">Trackly</span>
+      <nav aria-label="Разделы" class="employee-tabs">
+        <a
+          href="#/requests"
+          class="tab"
+          use:active={{ path: sidebarActivePattern('/requests'), className: 'is-active' }}
+          aria-current={requestsCurrent ? 'page' : undefined}
+        >
+          <span>Заявки</span>
+          <UnreadBadge count={unreadStore.requestsWithUnread} label="Заявок с непрочитанным" />
+        </a>
+        <a
+          href="#/devices"
+          class="tab"
+          use:active={{ path: sidebarActivePattern('/devices'), className: 'is-active' }}
+          aria-current={devicesCurrent ? 'page' : undefined}
+        >
+          <span>Устройства</span>
+        </a>
+      </nav>
+    </div>
     <div class="employee-header-actions">
       {#if authStore.user}
         <span class="user-name">{authStore.user.fullName}</span>
@@ -161,6 +197,50 @@
     border-bottom: 1px solid var(--tr-border);
   }
 
+  .employee-header-main {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-lg);
+    min-width: 0;
+  }
+
+  .employee-tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-2xs);
+  }
+
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
+    height: 36px;
+    padding: 0 var(--tr-space-sm);
+    border-radius: var(--tr-radius-sm);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-regular);
+    color: var(--tr-text-secondary);
+    text-decoration: none;
+    white-space: nowrap;
+
+    &:hover {
+      background: color-mix(in srgb, var(--tr-text-primary) 5%, transparent);
+      color: var(--tr-text-primary);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: inset 0 0 0 2px var(--tr-focus-ring);
+    }
+  }
+
+  :global(.tab.is-active) {
+    background: var(--tr-accent-soft);
+    color: var(--tr-accent-text);
+    font-weight: var(--tr-font-weight-medium);
+    box-shadow: inset 0 -3px 0 var(--tr-accent);
+  }
+
   .employee-brand {
     font-size: var(--tr-font-size-h3);
     font-weight: var(--tr-font-weight-semibold);
@@ -195,6 +275,23 @@
   .theme-switcher-slot {
     flex-shrink: 0;
     width: max-content;
+  }
+
+  @media (max-width: 559px) {
+    .employee-header {
+      padding: 0 var(--tr-space-md);
+    }
+
+    .user-name,
+    .user-role {
+      display: none;
+    }
+  }
+
+  @media (max-width: 399px) {
+    .employee-brand {
+      display: none;
+    }
   }
 
   .employee-content {
