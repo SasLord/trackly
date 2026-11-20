@@ -241,6 +241,13 @@ const ALLOWLIST = [
     file: 'src/features/acts/ReturnModal.svelte',
     markers: ['Группа «'],
   },
+  {
+    // 41.6-09 (D-05, UI-SPEC 8.1): title колонки «АРМ» у принтера, происхождение
+    // «в составе группы». Один узкий литерал; любая другая надпись про группу в
+    // файле красная.
+    file: 'src/features/employee/EmployeeDeviceRow.svelte',
+    markers: ['в составе группы'],
+  },
 ];
 
 function allowEntryFor(relPath) {
