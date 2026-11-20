@@ -12,6 +12,8 @@
   import { unreadStore } from '../requests/chat/unreadStore.svelte';
   import { sidebarActivePattern } from './sidebar-config';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
+  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import { themeStore, setTheme } from '$lib/stores/theme.svelte';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
@@ -28,6 +30,14 @@
   const { children }: Props = $props();
 
   let loggingOut = $state(false);
+
+  // UAT 41.6 п.14: на узком экране шапка не влезала в строку — ФИО, роль, тема и
+  // «Выйти» уходят в меню за квадратной кнопкой-кебабом (≤767px).
+  const themeOptions = [
+    { key: 'light' as const, label: 'Светлая тема' },
+    { key: 'system' as const, label: 'Системная тема' },
+    { key: 'dark' as const, label: 'Тёмная тема' },
+  ];
 
   // D-01: две вкладки-ссылки. Активность подсвечивает use:active (класс), а aria-current
   // считается от того же шаблона по текущему маршруту (хвост querystring допускается).
@@ -159,6 +169,35 @@
         </a>
       </nav>
     </div>
+    <div class="employee-header-menu">
+      <ActionMenu label="Меню пользователя" panelMinWidth="220px">
+        {#if authStore.user}
+          <div class="menu-user">
+            <span class="menu-user-name">{authStore.user.fullName}</span>
+            <span class="menu-user-role">Сотрудник</span>
+          </div>
+          <hr />
+        {/if}
+        {#each themeOptions as opt (opt.key)}
+          <button
+            type="button"
+            role="menuitem"
+            aria-label={themeStore.preference === opt.key ? `${opt.label} (выбрана)` : opt.label}
+            onclick={() => setTheme(opt.key)}
+          >
+            <span class="menu-check" aria-hidden="true"
+              >{themeStore.preference === opt.key ? '✓' : ''}</span
+            >
+            {opt.label}
+          </button>
+        {/each}
+        <hr />
+        <button type="button" role="menuitem" onclick={logout} disabled={loggingOut}>
+          <span class="menu-check" aria-hidden="true"></span>
+          {loggingOut ? 'Выход…' : 'Выйти'}
+        </button>
+      </ActionMenu>
+    </div>
     <div class="employee-header-actions">
       {#if authStore.user}
         <span class="user-name">{authStore.user.fullName}</span>
@@ -277,14 +316,48 @@
     width: max-content;
   }
 
-  @media (max-width: 559px) {
+  .employee-header-menu {
+    display: none;
+    flex-shrink: 0;
+  }
+
+  .menu-user {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--tr-space-xs) var(--tr-space-sm);
+    max-width: 280px;
+  }
+
+  .menu-user-name {
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
+    color: var(--tr-text-primary);
+    overflow-wrap: anywhere;
+  }
+
+  .menu-user-role {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-tertiary);
+  }
+
+  .menu-check {
+    display: inline-block;
+    width: 1.2em;
+  }
+
+  @media (max-width: 767px) {
     .employee-header {
       padding: 0 var(--tr-space-md);
+      gap: var(--tr-space-sm);
     }
 
-    .user-name,
-    .user-role {
+    .employee-header-actions {
       display: none;
+    }
+
+    .employee-header-menu {
+      display: block;
     }
   }
 

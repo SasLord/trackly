@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { sidebarNav, openNav, closeNav } from '../../features/layout/layout-state.svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
 
   interface Props {
     title: string;
@@ -8,6 +9,9 @@
   }
 
   const { title, actions }: Props = $props();
+
+  // UAT 41.6: у Сотрудника нет боковой панели (EmployeeLayout) — кнопка «≡» была мёртвой.
+  const hasSidebar = $derived(authStore.user?.role !== 'employee');
 
   function toggleNav() {
     if (sidebarNav.open) {
@@ -20,23 +24,25 @@
 
 <header class="page-header">
   <div class="page-header-left">
-    <button
-      type="button"
-      class="nav-toggle"
-      aria-expanded={sidebarNav.open}
-      aria-controls="app-sidebar"
-      aria-label={sidebarNav.open ? 'Закрыть меню' : 'Открыть меню'}
-      onclick={toggleNav}
-    >
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-        <path
-          d="M2 5H16M2 9H16M2 13H16"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-        />
-      </svg>
-    </button>
+    {#if hasSidebar}
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded={sidebarNav.open}
+        aria-controls="app-sidebar"
+        aria-label={sidebarNav.open ? 'Закрыть меню' : 'Открыть меню'}
+        onclick={toggleNav}
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <path
+            d="M2 5H16M2 9H16M2 13H16"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
+        </svg>
+      </button>
+    {/if}
     <h1 class="page-title">{title}</h1>
   </div>
   {#if actions}

@@ -93,7 +93,6 @@
       <RequestLabels myOpenRequests={row.myOpenRequests} otherOpenRequest={row.otherOpenRequest} />
     </span>
   </td>
-  <td class="cell" title={row.typeName}>{row.typeName}</td>
   <td class="cell cell-numeric" title={row.inventoryNumber ?? ''}
     ><span class="tr-mono">{row.inventoryNumber ?? '—'}</span></td
   >

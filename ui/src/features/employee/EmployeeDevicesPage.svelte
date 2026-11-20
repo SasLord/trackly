@@ -204,7 +204,7 @@
       {/if}
     {:else}
       <Table
-        columns={10}
+        columns={9}
         {loading}
         empty={isEmpty}
         {emptyTitle}
@@ -233,7 +233,6 @@
 
 {#snippet tableHead()}
   <th class="th-name">Наименование</th>
-  <th class="th-type">Тип</th>
   <th class="th-type">Инв. №</th>
   <th class="th-serial">Серийный №</th>
   <th class="th-model">Модель</th>
