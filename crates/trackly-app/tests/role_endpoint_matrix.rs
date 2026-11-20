@@ -6833,3 +6833,215 @@ async fn int29_attachments_upload_role_gate() {
     }
     env.ctx.shutdown.cancel();
 }
+
+// ===========================================================================
+// Quick 261121-57x (INT-29): инвентарь маршрутов роутера (ratchet).
+// Каждый маршрут `/api/v1/<имя>` из src/http/*.rs обязан либо встречаться в тексте
+// этой матрицы (вне комментариев и вне массива EXEMPT), либо стоять в
+// `ROUTE_MATRIX_EXEMPT` с причиной. Группа «ДОЛГ» — мутирующие или открытые
+// маршруты без роль-теста; их нужно переводить в матрицу, а не множить.
+// ===========================================================================
+
+// ROUTE-MATRIX-EXEMPT-BEGIN
+const ROUTE_MATRIX_EXEMPT: &[(&str, &str)] = &[
+    // read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет
+    ("acts_counts", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("acts_get", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("acts_search", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("acts_suggest_person", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridge_models_get", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridge_models_list", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridge_storage_place_ids", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_get", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_get_history", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_low_stock", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_search", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_status_counts", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_suggest_brand", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_suggest_compat_printer", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("cartridges_suggest_model", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("devices_autocomplete", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("devices_get", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("devices_list_by_ids", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("devices_list_grouped", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("devices_search", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("devices_state_hints", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("devices_status_counts", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("printers_get", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_cartridge_consumption", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_cartridge_in_stock", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_cartridge_in_use", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_cartridge_refills", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_device_in_stock", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_device_in_use", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_device_returns", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_requests_all", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_requests_completed", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_requests_in_progress", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    ("reports_list_requests_open", "read-only: build_* → authorize(ReadData) (Admin|Manager), ничего не пишет"),
+    // read-only: build_* → authorize(ReadPlaces) (Admin|Manager), ничего не пишет
+    ("places_contents", "read-only: build_* → authorize(ReadPlaces) (Admin|Manager), ничего не пишет"),
+    ("places_list_children", "read-only: build_* → authorize(ReadPlaces) (Admin|Manager), ничего не пишет"),
+    ("places_search", "read-only: build_* → authorize(ReadPlaces) (Admin|Manager), ничего не пишет"),
+    ("places_subtree_stats", "read-only: build_* → authorize(ReadPlaces) (Admin|Manager), ничего не пишет"),
+    // read-only рендер HTML (возвращает строку, ничего не пишет), гейт MutateActs в build_*
+    ("acts_render_pdf", "read-only рендер HTML (возвращает строку, ничего не пишет), гейт MutateActs в build_*"),
+    ("devices_render_acceptance_pdf", "read-only рендер HTML (возвращает строку, ничего не пишет), гейт MutateActs в build_*"),
+    // read-only: гейт ManageSettings (Admin) в handler/build_*, ничего не пишет
+    ("number_templates_preview_mask", "read-only: гейт ManageSettings (Admin) в handler/build_*, ничего не пишет"),
+    ("settings_get_ad", "read-only: гейт ManageSettings (Admin) в handler/build_*, ничего не пишет"),
+    ("settings_get_network", "read-only: гейт ManageSettings (Admin) в handler/build_*, ничего не пишет"),
+    ("templates_status", "read-only: гейт ManageSettings (Admin) в handler/build_*, ничего не пишет"),
+    ("templates_validate_preview", "read-only: гейт ManageSettings (Admin) в handler/build_*, ничего не пишет"),
+    // публичный маршрут аутентификации (вне session-гейта; login/bootstrap/restore лимитируются Governor)
+    ("auth_login", "публичный маршрут аутентификации (вне session-гейта; login/bootstrap/restore лимитируются Governor)"),
+    ("auth_bootstrap", "публичный маршрут аутентификации (вне session-гейта; login/bootstrap/restore лимитируются Governor)"),
+    ("auth_status", "публичный маршрут аутентификации (вне session-гейта; login/bootstrap/restore лимитируются Governor)"),
+    ("request_ad_restore", "публичный маршрут аутентификации (вне session-гейта; login/bootstrap/restore лимитируются Governor)"),
+    ("auth_ad_sso", "публичный маршрут аутентификации (вне session-гейта; login/bootstrap/restore лимитируются Governor)"),
+    ("health", "служебный пинг: build_health без данных пользователя и без записи (health.rs)"),
+    ("ws", "поток WebSocket (GET-upgrade): ws_auth_middleware требует сессию (401 без неё), мутаций нет"),
+    // read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет
+    ("auth_me", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("server_status", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("organization_get", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("settings_get_org", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("settings_get_org_logo", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("settings_get_db_path", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("settings_get_backup_config", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("settings_get_low_stock_basis", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("settings_get_low_stock_threshold", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("settings_get_place_path_defaults", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("templates_list_for_editor", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    ("templates_get_active", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
+    // read-only разбор/рендер без записи, но БЕЗ роль-гейта в build_* (наблюдение, не мутация)
+    ("devices_import_csv_preview", "read-only разбор/рендер без записи, но БЕЗ роль-гейта в build_* (наблюдение, не мутация)"),
+    ("templates_render_preview", "read-only разбор/рендер без записи, но БЕЗ роль-гейта в build_* (наблюдение, не мутация)"),
+    // мутирующий, роль-тест в профильном файле tests/: acts_delete_choice_http.rs
+    ("acts_delete", "мутирующий, роль-тест в профильном файле tests/: acts_delete_choice_http.rs"),
+    // мутирующий, роль-тест в профильном файле tests/: acts_return_split_http.rs
+    ("acts_return", "мутирующий, роль-тест в профильном файле tests/: acts_return_split_http.rs"),
+    // мутирующий, роль-тест в профильном файле tests/: settings_ad.rs (Employee → 403)
+    ("settings_set_ad", "мутирующий, роль-тест в профильном файле tests/: settings_ad.rs (Employee → 403)"),
+    ("ad_test_connection", "мутирующий, роль-тест в профильном файле tests/: settings_ad.rs (Employee → 403)"),
+    // самообслуживание: субъект берётся из сессии, не из тела (CR-02), нужен текущий пароль; роль не применима
+    ("users_change_password", "самообслуживание: субъект берётся из сессии, не из тела (CR-02), нужен текущий пароль; роль не применима"),
+    // ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/
+    ("cartridge_models_create", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("cartridge_models_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("cartridge_models_update", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("cartridges_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("cartridges_update", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("devices_bulk_create", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("devices_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("devices_import_csv_commit", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("requests_approve_ad_register", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("users_update", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("users_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("users_reset_password", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("settings_save_org_fields", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("settings_save_org_logo", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("settings_remove_org_logo", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("settings_set_low_stock_threshold", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("settings_save_backup_config", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("templates_update_body", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("templates_reset_to_default", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("backup_run_manual", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("server_toggle", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("settings_set_network", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    ("desktop_set_lock", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
+    // ДОЛГ: файловый маршрут БЕЗ роль-гейта в handler/build_* (любой вошедший читает/пишет .csv на сервере), роль-теста нет
+    ("read_file_bytes", "ДОЛГ: файловый маршрут БЕЗ роль-гейта в handler/build_* (любой вошедший читает/пишет .csv на сервере), роль-теста нет"),
+    ("write_file_bytes", "ДОЛГ: файловый маршрут БЕЗ роль-гейта в handler/build_* (любой вошедший читает/пишет .csv на сервере), роль-теста нет"),
+];
+// ROUTE-MATRIX-EXEMPT-END
+
+#[test]
+fn http_routes_covered_by_role_matrix() {
+    let sources: &[&str] = &[
+        include_str!("../src/http/mod.rs"),
+        include_str!("../src/http/acts.rs"),
+        include_str!("../src/http/attachments.rs"),
+        include_str!("../src/http/auth.rs"),
+        include_str!("../src/http/cartridges.rs"),
+        include_str!("../src/http/chat.rs"),
+        include_str!("../src/http/dashboard.rs"),
+        include_str!("../src/http/devices.rs"),
+        include_str!("../src/http/employee_devices.rs"),
+        include_str!("../src/http/fs_helpers.rs"),
+        include_str!("../src/http/group_types.rs"),
+        include_str!("../src/http/groups.rs"),
+        include_str!("../src/http/health.rs"),
+        include_str!("../src/http/number_templates.rs"),
+        include_str!("../src/http/organization.rs"),
+        include_str!("../src/http/place_movements.rs"),
+        include_str!("../src/http/places.rs"),
+        include_str!("../src/http/printers.rs"),
+        include_str!("../src/http/repairs.rs"),
+        include_str!("../src/http/reports.rs"),
+        include_str!("../src/http/requests.rs"),
+        include_str!("../src/http/settings.rs"),
+        include_str!("../src/http/settings_org.rs"),
+        include_str!("../src/http/sso.rs"),
+        include_str!("../src/http/templates.rs"),
+        include_str!("../src/http/users.rs"),
+        include_str!("../src/http/ws.rs"),
+    ];
+    let re = regex::Regex::new(r#""/api/v1/(\w+)""#).unwrap();
+    let routes: std::collections::BTreeSet<String> = sources
+        .iter()
+        .flat_map(|s| {
+            re.captures_iter(s)
+                .map(|c| c[1].to_string())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // Текст матрицы без массива EXEMPT и без строк-комментариев.
+    let me = include_str!("role_endpoint_matrix.rs");
+    let begin = me
+        .find(concat!("// ROUTE-MATRIX-EXEMPT", "-BEGIN"))
+        .unwrap();
+    let end_marker = concat!("// ROUTE-MATRIX-EXEMPT", "-END");
+    let end = me.find(end_marker).unwrap() + end_marker.len();
+    let text: String = format!("{}{}", &me[..begin], &me[end..])
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mentioned = |name: &str| {
+        // Имя как строковый литерал ("имя") либо как путь /api/v1/имя.
+        let n = regex::escape(name);
+        regex::Regex::new(&format!(r#""{n}"|/api/v1/{n}\b"#))
+            .unwrap()
+            .is_match(&text)
+    };
+
+    let exempt: std::collections::BTreeMap<&str, &str> =
+        ROUTE_MATRIX_EXEMPT.iter().copied().collect();
+    assert_eq!(
+        exempt.len(),
+        ROUTE_MATRIX_EXEMPT.len(),
+        "дубликат в ROUTE_MATRIX_EXEMPT"
+    );
+
+    let uncovered: Vec<&String> = routes
+        .iter()
+        .filter(|r| !exempt.contains_key(r.as_str()) && !mentioned(r))
+        .collect();
+    assert!(
+        uncovered.is_empty(),
+        "маршруты роутера вне роль-матрицы: {uncovered:?} — добавь кейс в матрицу или внеси в ROUTE_MATRIX_EXEMPT с причиной"
+    );
+
+    for (name, reason) in ROUTE_MATRIX_EXEMPT {
+        assert!(
+            routes.contains(*name),
+            "ROUTE_MATRIX_EXEMPT: «{name}» нет в роутере — запись устарела ({reason})"
+        );
+        assert!(
+            !mentioned(name),
+            "ROUTE_MATRIX_EXEMPT: «{name}» уже есть в матрице — убери из EXEMPT"
+        );
+    }
+}
