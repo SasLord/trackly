@@ -47,18 +47,6 @@ export type PrinterFilter = {
 };
 
 /**
- * Input DTO for creating a printer record.
- */
-export type PrinterCreateDto = {
-  deviceId: number;
-  ipAddress: string | null;
-  communityUpdate: string | null;
-  snmpVersion: string;
-  oidProfileId: number | null;
-  usbHostDeviceId: number | null;
-};
-
-/**
  * A printer found during SNMP discovery scan.
  */
 export type DiscoveredPrinterDto = {

@@ -9,7 +9,7 @@ use crate::context::AppCtx;
 use crate::dto::device::DeviceNew;
 use crate::dto::printer::{
     CompatibleModelAggregateDto, DiscoveredPrinterDto, Pagination, PrinterCompatibleAggregatesDto,
-    PrinterCreateBlockDto, PrinterCreateDto, PrinterDto, PrinterFilter, PrinterListResponse,
+    PrinterCreateBlockDto, PrinterDto, PrinterFilter, PrinterListResponse,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -51,16 +51,6 @@ pub async fn build_printers_get_by_device_id(
 ) -> Result<PrinterDto, AppError> {
     authorize(caller, &Action::ReadData)?;
     ctx.printers.get_by_device_id(device_id).await
-}
-
-/// Мутация: требует `caller` с правом `MutatePrinters` (Admin | Manager).
-pub async fn build_printers_create(
-    ctx: &AppCtx,
-    caller: &Identity,
-    payload: PrinterCreateDto,
-) -> Result<PrinterDto, AppError> {
-    authorize(caller, &Action::MutatePrinters)?;
-    ctx.printers.create_from_device(payload, caller).await
 }
 
 /// Discovery: сканирует диапазон IP через SNMP, требует admin.
@@ -297,16 +287,6 @@ pub async fn printers_get_compatible_aggregates(
 ) -> Result<PrinterCompatibleAggregatesDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_printers_get_compatible_aggregates(state.inner(), &caller, device_id as i64).await
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn printers_create(
-    state: tauri::State<'_, AppCtx>,
-    payload: PrinterCreateDto,
-) -> Result<PrinterDto, AppError> {
-    let caller = resolve_tauri_identity(state.inner()).await?;
-    build_printers_create(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]

@@ -25,7 +25,7 @@ async fn make_ctx(dir: &Path, explicit: &str) -> anyhow::Result<AppCtx> {
         format!("[paths]\nattachments_path = {explicit:?}\n"),
     )?;
     let log_guard = trackly_app::logging::init(&paths, &config)?;
-    Ok(AppCtx::build(paths, config, log_guard).await?)
+    AppCtx::build(paths, config, log_guard).await
 }
 
 fn seed_blob(att_dir: &Path) -> PathBuf {

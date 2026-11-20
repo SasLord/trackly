@@ -143,7 +143,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::printers::printers_get_by_device_id,
         // Phase 13 (R4) — read-only агрегаты совместимых моделей картриджей по принтеру, заменяет удалённый per-device junction (V029).
         crate::tauri_cmds::printers::printers_get_compatible_aggregates,
-        crate::tauri_cmds::printers::printers_create,
         crate::tauri_cmds::printers::printers_discover,
         crate::tauri_cmds::printers::printers_admit,
         crate::tauri_cmds::printers::printers_refresh,

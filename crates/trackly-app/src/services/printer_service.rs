@@ -20,19 +20,16 @@ use std::sync::Arc;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 use trackly_core::auth::{authorize, Action, Identity};
-use trackly_core::domain::printers::{normalize_printer_ip, Pagination, PrinterFilter, PrinterNew};
+use trackly_core::domain::printers::{Pagination, PrinterFilter};
 use trackly_core::error::AppError;
 use trackly_core::ports::printers::PrinterRepository;
 use trackly_core::ports::snmp::SnmpClient;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::printers_sqlite::SqlitePrinterRepository;
 
-use crate::dto::printer::{
-    DiscoveredPrinterDto, PrinterCreateDto, PrinterDto, PrinterListResponse, WsEvent,
-};
+use crate::dto::printer::{DiscoveredPrinterDto, PrinterDto, PrinterListResponse, WsEvent};
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -107,7 +104,6 @@ pub struct PrinterService {
     pub readers: Arc<ReaderPool>,
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) printer_repo: Arc<SqlitePrinterRepository>,
-    pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
     pub(crate) snmp_client: Arc<dyn SnmpClient + Send + Sync>,
     /// Channel for on-demand single-printer poll requests (D-Poll-01).
     pub(crate) poll_tx: tokio::sync::mpsc::Sender<i64>,
@@ -129,7 +125,6 @@ impl PrinterService {
             readers,
             clock,
             printer_repo: Arc::new(SqlitePrinterRepository),
-            audit_repo: Arc::new(SqliteAuditLogRepository),
             snmp_client,
             poll_tx,
             ws_tx,
@@ -268,62 +263,6 @@ impl PrinterService {
     // -----------------------------------------------------------------------
     // Write paths
     // -----------------------------------------------------------------------
-
-    /// Create a printer record from a device (used after discovery or manual add).
-    pub async fn create_from_device(
-        &self,
-        payload: PrinterCreateDto,
-        caller: &Identity,
-    ) -> Result<PrinterDto, AppError> {
-        authorize(caller, &Action::MutatePrinters)?;
-        let now = self.clock.unix_seconds();
-        let user_id = caller.user_id;
-        let printer_repo = self.printer_repo.clone();
-        let audit_repo = self.audit_repo.clone();
-
-        // Phase 41.13 Plan 09 (D-13): тот же валидатор, что на путях устройства;
-        // ДО транзакции. Без него «адрес:порт» доходил бы до RealSnmpClient отсюда.
-        let ip_address = match payload.ip_address.as_deref() {
-            Some(raw) => normalize_printer_ip(raw)?,
-            None => None,
-        };
-        let printer_new = PrinterNew {
-            device_id: payload.device_id as i64,
-            ip_address,
-            community_raw: payload
-                .community_update
-                .clone()
-                .unwrap_or_else(|| "public".to_string()),
-            snmp_version: payload.snmp_version.clone(),
-            oid_profile_id: payload.oid_profile_id,
-            usb_host_device_id: payload.usb_host_device_id.map(|id| id as i64),
-        };
-
-        let printer_id = self
-            .writer
-            .execute(move |conn| {
-                let tx = conn.transaction().map_err(map_rusqlite)?;
-                let id = printer_repo.create_in_tx(&tx, &printer_new, now)?;
-                audit_repo.insert(
-                    &tx,
-                    AuditEntry {
-                        entity_type: "printer",
-                        entity_id: id,
-                        action: "create",
-                        user_id,
-                        before_json: None,
-                        after_json: None,
-                        payload_json: None,
-                        created_at_utc: now,
-                    },
-                )?;
-                tx.commit().map_err(map_rusqlite)?;
-                Ok(id)
-            })
-            .await?;
-
-        self.get(printer_id).await
-    }
 
     /// Acknowledge an active alert for a printer.
     pub async fn acknowledge_alert(

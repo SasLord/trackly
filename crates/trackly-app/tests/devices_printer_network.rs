@@ -21,8 +21,9 @@
 //!     непусты» прочитано из БД ДО обновления, иначе тест вакуумен и не краснит
 //!     мутанты «сброс хоста при IP» и «отказ при заданном хосте»;
 //!   * n11    — создание блоком принтера (канонизация, отказ, хост + IP вместе);
-//!   * n12    — `printers.version` растёт ровно на 1 при записи сети;
-//!   * n13    — прямой путь `printers_create` (`PrinterService::create_from_device`).
+//!   * n12    — `printers.version` растёт ровно на 1 при записи сети.
+//!
+//! (n13 — прямой путь создания принтера — удалён вместе с маршрутом, quick 261121-4nz.)
 //!
 //! Каждый тест обёрнут в `tokio::time::timeout(30s)` (защита от deadlock).
 //!
@@ -37,8 +38,8 @@ use rusqlite::params;
 
 use trackly_app::dto::device::{DeviceDto, DeviceNew, DevicePatch};
 use trackly_app::dto::number_template::{NumberFieldInput, TemplateContextDto};
-use trackly_app::dto::printer::{PrinterCreateBlockDto, PrinterCreateDto};
-use trackly_app::services::{DeviceService, PrinterService};
+use trackly_app::dto::printer::PrinterCreateBlockDto;
+use trackly_app::services::DeviceService;
 use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
@@ -898,112 +899,4 @@ async fn n12_network_write_bumps_printer_version_exactly_once() {
     })
     .await
     .expect("n12 exceeded 30 s budget");
-}
-
-// ---------------------------------------------------------------------------
-// n13: прямой путь printers_create
-// ---------------------------------------------------------------------------
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn n13_printers_create_path_uses_the_same_validator() {
-    tokio::time::timeout(Duration::from_secs(30), async {
-        let (writer, readers, _dir) = test_writer_and_readers();
-        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
-        let (ws_tx, _) = tokio::sync::broadcast::channel::<trackly_app::dto::printer::WsEvent>(16);
-        let (poll_tx, _poll_rx) = tokio::sync::mpsc::channel::<i64>(16);
-        let snmp: Arc<dyn trackly_core::ports::snmp::SnmpClient + Send + Sync> =
-            Arc::new(trackly_infra::snmp::mock::MockSnmpClient::default_fixtures());
-        let printers = PrinterService::new(
-            writer.clone(),
-            readers.clone(),
-            clock,
-            snmp,
-            poll_tx,
-            Arc::new(ws_tx),
-        );
-        let caller = admin_caller();
-
-        // Устройство-принтер БЕЗ строки printers: вставляется напрямую.
-        let next_device = |name: &'static str| {
-            let writer = writer.clone();
-            async move {
-                writer
-                    .execute(move |conn| {
-                        conn.execute(
-                            "INSERT INTO devices (type_id, name, status_id, created_at_utc, \
-                             updated_at_utc, version) VALUES (2, ?1, 1, 1700000000, 1700000000, 1)",
-                            params![name],
-                        )
-                        .map_err(|e| AppError::Internal {
-                            source_chain: format!("insert device: {e}"),
-                        })?;
-                        Ok(conn.last_insert_rowid())
-                    })
-                    .await
-                    .expect("insert device")
-            }
-        };
-        let count_rows = |device_id: i64| {
-            let readers = readers.clone();
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    let conn = readers.acquire();
-                    conn.query_row(
-                        "SELECT COUNT(*) FROM printers WHERE device_id = ?1",
-                        params![device_id],
-                        |r| r.get::<_, i64>(0),
-                    )
-                    .expect("count")
-                })
-                .await
-                .expect("spawn_blocking")
-            }
-        };
-        let dto = |device_id: i64, ip: &str| PrinterCreateDto {
-            device_id: device_id as i32,
-            ip_address: Some(ip.to_string()),
-            community_update: None,
-            snmp_version: "v2c".to_string(),
-            oid_profile_id: None,
-            usb_host_device_id: None,
-        };
-
-        // Адрес с портом и IPv6 - отказ, строки printers нет.
-        for (name, bad) in [
-            ("Принтер А", "192.0.2.90:161"),
-            ("Принтер Б", "::1"),
-            ("Принтер В", "printer a"),
-        ] {
-            let id = next_device(name).await;
-            let res = printers.create_from_device(dto(id, bad), &caller).await;
-            assert_validation(res, IP_FIELD, bad);
-            assert_eq!(
-                count_rows(id).await,
-                0,
-                "{bad}: строка printers не появилась"
-            );
-        }
-
-        // IPv4 и имя хоста принимаются как есть.
-        for (name, good) in [("Принтер Г", "192.0.2.91"), ("Принтер Д", "printer.local")]
-        {
-            let id = next_device(name).await;
-            let created = printers
-                .create_from_device(dto(id, good), &caller)
-                .await
-                .expect("допустимый адрес принят");
-            assert_eq!(created.ip_address.as_deref(), Some(good));
-            assert_eq!(count_rows(id).await, 1);
-        }
-
-        // Пустая строка - ip_address NULL.
-        let id = next_device("Принтер Е").await;
-        let created = printers
-            .create_from_device(dto(id, ""), &caller)
-            .await
-            .expect("пустой адрес принят");
-        assert_eq!(created.ip_address, None, "пустая строка - NULL");
-    })
-    .await
-    .expect("n13 exceeded 30 s budget");
 }

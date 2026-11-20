@@ -6,7 +6,6 @@
 import { apiCall } from '$lib/api/client';
 import type {
   DiscoveredPrinterDto,
-  PrinterCreateDto,
   PrinterDto,
   PrinterFilter,
   PrinterListResponse,
@@ -26,8 +25,6 @@ export const printers = {
   // contract the UI needs.
   getByDeviceId: (deviceId: number) =>
     apiCall<PrinterDto>('printers_get_by_device_id', { deviceId }),
-
-  create: (payload: PrinterCreateDto) => apiCall<PrinterDto>('printers_create', { payload }),
 
   discover: (ipStart: string, ipEnd: string, community: string) =>
     apiCall<DiscoveredPrinterDto[]>('printers_discover', { ipStart, ipEnd, community }),

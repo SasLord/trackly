@@ -142,20 +142,6 @@ impl From<Pagination> for trackly_core::domain::printers::Pagination {
     }
 }
 
-/// Input DTO for creating a printer record.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct PrinterCreateDto {
-    pub device_id: i32,
-    pub ip_address: Option<String>,
-    /// `Some(s)` = set/change community, `None` = keep 'public' default (Pitfall 4).
-    pub community_update: Option<String>,
-    pub snmp_version: String,
-    #[specta(type = Option<i32>)]
-    pub oid_profile_id: Option<i64>,
-    pub usb_host_device_id: Option<i32>,
-}
-
 /// Optional printer block (IP + SNMP community + USB host) carried by the
 /// interactive single-device/printer create path
 /// (`create_single_with_number_check_with_printer`, Phase 40.3 Plan 04,
