@@ -14,6 +14,7 @@ pub mod chat;
 pub mod device;
 pub mod device_status;
 pub mod device_type;
+pub mod employee_device;
 pub mod group_types;
 pub mod groups;
 pub mod health;
