@@ -444,3 +444,224 @@ fn history_requests_by_visit_device_without_duplicates_or_deleted() {
         .unwrap()
         .is_empty());
 }
+
+// ---------------------------------------------------------- employee_device_origins
+
+fn add_group(conn: &Connection, type_id: i64, name: &str, parent: Option<i64>) -> i64 {
+    let seq: i64 = conn
+        .query_row("SELECT COALESCE(MAX(seq),0)+1 FROM groups", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    conn.execute(
+        "INSERT INTO groups (type_id, name, seq, parent_group_id, version, created_at_utc, updated_at_utc) \
+         VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
+        params![type_id, name, seq, parent, NOW],
+    )
+    .unwrap();
+    conn.last_insert_rowid()
+}
+
+fn add_member(conn: &Connection, group: i64, device: i64) {
+    conn.execute(
+        "INSERT INTO group_devices (device_id, group_id, added_at_utc) VALUES (?1, ?2, ?3)",
+        params![device, group, NOW],
+    )
+    .unwrap();
+}
+
+fn add_prop_value(conn: &Connection, group: i64, prop: i64, value_ref: i64) {
+    conn.execute(
+        "INSERT INTO group_property_values (group_id, property_id, value_ref, updated_at_utc) \
+         VALUES (?1, ?2, ?3, ?4)",
+        params![group, prop, value_ref, NOW],
+    )
+    .unwrap();
+}
+
+struct OriginFixture {
+    user_a: i64,
+    user_b: i64,
+    pc_a: i64,
+    sub_dev: i64,
+    prn_link: i64,
+    prn_usb: i64,
+    prn_both: i64,
+    prn_shared: i64,
+    foreign_dev: i64,
+    g1: i64,
+    g2: i64,
+}
+
+fn origin_fixture(conn: &Connection) -> OriginFixture {
+    let user_a = add_user(conn, "ua", "Иванов И.И.");
+    let user_b = add_user(conn, "ub", "Петров П.П.");
+    let pc_a = add_device(conn, "Устройство", "Системник 1", "INV-1");
+    let sub_dev = add_device(conn, "Устройство", "Монитор вложенный", "INV-2");
+    let prn_link = add_device(conn, "Принтер", "Принтер по ссылке", "INV-3");
+    let prn_usb = add_device(conn, "Принтер", "Принтер USB", "INV-4");
+    let prn_both = add_device(conn, "Принтер", "Принтер и член и USB", "INV-5");
+    let prn_shared = add_device(conn, "Принтер", "Принтер 2-го этажа", "INV-6");
+    let foreign_dev = add_device(conn, "Устройство", "Чужой АРМ", "INV-7");
+    add_printer_usb(conn, prn_link, None);
+    add_printer_usb(conn, prn_usb, Some(pc_a));
+    add_printer_usb(conn, prn_both, Some(pc_a));
+    add_printer_usb(conn, prn_shared, None);
+
+    conn.execute(
+        "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+         VALUES ('arm_t', 'АРМ-тест', 'workstation', ?1, ?1)",
+        params![NOW],
+    )
+    .unwrap();
+    let t = conn.last_insert_rowid();
+    let mut prop = |name: &str, dt: &str| -> i64 {
+        conn.execute(
+            "INSERT INTO group_type_properties (type_id, name, data_type, created_at_utc, updated_at_utc) \
+             VALUES (?1, ?2, ?3, ?4, ?4)",
+            params![t, name, dt, NOW],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    };
+    let p_users = prop("Пользователи", "users");
+    let p_refs = prop("Устройства", "device_refs");
+
+    let g1 = add_group(conn, t, "АРМ #1", None);
+    let sub = add_group(conn, t, "Системный блок", Some(g1));
+    let g2 = add_group(conn, t, "АРМ #2", None);
+    let g_foreign = add_group(conn, t, "АРМ чужой", None);
+    add_prop_value(conn, g1, p_users, user_a);
+    add_prop_value(conn, g2, p_users, user_a);
+    add_prop_value(conn, g_foreign, p_users, user_b);
+    add_prop_value(conn, g1, p_refs, prn_link);
+    add_member(conn, g1, pc_a);
+    add_member(conn, sub, sub_dev);
+    add_member(conn, g1, prn_both);
+    add_member(conn, g1, prn_shared);
+    add_prop_value(conn, g2, p_refs, prn_shared);
+    add_member(conn, g_foreign, foreign_dev);
+    OriginFixture {
+        user_a,
+        user_b,
+        pc_a,
+        sub_dev,
+        prn_link,
+        prn_usb,
+        prn_both,
+        prn_shared,
+        foreign_dev,
+        g1,
+        g2,
+    }
+}
+
+#[test]
+fn employee_device_origins_equals_scope_invariant() {
+    let (conn, _g) = test_db();
+    let f = origin_fixture(&conn);
+    let ids: std::collections::BTreeSet<i64> = repo()
+        .employee_device_ids(&conn, f.user_a)
+        .unwrap()
+        .into_iter()
+        .collect();
+    let got: std::collections::BTreeSet<i64> = repo()
+        .employee_device_origins(&conn, f.user_a)
+        .unwrap()
+        .iter()
+        .map(|r| r.device_id)
+        .collect();
+    assert_eq!(got, ids);
+    // несущая проба: пусто не проходит, есть устройства всех трёх веток, чужого нет
+    assert!(got.contains(&f.pc_a) && got.contains(&f.sub_dev)); // состав
+    assert!(got.contains(&f.prn_link)); // ссылка
+    assert!(got.contains(&f.prn_usb)); // USB
+    assert!(!got.contains(&f.foreign_dev));
+}
+
+#[test]
+fn employee_device_origins_names_bound_group_not_subgroup() {
+    let (conn, _g) = test_db();
+    let f = origin_fixture(&conn);
+    let rows = repo().employee_device_origins(&conn, f.user_a).unwrap();
+    let r = rows.iter().find(|r| r.device_id == f.sub_dev).unwrap();
+    assert_eq!(r.group_name, "АРМ #1");
+    assert_eq!(r.group_id, f.g1);
+    assert!(rows.iter().all(|r| r.group_name != "Системный блок"));
+}
+
+#[test]
+fn employee_device_origins_sources_and_priority() {
+    use trackly_infra::repos::repairs_sqlite::DeviceOriginSource as S;
+    let (conn, _g) = test_db();
+    let f = origin_fixture(&conn);
+    let rows = repo().employee_device_origins(&conn, f.user_a).unwrap();
+    let srcs = |d: i64| -> Vec<S> {
+        let mut v: Vec<S> = rows
+            .iter()
+            .filter(|r| r.device_id == d)
+            .map(|r| r.source)
+            .collect();
+        v.sort_by_key(|s| s.rank());
+        v
+    };
+    assert_eq!(srcs(f.prn_both), vec![S::Usb, S::Member]);
+    assert_eq!(srcs(f.prn_usb), vec![S::Usb]);
+    assert_eq!(srcs(f.prn_link), vec![S::Link]);
+    assert!(S::Usb.rank() < S::Link.rank() && S::Link.rank() < S::Member.rank());
+    let shared: Vec<i64> = rows
+        .iter()
+        .filter(|r| r.device_id == f.prn_shared)
+        .map(|r| r.group_id)
+        .collect();
+    assert_eq!(shared.len(), 2);
+    assert!(shared.contains(&f.g1) && shared.contains(&f.g2));
+}
+
+#[test]
+fn employee_device_origins_exclusions_and_has_groups() {
+    let (conn, _g) = test_db();
+    let f = origin_fixture(&conn);
+    // удалённое устройство и удалённая группа выпадают
+    conn.execute(
+        "UPDATE devices SET deleted_at_utc = ?2 WHERE id = ?1",
+        params![f.pc_a, NOW],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE groups SET deleted_at_utc = ?2 WHERE id = ?1",
+        params![f.g2, NOW],
+    )
+    .unwrap();
+    let rows = repo().employee_device_origins(&conn, f.user_a).unwrap();
+    assert!(rows.iter().all(|r| r.device_id != f.pc_a));
+    assert!(rows.iter().all(|r| r.group_id != f.g2));
+    assert!(rows.iter().all(|r| r.device_id != f.foreign_dev));
+    // пользователь без групп / несуществующий
+    let c = add_user(&conn, "uc", "Сидоров С.С.");
+    assert!(repo().employee_device_origins(&conn, c).unwrap().is_empty());
+    assert!(!repo().employee_has_groups(&conn, c).unwrap());
+    assert!(!repo().employee_has_groups(&conn, 999_999).unwrap());
+    assert!(repo().employee_has_groups(&conn, f.user_a).unwrap());
+    assert!(repo().employee_has_groups(&conn, f.user_b).unwrap());
+    // группа без устройств всё равно считается группой
+    conn.execute("DELETE FROM group_devices", []).unwrap();
+    assert!(repo().employee_has_groups(&conn, f.user_b).unwrap());
+}
+
+#[test]
+fn employee_device_ids_keeps_written_off_device() {
+    use trackly_core::domain::repairs::DEVICE_STATUS_CODE_WRITTEN_OFF;
+    assert_eq!(DEVICE_STATUS_CODE_WRITTEN_OFF, "списано");
+    let (conn, _g) = test_db();
+    let f = origin_fixture(&conn);
+    conn.execute(
+        "UPDATE devices SET status_id = (SELECT id FROM device_statuses WHERE code = ?2) WHERE id = ?1",
+        params![f.pc_a, DEVICE_STATUS_CODE_WRITTEN_OFF],
+    )
+    .unwrap();
+    assert!(repo()
+        .employee_device_ids(&conn, f.user_a)
+        .unwrap()
+        .contains(&f.pc_a));
+}

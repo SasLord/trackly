@@ -602,4 +602,110 @@ impl SqliteRepairRepository {
             .map_err(map_rusqlite)?;
         Ok(rows)
     }
+
+    /// Происхождение устройств области сотрудника: по строке на (устройство, привязанная
+    /// группа, источник). Имя группы — привязанной (корень `bound`), не вложенной подгруппы.
+    /// Множество `device_id` равно результату `employee_device_ids` (инвариант).
+    /// Лучший источник на строку устройства выбирает сервис по `rank()`.
+    pub fn employee_device_origins(
+        &self,
+        conn: &Connection,
+        user_id: i64,
+    ) -> Result<Vec<DeviceOriginRow>, AppError> {
+        const SQL: &str = "
+            WITH RECURSIVE bound(id) AS (
+                SELECT DISTINCT g.id FROM group_property_values v
+                JOIN group_type_properties p ON p.id = v.property_id AND p.data_type = 'users'
+                JOIN groups g ON g.id = v.group_id AND g.deleted_at_utc IS NULL
+                WHERE v.value_ref = ?1
+            ),
+            sub(id, root) AS (
+                SELECT id, id FROM bound
+                UNION
+                SELECT g.id, sub.root FROM groups g JOIN sub ON g.parent_group_id = sub.id
+                WHERE g.deleted_at_utc IS NULL
+            ),
+            members(device_id, root) AS (
+                SELECT gd.device_id, sub.root FROM group_devices gd
+                JOIN sub ON gd.group_id = sub.id
+                JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
+            )
+            SELECT m.device_id, m.root, g.name, 2 AS rank
+            FROM members m JOIN groups g ON g.id = m.root
+            UNION
+            SELECT d.id, b.id, g.name, 1
+            FROM group_property_values v
+            JOIN group_type_properties p ON p.id = v.property_id AND p.data_type = 'device_refs'
+            JOIN bound b ON b.id = v.group_id
+            JOIN groups g ON g.id = b.id
+            JOIN devices d ON d.id = v.value_ref AND d.deleted_at_utc IS NULL
+            UNION
+            SELECT d.id, m.root, g.name, 0
+            FROM printers pr
+            JOIN devices d ON d.id = pr.device_id AND d.deleted_at_utc IS NULL
+            JOIN members m ON m.device_id = pr.usb_host_device_id
+            JOIN groups g ON g.id = m.root
+            ORDER BY 3, 2, 1, 4";
+        let mut stmt = conn.prepare(SQL).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![user_id], |r| {
+                let rank: i64 = r.get(3)?;
+                Ok(DeviceOriginRow {
+                    device_id: r.get(0)?,
+                    group_id: r.get(1)?,
+                    group_name: r.get(2)?,
+                    source: match rank {
+                        0 => DeviceOriginSource::Usb,
+                        1 => DeviceOriginSource::Link,
+                        _ => DeviceOriginSource::Member,
+                    },
+                })
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Есть ли у пользователя хотя бы одна живая привязанная группа (D-08: различает
+    /// «нет групп» и «группы без устройств»).
+    pub fn employee_has_groups(&self, conn: &Connection, user_id: i64) -> Result<bool, AppError> {
+        const SQL: &str = "
+            SELECT EXISTS(
+                SELECT 1 FROM group_property_values v
+                JOIN group_type_properties p ON p.id = v.property_id AND p.data_type = 'users'
+                JOIN groups g ON g.id = v.group_id AND g.deleted_at_utc IS NULL
+                WHERE v.value_ref = ?1
+            )";
+        conn.query_row(SQL, params![user_id], |r| r.get::<_, bool>(0))
+            .map_err(map_rusqlite)
+    }
+}
+
+/// Источник связи устройства с привязанной группой сотрудника (приоритет USB > ссылка > состав).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceOriginSource {
+    Usb,
+    Link,
+    Member,
+}
+
+impl DeviceOriginSource {
+    /// Меньше — выше приоритет.
+    pub fn rank(self) -> u8 {
+        match self {
+            DeviceOriginSource::Usb => 0,
+            DeviceOriginSource::Link => 1,
+            DeviceOriginSource::Member => 2,
+        }
+    }
+}
+
+/// Строка происхождения: устройство, привязанная группа сотрудника, источник.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceOriginRow {
+    pub device_id: i64,
+    pub group_id: i64,
+    pub group_name: String,
+    pub source: DeviceOriginSource,
 }

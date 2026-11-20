@@ -14,6 +14,8 @@ pub const DEVICE_STATUS_CODE_IN_REPAIR: &str = "в_ремонте";
 pub const DEVICE_STATUS_CODE_TO_WRITE_OFF: &str = "на_списание";
 pub const DEVICE_STATUS_CODE_IN_STORAGE: &str = "на_складе";
 pub const DEVICE_STATUS_CODE_IN_USE: &str = "в_работе";
+/// Код статуса «Списано» (V014). Фильтр списка сотрудника (D-20) сравнивает по коду.
+pub const DEVICE_STATUS_CODE_WRITTEN_OFF: &str = "списано";
 
 /// Верхняя граница стоимости: 10 000 000 ₽ в копейках.
 pub const MAX_COST_KOPECKS: i64 = 1_000_000_000;
