@@ -1,0 +1,471 @@
+[
+  {
+    "name": "обычное устройство: открыть, ремонт, копирование",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": "000123",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "принтер: добавляется замена картриджа после ремонта",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": true,
+      "inventoryNumber": "000123",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        },
+        {
+          "id": "cartridge",
+          "label": "Замена картриджа"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "не принтер: пункта картриджа нет",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": null,
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "участник ремонта: пункт ремонта скрыт, есть переход",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": "000123",
+      "inRepair": true,
+      "myRepairRequestId": 42,
+      "myOpenRequests": [
+        {
+          "id": 42,
+          "requestType": "repair",
+          "status": "open"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "goto:42",
+          "label": "Перейти к заявке №42"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "чужой ремонт: пункт активен с подсказкой без номера",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": "000123",
+      "inRepair": true,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт",
+          "hint": "Уже в ремонте — вы присоединитесь к заявке"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "нет ремонта: подсказки нет",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": "000123",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "две заявки в обратном порядке: переходы по возрастанию номера",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": "000123",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": [
+        {
+          "id": 90,
+          "requestType": "repair",
+          "status": "open"
+        },
+        {
+          "id": 7,
+          "requestType": "cartridge_replace",
+          "status": "open"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        },
+        {
+          "id": "goto:7",
+          "label": "Перейти к заявке №7"
+        },
+        {
+          "id": "goto:90",
+          "label": "Перейти к заявке №90"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "принтер с заявками: ремонт, картридж, затем переходы",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": true,
+      "inventoryNumber": "000123",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": [
+        {
+          "id": 5,
+          "requestType": "cartridge_replace",
+          "status": "open"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        },
+        {
+          "id": "cartridge",
+          "label": "Замена картриджа"
+        },
+        {
+          "id": "goto:5",
+          "label": "Перейти к заявке №5"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "пустой инв. номер: копирования нет",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": "",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "пробельный инв. номер: копирования нет",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": "   ",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "инв. номер с пробелами по краям: копирование есть",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": " 77 ",
+      "inRepair": false,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "участник ремонта, не принтер, без номера: пустые секции не дают разделителя",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": false,
+      "inventoryNumber": null,
+      "inRepair": true,
+      "myRepairRequestId": 3,
+      "myOpenRequests": [
+        {
+          "id": 3,
+          "requestType": "repair",
+          "status": "open"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "goto:3",
+          "label": "Перейти к заявке №3"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "участник ремонта по принтеру: картридж остаётся",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": true,
+      "inventoryNumber": "000123",
+      "inRepair": true,
+      "myRepairRequestId": 3,
+      "myOpenRequests": [
+        {
+          "id": 3,
+          "requestType": "repair",
+          "status": "open"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "cartridge",
+          "label": "Замена картриджа"
+        },
+        {
+          "id": "goto:3",
+          "label": "Перейти к заявке №3"
+        }
+      ],
+      [
+        {
+          "id": "copy",
+          "label": "Скопировать инв. номер"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "чужой ремонт у принтера: подсказка и картридж",
+    "fn": "buildEmployeeMenu",
+    "input": {
+      "isPrinter": true,
+      "inventoryNumber": null,
+      "inRepair": true,
+      "myRepairRequestId": null,
+      "myOpenRequests": []
+    },
+    "expected": [
+      [
+        {
+          "id": "open",
+          "label": "Открыть"
+        }
+      ],
+      [
+        {
+          "id": "repair",
+          "label": "Заявка на ремонт",
+          "hint": "Уже в ремонте — вы присоединитесь к заявке"
+        },
+        {
+          "id": "cartridge",
+          "label": "Замена картриджа"
+        }
+      ]
+    ]
+  }
+]
