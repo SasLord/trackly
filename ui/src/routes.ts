@@ -12,6 +12,7 @@ import UsersPage from './pages/UsersPage.svelte';
 import SettingsPage from './pages/SettingsPage.svelte';
 import NotFound from './pages/NotFound.svelte';
 import LoginPage from './features/auth/LoginPage.svelte';
+import EmployeeDevicesPage from './features/employee/EmployeeDevicesPage.svelte';
 import AccessDenied from './pages/AccessDenied.svelte';
 import ComponentShowcasePage from './pages/ComponentShowcasePage.svelte';
 
@@ -39,6 +40,7 @@ export const routes = {
 export const employeeRoutes = {
   '/': RequestsPage,
   '/requests': RequestsPage,
+  '/devices': EmployeeDevicesPage,
   '/access-denied': AccessDenied,
   '*': AccessDenied,
 } as const;

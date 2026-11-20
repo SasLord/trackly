@@ -44,12 +44,14 @@ const ENTRIES = [
   'src/features/requests/RequestsPage.svelte',
   'src/features/layout/EmployeeLayout.svelte',
   'src/features/auth/LoginPage.svelte',
+  // 41.6 (D-14): маршрут /devices не входит во входы гейта — без записи страница не проверялась бы.
+  'src/features/employee/EmployeeDevicesPage.svelte',
 ];
 
-// Счётные минимумы против «зелёного по пустоте»: прогон на исправленном коде дал 81 файл и 79
+// Счётные минимумы против «зелёного по пустоте»: прогон на исправленном коде дал 81 файл и 79 (после 41.6 — 119 и 89)
 // вызова команд; запас на естественное сокращение кода.
-const MIN_FILES = 60;
-const MIN_CALLS = 50;
+const MIN_FILES = 90;
+const MIN_CALLS = 70;
 
 /**
  * Выражения-охраны. Каждая запись с причиной: расширять список ради зелёного нельзя.
@@ -633,6 +635,13 @@ function selftest() {
       from: '<script lang="ts">',
       to: `<script lang="ts">\n  void apiCall('device_statuses_list');`,
       expect: /EmployeeLayout\.svelte:\d+: .*device_statuses_list/,
+    },
+    {
+      name: 'staff-команда в EmployeeDevicesPage (device_statuses_list)',
+      file: 'src/features/employee/EmployeeDevicesPage.svelte',
+      from: '<script lang="ts">',
+      to: `<script lang="ts">\n  import { apiCall } from '$lib/api/client';\n  void apiCall('device_statuses_list');`,
+      expect: /EmployeeDevicesPage\.svelte:\d+: .*device_statuses_list/,
     },
     {
       name: 'неизвестная команда (apiCall не литерал)',

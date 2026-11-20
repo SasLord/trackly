@@ -126,6 +126,10 @@ const ROW_FILES = [
   'src/features/devices/DeviceGroupRow.svelte',
   'src/features/devices/DeviceContainerRow.svelte',
   'src/features/printers/PrinterListRow.svelte',
+  // Раздел «Устройства» сотрудника (41.6, D-09): своё меню EmployeeDeviceMenu, не DeviceRowMenu,
+  // поэтому автообнаружение по <DeviceRowMenu их не найдёт — файлы перечислены явно.
+  'src/features/employee/EmployeeDeviceRow.svelte',
+  'src/features/employee/EmployeeDeviceTile.svelte',
 ];
 // Обязательные: отсутствие файла или привязок — нарушение, SKIP недопустим.
 // План 17 внёс DeviceListRow и DeviceGroupRow, план 19 (Task 1) — PrinterListRow.
@@ -134,6 +138,8 @@ const MANDATORY_ROW_FILES = [
   'src/features/devices/DeviceGroupRow.svelte',
   'src/features/devices/DeviceContainerRow.svelte',
   'src/features/printers/PrinterListRow.svelte',
+  'src/features/employee/EmployeeDeviceRow.svelte',
+  'src/features/employee/EmployeeDeviceTile.svelte',
 ];
 // Привязки, которые обязательная строка ОБЯЗАНА иметь (закрывает слепое пятно
 // плана 41.1-18: снятие `ondblclick=` не краснило ни F1 (считает охраны, а не
@@ -149,6 +155,9 @@ const REQUIRED_BINDINGS = {
   // Строка АРМ (фаза 41.9): меню, двойной клик и клавиатура, как у DeviceListRow.
   'src/features/devices/DeviceContainerRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
   'src/features/printers/PrinterListRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
+  // Строка и плитка сотрудника (41.6). У плитки нет ondblclick: одинарный клик открывает карточку.
+  'src/features/employee/EmployeeDeviceRow.svelte': ['oncontextmenu', 'ondblclick', 'onkeydown'],
+  'src/features/employee/EmployeeDeviceTile.svelte': ['oncontextmenu', 'onkeydown'],
 };
 
 // Файлы, у которых обязана быть хотя бы одна привязка `onclick` на <td> (правило
@@ -1961,6 +1970,67 @@ async function selftest(cases) {
       process.exit(1);
     }
     console.log(`${TAG} selftest: мутант строки АРМ ПОЙМАН — ${m.name}`);
+  }
+  // 5d2. Реальные исходники строки и плитки сотрудника (41.6, T-41.6-41): чистые зелёные;
+  // перестановка охраны (preventDefault раньше охраны) и удалённая охрана краснят.
+  const EMP_ROW_PATH = 'src/features/employee/EmployeeDeviceRow.svelte';
+  const EMP_TILE_PATH = 'src/features/employee/EmployeeDeviceTile.svelte';
+  for (const f of [EMP_ROW_PATH, EMP_TILE_PATH]) {
+    if (!MANDATORY_ROW_FILES.includes(f) || !ROW_FILES.includes(f)) {
+      console.error(`${TAG} SELFTEST FAIL — ${f} не внесён в ROW_FILES/MANDATORY_ROW_FILES`);
+      process.exit(1);
+    }
+  }
+  const empCtxHead =
+    'function handleContextMenu(e: MouseEvent) {\n    if (isRowOverlayEvent(e.target)) return;\n    e.preventDefault();';
+  const empCtxSwap =
+    'function handleContextMenu(e: MouseEvent) {\n    e.preventDefault();\n    if (isRowOverlayEvent(e.target)) return;';
+  for (const [p, bindings, label] of [
+    [EMP_ROW_PATH, ALL_BINDINGS, 'строка сотрудника'],
+    [EMP_TILE_PATH, ['oncontextmenu', 'onkeydown'], 'плитка сотрудника'],
+  ]) {
+    let src;
+    try {
+      src = fs.readFileSync(path.join(UI_ROOT, p), 'utf8');
+    } catch {
+      console.error(`${TAG} SELFTEST FAIL — нет реального исходника ${p}`);
+      process.exit(1);
+    }
+    const o = {
+      ...SELFTEST_OPTS,
+      mandatory: [p],
+      rowFiles: [p],
+      requiredBindings: { [p]: bindings },
+    };
+    const clean = scanStructural(fixtureMap({ [p]: src }), o);
+    if (clean.violations.length) {
+      console.error(
+        `${TAG} SELFTEST FAIL — реальная ${label} красная:\n  - ${clean.violations.map(formatViolation).join('\n  - ')}`,
+      );
+      process.exit(1);
+    }
+    for (const m of [
+      {
+        name: 'перестановка охраны contextmenu (preventDefault раньше охраны)',
+        src: mutate(src, empCtxHead, empCtxSwap, p + '-ctx-swap'),
+      },
+      {
+        name: 'удалена охрана contextmenu',
+        src: mutate(
+          src,
+          empCtxHead,
+          'function handleContextMenu(e: MouseEvent) {\n    e.preventDefault();',
+          p + '-ctx-drop',
+        ),
+      },
+    ]) {
+      const r = scanStructural(fixtureMap({ [p]: m.src }), o);
+      if (!r.violations.some((v) => v.file === p)) {
+        console.error(`${TAG} SELFTEST FAIL — мутант (${label}) НЕ пойман: ${m.name}`);
+        process.exit(1);
+      }
+      console.log(`${TAG} selftest: мутант (${label}) ПОЙМАН — ${m.name}`);
+    }
   }
   // 5e. Реальный исходник строки свёртки (G-4, фаза 41.9, план 10): чистый зелёный;
   // перестановка охраны, удалённая охрана и снятая привязка oncontextmenu краснят.
