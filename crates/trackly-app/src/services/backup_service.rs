@@ -155,6 +155,35 @@ impl BackupService {
         })?
     }
 
+    /// Копирует каталог вложений в `dest` (перенос БД, NEW-1).
+    ///
+    /// В отличие от `run_backup` (best-effort, D-22) ошибка НЕ глотается: вызывающий
+    /// обязан прервать перенос до записи конфига. Нет источника или он не существует —
+    /// `Ok(0)`.
+    pub async fn copy_attachments_to(&self, dest: &Path) -> Result<usize, AppError> {
+        let Some(src) = self.attachments_dir.clone() else {
+            return Ok(0);
+        };
+        let dest = dest.to_path_buf();
+        tokio::task::spawn_blocking(move || -> Result<usize, AppError> {
+            if !src.is_dir() {
+                return Ok(0);
+            }
+            std::fs::create_dir_all(&dest).map_err(|e| AppError::Validation {
+                field: "new_path".to_string(),
+                message: format!("Не удалось скопировать вложения: {e}"),
+            })?;
+            copy_attachments_incremental(&src, &dest).map_err(|e| AppError::Validation {
+                field: "new_path".to_string(),
+                message: format!("Не удалось скопировать вложения: {e}"),
+            })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking BackupService::copy_attachments_to: {e}"),
+        })?
+    }
+
     /// Копирует БД в конкретный путь (без авто-имени и retention).
     /// Используется при перемещении файла БД.
     pub async fn backup_to_path(&self, dest_path: &Path) -> Result<(), AppError> {

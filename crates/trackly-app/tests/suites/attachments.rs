@@ -19,6 +19,8 @@ mod attachments_http;
 mod attachments_integrity;
 #[path = "../attachments_lifecycle.rs"]
 mod attachments_lifecycle;
+#[path = "../attachments_move_db.rs"]
+mod attachments_move_db;
 #[path = "../attachments_service.rs"]
 mod attachments_service;
 #[path = "../attachments_unavailable_root.rs"]

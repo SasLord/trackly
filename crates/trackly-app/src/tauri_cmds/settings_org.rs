@@ -124,6 +124,9 @@ pub async fn build_settings_open_db_folder(
 }
 
 /// Move DB to new_path via rusqlite::backup::Backup then update config.
+/// Если `[paths].attachments_path` пуст («рядом с БД»), каталог вложений копируется в
+/// `<папка new_path>/attachments` ДО переписывания конфига: сбой копии оставляет
+/// `db_path` прежним. Явный `attachments_path` не трогается.
 /// Returns Ok(()) — caller invokes app_restart unconditionally after this.
 ///
 /// Security (T-07-07-03): this function is Tauri-only, NOT exposed in HTTP router.
@@ -144,6 +147,33 @@ pub async fn build_settings_move_db(
 
     // Step 1: Copy DB to new path via BackupService::backup_to_path.
     ctx.backup.backup_to_path(Path::new(&new_path)).await?;
+
+    // Step 1b: пустой attachments_path = «рядом с БД» → копируем вложения до смены конфига.
+    let attachments_explicit = {
+        let cfg = ctx.paths.config_file().to_path_buf();
+        tokio::task::spawn_blocking(move || -> bool {
+            let raw = std::fs::read_to_string(&cfg).unwrap_or_default();
+            let doc: toml::Value = toml::from_str(&raw)
+                .unwrap_or_else(|_| toml::Value::Table(toml::value::Table::new()));
+            doc.get("paths")
+                .and_then(|p| p.get("attachments_path"))
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.trim().is_empty())
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking move_db read cfg: {e}"),
+        })?
+    };
+    if !attachments_explicit {
+        let parent = Path::new(&new_path)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        ctx.backup
+            .copy_attachments_to(&parent.join("attachments"))
+            .await?;
+    }
 
     // Step 2: Update [paths].db_path in config file.
     // We rewrite the config by parsing via toml and re-serializing with the new db_path.
