@@ -4,6 +4,8 @@
   // Неизвестно (-2/-3 или null): пустой серый track, без fill.
   // role="progressbar", aria-valuenow/min/max (UI-SPEC §Accessibility §TonerGauge).
 
+  import { tonerFillColor } from './tonerFill';
+
   interface Props {
     label: string;
     level: number | null;
@@ -25,16 +27,8 @@
           : Math.min(100, Math.round((level * 100) / max)),
   );
 
-  // Color by threshold (UI-SPEC §Toner-gauge семантика).
-  const fillColor = $derived<string>(
-    pct === null
-      ? 'var(--tr-surface-sunken)'
-      : pct >= 25
-        ? 'var(--tr-accent)'
-        : pct >= 10
-          ? 'var(--tr-warning)'
-          : 'var(--tr-danger)',
-  );
+  // Цвет по порогам — общая формула tonerFillColor (UI-SPEC §Toner-gauge семантика).
+  const fillColor = $derived<string>(tonerFillColor(pct));
 
   const ariaLabel = $derived(`Уровень ${label}: ${pct !== null ? pct + '%' : 'неизвестно'}`);
 </script>

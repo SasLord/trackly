@@ -132,6 +132,9 @@ const MIN_STATUS_BADGE_FILES = 5;
 const SELFTEST_MIN_STATUS_BADGES = 2;
 const SELFTEST_MIN_STATUS_BADGE_FILES = 2;
 const STORE_PATH = 'src/lib/stores/deviceStatuses.svelte.ts';
+// Карта тонов вынесена в чистый модуль без runtime-импортов (41.6, D-08): сотрудник
+// не должен втягивать стор со справочником. Правила F1-F4 читают её здесь.
+const TONE_PATH = 'src/lib/deviceStatusTone.ts';
 const BADGE_PATH = 'src/lib/components/Badge.svelte';
 const TONE_CODES = ['на_складе', 'в_работе', 'на_ремонте', 'в_ремонте', 'на_списание', 'списано'];
 const MUTED_CODES = ['на_ремонте', 'на_списание'];
@@ -194,6 +197,10 @@ const EXEMPT = [
   {
     path: 'src/lib/stores/deviceStatuses.svelte.ts',
     reason: 'сам стор: единственная таблица тонов по code, подписей он не содержит',
+  },
+  {
+    path: 'src/lib/deviceStatusTone.ts',
+    reason: 'чистая карта тонов по code (вынесена из стора), подписей не содержит',
   },
 ];
 
@@ -559,21 +566,21 @@ function parseBadgeAttrs(tag) {
 
 /** Правила F1-F4: литерал TONES в сторе. */
 function checkToneMap(files, add) {
-  const src = files.get(STORE_PATH);
+  const src = files.get(TONE_PATH);
   if (src === undefined) {
-    add(STORE_PATH, 0, 'F1', 'файл стора не найден — карта тонов не проверена.');
+    add(TONE_PATH, 0, 'F1', 'файл карты тонов не найден — карта тонов не проверена.');
     return;
   }
   const code = stripComments(src);
   const decl = /\bconst\s+TONES\b[^=]*=\s*\{/.exec(code);
   if (!decl) {
-    add(STORE_PATH, 0, 'F1', 'литерал `const TONES = { … }` не найден.');
+    add(TONE_PATH, 0, 'F1', 'литерал `const TONES = { … }` не найден.');
     return;
   }
   const open = decl.index + decl[0].length - 1;
   const end = readBalanced(code, open);
   if (end < 0) {
-    add(STORE_PATH, 0, 'F1', 'литерал TONES не закрыт.');
+    add(TONE_PATH, 0, 'F1', 'литерал TONES не закрыт.');
     return;
   }
   const body = code.slice(open + 1, end);
@@ -589,20 +596,20 @@ function checkToneMap(files, add) {
     });
   }
   for (const c of TONE_CODES) {
-    if (!entries.has(c)) add(STORE_PATH, 0, 'F1', `в карте TONES нет кода «${c}».`);
+    if (!entries.has(c)) add(TONE_PATH, 0, 'F1', `в карте TONES нет кода «${c}».`);
   }
   for (const c of entries.keys()) {
-    if (!TONE_CODES.includes(c)) add(STORE_PATH, 0, 'F1', `в карте TONES лишний код «${c}».`);
+    if (!TONE_CODES.includes(c)) add(TONE_PATH, 0, 'F1', `в карте TONES лишний код «${c}».`);
   }
   for (const [c, e] of entries) {
     if (e.appearance === 'dot') {
-      add(STORE_PATH, e.line, 'F2', `«${c}» — appearance: 'dot'; все шесть статусов — soft-чипы.`);
+      add(TONE_PATH, e.line, 'F2', `«${c}» — appearance: 'dot'; все шесть статусов — soft-чипы.`);
     }
     if (!TONE_CODES.includes(c)) continue;
     const want = MUTED_CODES.includes(c);
     if (e.muted !== want) {
       add(
-        STORE_PATH,
+        TONE_PATH,
         e.line,
         'F3',
         want
@@ -617,7 +624,7 @@ function checkToneMap(files, add) {
     if (!ea || !eb) continue;
     if (ea.variant !== variant || eb.variant !== variant) {
       add(
-        STORE_PATH,
+        TONE_PATH,
         ea.line,
         'F4',
         `пара «${a}»/«${b}» должна делить variant '${variant}' (сейчас ${ea.variant}/${eb.variant}); различие пары — только muted.`,
@@ -1079,7 +1086,7 @@ function fixtureFiles(over = {}) {
     [PATH_REQUEST, over.request ?? REQUEST_ROW],
     [PATH_SHOWCASE, over.showcase ?? SHOWCASE],
     [PATH_PLACES, over.places ?? CLEAN_PLACES],
-    [STORE_PATH, over.store ?? CLEAN_STORE],
+    [TONE_PATH, over.store ?? CLEAN_STORE],
     [BADGE_PATH, over.badge ?? CLEAN_BADGE],
     ...(over.extra ?? []),
   ]);
@@ -1680,7 +1687,7 @@ function runSelfTest() {
       name: 'M35 [F1] файл стора отсутствует в дереве',
       files: (() => {
         const f = fixtureFiles();
-        f.delete(STORE_PATH);
+        f.delete(TONE_PATH);
         return f;
       })(),
       codes: ['F1'],
@@ -1790,7 +1797,7 @@ function runSelfTest() {
       codes: ['F6'],
     });
     // --- Связка D-29a: инверсию пары ловит F3, а не F6 -------------------------
-    const REAL_STORE_SRC = fs.readFileSync(path.join(UI_ROOT, STORE_PATH), 'utf8');
+    const REAL_STORE_SRC = fs.readFileSync(path.join(UI_ROOT, TONE_PATH), 'utf8');
     fixtures.push({
       name: 'F3-инверсия реальный стор: muted переехал с на_ремонте на в_ремонте (пара инвертирована) — ловит F3, не F6',
       files: fixtureFiles({

@@ -2,15 +2,17 @@
   // Маркер принтера перед именем строки (фаза 41.9, D-20, UI-SPEC §7.5).
   // Для других типов ничего не рисует; обработчиков событий нет.
   interface Props {
-    typeId: number;
+    typeId?: number;
+    /** Серверный признак принтера (41.6, D-05); если передан, приоритетнее typeId. */
+    isPrinter?: boolean;
   }
 
-  const { typeId }: Props = $props();
+  const { typeId, isPrinter }: Props = $props();
 
   const PRINTER_TYPE_ID = 2;
 </script>
 
-{#if typeId === PRINTER_TYPE_ID}
+{#if isPrinter !== undefined ? isPrinter : typeId === PRINTER_TYPE_ID}
   <span class="printer-mark" role="img" aria-label="Принтер" title="Принтер">
     <svg
       width="14"

@@ -18,14 +18,13 @@ import { authStore } from '$lib/stores/auth.svelte';
 import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
 import type { DeviceStatusDto } from '../../bindings';
 
-export type StatusVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
-export type StatusAppearance = 'soft' | 'solid' | 'dot' | 'count';
-export interface StatusTone {
-  variant: StatusVariant;
-  appearance: StatusAppearance;
-  /** Приглушённый чип: статус «ещё в очереди/помечен», тон тот же, ярче только действующий. */
-  muted?: boolean;
-}
+import { statusTone } from '$lib/deviceStatusTone';
+import type { StatusTone, StatusVariant, StatusAppearance } from '$lib/deviceStatusTone';
+
+// Карта тонов и statusTone живут в чистом модуле без runtime-импортов (41.6, D-08),
+// чтобы employee-код не втягивал этот стор. Здесь — реэкспорт: одна таблица, две точки входа.
+export { statusTone };
+export type { StatusTone, StatusVariant, StatusAppearance };
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -33,20 +32,6 @@ export const deviceStatusesStore = $state<{ items: DeviceStatusDto[]; state: Loa
   items: [],
   state: 'idle',
 });
-
-// Единственная в приложении таблица тонов; ключ — code из справочника
-// (UI-SPEC §10.2, пересмотрено 2026-10-17: R-06 отменён). Все шесть статусов —
-// soft-чипы. Тон = насколько плохо, muted = ещё только в очереди/помечено:
-// пара «действующий / ожидающий» делит variant и различается яркостью.
-const TONES: Record<string, StatusTone> = {
-  на_складе: { variant: 'default', appearance: 'soft' },
-  в_работе: { variant: 'accent', appearance: 'soft' },
-  на_ремонте: { variant: 'warning', appearance: 'soft', muted: true },
-  в_ремонте: { variant: 'warning', appearance: 'soft' },
-  на_списание: { variant: 'destructive', appearance: 'soft', muted: true },
-  списано: { variant: 'destructive', appearance: 'soft' },
-};
-const FALLBACK_TONE: StatusTone = { variant: 'default', appearance: 'soft' };
 
 let inflight: Promise<void> | null = null;
 let errorToasted = false;
@@ -129,11 +114,6 @@ export function statusLabel(id: number): string {
 /** Статусы в порядке жизненного цикла (sort_order). */
 export function orderedStatuses(): DeviceStatusDto[] {
   return [...deviceStatusesStore.items].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-}
-
-/** Тон бейджа по коду статуса; неизвестный или пустой код — нейтральный. */
-export function statusTone(code: string | null | undefined): StatusTone {
-  return (code ? TONES[code] : undefined) ?? FALLBACK_TONE;
 }
 
 // Фаза 41.4 (D-14/D-17): статусы, при которых устройство группы исключено из
