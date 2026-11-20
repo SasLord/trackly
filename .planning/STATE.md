@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.6 (employee-devices-section) — EXECUTING
-Plan: 1 of 12
+Plan: 6 of 12 завершён
 Status: Executing Phase 41.6
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
@@ -1677,7 +1677,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-20T12:03:15.967Z
-Stopped at: Phase 41.6 UI-SPEC approved
+Stopped at: Completed 41.6-06-PLAN.md
 Resume file: None
 
 None
