@@ -6410,6 +6410,72 @@ async fn gt_seed_employee_device_extra(env: &GtEnv, name: &str, inv: &str) -> i6
     device_id
 }
 
+/// HTTP: `employee_devices_list` отвечает JSON-объектом (а не index.html из spa_fallback).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn employee_devices_role_matrix_http() {
+    let env = gt_env().await;
+    let status = post_with_cookie(
+        gt_app(&env.ctx),
+        "/api/v1/employee_devices_list",
+        json!({}),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "без сессии");
+
+    for (who, cookie) in [
+        ("Employee", &env.employee_cookie),
+        ("Admin", &env.admin_cookie),
+        ("Manager", &env.manager_cookie),
+    ] {
+        let (status, body) = gt_post(&env, cookie, "employee_devices_list", json!({})).await;
+        assert_eq!(status, StatusCode::OK, "{who}: {body}");
+        assert!(body.is_object(), "{who}: ответ не JSON-объект: {body}");
+        assert!(
+            body.get("hasGroups").is_some_and(|v| v.is_boolean()),
+            "{who}: {body}"
+        );
+        let items = body.get("items").and_then(|v| v.as_array());
+        assert!(items.is_some(), "{who}: нет items: {body}");
+        if who != "Employee" {
+            // Персонал по своему user_id: своих групп нет — пусто.
+            assert!(
+                items.unwrap().is_empty(),
+                "{who}: ожидали пустой список: {body}"
+            );
+        }
+    }
+    env.ctx.shutdown.cancel();
+}
+
+/// Tauri-путь: `build_employee_devices_list` с Identity каждой роли.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn employee_devices_role_matrix_tauri_path() {
+    use trackly_app::tauri_cmds::employee_devices::build_employee_devices_list;
+
+    let env = gt_env().await;
+    for (who, caller) in [
+        ("Employee", &env.employee),
+        ("Manager", &env.manager),
+        ("Admin", &env.admin),
+    ] {
+        let r = build_employee_devices_list(&env.ctx, caller).await;
+        assert!(r.is_ok(), "{who}: {r:?}");
+    }
+    for role in [Role::Employee, Role::Manager, Role::Admin] {
+        let anon = Identity {
+            user_id: None,
+            role: role.clone(),
+        };
+        let r = build_employee_devices_list(&env.ctx, &anon).await;
+        assert!(
+            matches!(r, Err(AppError::Forbidden)),
+            "{role:?} без user_id: {r:?}"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
+
 /// Команды, которые сотрудник вызывает из своего UI (имя + валидный payload).
 /// Единственный источник для `ui/scripts/fixtures/employee-allowed-commands.json`.
 fn employee_ui_commands() -> Vec<(&'static str, serde_json::Value)> {
@@ -6433,6 +6499,7 @@ fn employee_ui_commands() -> Vec<(&'static str, serde_json::Value)> {
         ("chat_set_muted", json!({ "requestId": 1, "muted": true })),
         ("chat_unread_summary", json!({})),
         ("dashboard_get_all_widgets", json!({ "period": null })),
+        ("employee_devices_list", json!({})),
         (
             "repairs_cancel_by_author",
             json!({ "dto": { "requestId": 1, "version": 1 } }),

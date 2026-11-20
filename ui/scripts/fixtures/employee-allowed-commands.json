@@ -9,6 +9,7 @@
   "chat_set_muted",
   "chat_unread_summary",
   "dashboard_get_all_widgets",
+  "employee_devices_list",
   "repairs_cancel_by_author",
   "repairs_create",
   "repairs_device_options",
