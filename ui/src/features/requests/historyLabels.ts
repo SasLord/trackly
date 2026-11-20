@@ -21,6 +21,9 @@ export function actionLabel(action: string): string {
     'custom:complete': 'Выполнена',
     'custom:reject': 'Отклонена',
     'custom:cancel': 'Отменена',
+    // Завершение ремонта (сервер пишет custom:repair_complete) — та же «Выполнена», что в чате.
+    repair_complete: 'Выполнена',
+    'custom:repair_complete': 'Выполнена',
   };
   return labels[action] ?? action;
 }
