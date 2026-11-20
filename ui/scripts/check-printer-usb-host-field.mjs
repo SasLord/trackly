@@ -16,7 +16,8 @@
 //   (A) Dropdown с id="f-printer-usb-host": именно <Dropdown>, variant="combobox",
 //       flat={true}, getGroupSection; variant="select" в теге нет;
 //   (B) submitEdit: usb_host_device_id попадает в patch ТОЛЬКО внутри блока, чьё
-//       условие содержит usbHostTouched, PRINTER_TYPE_ID и showUsbHost (иначе правка
+//       условие содержит usbHostTouched, PRINTER_TYPE_ID и showUsbHost, КАЖДЫЙ в положительной
+//       форме (полярность: !x, === false, !==, || запрещены; иначе правка
 //       без касания поля затирает хост);
 //   (C) submitSingleCreate (D-15, IP и хост независимы): usbHostDeviceId лежит в том же
 //       литерале блока принтера, что и ipAddress:, условие блока упоминает И ipAddress,
@@ -126,6 +127,59 @@ function enclosingHeaders(code, pos) {
     while (j >= 0 && !';{}'.includes(code[j])) j--;
     return code.slice(j + 1, open);
   });
+}
+
+/** Разбор условия `if (...)` из заголовка на конъюнкты по верхнеуровневому `&&`.
+ * Возвращает null, если `||` на верхнем уровне (охрана не конъюнкция). */
+function ifConjuncts(header) {
+  const m = /\bif\s*\(/.exec(header);
+  if (!m) return [];
+  const open = m.index + m[0].length - 1;
+  let depth = 0;
+  let end = -1;
+  for (let i = open; i < header.length; i++) {
+    if (header[i] === '(') depth++;
+    else if (header[i] === ')') {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) return [];
+  const inner = header.slice(open + 1, end);
+  const parts = [];
+  let d = 0;
+  let cur = '';
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (c === '(' || c === '[' || c === '{') d++;
+    else if (c === ')' || c === ']' || c === '}') d--;
+    if (d === 0 && inner.startsWith('||', i)) return null;
+    if (d === 0 && inner.startsWith('&&', i)) {
+      parts.push(cur.trim());
+      cur = '';
+      i++;
+      continue;
+    }
+    cur += c;
+  }
+  parts.push(cur.trim());
+  return parts;
+}
+
+/** Полярность охраны патча хоста: каждый из трёх конъюнктов в положительной форме. */
+function touchGuardPolarity(header) {
+  const parts = ifConjuncts(header);
+  if (parts === null) return ['верхнеуровневый `||` в условии'];
+  const bad = [];
+  const has = (re) => parts.some((x) => re.test(x));
+  if (!has(/^usbHostTouched$/)) bad.push('usbHostTouched (не положительный литерал)');
+  if (!has(/^(typeId\s*===\s*PRINTER_TYPE_ID|PRINTER_TYPE_ID\s*===\s*typeId)$/))
+    bad.push('typeId === PRINTER_TYPE_ID (не положительное сравнение)');
+  if (!has(/^showUsbHost$/)) bad.push('showUsbHost (не положительный литерал)');
+  return bad;
 }
 
 /** Тело самого внутреннего блока `{ ... }`, содержащего позицию pos. */
@@ -308,6 +362,23 @@ function scanForm(raw, violations) {
         violations.push(
           `(B2) ${FORM}: охрана присваивания usb_host_device_id в submitEdit смотрит на IP. Ключ хоста не зависит от IP (D-15): иначе хост молча перестанет уходить у принтера с IP.`,
         );
+      }
+      if (guarded) {
+        const okPolar = headers.some(
+          (hd) =>
+            /\bif\b/.test(hd) &&
+            /\busbHostTouched\b/.test(hd) &&
+            touchGuardPolarity(hd).length === 0,
+        );
+        if (!okPolar) {
+          const why = headers
+            .filter((hd) => /\bif\b/.test(hd) && /\busbHostTouched\b/.test(hd))
+            .map((hd) => touchGuardPolarity(hd).join('; '))
+            .join(' | ');
+          violations.push(
+            `(B) ${FORM}: полярность охраны патча хоста: конъюнкт инвертирован/не положителен (${why}): патч уйдёт при НЕ-касании и затрёт хост.`,
+          );
+        }
       }
       if (!guarded) {
         violations.push(
@@ -974,6 +1045,60 @@ function runSelfTest() {
           'detail-else-if',
         ),
         rules: ['P'],
+      },
+      {
+        name: '(37) полярность: !usbHostTouched',
+        files: form(
+          TOUCH_COND,
+          'if (!usbHostTouched && typeId === PRINTER_TYPE_ID && showUsbHost) {',
+          'pol-a',
+        ),
+        rules: ['B'],
+      },
+      {
+        name: '(38) полярность: usbHostTouched === false',
+        files: form(
+          TOUCH_COND,
+          'if (usbHostTouched === false && typeId === PRINTER_TYPE_ID && showUsbHost) {',
+          'pol-b',
+        ),
+        rules: ['B'],
+      },
+      {
+        name: '(39) полярность: !(usbHostTouched)',
+        files: form(
+          TOUCH_COND,
+          'if (!(usbHostTouched) && typeId === PRINTER_TYPE_ID && showUsbHost) {',
+          'pol-c',
+        ),
+        rules: ['B'],
+      },
+      {
+        name: '(40) полярность: !showUsbHost',
+        files: form(
+          TOUCH_COND,
+          'if (usbHostTouched && typeId === PRINTER_TYPE_ID && !showUsbHost) {',
+          'pol-d',
+        ),
+        rules: ['B'],
+      },
+      {
+        name: '(41) полярность: typeId !== PRINTER_TYPE_ID',
+        files: form(
+          TOUCH_COND,
+          'if (usbHostTouched && typeId !== PRINTER_TYPE_ID && showUsbHost) {',
+          'pol-e',
+        ),
+        rules: ['B'],
+      },
+      {
+        name: '(42) полярность: || вместо && первым',
+        files: form(
+          TOUCH_COND,
+          'if (usbHostTouched || typeId === PRINTER_TYPE_ID && showUsbHost) {',
+          'pol-f',
+        ),
+        rules: ['B'],
       },
       {
         name: '(36) к охране ключа хоста в submitEdit приписано условие по IP',
