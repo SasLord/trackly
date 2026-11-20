@@ -515,7 +515,7 @@ fn origin_fixture(conn: &Connection) -> OriginFixture {
     )
     .unwrap();
     let t = conn.last_insert_rowid();
-    let mut prop = |name: &str, dt: &str| -> i64 {
+    let prop = |name: &str, dt: &str| -> i64 {
         conn.execute(
             "INSERT INTO group_type_properties (type_id, name, data_type, created_at_utc, updated_at_utc) \
              VALUES (?1, ?2, ?3, ?4, ?4)",
