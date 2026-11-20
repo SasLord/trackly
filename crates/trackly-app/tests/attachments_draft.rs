@@ -440,3 +440,93 @@ async fn attachments_draft_http_stranger_forbidden() {
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
     })
 }
+
+async fn scalar(ctx: &AppCtx, sql: &'static str) -> i64 {
+    ctx.writer
+        .execute(move |conn| conn.query_row(sql, [], |r| r.get(0)).map_err(map_rusqlite))
+        .await
+        .expect("scalar")
+}
+
+/// Nyquist 41.5 G1 (MSG-01, UAT п.7): пакет «фото + .exe» в черновик сообщения.
+/// `.exe` отклоняется кодом `type_not_allowed` и не оставляет строки; фото
+/// принимается, уходит в сообщение, а в сообщении ровно один файл.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn attachments_draft_rejects_forbidden_type_in_batch() {
+    timed!(async {
+        let (ctx, _dir) = fixture::make_test_ctx().await;
+        let author = seed_user(&ctx, "ivanov", "Иванов И.И.", "employee").await;
+        let who = ident(author, Role::Employee);
+        let r = seed_request(&ctx, author, "free_form", "open").await;
+
+        let photo = upload(
+            &ctx,
+            &who,
+            draft(r),
+            "фото.png",
+            &attachments_support::tiny_png(),
+        )
+        .await
+        .expect("photo upload");
+        let photo_id = photo.attachment.expect("photo accepted").id;
+        assert!(photo.reject_code.is_none());
+
+        let exe = upload(
+            &ctx,
+            &who,
+            draft(r),
+            "setup.exe",
+            &attachments_support::pe_stub(),
+        )
+        .await
+        .expect("exe upload is a reject, not an error");
+        assert!(exe.attachment.is_none(), "exe must not be stored");
+        assert_eq!(exe.reject_code.as_deref(), Some("type_not_allowed"));
+
+        // Disguised name does not help either.
+        let disguised = upload(
+            &ctx,
+            &who,
+            draft(r),
+            "фото2.png",
+            &attachments_support::pe_stub(),
+        )
+        .await
+        .expect("disguised upload is a reject");
+        assert_eq!(disguised.reject_code.as_deref(), Some("type_not_allowed"));
+
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM attachments WHERE parent_kind = 'message_draft'"
+            )
+            .await,
+            1,
+            "only the photo is a draft"
+        );
+
+        ctx.chat
+            .send(&who, r, "фото принтера", &[photo_id])
+            .await
+            .expect("send with the accepted photo");
+        assert_eq!(scalar(&ctx, "SELECT COUNT(*) FROM chat_messages").await, 1);
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM attachments WHERE message_id IS NOT NULL"
+            )
+            .await,
+            1,
+            "the message carries exactly the accepted file"
+        );
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM attachments WHERE parent_kind = 'message_draft'"
+            )
+            .await,
+            0,
+            "the draft was promoted"
+        );
+    })
+}

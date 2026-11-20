@@ -207,3 +207,66 @@ async fn chat_drafts_purge_stale_only_old_drafts() {
         }
     })
 }
+
+/// Nyquist 41.5 G2 (D-14): очистка устаревших черновиков действительно
+/// запускается при старте (`AppCtx::build`), а не только существует как метод.
+/// Ожидание — опрос с крайним сроком, без фиксированных пауз.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chat_drafts_purged_on_startup() {
+    timed!(async {
+        let (ctx, dir) = fixture::make_test_ctx().await;
+        let author = seed_user(&ctx, "ivanov", "Иванов И.И.", "employee").await;
+        let who = ident(author, Role::Employee);
+        let r = seed_request(&ctx, author, "repair", "open").await;
+        let old = draft_file(
+            &ctx,
+            &who,
+            r,
+            "старый.png",
+            &attachments_support::tiny_png(),
+        )
+        .await;
+        let fresh = draft_file(
+            &ctx,
+            &who,
+            r,
+            "свежий.jpg",
+            &attachments_support::tiny_jpeg(),
+        )
+        .await;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE attachments SET created_at_utc = 1 WHERE id = ?1",
+                    params![old],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        drop(ctx);
+
+        // Second start on the same portable directory.
+        let paths = trackly_infra::Paths::resolve_for_exe_dir(dir.path().to_path_buf())
+            .expect("resolve paths");
+        let config = trackly_infra::AppConfig::default();
+        let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
+        let ctx = AppCtx::build(paths, config, guard)
+            .await
+            .expect("second build");
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            if rows_with_id(&ctx, old).await == 0 {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "stale draft {old} was not purged after start"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(rows_with_id(&ctx, fresh).await, 1, "fresh draft must stay");
+    })
+}

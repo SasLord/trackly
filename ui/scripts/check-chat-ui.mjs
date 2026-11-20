@@ -38,6 +38,10 @@
 //   [C13] RequestChat (R3-2): onloadcapture/onerrorcapture на ленте → tick() → проверка followBottom → scrollToBottom;
 //        followBottom не $state и не в $effect; onFeedScroll сравнивает с lastScrollTop РАНЬШЕ присваивания;
 //   [C14] (R3-5) dismissChatToast: get раньше delete, removeToast; вызов внутри untrack эффекта смены заявки;
+//   [C16] RequestChat (MSG-03, Nyquist 41.5 G3): ровно одна подписка onWsEvent( внутри $effect, эффект
+//        возвращает отписку; перечитывание ленты load( стоит ВНУТРИ if, условие которого требует
+//        все три события СВОЕЙ заявки (chat_message и request_status_changed по ev.requestId === requestId,
+//        attachments_changed по parentKind 'request' и ev.parentId === requestId);
 //   [C8] счётный минимум: сработало не меньше MIN_RULES различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
@@ -76,7 +80,7 @@ const RUST_ABS = path.resolve(
   __dirname,
   '../../crates/trackly-app/src/tauri_cmds/system_notify.rs',
 );
-const MIN_RULES = 15;
+const MIN_RULES = 16;
 const WS_EVENTS = [
   'chat_message',
   'request_status_changed',
@@ -510,6 +514,58 @@ export function check(files) {
       );
   }
   fired.add('C14');
+
+  // C16 (MSG-03): открытая карточка перечитывает ленту по WS-событиям своей заявки
+  if (rc !== null) {
+    const wsAt = rc.indexOf('onWsEvent(');
+    if (wsAt < 0 || count(rc, 'onWsEvent(') !== 1)
+      fail(
+        'C16',
+        `RequestChat: ожидается ровно одна подписка onWsEvent( (найдено ${count(rc, 'onWsEvent(')})`,
+      );
+    else {
+      const effAt = rc.lastIndexOf('$effect(', wsAt);
+      const eff = effAt < 0 ? null : funcBody(rc.slice(effAt), /^[^{]*\{/);
+      if (eff === null || effAt + eff.length < wsAt)
+        fail('C16', 'RequestChat: onWsEvent( не внутри $effect');
+      else if (!/const off = onWsEvent\(/.test(eff) || !/return off;/.test(eff))
+        fail(
+          'C16',
+          'RequestChat: эффект подписки не возвращает отписку (const off = onWsEvent( … return off;)',
+        );
+      const h = funcBody(rc.slice(wsAt), /^[^{]*\{/);
+      const ifAt = h === null ? -1 : h.indexOf('if (');
+      const cond = ifAt < 0 ? null : parenBody(h, h.indexOf('(', ifAt));
+      if (h === null || cond === null) fail('C16', 'RequestChat: в обработчике WS нет if ( … )');
+      else {
+        const c = cond.replace(/\s+/g, ' ');
+        const need = [
+          ["ev.type === 'chat_message' && ev.requestId === requestId", 'chat_message своей заявки'],
+          [
+            "ev.type === 'request_status_changed' && ev.requestId === requestId",
+            'request_status_changed своей заявки',
+          ],
+          [
+            "ev.type === 'attachments_changed' && ev.parentKind === 'request' && ev.parentId === requestId",
+            'attachments_changed своей заявки',
+          ],
+        ];
+        for (const [frag, what] of need)
+          if (!c.includes(frag))
+            fail('C16', `RequestChat: условие перечитывания не содержит «${what}»`);
+        if (/!==|!\(/.test(c))
+          fail('C16', 'RequestChat: в условии перечитывания отрицание (инверсия)');
+        const loadAt = h.indexOf('load(');
+        const condEnd = ifAt + (h.indexOf('(', ifAt) - ifAt) + cond.length;
+        if (loadAt < 0) fail('C16', 'RequestChat: обработчик WS не зовёт load(');
+        else if (loadAt < condEnd)
+          fail('C16', 'RequestChat: load( стоит раньше/вне условия своей заявки (перестановка)');
+        else if (count(h, 'load(') !== 1)
+          fail('C16', 'RequestChat: load( в обработчике WS не один');
+      }
+    }
+  }
+  fired.add('C16');
 
   // C11
   const sn = get('lib/platform/systemNotify.ts');
@@ -1512,6 +1568,60 @@ function selftest(files) {
         `${CHAT}chatNotifications.svelte.ts`,
         '  const id = toastByRequest.get(requestId);\n  if (id === undefined) return;',
         '  toastByRequest.delete(requestId);\n  const id = toastByRequest.get(requestId);\n  if (id === undefined) return;',
+      ),
+    },
+    {
+      name: 'C16: удалена ветка chat_message из условия перечитывания',
+      expect: 'C16',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        "(ev.type === 'chat_message' && ev.requestId === requestId) ||",
+        '',
+      ),
+    },
+    {
+      name: 'C16: инверсия условия — chat_message ЧУЖОЙ заявки',
+      expect: 'C16',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        "(ev.type === 'chat_message' && ev.requestId === requestId)",
+        "(ev.type === 'chat_message' && ev.requestId !== requestId)",
+      ),
+    },
+    {
+      name: 'C16: инверсия условия — attachments_changed без проверки parentId',
+      expect: 'C16',
+      make: swapText(`${CHAT}RequestChat.svelte`, 'ev.parentId === requestId)', 'ev.parentId > 0)'),
+    },
+    {
+      name: 'C16: перестановка — load( перед if (перечитывание по любому событию)',
+      expect: 'C16',
+      make: () => {
+        const rel = `${CHAT}RequestChat.svelte`;
+        const src = files[rel];
+        const call = '        void load(false);\n';
+        const head = '    const off = onWsEvent((ev) => {\n';
+        uniq(src, call);
+        uniq(src, head);
+        return { ...files, [rel]: src.replace(call, '').replace(head, head + call) };
+      },
+    },
+    {
+      name: 'C16: эффект подписки не возвращает отписку',
+      expect: 'C16',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        '      }\n    });\n    return off;\n',
+        '      }\n    });\n    void off;\n',
+      ),
+    },
+    {
+      name: 'C16: подписка вынесена из $effect',
+      expect: 'C16',
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        '  $effect(() => {\n    const off = onWsEvent(',
+        '  {\n    const off = onWsEvent(',
       ),
     },
     {
