@@ -1,0 +1,101 @@
+[
+  {
+    "name": "Заявки: точный путь",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/requests",
+      "location": "/requests"
+    },
+    "expected": true
+  },
+  {
+    "name": "Заявки: querystring id+tab",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/requests",
+      "location": "/requests?id=42&tab=chat"
+    },
+    "expected": true
+  },
+  {
+    "name": "Заявки: слеш в конце",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/requests/",
+      "location": "/requests/"
+    },
+    "expected": true
+  },
+  {
+    "name": "Заявки: слеш в конце, без слеша в шаблоне",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/requests",
+      "location": "/requests/"
+    },
+    "expected": true
+  },
+  {
+    "name": "Заявки: не Устройства",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/requests",
+      "location": "/devices"
+    },
+    "expected": false
+  },
+  {
+    "name": "Заявки: не префикс-однофамилец",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/requests",
+      "location": "/requestsx"
+    },
+    "expected": false
+  },
+  {
+    "name": "Устройства: точный путь",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/devices",
+      "location": "/devices"
+    },
+    "expected": true
+  },
+  {
+    "name": "Устройства: querystring",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/devices",
+      "location": "/devices?x=1"
+    },
+    "expected": true
+  },
+  {
+    "name": "Устройства: не Заявки",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/devices",
+      "location": "/requests"
+    },
+    "expected": false
+  },
+  {
+    "name": "Устройства: не вложенный сегмент",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/devices",
+      "location": "/devices/5"
+    },
+    "expected": false
+  },
+  {
+    "name": "Устройства: регистр",
+    "fn": "sidebarActivePattern",
+    "input": {
+      "route": "/devices",
+      "location": "/Devices"
+    },
+    "expected": true
+  }
+]
