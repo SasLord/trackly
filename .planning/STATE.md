@@ -1677,7 +1677,7 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-20T12:16:53.016Z
-Stopped at: Completed 41.6-06-PLAN.md
+Stopped at: Completed 41.6-10-PLAN.md
 Resume file: None
 
 None
