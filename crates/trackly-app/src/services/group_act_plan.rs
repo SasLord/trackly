@@ -308,17 +308,41 @@ fn covered(
     let result = if let Some(anchor) = group.anchor_device_id {
         act.contains(&anchor)
     } else {
-        let direct = snap.direct_of(group_id);
-        let kids = snap.children_of(group_id);
-        if direct.is_empty() && kids.is_empty() {
+        // D-32: группа, не дающая позиций акта, не покрыта (корневая пустая), а вложенная
+        // такая не мешает родителю: `act_units` из неё ничего не берёт.
+        if yields_no_units(snap, group_id, 0) {
             false
         } else {
+            let direct = snap.direct_of(group_id);
+            let kids = snap.children_of(group_id);
             direct.iter().all(|d| act.contains(d))
-                && kids.iter().all(|c| covered(snap, *c, act, memo, depth + 1))
+                && kids.iter().all(|c| {
+                    yields_no_units(snap, *c, 0) || covered(snap, *c, act, memo, depth + 1)
+                })
         }
     };
     memo.insert(group_id, result);
     result
+}
+
+/// D-32: группа не даёт ни одной позиции акта. Якорная — когда якорь списан; контейнер —
+/// когда у него нет прямых членов (после фильтра списанных) и все дети тоже ничего не дают.
+/// Согласовано с `collect_units`. Глубина ограничена числом групп (цикл в испорченных данных).
+fn yields_no_units(snap: &ActGroupSnapshot, group_id: i64, depth: usize) -> bool {
+    if depth > snap.groups.len() {
+        return false;
+    }
+    let Some(group) = snap.group(group_id) else {
+        return true;
+    };
+    if let Some(anchor) = group.anchor_device_id {
+        return snap.written_off.contains(&anchor);
+    }
+    snap.direct_of(group_id).is_empty()
+        && snap
+            .children_of(group_id)
+            .iter()
+            .all(|c| yields_no_units(snap, *c, depth + 1))
 }
 
 /// Что делать с группами, если в акт попали устройства `act_device_ids`.
@@ -2429,6 +2453,177 @@ mod tests {
         let snap = ActGroupSnapshot::new(vec![grp(4, None, "Пустая #1", Some(5), None)], vec![]);
         assert_eq!(plan(&snap, &[]), ActGroupPlan::default());
         assert_eq!(plan(&snap, &[1, 2, 3]), ActGroupPlan::default());
+    }
+
+    /// D-32: фикстуры, где вложенные группы не дают позиций акта. Каждая строка:
+    /// (название, снимок, корень, id устройств-участников разворота ожидаемо непусто).
+    fn d32_fixtures() -> Vec<(&'static str, ActGroupSnapshot, i64)> {
+        let wo = |ids: &[i64]| ids.iter().copied().collect::<HashSet<i64>>();
+        vec![
+            (
+                "uat: пустые Кабели #1/#2 и списанный участник",
+                ActGroupSnapshot::new(
+                    vec![
+                        grp(1, None, "АРМ #3", Some(5), None),
+                        grp(2, Some(1), "Кабели #1", Some(5), None),
+                        grp(3, Some(1), "Кабели #2", Some(5), None),
+                    ],
+                    vec![(10, 1), (11, 1), (12, 1)],
+                )
+                .with_written_off(wo(&[11])),
+                1,
+            ),
+            (
+                "вложенный контейнер из одних списанных",
+                ActGroupSnapshot::new(
+                    vec![
+                        grp(1, None, "АРМ #3", Some(5), None),
+                        grp(2, Some(1), "Кабели #1", Some(5), None),
+                    ],
+                    vec![(10, 1), (20, 2), (21, 2)],
+                )
+                .with_written_off(wo(&[20, 21])),
+                1,
+            ),
+            (
+                "вложенная якорная группа со списанным якорем",
+                ActGroupSnapshot::new(
+                    vec![
+                        grp(1, None, "АРМ #3", Some(5), None),
+                        grp(2, Some(1), "Системный блок #4", Some(5), Some(30)),
+                    ],
+                    vec![(10, 1), (30, 2)],
+                )
+                .with_written_off(wo(&[30])),
+                1,
+            ),
+            (
+                "двойная вложенность пустых",
+                ActGroupSnapshot::new(
+                    vec![
+                        grp(1, None, "АРМ #3", Some(5), None),
+                        grp(2, Some(1), "Кабели #1", Some(5), None),
+                        grp(3, Some(2), "Кабели #2", Some(5), None),
+                    ],
+                    vec![(10, 1)],
+                ),
+                1,
+            ),
+            (
+                "контроль: без вложенных пустых",
+                ActGroupSnapshot::new(
+                    vec![grp(1, None, "АРМ #3", Some(5), None)],
+                    vec![(10, 1), (12, 1)],
+                ),
+                1,
+            ),
+        ]
+    }
+
+    #[test]
+    fn d32_plan_of_act_units_moves_exactly_the_group() {
+        for (name, snap, gid) in d32_fixtures() {
+            let ids: Vec<i64> = act_units(&snap, gid)
+                .into_iter()
+                .map(|u| u.device_id)
+                .collect();
+            assert!(!ids.is_empty(), "{name}: фикстура вакуумна");
+            let p = plan(&snap, &ids);
+            assert_eq!(
+                p.moves.iter().map(|m| m.root_group_id).collect::<Vec<_>>(),
+                vec![gid],
+                "{name}"
+            );
+            assert!(p.releases.is_empty(), "{name}: releases");
+            assert!(!p.requires_confirmation(), "{name}: попап");
+            let all_groups: Vec<i64> = snap.subtree_groups(gid);
+            assert_eq!(
+                p.moves[0].subtree_group_ids, all_groups,
+                "{name}: поддерево"
+            );
+        }
+    }
+
+    #[test]
+    fn d32_return_of_act_units_moves_exactly_the_group() {
+        for (name, snap, gid) in d32_fixtures() {
+            let ids: Vec<i64> = act_units(&snap, gid)
+                .into_iter()
+                .map(|u| u.device_id)
+                .collect();
+            assert!(!ids.is_empty(), "{name}: фикстура вакуумна");
+            let pl: HashMap<i64, Option<i64>> = ids.iter().map(|d| (*d, Some(9))).collect();
+            let p = plan_for_return(&snap, &ids, &pl);
+            assert_eq!(
+                p.moves.iter().map(|m| m.root_group_id).collect::<Vec<_>>(),
+                vec![gid],
+                "{name}"
+            );
+            assert!(p.splits.is_empty(), "{name}: splits");
+            assert!(p.place_conflicts.is_empty(), "{name}: места");
+            assert!(p.releases.is_empty(), "{name}: releases");
+        }
+    }
+
+    #[test]
+    fn d32_nested_empty_container_does_not_block_parent() {
+        let (_, snap, _) = d32_fixtures().remove(0);
+        let p = plan(&snap, &[10, 12]);
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].subtree_group_ids, vec![1, 2, 3]);
+        assert!(p.releases.is_empty());
+        assert!(!p.requires_confirmation());
+    }
+
+    #[test]
+    fn d32_nested_container_of_written_off_only_does_not_block_parent() {
+        let (_, snap, _) = d32_fixtures().remove(1);
+        let p = plan(&snap, &[10]);
+        assert_eq!(p.moves.len(), 1);
+        assert!(p.releases.is_empty());
+    }
+
+    #[test]
+    fn d32_nested_anchor_group_with_written_off_anchor_does_not_block_parent() {
+        let (_, snap, _) = d32_fixtures().remove(2);
+        let p = plan(&snap, &[10]);
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].root_group_id, 1);
+    }
+
+    #[test]
+    fn d32_double_nested_empty_containers_do_not_block_root() {
+        let (_, snap, _) = d32_fixtures().remove(3);
+        let p = plan(&snap, &[10]);
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].subtree_group_ids, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn d32_root_of_only_empty_containers_is_not_covered() {
+        let snap = ActGroupSnapshot::new(
+            vec![
+                grp(1, None, "АРМ #3", Some(5), None),
+                grp(2, Some(1), "Кабели #1", Some(5), None),
+            ],
+            vec![],
+        );
+        assert_eq!(plan(&snap, &[]), ActGroupPlan::default());
+        assert_eq!(plan(&snap, &[10, 11]), ActGroupPlan::default());
+    }
+
+    #[test]
+    fn d32_nested_nonempty_uncovered_group_still_blocks_parent() {
+        let snap = ActGroupSnapshot::new(
+            vec![
+                grp(1, None, "АРМ #3", Some(5), None),
+                grp(2, Some(1), "Кабели #1", Some(5), None),
+            ],
+            vec![(10, 1), (20, 2), (21, 2)],
+        );
+        let p = plan(&snap, &[10, 20]);
+        assert!(p.moves.is_empty());
+        assert_eq!(p.releases.len(), 2);
     }
 
     #[test]
