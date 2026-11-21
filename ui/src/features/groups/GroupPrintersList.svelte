@@ -16,6 +16,7 @@
   // Дедупликацию сервер уже сделал в карточке; здесь она повторяется лишь
   // потому, что список ссылок — ЛОКАЛЬНОЕ состояние формы (добавленное до
   // сохранения сервер ещё не видел).
+  import { PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
@@ -24,10 +25,6 @@
   import { devices } from '$lib/api/devices';
   import type { DeviceDto, DeviceListResponse, GroupPrinterDto } from '../../bindings';
 
-  // Значение совпадает с PrintersPage.svelte и DeviceFormBody.svelte: общего
-  // экспорта в проекте нет, и вводить его здесь значило бы трогать посторонние
-  // файлы.
-  const PRINTER_TYPE_ID = 2;
   const SEARCH_LIMIT = 20;
 
   export interface LinkedPrinterInfo {

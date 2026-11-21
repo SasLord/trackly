@@ -3,6 +3,7 @@
   // По паттерну CartridgesPage.svelte (Svelte 5 runes).
   // WS-интеграция: onMount → connectWs() + onWsEvent(handleWsEvent).
   // PrinterDetail и DiscoveryModal: Task 2b.
+  import { PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import { onMount } from 'svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -121,7 +122,6 @@
   // панель (тип записи мог смениться). Общая функция панели и модалки правки
   // из меню строки.
   function handleDeviceSaved(result?: { typeId: number }) {
-    const PRINTER_TYPE_ID = 2;
     if (result && result.typeId !== PRINTER_TYPE_ID) {
       // Больше не принтер — сбросить выбор (панель очистится через $effect) и
       // перечитать список, чтобы устаревшая строка исчезла.

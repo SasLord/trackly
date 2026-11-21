@@ -33,6 +33,7 @@
   // added post-Plan-13 — devices/printers DO check template mismatch in
   // `create_single_with_number_check()` (create-mode only, D-05 excludes
   // edit), contrary to Plan 13's original assumption.
+  import { DEVICE_TYPE_ID, PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -92,9 +93,6 @@
     presetStatusCode,
     originGroup = null,
   }: Props = $props();
-
-  const DEVICE_TYPE_ID = 1;
-  const PRINTER_TYPE_ID = 2;
 
   const isEdit = $derived(target !== null);
   let typeId = $state(DEVICE_TYPE_ID);

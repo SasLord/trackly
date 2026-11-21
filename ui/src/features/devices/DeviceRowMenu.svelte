@@ -1,4 +1,7 @@
 <script module lang="ts">
+  // type_id принтера: тот же, что различает kind строки в PlaceEntityViewModal
+  // (единый модуль, INT-31); имя PRINTER_DEVICE_TYPE_ID держат якоря check-device-row-menu.
+  import { PRINTER_TYPE_ID as PRINTER_DEVICE_TYPE_ID } from '$lib/deviceTypeIds';
   import { groupTypes, groups } from '$lib/api/groups';
   import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
   import type { GroupTypeDto } from '../../bindings';
@@ -105,9 +108,6 @@
   // маркер словарного гейта (check-group-vocabulary) остаётся одной строкой.
   const REFUSE_HINT =
     'Сначала удалите группу в разделе «Группы»: после этого устройство снова станет обычным.';
-
-  // type_id принтера: тот же, что различает kind строки в PlaceEntityViewModal.
-  const PRINTER_DEVICE_TYPE_ID = 2;
 
   let menu = $state<ReturnType<typeof ActionMenu> | null>(null);
   // Устройство, подтянутое по deviceId (когда device === null).

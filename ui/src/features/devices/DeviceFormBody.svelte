@@ -21,6 +21,8 @@
   // reports popup state up via `onPopupChange`; DeviceFormModal renders the
   // real `<NumberTakenPopup>`/`<NumberScriptWarningPopup>` at its own
   // top level.
+  // INT-31: признак принтера — единый модуль `$lib/deviceTypeIds`.
+  import { PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import type { NumberTakenRecordSummary } from '$lib/components/NumberTakenPopup.svelte';
 
   export interface DeviceScriptWarningDoppelganger {
@@ -220,8 +222,6 @@
     presetStatusCode,
     originGroup = null,
   }: Props = $props();
-
-  const PRINTER_TYPE_ID = 2;
 
   // ---------------------------------------------------------------------------
   // Form state — all initialised from target (edit) or empty (create).

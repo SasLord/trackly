@@ -16,6 +16,9 @@
   //
   // Все права здесь — UX-слой (граница безопасности — сервер): admin правит типы,
   // admin|manager — группы; employee раздел не видит (маршрут не в employeeRoutes).
+
+  // PRINTER_TYPE_ID: у принтера собственный раздел (`#/printers?id=…`).
+  import { PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import { untrack } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -39,9 +42,6 @@
   import GroupMoveModal from './GroupMoveModal.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { GroupDto, GroupTypeDto } from '../../bindings';
-
-  // PRINTER_TYPE_ID: у принтера собственный раздел (`#/printers?id=…`).
-  const PRINTER_TYPE_ID = 2;
 
   const SELECTED_STORAGE_KEY = 'trackly:groups:selected';
   const ACTIVE_TAB_STORAGE_KEY = 'trackly:groups:activeTab';

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { isPrinterType } from '$lib/deviceTypeIds';
+
   // Маркер принтера перед именем строки (фаза 41.9, D-20, UI-SPEC §7.5).
   // Для других типов ничего не рисует; обработчиков событий нет.
   interface Props {
@@ -8,11 +10,9 @@
   }
 
   const { typeId, isPrinter }: Props = $props();
-
-  const PRINTER_TYPE_ID = 2;
 </script>
 
-{#if isPrinter !== undefined ? isPrinter : typeId === PRINTER_TYPE_ID}
+{#if isPrinter !== undefined ? isPrinter : isPrinterType(typeId)}
   <span class="printer-mark" role="img" aria-label="Принтер" title="Принтер">
     <svg
       width="14"
