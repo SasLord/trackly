@@ -38,7 +38,9 @@
   } from '$lib/stores/deviceStatuses.svelte';
   import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import { isAlreadyInGroup, type AlreadyInGroupDetails, type AppError } from '$lib/api/errors';
+  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pluralizeRu } from '$lib/utils/pluralize';
   import type { DeviceDto, GroupAddDevicesResultDto, GroupDto, PlaceDto } from '../../bindings';
 
   interface Props {
@@ -251,6 +253,58 @@
     serverErr = null;
   }
 
+  // Шаг подтверждения переноса (D-16/D-18): ответ ALREADY_IN_GROUP открывает его
+  // в той же Modal, отметки выбора сохраняются.
+  let step = $state<'select' | 'confirm'>('select');
+  let conflict = $state<AlreadyInGroupDetails['items']>([]);
+  let confirmErr = $state<string | null>(null);
+  let cancelSlot = $state<HTMLElement | null>(null);
+
+  const conflictCount = $derived(conflict.length);
+  const hasFree = $derived(selected.size > conflict.length);
+  const conflictRows = $derived.by(() => {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const order = new Map(rows.map((r, i) => [r.id, i]));
+    return [...conflict]
+      .sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9))
+      .map((c) => ({ ...c, inv: byId.get(c.id)?.inventory_no ?? null }));
+  });
+  const DEVICE_FORMS: [string, string, string] = ['устройство', 'устройства', 'устройств'];
+
+  $effect(() => {
+    if (step === 'confirm') cancelSlot?.querySelector('button')?.focus();
+  });
+
+  function backToSelect(): void {
+    if (busy) return;
+    step = 'select';
+    confirmErr = null;
+  }
+
+  // Один вызов groups.moveDevices на весь пакет: все или ничего (T-41.8-35).
+  async function moveAll(): Promise<void> {
+    if (busy) return;
+    busy = true;
+    confirmErr = null;
+    try {
+      const result = await groups.moveDevices({
+        group_id: group.id,
+        device_ids: Array.from(selected),
+      });
+      notifyPlaceContentChanged(result.changed_place_ids);
+      pushToast(
+        'success',
+        `Добавлено ${result.added} ${pluralizeRu(result.added, DEVICE_FORMS)}, из них перемещено ${result.moved}`,
+      );
+      onAdded(result);
+      onClose();
+    } catch (e) {
+      confirmErr = errMessage(e, 'Не удалось переместить устройства.');
+    } finally {
+      busy = false;
+    }
+  }
+
   // Тот же серверный обработчик, что и у строки-поиска состава (D-01).
   async function submit(): Promise<void> {
     if (selected.size === 0 || busy) return;
@@ -265,7 +319,13 @@
       onAdded(result);
       onClose();
     } catch (e) {
-      serverErr = errMessage(e, 'Не удалось добавить устройства.');
+      if (isAlreadyInGroup(e)) {
+        conflict = e.details.items.filter((i) => i.kind === 'device');
+        confirmErr = null;
+        step = 'confirm';
+      } else {
+        serverErr = errMessage(e, 'Не удалось добавить устройства.');
+      }
     } finally {
       busy = false;
     }
@@ -273,157 +333,197 @@
 </script>
 
 <Modal open={true} title={`Добавить устройства в «${group.name}»`} size="wide" {onClose}>
-  <div class="add-devices">
-    <div class="filters">
-      <div class="filter filter-search">
-        <label class="form-label" for="gad-search">Поиск</label>
-        <Input
-          id="gad-search"
-          type="search"
-          value={search}
-          oninput={onSearchInput}
-          placeholder="Название, инвентарный или серийный номер"
-        />
-      </div>
-      <div class="filter">
-        <label class="form-label" for="gad-type">Тип</label>
-        <Dropdown
-          id="gad-type"
-          variant="select"
-          flat={true}
-          value={typeLabel}
-          placeholder="Все типы"
-          searchable={false}
-          loading={false}
-          groups={typeOptions}
-          getGroupId={(o) => String(o.id)}
-          getGroupName={(o) => o.label}
-          getGroupCount={() => 0}
-          isGroupExpandable={() => false}
-          isGroupSelected={(o) => o.id === typeId}
-          onExpandGroup={noExpand}
-          getMemberId={(o) => String(o)}
-          getMemberName={(o) => String(o)}
-          onSearch={() => {}}
-          onPickGroup={pickType}
-          onPickMember={() => {}}
-        />
-      </div>
-      <div class="filter">
-        <label class="form-label" for="gad-status">Статус</label>
-        <Dropdown
-          id="gad-status"
-          variant="select"
-          flat={true}
-          value={statusFilterLabel}
-          placeholder="Все статусы"
-          searchable={false}
-          loading={false}
-          groups={statusOptions}
-          getGroupId={(o) => String(o.id)}
-          getGroupName={(o) => o.label}
-          getGroupCount={() => 0}
-          isGroupExpandable={() => false}
-          isGroupSelected={(o) => o.id === statusId}
-          onExpandGroup={noExpand}
-          getMemberId={(o) => String(o)}
-          getMemberName={(o) => String(o)}
-          onSearch={() => {}}
-          onPickGroup={pickStatus}
-          onPickMember={() => {}}
-        />
-      </div>
-      <div class="filter">
-        <label class="form-label" for="gad-place">Место</label>
-        <PlacePicker id="gad-place" value={placeId} onChange={(id) => void onPlaceChange(id)} />
-      </div>
-    </div>
-
-    {#if loadErr}
-      <p class="inline-error" role="alert">{loadErr}</p>
-    {/if}
-
-    <div class="table-region">
-      <Table
-        columns={5}
-        {loading}
-        empty={!loading && rows.length === 0 && loadErr === null}
-        emptyTitle="Ничего не найдено"
-        emptyBody="Измените фильтры или запрос."
-      >
-        {#snippet head()}
-          <th class="col-check"><span class="visually-hidden">Выбрать</span></th>
-          <th>Название</th>
-          <th>Инв. № / Серийный №</th>
-          <th>Место</th>
-          <th>Статус</th>
-        {/snippet}
-        {#each rows as d (d.id)}
-          {@const busyIn = occupied[d.id]}
-          {@const note = busyIn === undefined ? undefined : `Уже в группе «${busyIn}»`}
-          <TableRow class={busyIn === undefined ? '' : 'row-occupied'}>
-            <td class="col-check" title={note}>
-              <Checkbox
-                checked={selected.has(d.id)}
-                disabled={busyIn !== undefined || busy}
-                onchange={(v) => toggle(d.id, v)}
-              >
-                <span class="visually-hidden">Выбрать: {d.name}</span>
-              </Checkbox>
-            </td>
-            <td class="cell" class:occupied={busyIn !== undefined} title={note ?? d.name}>
-              {d.name}
-            </td>
-            <td class="cell" class:occupied={busyIn !== undefined}>
-              {#if d.inventory_no || d.serial_no}
-                {#if d.inventory_no}<span class="tr-mono line">{d.inventory_no}</span>{/if}
-                {#if d.serial_no}<span class="tr-mono line">{d.serial_no}</span>{/if}
-              {:else}
-                —
-              {/if}
-            </td>
-            <td class="cell" class:occupied={busyIn !== undefined} title={d.full_path ?? undefined}>
-              {d.place_path_short ?? '—'}
-            </td>
-            <td class="cell">
-              <Badge
-                variant={statusTone(d.status_code).variant}
-                appearance={statusTone(d.status_code).appearance}
-                muted={statusTone(d.status_code).muted}
-              >
-                {statusLabel(d.status_id)}
-              </Badge>
-            </td>
-          </TableRow>
+  {#if step === 'confirm'}
+    <div class="confirm">
+      <h3 class="confirm-title">
+        {conflictCount === 1
+          ? '1 устройство уже в другой группе'
+          : `${conflictCount} ${pluralizeRu(conflictCount, DEVICE_FORMS)} уже в других группах`}
+      </h3>
+      <p class="confirm-body">
+        Переместить {conflictCount === 1 ? 'его' : 'их'} в «{group.name}»?{hasFree
+          ? ' Остальные выбранные устройства будут добавлены как обычно.'
+          : ''}
+      </p>
+      <ul class="conflict-list">
+        {#each conflictRows as c (c.id)}
+          <li>
+            <span class="c-name">{c.name}</span>
+            {#if c.inv}<span class="tr-mono c-inv">{c.inv}</span>{/if}
+            <span class="c-tail">— в группе «{c.group_name}»</span>
+          </li>
         {/each}
-      </Table>
-      {#if hasMore && !loading}
-        <div class="more-row">
-          <Button variant="secondary" loading={loadingMore} onclick={() => void loadPage(false)}>
-            Показать ещё
-          </Button>
-        </div>
+      </ul>
+      {#if confirmErr}
+        <p class="inline-error server-error" role="alert">{confirmErr}</p>
       {/if}
     </div>
+  {:else}
+    <div class="add-devices">
+      <div class="filters">
+        <div class="filter filter-search">
+          <label class="form-label" for="gad-search">Поиск</label>
+          <Input
+            id="gad-search"
+            type="search"
+            value={search}
+            oninput={onSearchInput}
+            placeholder="Название, инвентарный или серийный номер"
+          />
+        </div>
+        <div class="filter">
+          <label class="form-label" for="gad-type">Тип</label>
+          <Dropdown
+            id="gad-type"
+            variant="select"
+            flat={true}
+            value={typeLabel}
+            placeholder="Все типы"
+            searchable={false}
+            loading={false}
+            groups={typeOptions}
+            getGroupId={(o) => String(o.id)}
+            getGroupName={(o) => o.label}
+            getGroupCount={() => 0}
+            isGroupExpandable={() => false}
+            isGroupSelected={(o) => o.id === typeId}
+            onExpandGroup={noExpand}
+            getMemberId={(o) => String(o)}
+            getMemberName={(o) => String(o)}
+            onSearch={() => {}}
+            onPickGroup={pickType}
+            onPickMember={() => {}}
+          />
+        </div>
+        <div class="filter">
+          <label class="form-label" for="gad-status">Статус</label>
+          <Dropdown
+            id="gad-status"
+            variant="select"
+            flat={true}
+            value={statusFilterLabel}
+            placeholder="Все статусы"
+            searchable={false}
+            loading={false}
+            groups={statusOptions}
+            getGroupId={(o) => String(o.id)}
+            getGroupName={(o) => o.label}
+            getGroupCount={() => 0}
+            isGroupExpandable={() => false}
+            isGroupSelected={(o) => o.id === statusId}
+            onExpandGroup={noExpand}
+            getMemberId={(o) => String(o)}
+            getMemberName={(o) => String(o)}
+            onSearch={() => {}}
+            onPickGroup={pickStatus}
+            onPickMember={() => {}}
+          />
+        </div>
+        <div class="filter">
+          <label class="form-label" for="gad-place">Место</label>
+          <PlacePicker id="gad-place" value={placeId} onChange={(id) => void onPlaceChange(id)} />
+        </div>
+      </div>
 
-    {#if serverErr}
-      <p class="inline-error" role="alert">{serverErr}</p>
-    {/if}
-  </div>
+      {#if loadErr}
+        <p class="inline-error" role="alert">{loadErr}</p>
+      {/if}
+
+      <div class="table-region">
+        <Table
+          columns={5}
+          {loading}
+          empty={!loading && rows.length === 0 && loadErr === null}
+          emptyTitle="Ничего не найдено"
+          emptyBody="Измените фильтры или запрос."
+        >
+          {#snippet head()}
+            <th class="col-check"><span class="visually-hidden">Выбрать</span></th>
+            <th>Название</th>
+            <th>Инв. № / Серийный №</th>
+            <th>Место</th>
+            <th>Статус</th>
+          {/snippet}
+          {#each rows as d (d.id)}
+            {@const busyIn = occupied[d.id]}
+            {@const note = busyIn === undefined ? undefined : `Уже в группе «${busyIn}»`}
+            <TableRow class={busyIn === undefined ? '' : 'row-occupied'}>
+              <td class="col-check" title={note}>
+                <Checkbox
+                  checked={selected.has(d.id)}
+                  disabled={busyIn !== undefined || busy}
+                  onchange={(v) => toggle(d.id, v)}
+                >
+                  <span class="visually-hidden">Выбрать: {d.name}</span>
+                </Checkbox>
+              </td>
+              <td class="cell" class:occupied={busyIn !== undefined} title={note ?? d.name}>
+                {d.name}
+              </td>
+              <td class="cell" class:occupied={busyIn !== undefined}>
+                {#if d.inventory_no || d.serial_no}
+                  {#if d.inventory_no}<span class="tr-mono line">{d.inventory_no}</span>{/if}
+                  {#if d.serial_no}<span class="tr-mono line">{d.serial_no}</span>{/if}
+                {:else}
+                  —
+                {/if}
+              </td>
+              <td
+                class="cell"
+                class:occupied={busyIn !== undefined}
+                title={d.full_path ?? undefined}
+              >
+                {d.place_path_short ?? '—'}
+              </td>
+              <td class="cell">
+                <Badge
+                  variant={statusTone(d.status_code).variant}
+                  appearance={statusTone(d.status_code).appearance}
+                  muted={statusTone(d.status_code).muted}
+                >
+                  {statusLabel(d.status_id)}
+                </Badge>
+              </td>
+            </TableRow>
+          {/each}
+        </Table>
+        {#if hasMore && !loading}
+          <div class="more-row">
+            <Button variant="secondary" loading={loadingMore} onclick={() => void loadPage(false)}>
+              Показать ещё
+            </Button>
+          </div>
+        {/if}
+      </div>
+
+      {#if serverErr}
+        <p class="inline-error" role="alert">{serverErr}</p>
+      {/if}
+    </div>
+  {/if}
 
   {#snippet footer()}
-    <span class="selected-count" aria-live="polite">
-      Выбрано: <span class="tr-mono">{selectedCount}</span>
-    </span>
-    <Button variant="secondary" onclick={onClose} disabled={busy}>Отмена</Button>
-    <Button
-      variant="primary"
-      loading={busy}
-      disabled={selectedCount === 0 || busy}
-      onclick={() => void submit()}
-    >
-      Добавить ({selectedCount})
-    </Button>
+    {#if step === 'confirm'}
+      <span bind:this={cancelSlot} class="btn-slot">
+        <Button variant="secondary" onclick={backToSelect} disabled={busy}>Отменить</Button>
+      </span>
+      <Button variant="destructive" loading={busy} onclick={() => void moveAll()}>
+        Переместить
+      </Button>
+    {:else}
+      <span class="selected-count" aria-live="polite">
+        Выбрано: <span class="tr-mono">{selectedCount}</span>
+      </span>
+      <Button variant="secondary" onclick={onClose} disabled={busy}>Отмена</Button>
+      <Button
+        variant="primary"
+        loading={busy}
+        disabled={selectedCount === 0 || busy}
+        onclick={() => void submit()}
+      >
+        Добавить ({selectedCount})
+      </Button>
+    {/if}
   {/snippet}
 </Modal>
 
@@ -478,6 +578,56 @@
     justify-content: center;
     padding: var(--tr-space-sm);
     border-top: 1px solid var(--tr-border);
+  }
+
+  .confirm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-md);
+    white-space: normal;
+    text-align: left;
+  }
+
+  .confirm-title {
+    margin: 0;
+    font: var(--tr-text-h3);
+    color: var(--tr-text-primary);
+  }
+
+  .confirm-body {
+    margin: 0;
+    color: var(--tr-text-primary);
+    overflow-wrap: anywhere;
+  }
+
+  .conflict-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
+  }
+
+  .c-name {
+    color: var(--tr-text-body);
+  }
+
+  .c-tail {
+    color: var(--tr-text-secondary);
+  }
+
+  .btn-slot {
+    display: inline-flex;
+  }
+
+  .server-error {
+    padding: var(--tr-space-xs) var(--tr-space-md);
+    background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
+    border-radius: var(--tr-radius-xs);
   }
 
   .selected-count {
