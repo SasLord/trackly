@@ -20,7 +20,9 @@ use entities_support::fixture::{
     seed_group_type_and_group, seed_place, type_id_by_code,
 };
 use trackly_app::context::AppCtx;
-use trackly_app::dto::groups::{GroupCreateDto, GroupValueInputDto};
+use trackly_app::dto::groups::{
+    GroupCreateDto, GroupValueInputDto, GroupWriteOffDeviceDto, GroupWriteOffGroupDto,
+};
 use trackly_core::error::AppError;
 
 /// Бюджет каждого теста (форма `number_space_broadcast_gate.rs`).
@@ -345,6 +347,97 @@ async fn scenario_move_devices() {
     })
     .await
     .expect("scenario_move_devices вышел за бюджет");
+}
+
+/// Статус устройства по коду (фикстура для списания).
+async fn set_status_code(ctx: &AppCtx, device: i64, code: &'static str) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET status_id = (SELECT id FROM device_statuses WHERE code = ?2) \
+                 WHERE id = ?1",
+                rusqlite::params![device, code],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set status");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_write_off_device() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Кабинет A").await;
+        let (_t, g) = seed_group_type_and_group(&ctx, "АРМ #3", 1, Some(a)).await;
+        let d = seed_device(&ctx, 1, "Монитор #2", "INV-1", Some(a), Some(g)).await;
+        set_status_code(&ctx, d, "на_списание").await;
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        ctx.groups
+            .write_off_device(
+                &admin(),
+                GroupWriteOffDeviceDto {
+                    device_id: d,
+                    version: 1,
+                    release_from_group: true,
+                },
+            )
+            .await
+            .expect("write_off_device");
+        let (places, devices, groups) = assert_one_entities(&mut rx, "write_off_device");
+        assert_eq!(sorted(places), vec![a], "место устройства");
+        assert_eq!(sorted(devices), vec![d], "device_ids");
+        assert_eq!(sorted(groups), vec![g], "группа устройства");
+    })
+    .await
+    .expect("scenario_write_off_device вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_write_off_group() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Кабинет A").await;
+        let (_t, g) = seed_group_type_and_group(&ctx, "Замена #1", 1, Some(a)).await;
+        let anchor = seed_device(&ctx, 1, "Системный блок #4", "INV-1", Some(a), Some(g)).await;
+        set_status_code(&ctx, anchor, "на_списание").await;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+                     VALUES ('wo_substitute', 'Тип замены', 'substitute', 1700000000, 1700000000)",
+                    [],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                let tid = conn.last_insert_rowid();
+                conn.execute(
+                    "UPDATE groups SET type_id = ?2, anchor_device_id = ?3 WHERE id = ?1",
+                    rusqlite::params![g, tid, anchor],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("anchor setup");
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        let out = ctx
+            .groups
+            .write_off_group(&admin(), GroupWriteOffGroupDto { id: g, version: 1 })
+            .await
+            .expect("write_off_group");
+        assert!(out.disbanded);
+        let (places, devices, groups) = assert_one_entities(&mut rx, "write_off_group");
+        assert_eq!(sorted(places), vec![a], "место якоря");
+        assert_eq!(sorted(devices), vec![anchor], "device_ids");
+        assert_eq!(sorted(groups), vec![g], "группа");
+    })
+    .await
+    .expect("scenario_write_off_group вышел за бюджет");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
