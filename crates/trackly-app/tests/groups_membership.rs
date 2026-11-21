@@ -485,26 +485,14 @@ async fn membership_add_occupied_device_names_both_and_batch_is_atomic() {
         .add_devices(&admin(), target, vec![free1, busy, free2])
         .await
         .expect_err("занятое устройство отменяет пакет");
-    let message = validation_message(err);
-
-    let device_name = text_of(
-        &ctx,
-        "SELECT name FROM devices WHERE id = ?1",
-        vec![int(busy)],
-    )
-    .await;
-    let other_name = text_of(
-        &ctx,
-        "SELECT name FROM groups WHERE id = ?1",
-        vec![int(other)],
-    )
-    .await;
-    assert!(message.contains(&device_name), "имя устройства: {message}");
-    assert!(message.contains(&other_name), "имя группы: {message}");
-    assert!(
-        message.contains("Сначала выведите его из состава."),
-        "{message}"
-    );
+    let AppError::AlreadyInGroup { items } = err else {
+        panic!("ожидали AlreadyInGroup, получили {err:?}");
+    };
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, busy);
+    assert_eq!(items[0].group_id, other);
+    assert_eq!(items[0].name, "Монитор 2");
+    assert_eq!(items[0].group_name, "АРМ #9");
 
     assert_eq!(member_count(&ctx).await, members_before, "group_devices");
     assert_eq!(
@@ -1107,4 +1095,364 @@ async fn membership_place_invariant_walk() {
         .expect("удаление родителя");
     assert_eq!(group_parent(&ctx, a).await, None, "вложенная стала корнем");
     assert_eq!(assert_place_invariant(&ctx, "удаление родителя").await, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 41.8 plan 03: модель типов, D-08, D-16, move_devices
+// ---------------------------------------------------------------------------
+
+/// Тип группы с заданным поведением; при отсутствии создаётся.
+async fn type_by_behavior(ctx: &AppCtx, behavior: &'static str) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            let found: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM group_types WHERE behavior = ?1 LIMIT 1",
+                    params![behavior],
+                    |r| r.get(0),
+                )
+                .ok();
+            if let Some(id) = found {
+                return Ok(id);
+            }
+            conn.execute(
+                "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+                 VALUES (?1, ?2, ?3, 1700000000, 1700000000)",
+                params![format!("t_{behavior}"), format!("Тип {behavior}"), behavior],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("type by behavior")
+}
+
+async fn group_of_behavior(ctx: &AppCtx, behavior: &'static str, name: &str, seq: i64) -> i64 {
+    let t = type_by_behavior(ctx, behavior).await;
+    seed_group(ctx, t, name, seq, None, None).await
+}
+
+async fn set_origin(ctx: &AppCtx, device: i64, group: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET origin_group_id = ?2 WHERE id = ?1",
+                params![device, group],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set origin");
+}
+
+async fn set_anchor(ctx: &AppCtx, group: i64, device: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE groups SET anchor_device_id = ?2 WHERE id = ?1",
+                params![group, device],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set anchor");
+}
+
+async fn member_group(ctx: &AppCtx, device: i64) -> Option<i64> {
+    opt_i64(
+        ctx,
+        "SELECT (SELECT group_id FROM group_devices WHERE device_id = ?1)",
+        vec![int(device)],
+    )
+    .await
+}
+
+async fn audit_total(ctx: &AppCtx, action: &'static str) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM audit_log WHERE action = ?1",
+        vec![rusqlite::types::Value::Text(action.to_string())],
+    )
+    .await
+}
+
+async fn plain_device(ctx: &AppCtx, name: &str, n: i64, group: Option<i64>) -> i64 {
+    seed_device(
+        ctx,
+        name,
+        &format!("INV-M-{n}"),
+        &format!("SN-M-{n}"),
+        None,
+        group,
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_model_container_and_substitute_accept_any_device() {
+    // D-00: АРМ и «Системный блок» принимают любое устройство.
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let sys = group_of_behavior(&ctx, "substitute", "Системный блок #4", 4).await;
+    let d1 = plain_device(&ctx, "Монитор #2", 1, None).await;
+    let d2 = plain_device(&ctx, "SSD 256 ГБ", 2, None).await;
+    ctx.groups
+        .add_devices(&admin(), arm, vec![d1])
+        .await
+        .expect("в АРМ");
+    ctx.groups
+        .add_devices(&admin(), sys, vec![d2])
+        .await
+        .expect("в системный блок");
+    assert_eq!(member_group(&ctx, d1).await, Some(arm));
+    assert_eq!(member_group(&ctx, d2).await, Some(sys));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_model_remove_allowed_for_any_behavior_but_anchor_is_guarded() {
+    // D-01, D-00: вывод разрешён из любого типа, якорь не выводится.
+    let (ctx, _dir) = make_test_ctx().await;
+    for (i, behavior) in ["container", "substitute", "teardown"]
+        .into_iter()
+        .enumerate()
+    {
+        let g =
+            group_of_behavior(&ctx, behavior, &format!("Группа #{}", i + 1), i as i64 + 1).await;
+        let member = plain_device(&ctx, "Монитор #2", 10 + i as i64, Some(g)).await;
+        let anchor = plain_device(&ctx, "Системный блок #4", 20 + i as i64, Some(g)).await;
+        set_anchor(&ctx, g, anchor).await;
+        let n = ctx
+            .groups
+            .remove_devices(&admin(), g, vec![member])
+            .await
+            .expect(behavior);
+        assert_eq!(n, 1, "{behavior}: участник выведен");
+        assert_eq!(member_group(&ctx, member).await, None);
+        let msg = validation_message(
+            ctx.groups
+                .remove_devices(&admin(), g, vec![anchor])
+                .await
+                .expect_err("якорь"),
+        );
+        assert!(msg.contains("якорь"), "{behavior}: {msg}");
+        assert_eq!(
+            member_group(&ctx, anchor).await,
+            Some(g),
+            "{behavior}: якорь на месте"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_add_all_occupied_devices_reported_in_one_refusal() {
+    // D-16/D-18: все занятые одним отказом, ничего не записано.
+    let (ctx, _dir) = make_test_ctx().await;
+    let target = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let g1 = group_of_behavior(&ctx, "container", "АРМ #7", 7).await;
+    let g2 = group_of_behavior(&ctx, "substitute", "Системный блок #8", 8).await;
+    let free = plain_device(&ctx, "Ноутбук 1", 1, None).await;
+    let busy1 = plain_device(&ctx, "Монитор #2", 2, Some(g1)).await;
+    let busy2 = plain_device(&ctx, "SSD 256 ГБ", 3, Some(g2)).await;
+    let err = ctx
+        .groups
+        .add_devices(&admin(), target, vec![busy1, free, busy2])
+        .await
+        .expect_err("занятые");
+    assert_eq!(err.code(), "ALREADY_IN_GROUP");
+    let AppError::AlreadyInGroup { items } = err else {
+        panic!("не тот вариант")
+    };
+    assert_eq!(items.len(), 2);
+    assert_eq!((items[0].id, items[0].group_id), (busy1, g1));
+    assert_eq!((items[1].id, items[1].group_id), (busy2, g2));
+    assert_eq!(items[0].group_name, "АРМ #7");
+    assert_eq!(member_group(&ctx, free).await, None, "свободное не введено");
+    assert_eq!(audit_total(&ctx, "add_devices").await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_teardown_add_origin_rules_with_distinct_fixtures() {
+    // D-08, D-15: пустой и чужой origin отказывают, свой проходит (призрак).
+    let (ctx, _dir) = make_test_ctx().await;
+    let td = group_of_behavior(&ctx, "teardown", "Разбор #7", 7).await;
+    let other_td = seed_group(
+        &ctx,
+        type_by_behavior(&ctx, "teardown").await,
+        "Разбор #8",
+        8,
+        None,
+        None,
+    )
+    .await;
+    let empty = plain_device(&ctx, "SSD 256 ГБ", 1, None).await;
+    let foreign = plain_device(&ctx, "Планка памяти", 2, None).await;
+    set_origin(&ctx, foreign, other_td).await;
+    let own = plain_device(&ctx, "Блок питания", 3, None).await;
+    set_origin(&ctx, own, td).await;
+    for dev in [empty, foreign] {
+        let msg = validation_message(
+            ctx.groups
+                .add_devices(&admin(), td, vec![dev])
+                .await
+                .expect_err("чужое"),
+        );
+        assert!(msg.contains("Создать деталь"), "{msg}");
+    }
+    ctx.groups
+        .add_devices(&admin(), td, vec![own])
+        .await
+        .expect("своя");
+    assert_eq!(member_group(&ctx, own).await, Some(td));
+    // Удалённая своя деталь не возвращается (D-15).
+    let gone = plain_device(&ctx, "Кулер", 4, None).await;
+    set_origin(&ctx, gone, td).await;
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET deleted_at_utc = 1700000001 WHERE id = ?1",
+                params![gone],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("soft delete");
+    let msg = validation_message(
+        ctx.groups
+            .add_devices(&admin(), td, vec![gone])
+            .await
+            .expect_err("удалённая"),
+    );
+    assert!(msg.contains("Удалённую деталь"), "{msg}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_move_devices_moves_with_single_audit_record() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let from = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let to = group_of_behavior(&ctx, "container", "АРМ #5", 5).await;
+    let occupied = plain_device(&ctx, "Монитор #2", 1, Some(from)).await;
+    let free = plain_device(&ctx, "SSD 256 ГБ", 2, None).await;
+    let released_before = audit_total(&ctx, "custom:group_member_released").await;
+    let out = ctx
+        .groups
+        .move_devices(&admin(), to, vec![occupied, free])
+        .await
+        .expect("move");
+    assert_eq!((out.added, out.moved), (2, 1));
+    assert_eq!(member_group(&ctx, occupied).await, Some(to));
+    assert_eq!(member_group(&ctx, free).await, Some(to));
+    assert_eq!(
+        audit_total(&ctx, "move_devices").await,
+        1,
+        "ровно одна запись"
+    );
+    assert_eq!(
+        audit_total(&ctx, "custom:group_member_released").await,
+        released_before,
+        "release_device_in_tx не использован"
+    );
+    assert_eq!(audit_total(&ctx, "add_devices").await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_move_devices_is_all_or_nothing() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let from = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let to = group_of_behavior(&ctx, "container", "АРМ #5", 5).await;
+    let ok = plain_device(&ctx, "Монитор #2", 1, Some(from)).await;
+    // (а) второй — якорь исходной группы.
+    let anchor_grp = group_of_behavior(&ctx, "substitute", "Системный блок #4", 4).await;
+    let anchor = plain_device(&ctx, "Системный блок #9", 2, Some(anchor_grp)).await;
+    set_anchor(&ctx, anchor_grp, anchor).await;
+    let msg = validation_message(
+        ctx.groups
+            .move_devices(&admin(), to, vec![ok, anchor])
+            .await
+            .expect_err("якорь"),
+    );
+    assert!(msg.contains("якорь"), "{msg}");
+    assert_eq!(
+        member_group(&ctx, ok).await,
+        Some(from),
+        "первое не перенесено"
+    );
+    assert_eq!(member_group(&ctx, anchor).await, Some(anchor_grp));
+    // (б) второй — Списано.
+    let wo = plain_device(&ctx, "Клавиатура", 3, None).await;
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET status_id = (SELECT id FROM device_statuses WHERE code = 'списано') WHERE id = ?1",
+                params![wo],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("status");
+    let msg = validation_message(
+        ctx.groups
+            .move_devices(&admin(), to, vec![ok, wo])
+            .await
+            .expect_err("списано"),
+    );
+    assert!(msg.contains("«Списано»"), "{msg}");
+    assert_eq!(member_group(&ctx, ok).await, Some(from));
+    assert_eq!(audit_total(&ctx, "move_devices").await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_move_devices_into_teardown_only_own_parts() {
+    // D-17: сервер отказывает независимо от UI, перенос не обходит D-08; призрак переносится.
+    let (ctx, _dir) = make_test_ctx().await;
+    let td = group_of_behavior(&ctx, "teardown", "Разбор #7", 7).await;
+    let arm = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let foreign = plain_device(&ctx, "Монитор #2", 1, Some(arm)).await;
+    let msg = validation_message(
+        ctx.groups
+            .move_devices(&admin(), td, vec![foreign])
+            .await
+            .expect_err("чужое"),
+    );
+    assert!(msg.contains("Создать деталь"), "{msg}");
+    assert_eq!(
+        member_group(&ctx, foreign).await,
+        Some(arm),
+        "откат: членство цело"
+    );
+    let ghost = plain_device(&ctx, "SSD 256 ГБ", 2, Some(arm)).await;
+    set_origin(&ctx, ghost, td).await;
+    let out = ctx
+        .groups
+        .move_devices(&admin(), td, vec![ghost])
+        .await
+        .expect("призрак");
+    assert_eq!((out.added, out.moved), (1, 1));
+    assert_eq!(member_group(&ctx, ghost).await, Some(td));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn membership_move_devices_same_group_and_rights() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let g = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let d = plain_device(&ctx, "Монитор #2", 1, Some(g)).await;
+    let msg = validation_message(
+        ctx.groups
+            .move_devices(&admin(), g, vec![d])
+            .await
+            .expect_err("та же группа"),
+    );
+    assert_eq!(msg, "Устройство уже входит в эту группу.");
+    let employee = create_identity(&ctx, "emp_move", "Петров П.П.", Role::Employee).await;
+    let to = group_of_behavior(&ctx, "container", "АРМ #5", 5).await;
+    let err = ctx
+        .groups
+        .move_devices(&employee, to, vec![d])
+        .await
+        .expect_err("employee");
+    assert!(matches!(err, AppError::Forbidden), "{err:?}");
+    assert_eq!(member_group(&ctx, d).await, Some(g));
 }

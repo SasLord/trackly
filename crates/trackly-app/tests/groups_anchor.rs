@@ -150,6 +150,9 @@ async fn make_anchor_group(
         .await
         .expect("create_group");
     let anchor = seed_device(ctx, anchor_name, inv, place).await;
+    if behavior == "teardown" {
+        set_origin(ctx, anchor, group.id).await;
+    }
     ctx.groups
         .add_devices(&admin(), group.id, vec![anchor])
         .await
@@ -417,6 +420,7 @@ async fn anchor_teardown_group_with_live_parts_cannot_be_deleted() {
             None,
         )
         .await;
+        set_origin(&ctx, id, g).await;
         parts.push(id);
     }
     ctx.groups
@@ -671,6 +675,22 @@ async fn status_code_of(ctx: &AppCtx, device: i64) -> String {
         .expect("status code")
 }
 
+/// Фикстура «деталь разбора» (D-08): происхождение задаётся ДО ввода, так как ввод его
+/// больше не пишет.
+async fn set_origin(ctx: &AppCtx, device: i64, group: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET origin_group_id = ?2 WHERE id = ?1",
+                params![device, group],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set origin");
+}
+
 async fn origin_of(ctx: &AppCtx, device: i64) -> Option<i64> {
     ctx.writer
         .execute(move |conn| {
@@ -919,18 +939,19 @@ async fn add_devices_accepts_network_printer_like_any_member() {
         .expect("D-16: сетевой принтер входит в контейнер");
     assert_eq!(member_rows(&ctx, net).await, 1);
     assert_eq!(count_all(&ctx, "group_devices").await, rows_before + 1);
-    let msg = validation(
-        ctx.groups
-            .add_devices(
-                &admin(),
-                plain_group(&ctx, "container", "АРМ #51").await,
-                vec![net],
-            )
-            .await
-            .expect_err("уже в группе"),
-        "device_ids",
+    let err = ctx
+        .groups
+        .add_devices(
+            &admin(),
+            plain_group(&ctx, "container", "АРМ #51").await,
+            vec![net],
+        )
+        .await
+        .expect_err("уже в группе");
+    assert!(
+        matches!(&err, AppError::AlreadyInGroup { items } if items.len() == 1 && items[0].id == net),
+        "{err:?}"
     );
-    assert!(msg.contains("уже входит в группу"), "{msg}");
     assert_eq!(member_rows(&ctx, net).await, 1, "прочие отказы целы");
 
     // (в) карточка группы: строка принтера есть, происхождение member, явной ссылки нет.
@@ -946,13 +967,13 @@ async fn add_devices_accepts_network_printer_like_any_member() {
     // (б) группа-разбор: входит, происхождение пишется как у любого члена.
     let teardown = plain_group(&ctx, "teardown", "Разбор #50").await;
     let net2 = seed_printer(&ctx, "Сетевой принтер В", "INV-N-2", Some("192.0.2.21")).await;
-    assert_eq!(origin_of(&ctx, net2).await, None, "до разбора пусто");
+    set_origin(&ctx, net2, teardown).await;
     ctx.groups
         .add_devices(&admin(), teardown, vec![net2])
         .await
         .expect("D-16: сетевой принтер входит в разбор");
     assert_eq!(member_rows(&ctx, net2).await, 1);
-    assert_eq!(origin_of(&ctx, net2).await, Some(teardown));
+    assert_eq!(origin_of(&ctx, net2).await, Some(teardown), "origin цел");
 }
 
 // ---- Test 5: откат -----------------------------------------------------------
@@ -1005,6 +1026,8 @@ async fn anchor_add_devices_status_rules() {
 
     let written_off = seed_device(&ctx, "Монитор #8", "INV-A-1", None).await;
     set_status_by_code(&ctx, written_off, "списано").await;
+    // Своя деталь разбора: иначе первым сработает D-08, а не отказ по статусу.
+    set_origin(&ctx, written_off, teardown).await;
     for g in [container, teardown] {
         let msg = validation(
             ctx.groups
@@ -1022,6 +1045,7 @@ async fn anchor_add_devices_status_rules() {
 
     let to_write_off = seed_device(&ctx, "Планка памяти", "INV-A-2", None).await;
     set_status_by_code(&ctx, to_write_off, "на_списание").await;
+    set_origin(&ctx, to_write_off, teardown).await;
     let msg = validation(
         ctx.groups
             .add_devices(&admin(), container, vec![to_write_off])
@@ -1039,47 +1063,64 @@ async fn anchor_add_devices_status_rules() {
     assert_eq!(member_rows(&ctx, to_write_off).await, 1);
 }
 
-// ---- Test 7: происхождение (D-33) --------------------------------------------
+// ---- Test 7: происхождение (D-33, D-08) -------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn anchor_origin_is_written_once_and_survives_other_groups() {
+async fn anchor_origin_is_never_written_by_add_and_teardown_accepts_only_own() {
     let (ctx, _dir) = make_test_ctx().await;
     let a = plain_group(&ctx, "teardown", "Разбор #A").await;
     let b = plain_group(&ctx, "container", "АРМ #B").await;
     let c = plain_group(&ctx, "teardown", "Разбор #C").await;
     assert!(a != c);
-    let part = seed_device(&ctx, "Планка памяти", "INV-O-1", None).await;
-    assert_eq!(origin_of(&ctx, part).await, None, "до разбора пусто");
+
+    // Три различающихся фикстуры: пустой origin, чужой origin, свой origin.
+    let empty = seed_device(&ctx, "Планка памяти", "INV-O-1", None).await;
+    let foreign = seed_device(&ctx, "Жёсткий диск", "INV-O-2", None).await;
+    set_origin(&ctx, foreign, c).await;
+    let own = seed_device(&ctx, "Блок питания", "INV-O-3", None).await;
+    set_origin(&ctx, own, a).await;
+
+    for dev in [empty, foreign] {
+        let msg = validation(
+            ctx.groups
+                .add_devices(&admin(), a, vec![dev])
+                .await
+                .expect_err("в разбор нельзя чужое"),
+            "device_ids",
+        );
+        assert!(msg.contains("Создать деталь"), "{msg}");
+        assert_eq!(member_rows(&ctx, dev).await, 0);
+    }
+    assert_eq!(origin_of(&ctx, empty).await, None, "отказ origin не пишет");
+    assert_eq!(origin_of(&ctx, foreign).await, Some(c));
 
     ctx.groups
-        .add_devices(&admin(), a, vec![part])
+        .add_devices(&admin(), a, vec![own])
         .await
-        .expect("в A");
-    assert_eq!(origin_of(&ctx, part).await, Some(a), "origin = A");
+        .expect("своя деталь входит");
+    assert_eq!(origin_of(&ctx, own).await, Some(a), "origin не меняется");
 
     ctx.groups
-        .remove_devices(&admin(), a, vec![part])
+        .remove_devices(&admin(), a, vec![own])
         .await
         .expect("из A");
-    assert_eq!(origin_of(&ctx, part).await, Some(a), "вывод не обнуляет");
-
+    assert_eq!(origin_of(&ctx, own).await, Some(a), "вывод не обнуляет");
     ctx.groups
-        .add_devices(&admin(), b, vec![part])
+        .add_devices(&admin(), b, vec![own])
         .await
         .expect("в контейнер B");
-    assert_eq!(origin_of(&ctx, part).await, Some(a), "контейнер не меняет");
-
+    assert_eq!(origin_of(&ctx, own).await, Some(a), "контейнер не меняет");
     ctx.groups
-        .remove_devices(&admin(), b, vec![part])
+        .remove_devices(&admin(), b, vec![own])
         .await
         .expect("из B");
-    ctx.groups
-        .add_devices(&admin(), c, vec![part])
-        .await
-        .expect("в разбор C");
-    assert_eq!(
-        origin_of(&ctx, part).await,
-        Some(a),
-        "повторный разбор не перезаписывает"
+    // Чужой разбор C свою деталь A не принимает.
+    validation(
+        ctx.groups
+            .add_devices(&admin(), c, vec![own])
+            .await
+            .expect_err("чужой разбор"),
+        "device_ids",
     );
+    assert_eq!(origin_of(&ctx, own).await, Some(a));
 }

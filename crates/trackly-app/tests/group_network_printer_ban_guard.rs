@@ -21,7 +21,7 @@ const BAN_PHRASE: &str = "Сетевой принтер не может вход
 
 /// Якорь мутаций: вставка нового кода сразу после записи в состав. Обязан встречаться в
 /// исходнике РОВНО один раз.
-const ANCHOR: &str = "added.push(*device_id);";
+const ANCHOR: &str = "added.push(device_id);";
 
 /// Исходник без строк-комментариев: слова в комментариях (история решения D-32, ссылки на
 /// D-16) стража не краснят.
@@ -45,6 +45,20 @@ fn add_devices_body(src: &str) -> &str {
     &rest[..e]
 }
 
+/// Тело примитива `add_one_in_tx` (41.8-03): правила ввода одного устройства живут там,
+/// `add_devices` и `move_devices` лишь вызывают его. Запрет мог бы вернуться и туда.
+fn add_one_body(src: &str) -> &str {
+    let start = "fn add_one_in_tx(";
+    let s = src
+        .find(start)
+        .unwrap_or_else(|| panic!("не найдено начало {start:?}"));
+    let rest = &src[s + start.len()..];
+    let e = rest
+        .find("\nimpl GroupService")
+        .unwrap_or_else(|| panic!("не найден конец тела add_one_in_tx"));
+    &rest[..e]
+}
+
 /// Страж. Возвращает `Err` с причиной (а не паникует), чтобы самопроверка могла прогнать
 /// его по мутированным копиям.
 fn check_guard(src: &str) -> Result<(), String> {
@@ -60,13 +74,14 @@ fn check_guard(src: &str) -> Result<(), String> {
             ));
         }
     }
-    let body = add_devices_body(&clean);
-    for forbidden in ["ip_address", "FROM printers", "printer"] {
-        if body.to_lowercase().contains(&forbidden.to_lowercase()) {
-            return Err(format!(
-                "тело add_devices обращается к {forbidden:?}: членство не зависит от IP и \
-                 вида устройства (D-15, D-16)"
-            ));
+    for body in [add_devices_body(&clean), add_one_body(&clean)] {
+        for forbidden in ["ip_address", "FROM printers", "printer"] {
+            if body.to_lowercase().contains(&forbidden.to_lowercase()) {
+                return Err(format!(
+                    "тело add_devices/add_one_in_tx обращается к {forbidden:?}: членство не \
+                     зависит от IP и вида устройства (D-15, D-16)"
+                ));
+            }
         }
     }
     Ok(())
@@ -103,9 +118,9 @@ fn group_service_has_no_network_printer_ban() {
 fn guard_selfcheck_clean_copy_is_green_and_anchor_is_unique() {
     assert_eq!(GROUP_SERVICE_SRC.matches(ANCHOR).count(), 1);
     assert_eq!(
-        add_devices_body(GROUP_SERVICE_SRC).matches(ANCHOR).count(),
+        add_one_body(GROUP_SERVICE_SRC).matches(ANCHOR).count(),
         1,
-        "якорь обязан лежать внутри add_devices"
+        "якорь обязан лежать внутри add_one_in_tx"
     );
     assert!(check_guard(GROUP_SERVICE_SRC).is_ok());
     // Контроль: слова в комментарии стража не краснят.
