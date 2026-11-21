@@ -9,7 +9,7 @@
 <script lang="ts">
   // Phase 41 Plan 19 (GRP-04, 41-UI-SPEC.md §7.4/§8): левая панель раздела
   // «Группы» — дерево, где корни — ТИПЫ групп, а внутри — группы (вложенная
-  // группа показывается только под родителем, под типом не дублируется).
+  // группа показывается по месту вложения И «двойником» — корнем своего типа, D-25).
   //
   // Это НОВЫЙ сиблинг PlaceTree: копируется АНАТОМИЯ (role=tree/treeitem/group,
   // aria-level/expanded/selected, roving tabindex, клавиатура по плоскому
@@ -58,6 +58,8 @@
     /** Вторая точка входа D-18 (первая — кнопка панели группы): тот же обработчик страницы. */
     onMove: (_groupId: number) => void;
     onRemoveFromParent: (_groupId: number) => void;
+    onMoveToGroup: (_groupId: number) => void;
+    onWriteOff: (_groupId: number) => void;
     onDelete: (_node: GroupTreeNodeRef) => void;
     /** Отдаёт странице свежие данные после каждой успешной загрузки. */
     onLoaded?: (_types: GroupTypeDto[], _groups: GroupDto[]) => void;
@@ -74,6 +76,8 @@
     onRename,
     onMove,
     onRemoveFromParent,
+    onMoveToGroup,
+    onWriteOff,
     onDelete,
     onLoaded,
   }: Props = $props();
@@ -85,6 +89,7 @@
 
   const typeKey = (id: number) => `type-${id}`;
   const groupKey = (id: number) => `group-${id}`;
+  const inTypeKey = (id: number) => `in-type-${id}`;
 
   // --- Раскрытые узлы: localStorage `trackly:groups:expanded` ------------------
   // Выбранный узел хранит СТРАНИЦА (initialSelected) — одно место записи на
@@ -126,7 +131,14 @@
     for (const g of groupList) byId.set(g.id, g);
 
     const nestedByParent = new Map<number, GroupDto[]>();
-    const rootsByType = new Map<number, GroupDto[]>();
+    // Корни типа: настоящие корневые группы и «двойники» вложенных (D-25) —
+    // вложенная группа видна и по месту вложения, и корнем своего типа.
+    const rootsByType = new Map<number, { g: GroupDto; aliasOf: string | null }[]>();
+    const pushRoot = (g: GroupDto, aliasOf: string | null) => {
+      const arr = rootsByType.get(g.type_id);
+      if (arr) arr.push({ g, aliasOf });
+      else rootsByType.set(g.type_id, [{ g, aliasOf }]);
+    };
     for (const g of groupList) {
       // Сирота (родитель не пришёл в списке) показывается корнем своего типа —
       // группа не должна пропадать из дерева.
@@ -134,17 +146,18 @@
         const arr = nestedByParent.get(g.parent_group_id);
         if (arr) arr.push(g);
         else nestedByParent.set(g.parent_group_id, [g]);
+        pushRoot(g, byId.get(g.parent_group_id)?.name ?? null);
       } else {
-        const arr = rootsByType.get(g.type_id);
-        if (arr) arr.push(g);
-        else rootsByType.set(g.type_id, [g]);
+        pushRoot(g, null);
       }
     }
     const bySeq = (a: GroupDto, b: GroupDto) => a.seq - b.seq || a.id - b.id;
 
-    function makeGroup(g: GroupDto, parentKey: string): TreeItem {
+    // Основной узел: ключ group-{id}; потомки — по месту вложения.
+    function makeGroup(g: GroupDto, parentKey: string, path: Set<number>): TreeItem {
       const key = groupKey(g.id);
-      const kids = (nestedByParent.get(g.id) ?? []).sort(bySeq);
+      const nextPath = new Set(path).add(g.id);
+      const kids = (nestedByParent.get(g.id) ?? []).filter((k) => !nextPath.has(k.id)).sort(bySeq);
       const item: TreeItem = {
         key,
         kind: 'group',
@@ -153,10 +166,38 @@
         type: null,
         group: g,
         children: [],
+        aliasOf: null,
       };
       itemByKey.set(key, item);
       parentOf.set(key, parentKey);
-      item.children = kids.map((k) => makeGroup(k, key));
+      item.children = kids.map((k) => makeGroup(k, key, nextPath));
+      return item;
+    }
+
+    // Двойник: корень своего типа `in-type-{id}`; потомки `in-type-{aliasRootId}-group-{childId}`.
+    function makeAlias(
+      g: GroupDto,
+      parentKey: string,
+      aliasRootId: number,
+      aliasOf: string | null,
+      path: Set<number>,
+    ): TreeItem {
+      const key = aliasOf !== null ? inTypeKey(g.id) : `in-type-${aliasRootId}-group-${g.id}`;
+      const nextPath = new Set(path).add(g.id);
+      const kids = (nestedByParent.get(g.id) ?? []).filter((k) => !nextPath.has(k.id)).sort(bySeq);
+      const item: TreeItem = {
+        key,
+        kind: 'group',
+        id: g.id,
+        name: g.name,
+        type: null,
+        group: g,
+        children: [],
+        aliasOf,
+      };
+      itemByKey.set(key, item);
+      parentOf.set(key, parentKey);
+      item.children = kids.map((k) => makeAlias(k, key, aliasRootId, null, nextPath));
       return item;
     }
 
@@ -171,10 +212,17 @@
         type: t,
         group: null,
         children: [],
+        aliasOf: null,
       };
       itemByKey.set(key, item);
       parentOf.set(key, null);
-      item.children = (rootsByType.get(t.id) ?? []).sort(bySeq).map((g) => makeGroup(g, key));
+      item.children = (rootsByType.get(t.id) ?? [])
+        .sort((a, b) => bySeq(a.g, b.g))
+        .map(({ g, aliasOf }) =>
+          aliasOf === null
+            ? makeGroup(g, key, new Set())
+            : makeAlias(g, key, g.id, aliasOf, new Set()),
+        );
       return item;
     });
     return { roots, itemByKey, parentOf };
@@ -211,15 +259,16 @@
 
     const roots = treeData.roots.map(filter).filter((r): r is TreeItem => r !== null);
 
-    let count = 0;
+    // Считаются ГРУППЫ и типы (по kind:id), а не узлы: двойник — не второй результат.
+    const hits = new Set<string>();
     function countHits(list: TreeItem[]) {
       for (const it of list) {
-        if (selfMatches(it)) count += 1;
+        if (selfMatches(it)) hits.add(`${it.kind}:${it.id}`);
         countHits(it.children);
       }
     }
     countHits(roots);
-    return { roots, expand, count };
+    return { roots, expand, count: hits.size };
   });
 
   // --- Раскрытие / выбор / roving tabindex -------------------------------------
@@ -480,6 +529,8 @@
     onRename: (item) => onRename({ kind: item.kind, id: item.id }),
     onMove: (groupId) => onMove(groupId),
     onRemoveFromParent: (groupId) => onRemoveFromParent(groupId),
+    onMoveToGroup: (groupId) => onMoveToGroup(groupId),
+    onWriteOff: (groupId) => onWriteOff(groupId),
     onDelete: (item) => onDelete({ kind: item.kind, id: item.id }),
   };
 </script>
