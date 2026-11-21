@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-11-21T14:59:43.707Z"
-last_activity: 2026-11-21 -- Phase 41.8 planning complete
+last_updated: "2026-11-21T15:03:30.463Z"
+last_activity: 2026-11-22 -- Phase 41.8 executed 14/14, verification gaps_found
 progress:
   total_phases: 27
   completed_phases: 21
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.8 — «Группы» как рабочее место
+**Current focus:** Phase 41.8 — groups-workspace
 
 ## Current Position
 
-Phase: 41.8 (41.7 закрыта ранее; SDK phase.complete ошибочно назвал её следующей)
-Plan: Not started
-Status: Ready to execute
+Phase: 41.8 (groups-workspace) — GAPS FOUND
+Plan: 14 of 14 (все выполнены)
+Status: Verification gaps_found — UAT-11 (выбор «оставить/вывести» при смене статуса на «Списано» в обычной форме устройства), CR-01 (акт передачи снимает списание с участника группы), CR-02 (массовый перенос D-18 недостижим из GroupAddDevicesModal) + 6 WR из 41.8-REVIEW.md. Далее: /gsd-plan-phase 41.8 --gaps (пакетом).
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
 показаны так, как остальные группы (нет строки с шевроном и раскрытием состава), — это сбивает с
@@ -186,7 +186,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-21 -- Phase 41.8 planning complete
+Last activity: 2026-11-22 -- Phase 41.8 executed 14/14, verification gaps_found
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
