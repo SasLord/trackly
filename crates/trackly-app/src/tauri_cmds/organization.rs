@@ -5,13 +5,17 @@
 
 use crate::context::AppCtx;
 use crate::dto::OrgDto;
+use crate::tauri_cmds::users::resolve_tauri_identity;
+use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
 // build_* helpers (shared with axum handlers)
 // ---------------------------------------------------------------------------
 
-pub async fn build_organization_get(ctx: &AppCtx) -> Result<OrgDto, AppError> {
+/// INT-29: ранее отвечал без сессии и без роли (реквизиты организации). UI-потребителей нет.
+pub async fn build_organization_get(ctx: &AppCtx, caller: &Identity) -> Result<OrgDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     let org = ctx.organization.read().await?;
     Ok(org.into())
 }
@@ -23,5 +27,6 @@ pub async fn build_organization_get(ctx: &AppCtx) -> Result<OrgDto, AppError> {
 #[tauri::command]
 #[specta::specta]
 pub async fn organization_get(state: tauri::State<'_, AppCtx>) -> Result<OrgDto, AppError> {
-    build_organization_get(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_organization_get(state.inner(), &caller).await
 }

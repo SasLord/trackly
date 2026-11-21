@@ -463,11 +463,11 @@ pub async fn handler_import_csv_preview(
     session: Session,
     Json(payload): Json<ImportCsvPreviewPayload>,
 ) -> Result<Json<CsvImportPreviewResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_devices_import_csv_preview(&ctx, payload.bytes)
+        build_devices_import_csv_preview(&ctx, &identity, payload.bytes)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

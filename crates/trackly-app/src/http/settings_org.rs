@@ -1,6 +1,6 @@
 //! Organisation settings / backup / templates axum HTTP handlers — Phase 7 Plan 07.
 //!
-//! Read handlers: session_identity only.
+//! Read handlers: session_identity + ManageSettings gate in the shared build_* (INT-29).
 //! Mutation handlers: session_identity + authorize(ManageSettings).
 //!
 //! IMPORTANT: settings_move_db is NOT exposed here — it is Tauri-only (T-07-07-03).
@@ -106,11 +106,11 @@ pub async fn handler_get_org(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<OrgSettingsDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_org(&ctx)
+        build_settings_get_org(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -120,11 +120,11 @@ pub async fn handler_get_org_logo(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<OrgLogoDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_org_logo(&ctx)
+        build_settings_get_org_logo(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -134,11 +134,11 @@ pub async fn handler_get_db_path(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<String>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_db_path(&ctx)
+        build_settings_get_db_path(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -148,11 +148,11 @@ pub async fn handler_get_low_stock_threshold(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<i64>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_low_stock_threshold(&ctx)
+        build_settings_get_low_stock_threshold(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -162,11 +162,11 @@ pub async fn handler_get_low_stock_basis(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<String>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_low_stock_basis(&ctx)
+        build_settings_get_low_stock_basis(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -176,11 +176,11 @@ pub async fn handler_get_place_path_defaults(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<OrgPathDisplayDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_place_path_defaults(&ctx)
+        build_settings_get_place_path_defaults(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -190,11 +190,11 @@ pub async fn handler_get_backup_config(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<BackupConfigDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_backup_config(&ctx)
+        build_settings_get_backup_config(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -204,11 +204,11 @@ pub async fn handler_templates_list_for_editor(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<Vec<TemplateEditorItem>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_templates_list_for_editor(&ctx)
+        build_templates_list_for_editor(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -331,7 +331,7 @@ pub async fn handler_backup_run_manual(
         .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_backup_run_manual(&ctx)
+        build_backup_run_manual(&ctx, &caller)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

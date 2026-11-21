@@ -159,6 +159,9 @@ pub async fn build_server_toggle_tauri(
 
 /// Таури server_status.
 pub async fn build_server_status_tauri(ctx: &AppCtx) -> Result<ServerStatusDto, AppError> {
+    // INT-29: тот же гейт, что у HTTP-версии; десктоп действует от системного Администратора.
+    let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+    trackly_core::auth::authorize(&caller, &trackly_core::auth::Action::ManageSettings)?;
     let guard = ctx.server_ctl.lock().await;
     let running = guard.is_some();
     Ok(ServerStatusDto {

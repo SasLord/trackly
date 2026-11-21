@@ -386,8 +386,11 @@ pub async fn devices_bulk_create(
 
 pub async fn build_devices_import_csv_preview(
     ctx: &AppCtx,
+    caller: &Identity,
     bytes: Vec<u8>,
 ) -> Result<CsvImportPreviewResponse, AppError> {
+    // INT-29: превью — подготовка к импорту; тот же гейт, что у devices_import_csv_commit.
+    authorize(caller, &Action::MutateDevices)?;
     ctx.devices.import_csv_preview(bytes).await
 }
 
@@ -421,7 +424,8 @@ pub async fn devices_import_csv_preview(
     state: tauri::State<'_, AppCtx>,
     bytes: Vec<u8>,
 ) -> Result<CsvImportPreviewResponse, AppError> {
-    build_devices_import_csv_preview(state.inner(), bytes).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_import_csv_preview(state.inner(), &caller, bytes).await
 }
 
 #[tauri::command]

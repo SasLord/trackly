@@ -332,7 +332,11 @@ pub async fn build_server_toggle(
 }
 
 /// Текущий статус сервера.
-pub async fn build_server_status(ctx: &AppCtx) -> Result<ServerStatusDto, AppError> {
+pub async fn build_server_status(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<ServerStatusDto, AppError> {
+    trackly_core::auth::authorize(caller, &Action::ManageSettings)?;
     let guard = ctx.server_ctl.lock().await;
     let running = guard.is_some();
     Ok(ServerStatusDto {
@@ -382,9 +386,13 @@ pub async fn handler_server_toggle(
 
 pub async fn handler_server_status(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<ServerStatusDto>, AppErrorResponse> {
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_server_status(&ctx)
+        build_server_status(&ctx, &caller)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

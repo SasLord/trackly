@@ -32,7 +32,11 @@ use trackly_infra::repos::place_path_settings::{
 // build_* helpers — Organisation settings
 // ---------------------------------------------------------------------------
 
-pub async fn build_settings_get_org(ctx: &AppCtx) -> Result<OrgSettingsDto, AppError> {
+pub async fn build_settings_get_org(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<OrgSettingsDto, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     ctx.org_db.get().await
 }
 
@@ -44,7 +48,11 @@ pub async fn build_settings_save_org_fields(
     ctx.org_db.save_fields(caller_identity, patch).await
 }
 
-pub async fn build_settings_get_org_logo(ctx: &AppCtx) -> Result<OrgLogoDto, AppError> {
+pub async fn build_settings_get_org_logo(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<OrgLogoDto, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     ctx.org_db.get_logo().await
 }
 
@@ -70,7 +78,11 @@ pub async fn build_settings_remove_org_logo(
 // build_* helpers — DB path / move / restart (Tauri-only, D-19)
 // ---------------------------------------------------------------------------
 
-pub async fn build_settings_get_db_path(ctx: &AppCtx) -> Result<String, AppError> {
+pub async fn build_settings_get_db_path(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<String, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     // Return the RESOLVED db path: config override ([paths].db_path) if set,
     // otherwise the portable default. Mirrors the resolution in AppCtx::new so
     // the Settings UI shows the DB the app actually opened — not always the
@@ -214,7 +226,11 @@ pub async fn build_settings_move_db(
 // build_* helpers — Low stock threshold
 // ---------------------------------------------------------------------------
 
-pub async fn build_settings_get_low_stock_threshold(ctx: &AppCtx) -> Result<i64, AppError> {
+pub async fn build_settings_get_low_stock_threshold(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<i64, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     let readers = ctx.readers.clone();
     tokio::task::spawn_blocking(move || -> Result<i64, AppError> {
         let conn = readers.acquire();
@@ -272,7 +288,11 @@ pub async fn build_settings_set_low_stock_threshold(
 /// GET never errors on a missing/malformed stored value — falls back to
 /// `LowStockBasis::DEFAULT`, mirroring `build_settings_get_low_stock_threshold`'s
 /// numeric-fallback UX.
-pub async fn build_settings_get_low_stock_basis(ctx: &AppCtx) -> Result<String, AppError> {
+pub async fn build_settings_get_low_stock_basis(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<String, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     let readers = ctx.readers.clone();
     tokio::task::spawn_blocking(move || -> Result<String, AppError> {
         let conn = readers.acquire();
@@ -340,7 +360,9 @@ pub async fn build_settings_set_low_stock_basis(
 /// Does NOT `.trim()` the separator values (D-09).
 pub async fn build_settings_get_place_path_defaults(
     ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
 ) -> Result<OrgPathDisplayDto, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     let readers = ctx.readers.clone();
     tokio::task::spawn_blocking(move || -> Result<OrgPathDisplayDto, AppError> {
         let conn = readers.acquire();
@@ -474,7 +496,11 @@ pub async fn build_settings_set_place_path_defaults(
 // build_* helpers — Backup config
 // ---------------------------------------------------------------------------
 
-pub async fn build_settings_get_backup_config(ctx: &AppCtx) -> Result<BackupConfigDto, AppError> {
+pub async fn build_settings_get_backup_config(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<BackupConfigDto, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     ctx.backup.get_config().await
 }
 
@@ -486,7 +512,11 @@ pub async fn build_settings_save_backup_config(
     ctx.backup.set_config(caller_identity, patch).await
 }
 
-pub async fn build_backup_run_manual(ctx: &AppCtx) -> Result<BackupResult, AppError> {
+pub async fn build_backup_run_manual(
+    ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
+) -> Result<BackupResult, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     let config = ctx.backup.get_config().await?;
     let folder = config.backup_folder.ok_or_else(|| AppError::Validation {
         field: "backup_folder".to_string(),
@@ -501,7 +531,9 @@ pub async fn build_backup_run_manual(ctx: &AppCtx) -> Result<BackupResult, AppEr
 
 pub async fn build_templates_list_for_editor(
     ctx: &AppCtx,
+    caller: &trackly_core::auth::Identity,
 ) -> Result<Vec<TemplateEditorItem>, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     ctx.templates.list_all_for_editor().await
 }
 
@@ -613,7 +645,8 @@ pub async fn build_templates_validate_preview(
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_get_org(state: tauri::State<'_, AppCtx>) -> Result<OrgSettingsDto, AppError> {
-    build_settings_get_org(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_get_org(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -631,7 +664,8 @@ pub async fn settings_save_org_fields(
 pub async fn settings_get_org_logo(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<OrgLogoDto, AppError> {
-    build_settings_get_org_logo(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_get_org_logo(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -655,7 +689,8 @@ pub async fn settings_remove_org_logo(state: tauri::State<'_, AppCtx>) -> Result
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_get_db_path(state: tauri::State<'_, AppCtx>) -> Result<String, AppError> {
-    build_settings_get_db_path(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_get_db_path(state.inner(), &caller).await
 }
 
 /// Open the DB folder in the system file manager. No auth guard — read-only OS action.
@@ -694,7 +729,8 @@ pub async fn app_restart(app: tauri::AppHandle) -> Result<(), AppError> {
 pub async fn settings_get_low_stock_threshold(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<i32, AppError> {
-    build_settings_get_low_stock_threshold(state.inner())
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_get_low_stock_threshold(state.inner(), &caller)
         .await
         .map(|v| v as i32)
 }
@@ -714,7 +750,8 @@ pub async fn settings_set_low_stock_threshold(
 pub async fn settings_get_low_stock_basis(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<String, AppError> {
-    build_settings_get_low_stock_basis(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_get_low_stock_basis(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -732,7 +769,8 @@ pub async fn settings_set_low_stock_basis(
 pub async fn settings_get_place_path_defaults(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<OrgPathDisplayDto, AppError> {
-    build_settings_get_place_path_defaults(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_get_place_path_defaults(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -750,7 +788,8 @@ pub async fn settings_set_place_path_defaults(
 pub async fn settings_get_backup_config(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<BackupConfigDto, AppError> {
-    build_settings_get_backup_config(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_get_backup_config(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -766,7 +805,8 @@ pub async fn settings_save_backup_config(
 #[tauri::command]
 #[specta::specta]
 pub async fn backup_run_manual(state: tauri::State<'_, AppCtx>) -> Result<BackupResult, AppError> {
-    build_backup_run_manual(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_backup_run_manual(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -774,7 +814,8 @@ pub async fn backup_run_manual(state: tauri::State<'_, AppCtx>) -> Result<Backup
 pub async fn templates_list_for_editor(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<Vec<TemplateEditorItem>, AppError> {
-    build_templates_list_for_editor(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_templates_list_for_editor(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -850,9 +891,12 @@ mod place_path {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn get_on_fresh_db_returns_migration_defaults() {
         let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
-        let dto = build_settings_get_place_path_defaults(&ctx)
-            .await
-            .expect("get_place_path_defaults");
+        let dto = build_settings_get_place_path_defaults(
+            &ctx,
+            &trackly_core::auth::Identity::trusted_admin(),
+        )
+        .await
+        .expect("get_place_path_defaults");
         assert_eq!(dto.variant, DEFAULT_VARIANT);
         assert_eq!(dto.sep_ends, DEFAULT_SEP_ENDS);
         assert_eq!(dto.sep_last_two, DEFAULT_SEP_LAST_TWO);
@@ -928,9 +972,12 @@ mod place_path {
         .await
         .expect("set should succeed for whitespace-only sep_ends");
 
-        let dto = build_settings_get_place_path_defaults(&ctx)
-            .await
-            .expect("get_place_path_defaults");
+        let dto = build_settings_get_place_path_defaults(
+            &ctx,
+            &trackly_core::auth::Identity::trusted_admin(),
+        )
+        .await
+        .expect("get_place_path_defaults");
         assert_eq!(dto.variant, "last_two");
         assert_eq!(dto.sep_ends, "   ");
         assert_eq!(dto.sep_last_two, ", ");
@@ -980,9 +1027,12 @@ mod place_path {
             "отказ должен прийти от записи, а не от валидации: {err:?}"
         );
 
-        let dto = build_settings_get_place_path_defaults(&ctx)
-            .await
-            .expect("get_place_path_defaults");
+        let dto = build_settings_get_place_path_defaults(
+            &ctx,
+            &trackly_core::auth::Identity::trusted_admin(),
+        )
+        .await
+        .expect("get_place_path_defaults");
         assert_eq!(
             (
                 dto.variant.as_str(),
@@ -1017,9 +1067,12 @@ mod place_path {
             .await
             .expect("сырой UPDATE варианта");
 
-        let dto = build_settings_get_place_path_defaults(&ctx)
-            .await
-            .expect("get_place_path_defaults");
+        let dto = build_settings_get_place_path_defaults(
+            &ctx,
+            &trackly_core::auth::Identity::trusted_admin(),
+        )
+        .await
+        .expect("get_place_path_defaults");
         assert_eq!(
             dto.variant, DEFAULT_VARIANT,
             "IN-05: мусорный вариант обязан деградировать до дефолта, а не выйти сырым"

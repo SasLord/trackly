@@ -4,13 +4,22 @@
 //! Phase 7 добавит CRUD-эндпойнты и `template_render_with_diff` UX.
 
 use crate::context::AppCtx;
+use crate::tauri_cmds::users::resolve_tauri_identity;
+use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
 // build_* helpers
 // ---------------------------------------------------------------------------
 
-pub async fn build_templates_get_active(ctx: &AppCtx, kind: String) -> Result<String, AppError> {
+/// INT-29: ранее без сессии/роли. UI-потребителей нет (используется редактор через
+/// `templates_list_for_editor`), гейт ManageSettings как у соседей редактора.
+pub async fn build_templates_get_active(
+    ctx: &AppCtx,
+    caller: &Identity,
+    kind: String,
+) -> Result<String, AppError> {
+    authorize(caller, &Action::ManageSettings)?;
     ctx.templates.get_active(&kind).await
 }
 
@@ -23,9 +32,12 @@ pub async fn build_templates_get_active(ctx: &AppCtx, kind: String) -> Result<St
 /// Phase 16 (D-10): возвращает HTML-строку — см. `build_acts_render_pdf`.
 pub async fn build_templates_render_preview(
     ctx: &AppCtx,
+    caller: &Identity,
     kind: String,
     sample_act_id: i64,
 ) -> Result<String, AppError> {
+    // INT-29: рендерит реальный акт по id — без сессии и без роли отдавал данные.
+    authorize(caller, &Action::ManageSettings)?;
     match kind.as_str() {
         "act_handover" => ctx.acts.render_pdf(sample_act_id).await,
         "act_acceptance" => {
@@ -55,7 +67,8 @@ pub async fn templates_get_active(
     state: tauri::State<'_, AppCtx>,
     kind: String,
 ) -> Result<String, AppError> {
-    build_templates_get_active(state.inner(), kind).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_templates_get_active(state.inner(), &caller, kind).await
 }
 
 #[tauri::command]
@@ -65,5 +78,6 @@ pub async fn templates_render_preview(
     kind: String,
     sample_act_id: i32,
 ) -> Result<String, AppError> {
-    build_templates_render_preview(state.inner(), kind, sample_act_id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_templates_render_preview(state.inner(), &caller, kind, sample_act_id as i64).await
 }
