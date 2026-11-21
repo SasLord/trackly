@@ -118,6 +118,25 @@ const CMD_WITHOUT_ROUTE: &[Verdict] = &[
                  пользователю тостом «Не удалось открыть папку»",
     },
     Verdict {
+        name: "read_file_bytes",
+        // gsd-fast 2026-11-21 (9a62908d): HTTP-маршрут удалён намеренно — без
+        // authorize и без сессии он давал любому в LAN читать .csv на сервере.
+        // Вызов в UI: DeviceImportCsvModal.svelte openFilePicker() — ранний
+        // выход по !isTauri до нативного диалога и до apiCall. Тест
+        // fs_helpers_not_exposed_over_http держит отсутствие маршрута.
+        reason: "десктопная по смыслу (чтение локального файла, выбранного нативным диалогом); \
+                 HTTP-маршрут удалён как дыра безопасности (9a62908d); в UI вызов только за \
+                 гардом isTauri в DeviceImportCsvModal.svelte openFilePicker()",
+    },
+    Verdict {
+        name: "write_file_bytes",
+        // Тот же коммит. Вызов: DevicesPage.svelte экспорт CSV, внутри
+        // `if (isTauri)` после нативного saveDialog; браузер скачивает Blob.
+        reason: "десктопная по смыслу (запись в путь из нативного диалога сохранения); \
+                 HTTP-маршрут удалён как дыра безопасности (9a62908d); в UI вызов только \
+                 внутри ветки isTauri экспорта в DevicesPage.svelte",
+    },
+    Verdict {
         name: "reports_get_report_counts",
         // ИЗВЕСТНЫЙ ДЕФЕКТ, отложен решением пользователя 2026-10-06:
         // .planning/phases/41-groups-model-and-editor/deferred-items.md,
