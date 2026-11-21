@@ -254,6 +254,7 @@ pub const REGISTRY: &[Entry] = &[
     ex(GPLACE, "move_nested_block_in_tx", TX_PRIMITIVE_REASON),
     ex(GPLACE, "propagate_group_place_in_tx", TX_PRIMITIVE_REASON),
     // ---- group_membership (примитивы внутри транзакции) --------------------
+    ro(GMEMB, "anchor_write_off_error"),
     ex(GMEMB, "release_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "release_if_locked_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "restore_membership_in_tx", TX_PRIMITIVE_REASON),

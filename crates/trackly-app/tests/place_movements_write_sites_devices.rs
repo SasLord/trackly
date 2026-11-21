@@ -152,6 +152,7 @@ async fn place_movements_manual_device() {
                 usb_host_device_id: None,
                 printer_ip_address: None,
                 printer_community: None,
+                group_write_off: None,
             },
         )
         .await
@@ -239,6 +240,7 @@ async fn place_movements_manual_device_status_only_noop() {
                 usb_host_device_id: None,
                 printer_ip_address: None,
                 printer_community: None,
+                group_write_off: None,
             },
         )
         .await
@@ -290,6 +292,7 @@ async fn place_movements_manual_device_first_assignment_noop() {
                 usb_host_device_id: None,
                 printer_ip_address: None,
                 printer_community: None,
+                group_write_off: None,
             },
         )
         .await

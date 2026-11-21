@@ -575,6 +575,7 @@ async fn reject_edit_after_manual_device_relocation() {
                     usb_host_device_id: None,
                     printer_ip_address: None,
                     printer_community: None,
+                    group_write_off: None,
                 },
             )
             .await

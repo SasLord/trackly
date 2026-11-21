@@ -2392,6 +2392,13 @@ fn anchor_guard_scopes() -> Vec<(&'static str, String, &'static str, &'static st
     let grp = include_str!("../src/services/group_service.rs");
     vec![
         (
+            // Phase 41.8 (D-26): списание через форму — якорь не списывается мимо группы.
+            "DeviceService::update",
+            body_between(dev, "pub async fn update(", "pub async fn delete_soft(").to_string(),
+            ANCHOR_GUARD,
+            "repo.update_in_tx(",
+        ),
+        (
             "DeviceService::delete_soft",
             body_between(dev, "pub async fn delete_soft(", "pub fn state_hints").to_string(),
             ANCHOR_GUARD,
@@ -2466,7 +2473,8 @@ fn s11_anchor_guards_present_in_sources() {
     let dev = include_str!("../src/services/device_service.rs");
     let mem = include_str!("../src/services/group_membership.rs");
     let grp = include_str!("../src/services/group_service.rs");
-    assert_eq!(count_calls(dev, &[ANCHOR_GUARD]), 1);
+    // delete_soft + update (Phase 41.8, D-26): каждая — своя область выше.
+    assert_eq!(count_calls(dev, &[ANCHOR_GUARD]), 2);
     assert_eq!(count_calls(mem, &[ANCHOR_GUARD]), 1);
     // remove_devices + write_off_device + move_devices (Phase 41.8): каждая — своя область выше.
     assert_eq!(count_calls(grp, &[ANCHOR_GUARD]), 3);

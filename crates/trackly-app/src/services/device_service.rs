@@ -1531,31 +1531,6 @@ impl DeviceService {
                     None => prior_status_code.clone(),
                 };
 
-                // Phase 41 (GRP-07, SPEC 11, S1): устройство в группе С МЕСТОМ нельзя
-                // переместить по одному — место задаёт группа. Сравниваем с ТЕКУЩИМ
-                // значением в этом же замыкании: форма шлёт place_id при каждом
-                // сохранении, повтор текущего места (и правка прочих полей) проходит.
-                // Группа без места не «запирает» (D-21) — запрос возвращает None.
-                // Phase 41.4 (D-14): устройство в исключённом статусе (на ремонте, в
-                // ремонте, на списание) место менять МОЖЕТ, членство сохраняется.
-                // Источник истины — сервер; блокировка PlacePicker в UI (D-19) не замена.
-                let status_is_exempt = effective_status_code
-                    .as_deref()
-                    .is_some_and(is_repair_exempt_status_code);
-                if let Some(new_place) = domain_patch.place_id {
-                    if new_place != before_place_id && !status_is_exempt {
-                        if let Some(g) = groups.locked_group_for_device_in_tx(&tx, id)? {
-                            return Err(AppError::Validation {
-                                field: "place_id".to_string(),
-                                message: format!(
-                                    "Место задаётся группой «{}». Выведите устройство из состава, чтобы переместить его отдельно.",
-                                    g.name
-                                ),
-                            });
-                        }
-                    }
-                }
-
                 // Phase 41.8 (D-26): перевод на «Списано» через обычное обновление.
                 // Якорь через форму не списывается (охрана ВЫШЕ записи), участник группы
                 // обязан выбрать «оставить / вывести»; вывод исполняется ниже той же
@@ -1584,21 +1559,32 @@ impl DeviceService {
                     }
                 }
 
-                let mut after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
-                if write_off_choice == Some(GroupWriteOffChoice::Release)
-                    && write_off_group_id.is_some()
-                {
-                    crate::services::group_membership::release_device_in_tx(
-                        &tx,
-                        &groups,
-                        &audit_repo,
-                        id,
-                        None,
-                        user_id_opt,
-                        now,
-                    )?;
-                    after = repo.get_in_tx(&tx, id)?;
+                // Phase 41 (GRP-07, SPEC 11, S1): устройство в группе С МЕСТОМ нельзя
+                // переместить по одному — место задаёт группа. Сравниваем с ТЕКУЩИМ
+                // значением в этом же замыкании: форма шлёт place_id при каждом
+                // сохранении, повтор текущего места (и правка прочих полей) проходит.
+                // Группа без места не «запирает» (D-21) — запрос возвращает None.
+                // Phase 41.4 (D-14): устройство в исключённом статусе (на ремонте, в
+                // ремонте, на списание) место менять МОЖЕТ, членство сохраняется.
+                // Источник истины — сервер; блокировка PlacePicker в UI (D-19) не замена.
+                let status_is_exempt = effective_status_code
+                    .as_deref()
+                    .is_some_and(is_repair_exempt_status_code);
+                if let Some(new_place) = domain_patch.place_id {
+                    if new_place != before_place_id && !status_is_exempt {
+                        if let Some(g) = groups.locked_group_for_device_in_tx(&tx, id)? {
+                            return Err(AppError::Validation {
+                                field: "place_id".to_string(),
+                                message: format!(
+                                    "Место задаётся группой «{}». Выведите устройство из состава, чтобы переместить его отдельно.",
+                                    g.name
+                                ),
+                            });
+                        }
+                    }
                 }
+
+                let mut after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
                 // Phase 41.4 (D-17): исключённый статус сменён на обычный, а место
                 // устройства разошлось с местом группы — переносим на место группы той же
                 // транзакцией (журнал перемещений Manual и аудит пишет примитив).
@@ -1631,6 +1617,22 @@ impl DeviceService {
                             }
                         }
                     }
+                }
+                // Phase 41.8 (D-26): выбор «вывести» — той же транзакцией, ПОСЛЕ охраны места
+                // и блока D-17 (иначе вывод снял бы блокировку места до её проверки).
+                if write_off_choice == Some(GroupWriteOffChoice::Release)
+                    && write_off_group_id.is_some()
+                {
+                    crate::services::group_membership::release_device_in_tx(
+                        &tx,
+                        &groups,
+                        &audit_repo,
+                        id,
+                        None,
+                        user_id_opt,
+                        now,
+                    )?;
+                    after = repo.get_in_tx(&tx, id)?;
                 }
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now, None)?;
                 // INT-30 (quick 261121-hed): снимок подключения принтера ДО записи
