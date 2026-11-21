@@ -187,7 +187,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-21 -- gsd-fast: закрыта дыра HTTP read_file_bytes/write_file_bytes
+Last activity: 2026-11-21 -- Quick 261121-fdw: роль-матрица без ДОЛГ, 4 чтения без сессии закрыты
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1611,6 +1611,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 | Date | Slug | Summary | Status |
 |------|------|---------|--------|
+| 2026-11-21 | role-matrix-debt-routes | 261121-fdw: группа ДОЛГ и непроверенные чтения ROUTE_MATRIX_EXEMPT разобраны — 23 мутации и 13 чтений в роль-матрице, EXEMPT без «ДОЛГ»/«любой вошедший». БЕЗОПАСНОСТЬ: без сессии отвечали server_status (200), organization_get (200, реквизиты), templates_get_active (200, тело шаблона), templates_render_preview — закрыты authorize в общих build_* (ManageSettings/ReadData); settings_get_* и templates_list_for_editor → ManageSettings, devices_import_csv_preview → MutateDevices; build_backup_run_manual получил гейт (был только в HTTP). UI-потребителей у getActive/renderPreview/organization.get нет (проверено оркестратором). app_auth 137, app_devices 239, app_server 48. Наблюдения: users_reset_password 200 для несуществующего id; пустой логотип принимается. Живьём «Настройки»/импорт CSV/Employee не проверены. | complete ✓ |
 | 2026-11-21 | remove-http-fs-helpers | gsd-fast (9a62908d): удалены HTTP-маршруты read_file_bytes/write_file_bytes — без сессии и роли любой в LAN читал/писал .csv на сервере (найдено инвентарём 261121-57x); Tauri-команды остались; регрессионный тест fs_helpers_not_exposed_over_http (404). app_auth 134/0. | complete ✓ |
 | 2026-11-21 | close-audit-int-27-int-29 | 261121-57x: аудит v1.4 — INT-27: правило (B) гейта check-printer-usb-host-field проверяет полярность конъюнктов (`!x`, `=== false`, `!==`, `||`…), +6 мутантов-инверсий в --selftest (47); мутация копии реального исходника `!usbHostTouched` → FAIL (перепроверено оркестратором). INT-29: роль-матрица для printers_admit/discover/refresh/acknowledge_alert, attachments_upload/delete/set_limit/get_limit, acts_*_return_group_split_preview + инвентарь `http_routes_covered_by_role_matrix` (маршрут вне матрицы и вне ROUTE_MATRIX_EXEMPT краснит); ДОЛГ: 25 маршрутов без роль-теста. app_auth 133/0. Найдено: HTTP read_file_bytes/write_file_bytes без authorize. | complete ✓ |
 | 2026-11-21 | close-audit-new-1-n1 | 261121-4nz: аудит v1.4 раунд 6 — NEW-1: «Переместить БД» копирует attachments/ при пустом attachments_path ДО смены db_path (сбой копии — конфиг прежний), текст диалога; N1: удалён мёртвый printers_create (Tauri+HTTP+specta+DTO+create_from_device, тест n13) — R-05 снят. Точечно: app_attachments 75, devices_printer_network 14, app_gates 244, role_endpoint_matrix 28; живьём диалог не проверен. | complete ✓ |
