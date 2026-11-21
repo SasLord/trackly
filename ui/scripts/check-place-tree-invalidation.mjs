@@ -895,15 +895,42 @@ const DIRECT_CALL_MARKERS = [
     module: '$lib/api/groups',
     exportName: 'groups',
     method: 'addDevices',
-    minSites: 4,
+    minSites: 5,
     label: 'добавление в состав (groups.addDevices)',
   },
   {
     module: '$lib/api/groups',
     exportName: 'groups',
     method: 'setParent',
-    minSites: 3,
+    minSites: 4,
     label: 'вложение группы (groups.setParent)',
+  },
+  // Фаза 41.8 (D-22): перенос/списание рассылают changed_place_ids; minSites пересчитан от
+  // репозитория (addDevices 5, setParent 4, moveDevices 4, writeOff* по 1). notifyAfter —
+  // структурное правило: инвалидация на пути успеха.
+  {
+    module: '$lib/api/groups',
+    exportName: 'groups',
+    method: 'moveDevices',
+    minSites: 4,
+    notifyAfter: true,
+    label: 'перенос устройства в группу (groups.moveDevices)',
+  },
+  {
+    module: '$lib/api/groups',
+    exportName: 'groups',
+    method: 'writeOffDevice',
+    minSites: 1,
+    notifyAfter: true,
+    label: 'списание устройства из состава (groups.writeOffDevice)',
+  },
+  {
+    module: '$lib/api/groups',
+    exportName: 'groups',
+    method: 'writeOffGroup',
+    minSites: 1,
+    notifyAfter: true,
+    label: 'списание группы (groups.writeOffGroup)',
   },
   // Фаза 41.1 (план 17), перечень от серверных мутаций, W7: создание группы ОТ УСТРОЙСТВА
   // (быстрое действие в меню строки) берёт место устройства и рассылает place_ids, а для
