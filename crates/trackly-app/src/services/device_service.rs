@@ -719,6 +719,40 @@ impl DeviceService {
     // Validation helpers
     // -----------------------------------------------------------------------
 
+    /// Phase 41.8 (D-08, T-41.8-04): `origin_group_id` при создании принимается
+    /// только для существующей группы с `group_types.behavior = 'teardown'`.
+    /// Решает поведение типа, не его название. Вызывается внутри писательской
+    /// транзакции ДО вставки (общий путь `insert_new_and_get` для `create` /
+    /// `create_single_with_number_check*` и цикл `bulk_create_with_printer`).
+    fn validate_origin_group_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        origin_group_id: Option<i64>,
+    ) -> Result<(), AppError> {
+        let Some(gid) = origin_group_id else {
+            return Ok(());
+        };
+        let behavior: Option<String> = tx
+            .query_row(
+                "SELECT t.behavior FROM groups g JOIN group_types t ON t.id = g.type_id \
+                 WHERE g.id = ?1 AND g.deleted_at_utc IS NULL",
+                rusqlite::params![gid],
+                |r| r.get(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(map_rusqlite(other)),
+            })?;
+        if behavior.as_deref() == Some("teardown") {
+            Ok(())
+        } else {
+            Err(AppError::Validation {
+                field: "origin_group_id".to_string(),
+                message: "Происхождение можно указать только для группы типа «Разбор».".to_string(),
+            })
+        }
+    }
+
     fn validate_new(new: &DeviceNew) -> Result<(), AppError> {
         if new.name.trim().is_empty() {
             return Err(AppError::Validation {
@@ -851,6 +885,7 @@ impl DeviceService {
                         format!("номер уже занят — {n}")
                     })?;
                 }
+                Self::validate_origin_group_in_tx(&tx, domain_new.origin_group_id)?;
                 let id = repo.create_in_tx(&tx, &domain_new, now)?;
                 Self::sync_printer_row_in_tx(
                     &printer_repo,
@@ -2825,6 +2860,7 @@ impl DeviceService {
                         format!("номер уже занят — {n}")
                     })?;
                 }
+                Self::validate_origin_group_in_tx(&tx, domain_new.origin_group_id)?;
                 let mut created_ids = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     let id = repo.create_in_tx(&tx, &domain_new, now)?;

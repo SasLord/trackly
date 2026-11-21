@@ -1091,3 +1091,166 @@ async fn new_device_has_no_origin_group() {
     .await
     .expect("new_device_has_no_origin_group exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 41.8 (D-08): origin_group_id при создании
+// ---------------------------------------------------------------------------
+
+/// Группа заданного поведения напрямую в БД; тип создаётся при необходимости.
+async fn seed_group_of(svc: &DeviceService, behavior: &'static str, name: &'static str) -> i64 {
+    svc.writer
+        .execute(move |conn| {
+            let err = |e: rusqlite::Error| AppError::Internal {
+                source_chain: format!("{e}"),
+            };
+            conn.execute(
+                "INSERT INTO group_types (code, name, behavior, created_at_utc, updated_at_utc) \
+                 VALUES (?1, ?2, ?3, 1700000000, 1700000000)",
+                rusqlite::params![format!("crud_o_{behavior}_{name}"), "Тип теста", behavior],
+            )
+            .map_err(err)?;
+            let type_id = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO groups (type_id, name, seq, created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, 1, 1700000000, 1700000000, 1)",
+                rusqlite::params![type_id, name],
+            )
+            .map_err(err)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed group")
+}
+
+async fn origin_of(svc: &DeviceService, device: i64) -> Option<i64> {
+    svc.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT origin_group_id FROM devices WHERE id = ?1",
+                rusqlite::params![device],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })
+        })
+        .await
+        .expect("origin")
+}
+
+fn origin_field(err: &AppError) -> bool {
+    matches!(err, AppError::Validation { field, .. } if field == "origin_group_id")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_with_teardown_origin_sets_origin() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let g = seed_group_of(&svc, "teardown", "Разбор #7").await;
+        let mut new = minimal_new("SSD 256 ГБ");
+        new.origin_group_id = Some(g);
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create")
+            .expect_created("create");
+        assert_eq!(origin_of(&svc, dto.id).await, Some(g));
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_without_origin_leaves_null() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let dto = svc
+            .create(minimal_new("Планка ОЗУ"))
+            .await
+            .expect("create")
+            .expect_created("create");
+        assert_eq!(origin_of(&svc, dto.id).await, None);
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_rejects_missing_or_non_teardown_origin() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let container = seed_group_of(&svc, "container", "Набор #1").await;
+        let substitute = seed_group_of(&svc, "substitute", "Замена #2").await;
+        for bad in [9_999_i64, container, substitute] {
+            let mut new = minimal_new("Кулер");
+            new.origin_group_id = Some(bad);
+            let err = svc.create(new).await.expect_err("должен отвергнуть");
+            assert!(origin_field(&err), "origin {bad}: {err:?}");
+        }
+        // Отказ не оставляет устройство.
+        let n: i64 = svc
+            .writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM devices WHERE name = 'Кулер'",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })
+            })
+            .await
+            .expect("count");
+        assert_eq!(n, 0);
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn bulk_create_applies_origin_to_every_device_and_validates() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let g = seed_group_of(&svc, "teardown", "Разбор #8").await;
+        let mut new = minimal_new("Винт M3");
+        new.origin_group_id = Some(g);
+        let made = svc.bulk_create(new, 3).await.expect("bulk");
+        assert_eq!(made.len(), 3);
+        for d in &made {
+            assert_eq!(origin_of(&svc, d.id).await, Some(g));
+        }
+        let c = seed_group_of(&svc, "container", "Набор #2").await;
+        let mut bad = minimal_new("Винт M4");
+        bad.origin_group_id = Some(c);
+        let err = svc.bulk_create(bad, 2).await.expect_err("bulk reject");
+        assert!(origin_field(&err), "{err:?}");
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_does_not_change_origin() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let g = seed_group_of(&svc, "teardown", "Разбор #9").await;
+        let mut new = minimal_new("Шлейф");
+        new.origin_group_id = Some(g);
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create")
+            .expect_created("create");
+        let patch = DevicePatch {
+            name: Some("Шлейф SATA".to_string()),
+            ..Default::default()
+        };
+        svc.update(&admin_caller(), dto.id, dto.version, patch)
+            .await
+            .expect("update");
+        assert_eq!(origin_of(&svc, dto.id).await, Some(g));
+    })
+    .await
+    .expect("timeout");
+}
