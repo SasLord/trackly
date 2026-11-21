@@ -2414,6 +2414,30 @@ fn anchor_guard_scopes() -> Vec<(&'static str, String, &'static str, &'static st
             ANCHOR_GUARD,
             "release_device_in_tx(",
         ),
+        // Phase 41.8: две новые охраны якоря — списание устройства (план 05: якорь
+        // списывается только через группу) и перенос (план 03: якорь не переносится).
+        (
+            "GroupService::write_off_device",
+            body_between(
+                grp,
+                "pub async fn write_off_device(",
+                "pub async fn write_off_group(",
+            )
+            .to_string(),
+            ANCHOR_GUARD,
+            "set_status_in_tx(",
+        ),
+        (
+            "GroupService::move_devices",
+            body_between(
+                grp,
+                "pub async fn move_devices(",
+                "pub async fn remove_devices(",
+            )
+            .to_string(),
+            ANCHOR_GUARD,
+            "remove_device_in_tx(",
+        ),
         (
             "GroupService::delete_group",
             body_between(
@@ -2423,7 +2447,10 @@ fn anchor_guard_scopes() -> Vec<(&'static str, String, &'static str, &'static st
             )
             .to_string(),
             "count_live_parts_in_tx(",
-            "delete_group_in_tx(",
+            // Phase 41.8-05: запись удаления вынесена в общий хелпер расформирования
+            // (зовётся из delete_group и write_off_group); охрана должна стоять выше
+            // вызова хелпера. Что голая запись живёт только в хелпере — ниже.
+            "delete_group_in_tx_audited(",
         ),
     ]
 }
@@ -2440,7 +2467,17 @@ fn s11_anchor_guards_present_in_sources() {
     let grp = include_str!("../src/services/group_service.rs");
     assert_eq!(count_calls(dev, &[ANCHOR_GUARD]), 1);
     assert_eq!(count_calls(mem, &[ANCHOR_GUARD]), 1);
-    assert_eq!(count_calls(grp, &[ANCHOR_GUARD]), 1);
+    // remove_devices + write_off_device + move_devices (Phase 41.8): каждая — своя область выше.
+    assert_eq!(count_calls(grp, &[ANCHOR_GUARD]), 3);
+    // Phase 41.8-05: голая запись удаления группы ровно одна и только внутри
+    // `delete_group_in_tx_audited` — иначе новый путь обошёл бы охрану delete_group.
+    assert_eq!(grp.matches(".delete_group_in_tx(").count(), 1);
+    let helper = body_between(
+        grp,
+        "fn delete_group_in_tx_audited(",
+        "/// Id статуса «Списано»",
+    );
+    assert_eq!(helper.matches(".delete_group_in_tx(").count(), 1);
     // Сосед (мутационный гейт S1) не задет: его выражение по-прежнему ровно одно.
     assert_eq!(
         dev.matches("groups.locked_group_for_device_in_tx(&tx, id)?")
