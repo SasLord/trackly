@@ -1,0 +1,132 @@
+[
+  {
+    "name": "не член: в работе -> списано",
+    "input": {
+      "statusCodeBefore": "в_работе",
+      "statusCodeAfter": "списано",
+      "groupId": null,
+      "anchorGroupId": null
+    },
+    "expected": "none"
+  },
+  {
+    "name": "член: в работе -> списано",
+    "input": {
+      "statusCodeBefore": "в_работе",
+      "statusCodeAfter": "списано",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": "choose"
+  },
+  {
+    "name": "член: на списание -> списано",
+    "input": {
+      "statusCodeBefore": "на_списание",
+      "statusCodeAfter": "списано",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": "choose"
+  },
+  {
+    "name": "член: статус не было (null) -> списано",
+    "input": {
+      "statusCodeBefore": null,
+      "statusCodeAfter": "списано",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": "choose"
+  },
+  {
+    "name": "якорь: в работе -> списано",
+    "input": {
+      "statusCodeBefore": "в_работе",
+      "statusCodeAfter": "списано",
+      "groupId": 5,
+      "anchorGroupId": 5
+    },
+    "expected": "anchor_refuse"
+  },
+  {
+    "name": "якорь: на списание -> списано",
+    "input": {
+      "statusCodeBefore": "на_списание",
+      "statusCodeAfter": "списано",
+      "groupId": 7,
+      "anchorGroupId": 7
+    },
+    "expected": "anchor_refuse"
+  },
+  {
+    "name": "член уже списан, правка без смены статуса",
+    "input": {
+      "statusCodeBefore": "списано",
+      "statusCodeAfter": "списано",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": "none"
+  },
+  {
+    "name": "якорь уже списан, правка без смены статуса",
+    "input": {
+      "statusCodeBefore": "списано",
+      "statusCodeAfter": "списано",
+      "groupId": 5,
+      "anchorGroupId": 5
+    },
+    "expected": "none"
+  },
+  {
+    "name": "член: статус не списано",
+    "input": {
+      "statusCodeBefore": "в_работе",
+      "statusCodeAfter": "на_складе",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": "none"
+  },
+  {
+    "name": "член: на списание остаётся на списание",
+    "input": {
+      "statusCodeBefore": "на_списание",
+      "statusCodeAfter": "на_списание",
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": "none"
+  },
+  {
+    "name": "невозможное сочетание: якорь без группы",
+    "input": {
+      "statusCodeBefore": "в_работе",
+      "statusCodeAfter": "списано",
+      "groupId": null,
+      "anchorGroupId": 5
+    },
+    "expected": "none"
+  },
+  {
+    "name": "null коды у члена",
+    "input": {
+      "statusCodeBefore": null,
+      "statusCodeAfter": null,
+      "groupId": 5,
+      "anchorGroupId": null
+    },
+    "expected": "none"
+  },
+  {
+    "name": "не член: списан после null",
+    "input": {
+      "statusCodeBefore": null,
+      "statusCodeAfter": "списано",
+      "groupId": null,
+      "anchorGroupId": null
+    },
+    "expected": "none"
+  }
+]
