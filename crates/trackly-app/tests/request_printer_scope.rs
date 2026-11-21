@@ -471,11 +471,24 @@ async fn soft_delete(ctx: &AppCtx, table: &'static str, id: i64) {
         .expect("soft delete");
 }
 
+/// Удаление группы жёсткое (INT-12): членство и значения свойств уходят каскадом.
+async fn delete_group(ctx: &AppCtx, id: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute("DELETE FROM groups WHERE id = ?1", params![id])
+                .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("delete group");
+}
+
 /// D-41 («только живые»): удалённые принтеры и удалённые группы не расширяют область
 /// сотрудника ни в списке, ни при создании заявки. Каждый из пяти источников области
 /// (живость связующей группы, вложенной группы, члена, ссылки, USB-принтера и его хоста)
-/// проверяется отдельным принтером: убрать любой фильтр `deleted_at_utc` в
-/// `employee_device_ids` значит увидеть соответствующий принтер.
+/// проверяется отдельным принтером: убрать любой фильтр `deleted_at_utc` по устройствам в
+/// `employee_device_ids` значит увидеть соответствующий принтер. Группы удаляются жёстко
+/// (INT-12, quick 261121-hei): их «живость» держит сама строка и каскад `group_devices`.
 #[tokio::test]
 async fn employee_scope_ignores_deleted_printers_hosts_and_groups() {
     let (ctx, _dir) = make_test_ctx().await;
@@ -531,11 +544,11 @@ async fn employee_scope_ignores_deleted_printers_hosts_and_groups() {
         ("devices", dead_ref),
         ("devices", dead_usb),
         ("devices", dead_host),
-        ("groups", dead_child),
-        ("groups", gb),
     ] {
         soft_delete(&ctx, table, id).await;
     }
+    delete_group(&ctx, dead_child).await;
+    delete_group(&ctx, gb).await;
 
     let after = ids(&ctx
         .requests

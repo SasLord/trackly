@@ -25,6 +25,8 @@ const USER_MUTABLE_TABLES: &[&str] = &[
     "document_templates",
     "group_types",
     "group_type_properties",
+    // Колонка deleted_at_utc у groups есть (инвариант схемы), но это реликт:
+    // удаление группы жёсткое, прод-код её не пишет и не читает (INT-12).
     "groups",
 ];
 
