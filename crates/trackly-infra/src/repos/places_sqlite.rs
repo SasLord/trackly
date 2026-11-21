@@ -321,7 +321,8 @@ fn content_row_from_row(
 }
 
 /// Pattern 2's "content of place" leg (PLC-06 / D-23): devices, printers
-/// (devices whose `type_id` is the seeded "Принтер" type — printers have no
+/// (devices whose `type_id` is `PRINTER_TYPE_ID` — единый признак принтера,
+/// INT-31, не подпись типа; printers have no
 /// `place_id` of their own, they resolve through `devices.place_id`, per
 /// V020__printers.sql), and cartridges — UNIONed into one `PlaceContentRow`
 /// shape. `nested: true` (default, D-24) includes the whole subtree via the
@@ -339,6 +340,9 @@ fn list_subtree_contents_impl(
     expand_groups: bool,
 ) -> Result<Vec<PlaceContentRow>, AppError> {
     let (sep_ends, sep_last_two) = read_path_display_separators(conn);
+    // INT-31: признак принтера — id типа (единое определение в trackly-core),
+    // не подпись: переименование типа в справочнике его не меняет.
+    let printer_type_id = trackly_core::domain::devices::PRINTER_TYPE_ID;
 
     let mut ctes: Vec<&str> = Vec::new();
     if nested {
@@ -391,7 +395,7 @@ fn list_subtree_contents_impl(
          LEFT JOIN (
              SELECT c.root AS root,
                     COUNT(d.id) AS member_count,
-                    COALESCE(SUM(CASE WHEN d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
+                    COALESCE(SUM(CASE WHEN d.type_id = {printer_type_id}
                                       THEN 1 ELSE 0 END), 0) AS printer_member_count
              FROM closure c
              JOIN group_devices gd ON gd.group_id = c.id
@@ -415,7 +419,7 @@ fn list_subtree_contents_impl(
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
          LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
          WHERE d.deleted_at_utc IS NULL
-           AND d.type_id != (SELECT id FROM device_types WHERE name = 'Принтер')
+           AND d.type_id != {printer_type_id}
            AND d.place_id {place_filter}
            {hide_members}
          UNION ALL
@@ -429,7 +433,7 @@ fn list_subtree_contents_impl(
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
          LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
          WHERE d.deleted_at_utc IS NULL
-           AND d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
+           AND d.type_id = {printer_type_id}
            AND d.place_id {place_filter}
            {hide_members}
          UNION ALL
@@ -468,14 +472,16 @@ fn list_group_members_impl(
 ) -> Result<Vec<PlaceContentRow>, AppError> {
     let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let mut stmt = conn
-        .prepare(
+        .prepare(concat!(
             "WITH RECURSIVE sub(id) AS (
                 SELECT id FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL
                 UNION
                 SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id
                 WHERE g.deleted_at_utc IS NULL
              )
-             SELECT CASE WHEN d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
+             SELECT CASE WHEN d.type_id = ",
+            trackly_core::printer_type_id_sql!(),
+            "
                          THEN 'printer' ELSE 'device' END AS kind,
                     d.id, d.name, d.inventory_number,
                     COALESCE(pfp.full_path, '') AS full_path,
@@ -489,8 +495,8 @@ fn list_group_members_impl(
              LEFT JOIN device_statuses ds ON ds.id = d.status_id
              LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
              WHERE gd.group_id IN (SELECT id FROM sub)
-             ORDER BY d.name, d.id",
-        )
+             ORDER BY d.name, d.id"
+        ))
         .map_err(map_rusqlite)?;
     let rows = stmt
         .query_map(rusqlite::params![group_id], |row| {

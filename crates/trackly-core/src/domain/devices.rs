@@ -12,6 +12,38 @@
 
 use crate::error::AppError;
 
+// ---------------------------------------------------------------------------
+// INT-31 (quick-261121-heh): единственное определение признака «это принтер».
+// Значение — первичный ключ сида V001 (`device_types (1,'Устройство'),
+// (2,'Принтер')`). Подпись типа — данные справочника (41.12, INT-14, D-01) и
+// может быть переименована; идентичность — только id. Строка `printers`
+// производна (`DeviceService::sync_printer_row_in_tx` подтягивает её за
+// type_id) и признаком не служит. Любая копия значения вне этого файла
+// краснит гейт `printer_identity_gate` (app_gates).
+// ---------------------------------------------------------------------------
+
+/// `device_types.id` типа «Устройство» (сид V001).
+pub const DEVICE_TYPE_ID: i64 = 1;
+
+/// `device_types.id` типа «Принтер» (сид V001) — единственный признак принтера.
+pub const PRINTER_TYPE_ID: i64 = 2;
+
+/// Признак «это принтер» по `devices.type_id` (INT-31).
+pub fn is_printer_type(type_id: i64) -> bool {
+    type_id == PRINTER_TYPE_ID
+}
+
+/// SQL-форма [`PRINTER_TYPE_ID`]: раскрывается в строковый литерал, чтобы
+/// вставлять в статический SQL через
+/// `concat!("… d.type_id = ", trackly_core::printer_type_id_sql!(), " …")`.
+/// Согласованность с константой держит unit-тест `printer_type_id_sql_matches_const`.
+#[macro_export]
+macro_rules! printer_type_id_sql {
+    () => {
+        "2"
+    };
+}
+
 /// Data needed to create a new device record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceNew {
@@ -344,5 +376,37 @@ mod container_name_tests {
     fn container_name_match_empty_query() {
         assert!(!m("АРМ #3", ""));
         assert!(!m("АРМ #3", "  # "));
+    }
+}
+
+#[cfg(test)]
+mod printer_identity_tests {
+    use super::{is_printer_type, DEVICE_TYPE_ID, PRINTER_TYPE_ID};
+
+    const V001: &str = include_str!("../../../../migrations/V001__init_pragmas_and_lookups.sql");
+
+    #[test]
+    fn printer_type_id_sql_matches_const() {
+        assert_eq!(crate::printer_type_id_sql!(), PRINTER_TYPE_ID.to_string());
+    }
+
+    #[test]
+    fn is_printer_type_only_for_printer_id() {
+        assert!(is_printer_type(PRINTER_TYPE_ID));
+        assert!(!is_printer_type(DEVICE_TYPE_ID));
+    }
+
+    #[test]
+    fn constants_match_v001_seed() {
+        assert!(
+            V001.contains(&format!("({PRINTER_TYPE_ID}, '")),
+            "сид V001 должен содержать тип с id PRINTER_TYPE_ID"
+        );
+        assert!(
+            V001.contains(&format!("({DEVICE_TYPE_ID}, '")),
+            "сид V001 должен содержать тип с id DEVICE_TYPE_ID"
+        );
+        assert!(V001.contains(&format!("({PRINTER_TYPE_ID}, 'Принтер')")));
+        assert!(V001.contains(&format!("({DEVICE_TYPE_ID}, 'Устройство')")));
     }
 }

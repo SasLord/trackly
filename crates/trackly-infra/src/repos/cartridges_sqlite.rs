@@ -421,12 +421,13 @@ impl SqliteCartridgeRepository {
     ) -> Result<Vec<CompatibleModelAggregate>, AppError> {
         // WR-01/IN-01: the device-name lookup lives entirely inside the
         // EXISTS subquery (no outer JOIN on devices). The device join is
-        // scoped to live printers only (type_id = 2 = Принтер,
-        // deleted_at_utc IS NULL) so a non-printer or soft-deleted device id
+        // scoped to live printers only (`type_id` = PRINTER_TYPE_ID — единый
+        // признак принтера, INT-31; deleted_at_utc IS NULL) so a non-printer or soft-deleted device id
         // whose name happens to collide with a compatibility entry can never
         // produce a false-positive match. This mirrors `list()`'s subquery
         // shape and `suggest_compat_printer`'s suggestion source.
-        let sql = "
+        let sql = concat!(
+            "
             SELECT m.id, m.brand, m.model,
                    COALESCE(SUM(CASE WHEN c.status_id = 1 THEN 1 ELSE 0 END), 0) AS in_stock,
                    COALESCE(SUM(CASE WHEN c.status_id = 3 THEN 1 ELSE 0 END), 0) AS at_refill,
@@ -438,14 +439,17 @@ impl SqliteCartridgeRepository {
                AND EXISTS (
                      SELECT 1 FROM cartridge_model_compatibility cmc
                        JOIN devices d ON d.id = ?1
-                                     AND d.type_id = 2
+                                     AND d.type_id = ",
+            trackly_core::printer_type_id_sql!(),
+            "
                                      AND d.deleted_at_utc IS NULL
                       WHERE cmc.cartridge_model_id = m.id
                         AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name))
                    )
              GROUP BY m.id, m.brand, m.model
              ORDER BY m.brand ASC, m.model ASC
-        ";
+        "
+        );
 
         let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
         let rows = stmt
@@ -1893,6 +1897,7 @@ impl CartridgeRepository for SqliteCartridgeRepository {
         // COUNT(*)
         let total: i64 = conn
             .query_row(
+                concat!(
                 "SELECT COUNT(*) FROM cartridges c \
                  LEFT JOIN cartridge_models m ON m.id = c.model_id \
                  WHERE (?1 = 1 OR c.deleted_at_utc IS NULL) \
@@ -1906,9 +1911,12 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?6 IS NULL \
                         OR NOT EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc WHERE cmc.cartridge_model_id = c.model_id) \
                         OR EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc \
-                                   JOIN devices d ON d.id = ?6 AND d.type_id = 2 AND d.deleted_at_utc IS NULL \
+                                   JOIN devices d ON d.id = ?6 AND d.type_id = ",
+                trackly_core::printer_type_id_sql!(),
+                " AND d.deleted_at_utc IS NULL \
                                    WHERE cmc.cartridge_model_id = c.model_id \
-                                     AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name))))",
+                                     AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name))))"
+                ),
                 params![
                     include_deleted as i64,
                     filter.status_id,
@@ -1935,11 +1943,13 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?6 IS NULL \
                         OR NOT EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc WHERE cmc.cartridge_model_id = c.model_id) \
                         OR EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc \
-                                   JOIN devices d ON d.id = ?6 AND d.type_id = 2 AND d.deleted_at_utc IS NULL \
+                                   JOIN devices d ON d.id = ?6 AND d.type_id = {printer_type_id} AND d.deleted_at_utc IS NULL \
                                    WHERE cmc.cartridge_model_id = c.model_id \
                                      AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name)))) \
                  ORDER BY c.created_at_utc DESC, c.id DESC \
-                 LIMIT ?7 OFFSET ?8"
+                 LIMIT ?7 OFFSET ?8",
+                // INT-31: единый признак принтера из trackly-core.
+                printer_type_id = trackly_core::domain::devices::PRINTER_TYPE_ID
             ))
             .map_err(map_rusqlite)?;
 

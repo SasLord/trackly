@@ -26,6 +26,7 @@ fn csv_safe(value: &str) -> String {
     }
 }
 use crate::services::group_place::{apply_group_place_to_device_in_tx, GroupMoveCause};
+use trackly_core::domain::devices::{DEVICE_TYPE_ID, PRINTER_TYPE_ID};
 use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateContext, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::printers::{normalize_printer_ip, PrinterNew};
@@ -205,10 +206,7 @@ struct TypeLookup {
 
 impl TypeLookup {
     fn from_rows(rows: Vec<(i64, String)>) -> Result<Self, AppError> {
-        if !rows
-            .iter()
-            .any(|(id, _)| *id == DeviceService::DEVICE_TYPE_ID)
-        {
+        if !rows.iter().any(|(id, _)| *id == DEVICE_TYPE_ID) {
             return Err(AppError::Internal {
                 source_chain: "device_types: нет типа с id=1 (Устройство)".to_string(),
             });
@@ -242,7 +240,7 @@ impl TypeLookup {
     /// псевдоним принтера (D-01).
     fn resolve(&self, label: Option<&str>) -> LabelMatch {
         let Some(label) = label.map(str::trim).filter(|l| !l.is_empty()) else {
-            return LabelMatch::Empty(DeviceService::DEVICE_TYPE_ID);
+            return LabelMatch::Empty(DEVICE_TYPE_ID);
         };
         let wanted = label.to_lowercase();
         if let Some((id, _)) = self
@@ -253,15 +251,11 @@ impl TypeLookup {
             return LabelMatch::Matched(*id);
         }
         if wanted == LEGACY_EXPORT_PRINTER_LABEL_LOWER {
-            if let Some((id, _)) = self
-                .rows
-                .iter()
-                .find(|(id, _)| *id == DeviceService::PRINTER_TYPE_ID)
-            {
+            if let Some((id, _)) = self.rows.iter().find(|(id, _)| *id == PRINTER_TYPE_ID) {
                 return LabelMatch::Matched(*id);
             }
         }
-        LabelMatch::Unknown(DeviceService::DEVICE_TYPE_ID)
+        LabelMatch::Unknown(DEVICE_TYPE_ID)
     }
 
     /// Имя типа из справочника; для неизвестного id (FK этого не допускает)
@@ -748,16 +742,12 @@ impl DeviceService {
         Ok(())
     }
 
-    /// device_types seed ids (V001): устройство=1, принтер=2.
-    const DEVICE_TYPE_ID: i64 = 1;
-    const PRINTER_TYPE_ID: i64 = 2;
-
     /// Синхронизировать строку `printers` с `type_id` (quick 260820-rdj: полная
     /// конверсия Устройство ⇄ Принтер). Идемпотентна — безопасно вызывать при
     /// каждом create/update/bulk_create независимо от того, менялся ли type_id
     /// в этом конкретном вызове; выполняется ВНУТРИ той же транзакции, что и
     /// INSERT/UPDATE устройства, поэтому конверсия атомарна (никогда не оставляет
-    /// devices.type_id=2 без строки printers, и наоборот).
+    /// devices.type_id=PRINTER_TYPE_ID без строки printers, и наоборот).
     fn sync_printer_row_in_tx(
         printer_repo: &SqlitePrinterRepository,
         tx: &rusqlite::Transaction<'_>,
@@ -767,7 +757,7 @@ impl DeviceService {
         printer_override: Option<&PrinterCreateBlockDto>,
     ) -> Result<(), AppError> {
         match type_id {
-            Self::PRINTER_TYPE_ID => {
+            PRINTER_TYPE_ID => {
                 if !printer_repo.exists_for_device_in_tx(tx, device_id)? {
                     let usb_host_device_id = printer_override.and_then(|b| b.usb_host_device_id);
                     if let Some(host_id) = usb_host_device_id {
@@ -811,7 +801,7 @@ impl DeviceService {
                     )?;
                 }
             }
-            Self::DEVICE_TYPE_ID => {
+            DEVICE_TYPE_ID => {
                 printer_repo.delete_by_device_id_in_tx(tx, device_id)?;
             }
             _ => {} // неизвестный/будущий тип — printers не трогаем (вне области decision)
@@ -964,7 +954,7 @@ impl DeviceService {
         printer: Option<PrinterCreateBlockDto>,
     ) -> Result<DeviceSaveOutcome, AppError> {
         Self::validate_new(&new)?;
-        if printer.is_some() && new.type_id != Self::PRINTER_TYPE_ID {
+        if printer.is_some() && new.type_id != PRINTER_TYPE_ID {
             return Err(AppError::Validation {
                 field: "printer".to_string(),
                 message: "IP/SNMP можно указать только при создании принтера.".to_string(),
@@ -1029,7 +1019,7 @@ impl DeviceService {
         // T-40.3-09: reject (not silently ignore) an IP/SNMP printer block
         // attached to a non-printer create — prevents a desynced client
         // from creating a `printers` row for a plain device.
-        if printer.is_some() && new.type_id != Self::PRINTER_TYPE_ID {
+        if printer.is_some() && new.type_id != PRINTER_TYPE_ID {
             return Err(AppError::Validation {
                 field: "printer".to_string(),
                 message: "IP/SNMP можно указать только при создании принтера.".to_string(),
@@ -1557,7 +1547,7 @@ impl DeviceService {
                 // (на существующей строке тот молчит). Хост не читается и не трогается
                 // (D-15: IP и USB-хост независимы).
                 if ip_patch.is_some() || community_patch.is_some() {
-                    if after.type_id == Self::PRINTER_TYPE_ID {
+                    if after.type_id == PRINTER_TYPE_ID {
                         printer_repo.set_network_in_tx(
                             &tx,
                             id,
@@ -1585,7 +1575,7 @@ impl DeviceService {
                 // на «Принтер» строка уже создана). sync_* её не заменяет: ветка
                 // создания обёрнута в exists-гард и на существующей строке молчит.
                 if let Some(host) = usb_host_patch {
-                    if after.type_id == Self::PRINTER_TYPE_ID {
+                    if after.type_id == PRINTER_TYPE_ID {
                         printer_repo.set_usb_host_in_tx(&tx, id, host, now)?;
                     } else if host.is_some() {
                         return Err(AppError::Validation {

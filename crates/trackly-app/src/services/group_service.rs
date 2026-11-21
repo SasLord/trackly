@@ -17,6 +17,9 @@ use trackly_core::domain::repairs::is_repair_exempt_status_code;
 
 use rusqlite::Connection;
 use trackly_core::auth::{authorize, Action, Identity};
+// `DEVICE_TYPE_ID` — тип «Устройство» (сид V001); любой другой тип — принтер, который
+// якорем группы быть не может (D-38). Единое определение — trackly-core (INT-31).
+use trackly_core::domain::devices::DEVICE_TYPE_ID;
 use trackly_core::domain::group_values;
 use trackly_core::domain::groups::{
     validate_name, GroupBehavior, GroupNew, GroupRow, GroupTypeRow, GroupValueRow,
@@ -55,9 +58,6 @@ use crate::services::plural::ru_plural;
 const SEARCH_QUERY_MAX_CHARS: usize = 100;
 /// Потолок числа кандидатов в выдаче поиска.
 const SEARCH_RESULT_LIMIT: usize = 50;
-/// `device_types.id` типа «Устройство» (seed V001; тот же `type_id = 1`, что показывает
-/// раздел «Устройства»). Любой другой тип — принтер, который якорем группы быть не может (D-38).
-const DEVICE_TYPE_ID: i64 = 1;
 /// Коды статусов `device_statuses.code`: по коду, а не по числовому id.
 const STATUS_CODE_WRITTEN_OFF: &str = "списано";
 const STATUS_CODE_TO_WRITE_OFF: &str = "на_списание";

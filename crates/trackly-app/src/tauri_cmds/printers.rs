@@ -14,6 +14,7 @@ use crate::dto::printer::{
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
+use trackly_core::domain::devices::PRINTER_TYPE_ID;
 use trackly_core::domain::printers::{Pagination as CorePagination, PrinterFilter as CoreFilter};
 use trackly_core::error::AppError;
 use trackly_core::ports::printers::PrinterRepository;
@@ -103,7 +104,7 @@ pub async fn build_printers_discover(
 /// Для каждого выбранного IP:
 ///   1. Проверяет дубликат по IP в таблице printers — пропускает если уже есть.
 ///   2. Probe через SNMP для получения sys_name/model (если probe не ответил — заводит минимальный принтер).
-///   3. Создаёт device (type_id=2, status_id=1) через DeviceService ВМЕСТЕ со
+///   3. Создаёт device (`type_id` = PRINTER_TYPE_ID, status_id=1) через DeviceService ВМЕСТЕ со
 ///      строкой printers (IP + community) — одна транзакция, `sync_printer_row_in_tx`.
 ///
 /// Quick 261105-s6s (INT-26): отдельного шага `create_from_device` больше нет —
@@ -175,14 +176,14 @@ pub async fn build_printers_admit(
         // предыдущей вставки счётчик уже сдвинулся.
         let inventory_no = next_printer_create_number(ctx).await;
 
-        // --- Create device type=Принтер (type_id=2, status_id=1) ---
+        // --- Create device type=Принтер (PRINTER_TYPE_ID, INT-31; status_id=1) ---
         // Phase 40.2 Plan 08: `create_with_printer_block` returns
         // `DeviceSaveOutcome`; it never runs the script-mix check (only
         // `reject_if_occupied` for a non-empty number), so `NeedsConfirmation`
         // is structurally unreachable here; handled defensively rather than
         // panicking in production code.
         let new_device = DeviceNew {
-            type_id: 2,
+            type_id: PRINTER_TYPE_ID,
             name: device_name,
             inventory_no: inventory_no.clone(),
             serial_no: None,

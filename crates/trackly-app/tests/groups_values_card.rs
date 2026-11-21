@@ -353,10 +353,14 @@ async fn seed_user_row(ctx: &AppCtx, login: &str, full_name: &str) -> i64 {
 }
 
 /// Сеет принтер: устройство + строка `printers` (опционально USB-хост).
+/// quick-261121-heh (INT-31): признак принтера — `type_id` = 2, строка `printers`
+/// производна; фикстура держит инвариант (тип принтера + строка).
 async fn seed_printer(ctx: &AppCtx, name: &str, inv: &str, usb_host: Option<i64>) -> i64 {
     let id = seed_device(ctx, name, inv, &format!("SN-{inv}"), None, None).await;
     ctx.writer
         .execute(move |conn| {
+            conn.execute("UPDATE devices SET type_id = 2 WHERE id = ?1", params![id])
+                .map_err(map_rusqlite)?;
             conn.execute(
                 "INSERT INTO printers (device_id, usb_host_device_id, created_at_utc, \
                  updated_at_utc) VALUES (?1, ?2, 1700000000, 1700000000)",

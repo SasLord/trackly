@@ -610,7 +610,14 @@ fn insert_property(conn: &Connection, type_id: i64, name: &str, data_type: &str)
     conn.last_insert_rowid()
 }
 
+/// quick-261121-heh (INT-31): признак принтера — `type_id` = 2, строка `printers`
+/// производна; фикстура держит инвариант (тип принтера + строка).
 fn insert_printer(conn: &Connection, device_id: i64, usb_host: Option<i64>) {
+    conn.execute(
+        "UPDATE devices SET type_id = 2 WHERE id = ?1",
+        params![device_id],
+    )
+    .expect("printer type");
     conn.execute(
         "INSERT INTO printers (device_id, usb_host_device_id, created_at_utc, updated_at_utc)
          VALUES (?1, ?2, ?3, ?3)",

@@ -791,7 +791,13 @@ pub(crate) fn fetch_candidate_rows(
                         family: id,
                         raw_value,
                         record: OccupyingRecordDto {
-                            kind: if type_id == 2 { "printer" } else { "device" }.to_string(),
+                            // INT-31: признак принтера — единственное определение в trackly-core.
+                            kind: if trackly_core::domain::devices::is_printer_type(type_id) {
+                                "printer"
+                            } else {
+                                "device"
+                            }
+                            .to_string(),
                             number: shown_number,
                             title: name,
                             subtitle: model,

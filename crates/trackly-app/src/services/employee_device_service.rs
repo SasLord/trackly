@@ -78,18 +78,23 @@ fn build_list(
         .collect();
 
     // (c) основной запрос. NULL-статус не отбрасывается; «Списано» исключено (D-20).
+    // NEW-5/INT-31 (quick-261121-heh): `is_printer` — тот же признак, что варианты
+    // принтеров заявки (`request_printer_options`): `devices.type_id` =
+    // PRINTER_TYPE_ID, а не наличие строки `printers` (она производна от type_id).
     let mut stmt = conn
-        .prepare(
+        .prepare(concat!(
             "SELECT d.id, d.name, dt.name, d.model, d.serial_number, d.inventory_number, \
                     pfp.full_path, ds.code, ds.name, \
-                    EXISTS(SELECT 1 FROM printers p WHERE p.device_id = d.id) \
+                    (d.type_id = ",
+            trackly_core::printer_type_id_sql!(),
+            ") \
              FROM devices d \
              JOIN device_types dt ON dt.id = d.type_id \
              LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
              LEFT JOIN device_statuses ds ON ds.id = d.status_id \
              WHERE d.deleted_at_utc IS NULL AND (ds.code IS NULL OR ds.code <> ?1) \
-             ORDER BY dt.name, d.name, d.id",
-        )
+             ORDER BY dt.name, d.name, d.id"
+        ))
         .map_err(map_rusqlite)?;
     let mut items: Vec<EmployeeDeviceDto> = stmt
         .query_map(params![DEVICE_STATUS_CODE_WRITTEN_OFF], |r| {

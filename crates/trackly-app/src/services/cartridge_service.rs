@@ -1187,8 +1187,8 @@ impl CartridgeService {
     /// Autocomplete for printer names when editing a cartridge model's
     /// compatibility list (D-06, Plan 13-05).
     ///
-    /// Sources suggestions from the real printer roster (`devices.name WHERE
-    /// type_id = 2`), not from previously-entered free-text values in
+    /// Sources suggestions from the real printer roster (`devices.name` с
+    /// признаком принтера `type_id` = PRINTER_TYPE_ID, INT-31), not from previously-entered free-text values in
     /// `cartridge_model_compatibility` — the compatibility column stores
     /// free text (D-04), so suggesting from its own history would surface
     /// typos/stale names instead of actual printers a model could match.
@@ -1200,11 +1200,13 @@ impl CartridgeService {
             let conn = readers.acquire();
             let pattern = format!("{}%", prefix);
             let mut stmt = conn
-                .prepare(
+                .prepare(concat!(
                     "SELECT DISTINCT name FROM devices \
-                      WHERE type_id = 2 AND deleted_at_utc IS NULL AND name LIKE ?1 \
-                      ORDER BY name ASC LIMIT 20",
-                )
+                      WHERE type_id = ",
+                    trackly_core::printer_type_id_sql!(),
+                    " AND deleted_at_utc IS NULL AND name LIKE ?1 \
+                      ORDER BY name ASC LIMIT 20"
+                ))
                 .map_err(map_rusqlite)?;
             let rows = stmt
                 .query_map(params![pattern], |r| r.get::<_, String>(0))

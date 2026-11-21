@@ -681,9 +681,11 @@ impl SqliteGroupRepository {
     }
 
     /// Принтеры, состоящие в группе или её вложенных группах (PGR-01, D-02): третий
-    /// источник «Подключённых принтеров». Принтером считается устройство со строкой
-    /// в `printers` (как в `live_printer_device_ids`), а не код типа устройства; тип
-    /// группы и наличие IP значения не имеют. Только живые устройства.
+    /// источник «Подключённых принтеров». Принтером считается устройство с
+    /// `type_id` = PRINTER_TYPE_ID — единый признак принтера (INT-31, quick
+    /// 261121-heh; как в `live_printer_device_ids`), а не наличие строки `printers`
+    /// (она производна от type_id); тип группы и наличие IP значения не имеют.
+    /// Только живые устройства.
     /// Дедупликацию с USB и ссылками делает сервис (приоритет USB > ссылка > в составе).
     pub fn member_printers_for_group(
         &self,
@@ -696,7 +698,9 @@ impl SqliteGroupRepository {
               FROM group_devices gd
               JOIN sub ON gd.group_id = sub.id
               JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
-              JOIN printers p ON p.device_id = d.id
+               AND d.type_id = ",
+            trackly_core::printer_type_id_sql!(),
+            "
               ORDER BY d.name, d.id",
         ]
         .concat();
@@ -971,7 +975,8 @@ impl SqliteGroupRepository {
         existing_ids(tx, LIVE_DEVICES_HEAD, ")", ids)
     }
 
-    /// Из `ids` — живые устройства, у которых есть строка `printers`.
+    /// Из `ids` — живые принтеры: `type_id` = PRINTER_TYPE_ID (единый признак,
+    /// INT-31), а не наличие строки `printers`.
     pub fn live_printer_device_ids(
         &self,
         conn: &Connection,
@@ -979,8 +984,12 @@ impl SqliteGroupRepository {
     ) -> Result<std::collections::HashSet<i64>, AppError> {
         existing_ids(
             conn,
-            "SELECT d.id FROM devices d JOIN printers p ON p.device_id = d.id
-             WHERE d.deleted_at_utc IS NULL AND d.id IN (",
+            concat!(
+                "SELECT d.id FROM devices d
+             WHERE d.deleted_at_utc IS NULL AND d.type_id = ",
+                trackly_core::printer_type_id_sql!(),
+                " AND d.id IN ("
+            ),
             ")",
             ids,
         )

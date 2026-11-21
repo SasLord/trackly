@@ -292,23 +292,25 @@ impl RequestService {
                         .collect(),
                 )
             };
-            // WR-04: resolve the "printer" device type by its stable seed name
-            // instead of hardcoding the magic literal `type_id = 2`. The seed
-            // (migrations/V001) defines `(2, 'Принтер')`; the subquery keeps
-            // this query correct even if the lookup ids are ever reseeded, and
-            // removes the lockstep-edit hazard with the test fixtures.
+            // INT-31 (quick-261121-heh): признак принтера — `devices.type_id` =
+            // PRINTER_TYPE_ID (id сида V001, единственное определение в
+            // trackly-core). Прежний подзапрос по имени типа (WR-04) был ошибкой,
+            // а не страховкой: подпись — данные справочника, переименование
+            // типа молча обнуляло варианты. Тот же признак — `is_printer` в
+            // списке сотрудника (NEW-5), иначе RequestFormModal не предзаполняет.
             // WR-06: `devices.name` is `NOT NULL` (migrations/V003), so mapping
             // it into the non-Option `RequestPrinterOptionDto.name: String` via
             // `row.get(1)` cannot hit a NULL-column type error.
             let mut stmt = conn
-                .prepare(
+                .prepare(concat!(
                     "SELECT d.id, d.name, pfp.full_path AS place \
                      FROM devices d \
                      LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
-                     WHERE d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер') \
-                       AND d.deleted_at_utc IS NULL \
-                     ORDER BY pfp.full_path IS NULL, pfp.full_path, d.name",
-                )
+                     WHERE d.type_id = ",
+                    trackly_core::printer_type_id_sql!(),
+                    " AND d.deleted_at_utc IS NULL \
+                     ORDER BY pfp.full_path IS NULL, pfp.full_path, d.name"
+                ))
                 .map_err(map_rusqlite)?;
             let rows = stmt
                 .query_map([], |row| {
