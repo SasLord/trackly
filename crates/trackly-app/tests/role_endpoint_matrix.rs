@@ -6727,6 +6727,28 @@ async fn gt_seed_device_i29(env: &GtEnv) -> i64 {
     .await
 }
 
+/// gsd-fast 2026-11-21 (находка quick 261121-57x): HTTP-версии `read_file_bytes` /
+/// `write_file_bytes` удалены — они не проверяли ни сессию, ни роль, и любой в LAN
+/// читал/писал `.csv` на сервере. Клиент зовёт их только под `isTauri`; Tauri-команды
+/// остаются. Маршрут не должен вернуться: ни без сессии, ни под Admin — JSON 404.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn fs_helpers_not_exposed_over_http() {
+    let env = gt_env().await;
+    for name in ["read_file_bytes", "write_file_bytes"] {
+        let payload = serde_json::json!({ "path": "/tmp/x.csv", "content": "a" });
+        let status = post_with_cookie(
+            gt_app(&env.ctx),
+            &format!("/api/v1/{name}"),
+            payload.clone(),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{name} без сессии");
+        let (status, _) = gt_post(&env, &env.admin_cookie, name, payload).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{name} под Admin");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn int29_role_matrix_http() {
     let env = gt_env().await;
@@ -6951,8 +6973,6 @@ const ROUTE_MATRIX_EXEMPT: &[(&str, &str)] = &[
     ("settings_set_network", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
     ("desktop_set_lock", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
     // ДОЛГ: файловый маршрут БЕЗ роль-гейта в handler/build_* (любой вошедший читает/пишет .csv на сервере), роль-теста нет
-    ("read_file_bytes", "ДОЛГ: файловый маршрут БЕЗ роль-гейта в handler/build_* (любой вошедший читает/пишет .csv на сервере), роль-теста нет"),
-    ("write_file_bytes", "ДОЛГ: файловый маршрут БЕЗ роль-гейта в handler/build_* (любой вошедший читает/пишет .csv на сервере), роль-теста нет"),
 ];
 // ROUTE-MATRIX-EXEMPT-END
 
@@ -6968,7 +6988,6 @@ fn http_routes_covered_by_role_matrix() {
         include_str!("../src/http/dashboard.rs"),
         include_str!("../src/http/devices.rs"),
         include_str!("../src/http/employee_devices.rs"),
-        include_str!("../src/http/fs_helpers.rs"),
         include_str!("../src/http/group_types.rs"),
         include_str!("../src/http/groups.rs"),
         include_str!("../src/http/health.rs"),
