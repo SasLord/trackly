@@ -1154,8 +1154,8 @@ const SOURCE_MUTANTS = [
   },
   {
     name: 'canRemoveFromGroup: сотрудник среди разрешённых ролей',
-    from: "['admin', 'manager']",
-    to: "['admin', 'manager', 'employee']",
+    from: "const MUTATE_ROLES = ['admin', 'manager'];",
+    to: "const MUTATE_ROLES = ['admin', 'manager', 'employee'];",
   },
   {
     name: 'canRemoveFromGroup: убрать условие groupId !== null',
@@ -1179,13 +1179,13 @@ const SOURCE_MUTANTS = [
   },
   {
     name: 'canMoveToGroup: снять охрану статусов',
-    from: '!BLOCKED_STATUS_CODES.includes(input.statusCode) && input.anchorGroupId === null',
-    to: 'input.anchorGroupId === null',
+    from: 'if (BLOCKED_STATUS_CODES.includes(input.statusCode)) return false;',
+    to: '',
   },
   {
     name: 'canMoveToGroup: якорь тоже можно перемещать',
-    from: '!BLOCKED_STATUS_CODES.includes(input.statusCode) && input.anchorGroupId === null',
-    to: '!BLOCKED_STATUS_CODES.includes(input.statusCode)',
+    from: 'if (input.anchorGroupId !== null) return false;',
+    to: '',
   },
   {
     name: 'canWriteOff: без проверки статуса',
@@ -1204,7 +1204,7 @@ const SOURCE_MUTANTS = [
   },
   {
     name: 'canReturnToTeardown: удалённая деталь тоже',
-    from: '!input.isDeleted && ',
+    from: '    !input.isDeleted &&\n',
     to: '',
   },
   {

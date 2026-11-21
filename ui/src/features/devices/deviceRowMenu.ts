@@ -23,6 +23,9 @@ export type MenuItemKind =
   | 'addToGroup'
   | 'quick'
   | 'removeFromGroup'
+  | 'moveToGroup'
+  | 'writeOff'
+  | 'returnToTeardown'
   | 'delete';
 
 export interface MenuItemSpec {
@@ -51,8 +54,12 @@ export interface MenuInput {
   hasPrint: boolean;
   groupActionsVisible: boolean;
   quickActions: QuickAction[];
-  /** Показать «Вывести из состава» (результат canRemoveFromGroup); без поля — не показывать. */
+  /** Показать «Вывести из группы» (результат canRemoveFromGroup); без поля — не показывать. */
   removeFromGroup?: boolean;
+  /** Показать «Переместить в группу» (результат canMoveToGroup); без поля — не показывать. */
+  moveToGroup?: boolean;
+  /** Показать «Списать» (результат canWriteOff); без поля — не показывать. */
+  writeOff?: boolean;
 }
 
 export interface GroupActionInput {
@@ -72,17 +79,26 @@ const LABEL_VIEW = 'Просмотр';
 const LABEL_EDIT = 'Редактировать';
 const LABEL_PRINT = 'Печать документа приёма';
 const LABEL_ADD_TO_GROUP = 'Добавить в группу';
-const LABEL_REMOVE_FROM_GROUP = 'Вывести из состава';
+const LABEL_REMOVE_FROM_GROUP = 'Вывести из группы';
+const LABEL_MOVE_TO_GROUP = 'Переместить в группу';
+const LABEL_WRITE_OFF = 'Списать';
+const LABEL_RETURN_TO_TEARDOWN = 'Вернуть в разбор';
 const LABEL_DELETE = 'Удалить';
 
 /** Машинные коды статусов (не подписи), при которых групповые действия бессмысленны. */
 const BLOCKED_STATUS_CODES = ['списано', 'на_списание'];
 
+/** Роли с правом MutateGroups / списания: зеркало серверных отказов. */
+const MUTATE_ROLES = ['admin', 'manager'];
+const WRITE_OFF_ROLES = ['admin', 'manager'];
+
 /**
- * Секции меню сверху вниз: [опрос] → [просмотр, правка, печать] →
- * [в группу, быстрые действия] → [удалить]. Пустая секция не возвращается, а
- * значит и граница-разделитель перед ней рисоваться не будет: меню не
- * начинается и не заканчивается разделителем, двух подряд не бывает.
+ * Секции меню сверху вниз (D-03): [опрос] → [просмотр, правка, печать] →
+ * [вывести из группы, переместить в группу] → [в группу, быстрые действия] →
+ * [списать, удалить]. «Списать» не danger, danger только у «Удалить». Пустая
+ * секция не возвращается, а значит и граница-разделитель перед ней рисоваться
+ * не будет: меню не начинается и не заканчивается разделителем, двух подряд
+ * не бывает.
  */
 export function buildMenuSections(input: MenuInput): MenuItemSpec[][] {
   const poll: MenuItemSpec[] = input.hasPoll ? [{ kind: 'poll', label: LABEL_POLL }] : [];
@@ -91,6 +107,13 @@ export function buildMenuSections(input: MenuInput): MenuItemSpec[][] {
     { kind: 'edit', label: LABEL_EDIT },
   ];
   if (input.hasPrint) main.push({ kind: 'print', label: LABEL_PRINT });
+  const membership: MenuItemSpec[] = [];
+  if (input.removeFromGroup === true) {
+    membership.push({ kind: 'removeFromGroup', label: LABEL_REMOVE_FROM_GROUP });
+  }
+  if (input.moveToGroup === true) {
+    membership.push({ kind: 'moveToGroup', label: LABEL_MOVE_TO_GROUP });
+  }
   const group: MenuItemSpec[] = input.groupActionsVisible
     ? [
         { kind: 'addToGroup', label: LABEL_ADD_TO_GROUP },
@@ -99,11 +122,10 @@ export function buildMenuSections(input: MenuInput): MenuItemSpec[][] {
         ),
       ]
     : [];
-  if (input.removeFromGroup === true) {
-    group.push({ kind: 'removeFromGroup', label: LABEL_REMOVE_FROM_GROUP });
-  }
-  const del: MenuItemSpec[] = [{ kind: 'delete', label: LABEL_DELETE, danger: true }];
-  return [poll, main, group, del].filter((s) => s.length > 0);
+  const tail: MenuItemSpec[] = [];
+  if (input.writeOff === true) tail.push({ kind: 'writeOff', label: LABEL_WRITE_OFF });
+  tail.push({ kind: 'delete', label: LABEL_DELETE, danger: true });
+  return [poll, main, membership, group, tail].filter((s) => s.length > 0);
 }
 
 /**
@@ -116,8 +138,9 @@ export function isGroupActionAllowed(input: GroupActionInput): boolean {
 }
 
 /**
- * Показывать ли «Вывести из состава» (GRD-12): роль admin или manager (право
+ * Показывать ли «Вывести из группы» (GRD-12, D-01): роль admin или manager (право
  * MutateGroups), устройство состоит в группе и не является якорем ЛЮБОЙ группы.
+ * Тип устройства не ограничивает: пункт виден любому прямому участнику.
  * Зеркалит отказ сервера: `release_inner` отказывает для якоря любой группы
  * (D-14 фазы 41.1). Сервер остаётся границей безопасности, UI заранее прячет пункт.
  */
@@ -128,10 +151,67 @@ export function canRemoveFromGroup(input: {
 }): boolean {
   return (
     input.role !== null &&
-    ['admin', 'manager'].includes(input.role) &&
+    MUTATE_ROLES.includes(input.role) &&
     input.groupId !== null &&
     input.anchorGroupId === null
   );
+}
+
+/**
+ * Показывать ли «Переместить в группу» (D-04): admin/manager, участник группы,
+ * не якорь, статус не «Списано»/«На списание» (сервер не вводит в группу такие
+ * устройства). Решение по `code` статуса.
+ */
+export function canMoveToGroup(input: {
+  role: string | null;
+  groupId: number | null;
+  anchorGroupId: number | null;
+  statusCode: string;
+}): boolean {
+  if (input.anchorGroupId !== null) return false;
+  if (BLOCKED_STATUS_CODES.includes(input.statusCode)) return false;
+  if (input.groupId === null) return false;
+  return input.role !== null && MUTATE_ROLES.includes(input.role);
+}
+
+/**
+ * Показывать ли «Списать» (D-19): admin/manager и статус с кодом `на_списание`,
+ * в том числе у якоря и участника группы. Решение по `code`, не по подписи.
+ */
+export function canWriteOff(input: { role: string | null; statusCode: string }): boolean {
+  return (
+    input.role !== null &&
+    WRITE_OFF_ROLES.includes(input.role) &&
+    input.statusCode === 'на_списание'
+  );
+}
+
+/**
+ * Можно ли вернуть деталь призрака в разбор (D-12, D-15): admin/manager, деталь
+ * не удалена и не списана. Одна функция для меню призрака и строки возврата.
+ */
+export function canReturnToTeardown(input: {
+  role: string | null;
+  isDeleted: boolean;
+  statusCode: string;
+}): boolean {
+  return (
+    input.role !== null &&
+    MUTATE_ROLES.includes(input.role) &&
+    !input.isDeleted &&
+    input.statusCode !== 'списано'
+  );
+}
+
+/** Меню призрака (D-12): ровно один пункт «Вернуть в разбор» либо пусто. */
+export function ghostMenuSections(input: {
+  role: string | null;
+  isDeleted: boolean;
+  statusCode: string;
+}): MenuItemSpec[][] {
+  return canReturnToTeardown(input)
+    ? [[{ kind: 'returnToTeardown', label: LABEL_RETURN_TO_TEARDOWN }]]
+    : [];
 }
 
 /**

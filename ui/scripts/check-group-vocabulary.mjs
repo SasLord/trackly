@@ -119,7 +119,8 @@ const ALLOWLIST = [
     // группу» (D-22: подписи быстрых действий приходят из типов групп, а не из
     // литералов). Только этот литерал, не весь файл.
     file: 'src/features/devices/deviceRowMenu.ts',
-    markers: ['Добавить в группу'],
+    // 41.8-08 (D-02/D-04): ещё две подписи пунктов меню — поимённо.
+    markers: ['Добавить в группу', 'Вывести из группы', 'Переместить в группу'],
   },
   {
     // 41.1-16: надписи модалки отказа «Удалить нельзя» для якорного устройства
@@ -495,6 +496,12 @@ function runSelfTest() {
       name: 'позитив (41.1-16): «Добавить в группу» в deviceRowMenu.ts',
       file: 'src/features/devices/deviceRowMenu.ts',
       src: "const LABEL_ADD_TO_GROUP = 'Добавить в группу';",
+      expectViolations: 0,
+    },
+    {
+      name: 'позитив (41.8-08): «Вывести из группы» и «Переместить в группу» в deviceRowMenu.ts',
+      file: 'src/features/devices/deviceRowMenu.ts',
+      src: "const A = 'Вывести из группы';\nconst B = 'Переместить в группу';",
       expectViolations: 0,
     },
     {
