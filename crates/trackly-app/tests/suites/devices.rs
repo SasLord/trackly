@@ -55,6 +55,8 @@ mod devices_printer_link_audit;
 mod devices_printer_network;
 #[path = "../devices_search.rs"]
 mod devices_search;
+#[path = "../devices_status_only_patch.rs"]
+mod devices_status_only_patch;
 #[path = "../devices_type_conversion.rs"]
 mod devices_type_conversion;
 #[path = "../devices_usb_host.rs"]
