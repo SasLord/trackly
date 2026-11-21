@@ -18,9 +18,12 @@
 // и тот же хэш), CR-02 (нечитаемая цель — отказ, а не молчаливый пропуск),
 // WR-01/WR-02/WR-03 (режим 1 видит структурированные конфиги, регистр
 // ключа и значение без кавычек), WR-04 (состав fixture-каталога, который
-// авто-сканирование не проверяет, зафиксирован явным списком).
+// авто-сканирование не проверяет, зафиксирован явным списком), а также
+// quick 261121-hjw (todo 2026-09-26): межстрочный проход (блок 11),
+// cp1251/UTF-16 (12), текст PNG-чанков (13), разложение длинных значений
+// для --add (14), охват каталогов (15), расширенный класс D (16).
 //
-// Zero-dependency: только node:fs/os/path/url/child_process.
+// Zero-dependency: только node:fs/os/path/url/child_process/zlib.
 //
 // Usage:
 //   node scripts/check-privacy.selftest.mjs
@@ -33,7 +36,20 @@ import { execFileSync } from 'node:child_process';
 // Импорт из самого гейта: файл выполняет main() только при прямом вызове,
 // поэтому импорт безопасен. Нужен, чтобы проверить CR-01 сквозным
 // round-trip'ом — --add требует TTY и напрямую из теста не вызывается.
-import { canonicalizeAddValue, normalize, scanForbiddenPaths, sha256Hex } from './check-privacy.mjs';
+import zlib from 'node:zlib';
+import {
+  allNgrams,
+  canonicalizeAddValue,
+  decodeCp1251,
+  decomposeLongValue,
+  extractPngText,
+  isAutoScanExcludedFixture,
+  isExcludedPath,
+  NGRAM_MAX_WORDS,
+  normalize,
+  scanForbiddenPaths,
+  sha256Hex,
+} from './check-privacy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -351,6 +367,8 @@ function assertNoLeak(name, args, secret) {
     'tokens.fixture.sha256',
     'with-marker.md',
     'without-marker.md',
+    'wrapped-marker.md',
+    'paragraph-break.md',
   ];
   const actual = fs.readdirSync(FIXTURES).sort();
   const expected = [...EXPECTED_FIXTURES].sort();
@@ -367,6 +385,240 @@ function assertNoLeak(name, args, secret) {
     console.error(`${TAG} ok — состав scripts/fixtures/privacy/ совпадает с ожидаемым (WR-04)`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// 11. Межстрочный проход режима 2: значение, разорванное переносом строки
+//     внутри абзаца (в т.ч. за префиксами `//`), ловится; через пустую
+//     строку — нет. Без утечки значения в вывод (D-16).
+// ---------------------------------------------------------------------------
+{
+  const wrapped = ['--hashes', TOKENS_HASHES, path.join(FIXTURES, 'wrapped-marker.md')];
+  assertExitCode('wrapped-marker.md: маркер, разорванный переносом, найден', wrapped, 1);
+  const out = runGate(wrapped).output;
+  assertTrue(
+    'wrapped-marker.md: найдены оба случая (проза и комментарий //)',
+    (out.match(/маркер класса B/g) || []).length === 2,
+  );
+  for (const word of ['Пчёлкин', 'Артём', 'пчелкин', 'артем']) {
+    assertNoLeak(`wrapped-marker.md: слово не утекает в вывод (${word.length} букв)`, wrapped, word);
+  }
+  assertExitCode(
+    'paragraph-break.md: слова через пустую строку проходят гейт',
+    ['--hashes', TOKENS_HASHES, path.join(FIXTURES, 'paragraph-break.md')],
+    0,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 12. Кодировки: cp1251 и UTF-16 (с BOM) больше не слепая зона режима 2.
+// ---------------------------------------------------------------------------
+{
+  // Таблица cp1251 гейта сверяется с эталоном Node, если ICU его даёт.
+  let ref = null;
+  try {
+    ref = new TextDecoder('windows-1251');
+  } catch {
+    ref = null;
+  }
+  if (ref) {
+    const all = Buffer.alloc(256);
+    for (let i = 0; i < 256; i++) all[i] = i;
+    assertTrue('cp1251: таблица гейта совпадает с TextDecoder(windows-1251) на 256 байтах', decodeCp1251(all) === ref.decode(all));
+  } else {
+    console.error(`${TAG} ok — cp1251: эталон TextDecoder недоступен (нет ICU), сверка пропущена`);
+  }
+  const marker = 'Заметка: исполнитель Пчёлкин Артём, отдел снабжения.\n';
+  const cp1251Bytes = Buffer.from(
+    [...marker].map((ch) => {
+      const cp = ch.codePointAt(0);
+      if (cp < 0x80) return cp;
+      if (cp >= 0x0410 && cp <= 0x044f) return cp - 0x0410 + 0xc0;
+      if (cp === 0x0401) return 0xa8;
+      if (cp === 0x0451) return 0xb8;
+      throw new Error(`cp1251 fixture: нет байта для U+${cp.toString(16)}`);
+    }),
+  );
+  withTempDir((dir) => {
+    const cp = path.join(dir, 'cp1251.csv');
+    fs.writeFileSync(cp, cp1251Bytes);
+    assertExitCode('cp1251: маркер в windows-1251 найден', ['--hashes', TOKENS_HASHES, cp], 1);
+    const le = path.join(dir, 'utf16le.txt');
+    fs.writeFileSync(le, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(marker, 'utf16le')]));
+    assertExitCode('UTF-16LE с BOM: маркер найден', ['--hashes', TOKENS_HASHES, le], 1);
+    const beBody = Buffer.from(marker, 'utf16le');
+    beBody.swap16();
+    const be = path.join(dir, 'utf16be.txt');
+    fs.writeFileSync(be, Buffer.concat([Buffer.from([0xfe, 0xff]), beBody]));
+    assertExitCode('UTF-16BE с BOM: маркер найден', ['--hashes', TOKENS_HASHES, be], 1);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 13. Текст PNG-чанков (tEXt / zTXt / iTXt) — метаданные скриншотов.
+// ---------------------------------------------------------------------------
+{
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc32 = (buf) => {
+    let c = 0xffffffff;
+    for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdr = chunk('IHDR', Buffer.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0]));
+  const iend = chunk('IEND', Buffer.alloc(0));
+  const text = 'Пчёлкин Артём';
+  const pngWith = (c) => Buffer.concat([sig, ihdr, c, iend]);
+  const kw = (k) => Buffer.from(`${k}\0`, 'latin1');
+  const variants = {
+    tEXt: pngWith(chunk('tEXt', Buffer.concat([kw('Author'), Buffer.from(text, 'utf8')]))),
+    zTXt: pngWith(
+      chunk('zTXt', Buffer.concat([kw('Comment'), Buffer.from([0]), zlib.deflateSync(Buffer.from(text, 'utf8'))])),
+    ),
+    iTXt: pngWith(
+      chunk(
+        'iTXt',
+        Buffer.concat([kw('Description'), Buffer.from([1, 0]), Buffer.from('ru\0\0', 'latin1'), zlib.deflateSync(Buffer.from(text, 'utf8'))]),
+      ),
+    ),
+  };
+  const markerHash = sha256Hex(normalize('Пчёлкин Артём'));
+  for (const [type, png] of Object.entries(variants)) {
+    const extracted = extractPngText(png);
+    assertTrue(
+      `PNG ${type}: извлечённый текст даёт n-грамму маркера`,
+      allNgrams(extracted).some(({ ngram }) => sha256Hex(normalize(ngram)) === markerHash),
+    );
+  }
+  assertTrue('PNG: битый буфер не роняет извлечение', extractPngText(Buffer.from('not a png')) === '');
+  assertTrue(
+    'PNG: обрезанный чанк не роняет извлечение',
+    typeof extractPngText(variants.zTXt.subarray(0, variants.zTXt.length - 20)) === 'string',
+  );
+  withTempDir((dir) => {
+    const p = path.join(dir, 'shot.png');
+    fs.writeFileSync(p, variants.zTXt);
+    const { code, output } = runGate(['--hashes', TOKENS_HASHES, p]);
+    assertTrue(
+      'PNG вне allowlist: и класс D, и маркер класса B из zTXt',
+      code === 1 && output.includes('маркер класса D') && output.includes('маркер класса B'),
+    );
+    assertTrue('PNG: значение не утекает в вывод', !output.includes('Пчёлкин') && !output.includes('Артём'));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 14. --add: значение длиннее NGRAM_MAX_WORDS раскладывается на смежные окна
+//     (п.2 todo 2026-09-26). Только вымышленное значение (C-01).
+// ---------------------------------------------------------------------------
+{
+  const value = 'Пчёлкин Артём Ильич из отдела снабжения';
+  const d = decomposeLongValue(value);
+  const words = [...value.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => m[0]);
+  assertTrue('decompose: значение разложено', d.ok === true && d.words === words.length);
+  assertTrue(
+    `decompose: ${words.length - NGRAM_MAX_WORDS + 1} смежных окон по ${NGRAM_MAX_WORDS} слова`,
+    d.ok && d.phrases.length === words.length - NGRAM_MAX_WORDS + 1 && d.phrases.length === 4,
+  );
+  const pairsCovered = words
+    .slice(0, -1)
+    .every((w, i) => d.phrases.some((ph) => ph.canonical.includes(`${w} ${words[i + 1]}`)));
+  assertTrue('decompose: каждая пара соседних слов покрыта окном', pairsCovered);
+  assertTrue(
+    'decompose: хэш каждой фразы равен хэшу n-граммы сканера',
+    d.ok &&
+      d.phrases.every((ph) =>
+        allNgrams(value).some(({ ngram }) => sha256Hex(normalize(ngram)) === ph.hash),
+      ),
+  );
+  assertTrue(
+    'decompose: короткое значение — одна фраза, как canonicalizeAddValue',
+    (() => {
+      const short = decomposeLongValue('Пчёлкин-Артём');
+      const c = canonicalizeAddValue('Пчёлкин-Артём');
+      return short.ok && short.phrases.length === 1 && short.phrases[0].hash === c.hash;
+    })(),
+  );
+  assertTrue('decompose: значение без слов отклоняется', decomposeLongValue('— … —').ok === false);
+  withTempDir((dir) => {
+    const hashes = path.join(dir, 'decomposed.sha256');
+    fs.writeFileSync(hashes, `${d.phrases.map((ph) => `${ph.hash} B`).join('\n')}\n`, 'utf8');
+    let caughtAll = true;
+    for (let cut = 1; cut < words.length; cut++) {
+      const f = path.join(dir, `cut-${cut}.md`);
+      fs.writeFileSync(
+        f,
+        `Запись: ${words.slice(0, cut).join(' ')}\n${words.slice(cut).join(' ')} — конец.\n`,
+        'utf8',
+      );
+      if (runGate(['--hashes', hashes, f]).code !== 1) caughtAll = false;
+    }
+    assertTrue('decompose: разрыв переносом в любой точке ловится хэшами разложения', caughtAll);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 15. Охват каталогов: ни один предикат исключения не скрывает планы,
+//     шаблоны и тестовые фикстуры (п.3 todo 2026-09-26).
+// ---------------------------------------------------------------------------
+{
+  const mustScan = [
+    '.planning/todos/pending/x.md',
+    '.planning/quick/x/y.md',
+    '.planning/debug/x.md',
+    '.planning/threads/x.md',
+    '.planning/milestones/x.md',
+    '.planning/phases/x/y.md',
+    'templates/x.html',
+    'crates/trackly-app/tests/fixtures/devices/x.csv',
+    'ui/scripts/fixtures/x/y.txt',
+  ];
+  const leaked = mustScan.filter(
+    (p) => isExcludedPath(p, 'scripts/privacy-tokens.sha256') || isAutoScanExcludedFixture(p),
+  );
+  assertTrue(`охват: каталоги не исключены (${leaked.join(', ') || 'все в охвате'})`, leaked.length === 0);
+  const mustSkip = [
+    ['node_modules/x/y.js', 'excluded'],
+    ['target/debug/x', 'excluded'],
+    ['Cargo.lock', 'excluded'],
+    ['scripts/privacy-tokens.sha256', 'excluded'],
+    ['scripts/fixtures/privacy/x.md', 'fixture'],
+  ];
+  const wrong = mustSkip.filter(([p, kind]) =>
+    kind === 'excluded'
+      ? !isExcludedPath(p, 'scripts/privacy-tokens.sha256')
+      : !isAutoScanExcludedFixture(p) || isExcludedPath(p, 'scripts/privacy-tokens.sha256'),
+  );
+  assertTrue(
+    `охват: исключены ровно node_modules/, target/, Cargo.lock, файл хэшей и фикстуры гейта (${wrong.map(([p]) => p).join(', ') || 'ок'})`,
+    wrong.length === 0,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 16. Класс D расширен: офисные/архивные/графические/БД-форматы.
+// ---------------------------------------------------------------------------
+withTempDir((dir) => {
+  const missed = [];
+  for (const ext of ['.doc', '.xls', '.odt', '.rtf', '.zip', '.7z', '.gif', '.webp', '.heic', '.sqlite', '.db-wal', '.eml']) {
+    const f = path.join(dir, `sample${ext}`);
+    fs.writeFileSync(f, '');
+    const { code, output } = runGate(['--hashes', TOKENS_HASHES, f]);
+    if (code !== 1 || !output.includes('маркер класса D')) missed.push(ext);
+  }
+  assertTrue(`класс D: новые расширения ловятся (${missed.join(', ') || 'все'})`, missed.length === 0);
+});
 
 // ---------------------------------------------------------------------------
 

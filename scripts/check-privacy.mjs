@@ -20,8 +20,18 @@
 //   - Режим 2 (n-грамм хэши) — весь текстовый HEAD/staged токенизируется
 //     1–3-словными n-граммами, нормализуется (lowercase + ё→е + NFC) и
 //     сверяется по SHA-256 со списком из файла --hashes (D-05/D-06/D-07).
-//   - Контроль бинарных расширений (R8) — .docx/.xlsx/.pdf/.png/.jpg/.jpeg
-//     вне явного BINARY_ALLOWLIST — нарушение (класс D).
+//     С quick 261121-hjw режим 2 НЕ строго построчный: второй проход
+//     хэширует окна 2..NGRAM_MAX_WORDS, пересекающие перенос строки внутри
+//     абзаца (значение, разорванное переносом — в том числе за префиксами
+//     комментариев `//` и `#`, их отсекает сам WORD_RE). Граница абзаца —
+//     строка без единого слова (пустая или только пунктуация).
+//     Текст декодируется из байтов: BOM UTF-16LE/BE, затем строгий UTF-8,
+//     иначе windows-1251 (собственная таблица, без ICU) — кириллица в cp1251
+//     больше не превращается в U+FFFD. У .png дополнительно сканируется
+//     текст чанков tEXt/zTXt/iTXt (метаданные скриншотов).
+//   - Контроль бинарных расширений (R8) — офисные/архивные/графические/БД-
+//     форматы (см. BINARY_EXTENSIONS) вне явного BINARY_ALLOWLIST —
+//     нарушение (класс D).
 //
 // На срабатывании гейт печатает ТОЛЬКО «путь:строка — маркер класса X»
 // (D-16) — никогда не значение и не исходную строку.
@@ -33,7 +43,7 @@
 // --hashes <path> обязателен (нет дефолтного пути к продовому файлу в этом
 // плане — scripts/privacy-tokens.sha256 ещё не существует, это план 37-04).
 //
-// Zero-dependency: только node:fs/path/url/crypto/child_process/readline.
+// Zero-dependency: только node:fs/path/url/crypto/child_process/readline/zlib.
 //
 // Usage:
 //   node scripts/check-privacy.mjs --hashes <path>              # весь HEAD
@@ -47,6 +57,7 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import readline from 'node:readline';
+import zlib from 'node:zlib';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -197,11 +208,171 @@ function canonicalizeAddValue(value) {
   };
 }
 
+/** Раскладывает значение ЛЮБОЙ длины на покрывающий набор смежных окон
+ * NGRAM_MAX_WORDS слов (п.2 todo 2026-09-26): значение длиннее окна сканер
+ * целиком не воспроизведёт никогда, но каждое его смежное 3-словное окно —
+ * воспроизведёт. Каждая пара соседних слов покрыта хотя бы одним окном,
+ * поэтому разрыв значения в любой точке (перенос строки) всё равно ловится
+ * межстрочным проходом. Для ≤ NGRAM_MAX_WORDS слов — одна фраза, ровно как
+ * canonicalizeAddValue. Возвращает {ok:true, words, phrases:[{canonical,
+ * hash}]} или {ok:false, reason}. */
+function decomposeLongValue(value) {
+  const words = [...value.matchAll(WORD_RE)].map((m) => m[0]);
+  if (words.length === 0) {
+    return { ok: false, reason: 'no_words', words: 0 };
+  }
+  if (words.length <= NGRAM_MAX_WORDS) {
+    const canon = canonicalizeAddValue(value);
+    return { ok: true, words: words.length, phrases: [{ canonical: canon.canonical, hash: canon.hash }] };
+  }
+  const phrases = [];
+  for (let i = 0; i + NGRAM_MAX_WORDS <= words.length; i++) {
+    const canonical = words.slice(i, i + NGRAM_MAX_WORDS).join(' ');
+    phrases.push({ canonical, hash: sha256Hex(normalize(canonical)) });
+  }
+  return { ok: true, words: words.length, phrases };
+}
+
+// ---------------------------------------------------------------------------
+// Декодирование байтов в текст (cp1251 / UTF-16 / UTF-8)
+// ---------------------------------------------------------------------------
+
+// windows-1251, байты 0x80..0xBF — кодовые точки Unicode. 0xC0..0xFF
+// (А..я) — подряд с U+0410, вычисляются. Таблица сверена selftest-ом с
+// TextDecoder('windows-1251'), где он доступен; сам гейт от ICU не зависит.
+const CP1251_HIGH = [
+  0x0402, 0x0403, 0x201a, 0x0453, 0x201e, 0x2026, 0x2020, 0x2021,
+  0x20ac, 0x2030, 0x0409, 0x2039, 0x040a, 0x040c, 0x040b, 0x040f,
+  0x0452, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
+  0x0098, 0x2122, 0x0459, 0x203a, 0x045a, 0x045c, 0x045b, 0x045f,
+  0x00a0, 0x040e, 0x045e, 0x0408, 0x00a4, 0x0490, 0x00a6, 0x00a7,
+  0x0401, 0x00a9, 0x0404, 0x00ab, 0x00ac, 0x00ad, 0x00ae, 0x0407,
+  0x00b0, 0x00b1, 0x0406, 0x0456, 0x0491, 0x00b5, 0x00b6, 0x00b7,
+  0x0451, 0x2116, 0x0454, 0x00bb, 0x0458, 0x0405, 0x0455, 0x0457,
+];
+
+function decodeCp1251(buf) {
+  let out = '';
+  for (const b of buf) {
+    if (b < 0x80) out += String.fromCharCode(b);
+    else if (b < 0xc0) out += String.fromCharCode(CP1251_HIGH[b - 0x80]);
+    else out += String.fromCharCode(0x0410 + (b - 0xc0));
+  }
+  return out;
+}
+
+const UTF8_STRICT = new TextDecoder('utf-8', { fatal: true });
+
+/** Байты -> текст для режимов 1 и 2. BOM FF FE / FE FF -> UTF-16LE/BE;
+ * иначе строгий UTF-8; при ошибке — windows-1251, но только для буфера без
+ * NUL (NUL = бинарник: для него прежнее нестрогое UTF-8, чтобы мусор не
+ * превращался в «кириллицу»). */
+function decodeBuffer(buf) {
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+    return buf.subarray(2).toString('utf16le');
+  }
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+    const n = (buf.length - 2) & ~1;
+    const body = Buffer.from(buf.subarray(2, 2 + n));
+    body.swap16();
+    return body.toString('utf16le');
+  }
+  try {
+    return UTF8_STRICT.decode(buf);
+  } catch {
+    if (buf.includes(0)) return buf.toString('utf8');
+    return decodeCp1251(buf);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Текст PNG-чанков (tEXt / zTXt / iTXt) — метаданные скриншотов
+// ---------------------------------------------------------------------------
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// Предел распаковки одного сжатого чанка (T-hjw-05: zip-бомба в метаданных).
+const PNG_INFLATE_MAX = 1024 * 1024;
+
+function inflateLimited(data) {
+  return zlib.inflateSync(data, { maxOutputLength: PNG_INFLATE_MAX });
+}
+
+/** Извлекает текст всех tEXt/zTXt/iTXt-чанков PNG (ключ и значение), чанки
+ * разделены пустой строкой (граница абзаца). Значение tEXt/zTXt по
+ * спецификации latin1, но редакторы кладут туда и UTF-8/cp1251 — поэтому
+ * оно идёт через decodeBuffer (строгий UTF-8, иначе cp1251), как файлы. Битый/непохожий на PNG буфер
+ * не роняет гейт: возвращается то, что успели разобрать (возможно, ''). */
+function extractPngText(buf) {
+  const parts = [];
+  if (!Buffer.isBuffer(buf) || buf.length < 8 || !buf.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    return '';
+  }
+  let off = 8;
+  try {
+    while (off + 12 <= buf.length) {
+      const len = buf.readUInt32BE(off);
+      const type = buf.toString('latin1', off + 4, off + 8);
+      const dataStart = off + 8;
+      const dataEnd = dataStart + len;
+      if (dataEnd + 4 > buf.length) break;
+      const data = buf.subarray(dataStart, dataEnd);
+      const nul = data.indexOf(0);
+      if (type === 'tEXt' && nul >= 0) {
+        parts.push(`${data.toString('latin1', 0, nul)}\n${decodeBuffer(data.subarray(nul + 1))}`);
+      } else if (type === 'zTXt' && nul >= 0) {
+        const keyword = data.toString('latin1', 0, nul);
+        try {
+          parts.push(`${keyword}\n${decodeBuffer(inflateLimited(data.subarray(nul + 2)))}`);
+        } catch {
+          parts.push(keyword);
+        }
+      } else if (type === 'iTXt' && nul >= 0) {
+        const keyword = data.toString('latin1', 0, nul);
+        const compressed = data[nul + 1] === 1;
+        let p = nul + 3;
+        const langEnd = data.indexOf(0, p);
+        if (langEnd < 0) {
+          parts.push(keyword);
+        } else {
+          const transEnd = data.indexOf(0, langEnd + 1);
+          if (transEnd < 0) {
+            parts.push(keyword);
+          } else {
+            const translated = data.toString('utf8', langEnd + 1, transEnd);
+            let textBuf = data.subarray(transEnd + 1);
+            try {
+              if (compressed) textBuf = inflateLimited(textBuf);
+              parts.push(`${keyword}\n${translated}\n${textBuf.toString('utf8')}`);
+            } catch {
+              parts.push(`${keyword}\n${translated}`);
+            }
+          }
+        }
+      }
+      if (type === 'IEND') break;
+      off = dataEnd + 4;
+    }
+  } catch {
+    // битый PNG — сканируем то, что успели извлечь
+  }
+  return parts.join('\n\n');
+}
+
 // ---------------------------------------------------------------------------
 // Контроль бинарных расширений (R8, класс D)
 // ---------------------------------------------------------------------------
 
-const BINARY_EXTENSIONS = new Set(['.docx', '.xlsx', '.pdf', '.png', '.jpg', '.jpeg']);
+// quick 261121-hjw (класс D расширен): офисные, архивные, графические и
+// файлы БД/почты — содержимое не текстовое, текстовые режимы их не видят.
+// На момент расширения `git ls-files` по добавленным расширениям — пусто.
+const BINARY_EXTENSIONS = new Set([
+  '.docx', '.xlsx', '.pdf', '.png', '.jpg', '.jpeg',
+  '.doc', '.xls', '.xlsm', '.xlsb', '.ppt', '.pptx', '.odt', '.ods', '.odp', '.rtf',
+  '.zip', '.7z', '.rar', '.gz', '.tgz',
+  '.gif', '.webp', '.bmp', '.tif', '.tiff', '.heic',
+  '.db', '.sqlite', '.sqlite3', '.db-wal', '.db-shm',
+  '.eml', '.msg',
+]);
 
 // Пути (repo-root-relative, POSIX-разделители), которым явно разрешено
 // нести контролируемое бинарное расширение — всё остальное с таким
@@ -277,6 +448,17 @@ function toPosix(relPath) {
 // `git show` (64 МБ — ровно тот случайный дамп/выгрузка, ради которых гейт
 // и существует), битый симлинк, сбой git. Вызывающий (main) обязан
 // превратить непустой unreadable в exit 1.
+/** Цель сканирования из байтов: `content` — декодированный текст (режимы
+ * 1 и 2), `pngText` — текст чанков PNG (только режим 2, строка 0). */
+function makeTarget(relPath, buf) {
+  const ext = path.extname(relPath).toLowerCase();
+  return {
+    path: relPath,
+    content: decodeBuffer(buf),
+    pngText: ext === '.png' ? extractPngText(buf) : '',
+  };
+}
+
 function collectStagedTargets() {
   let raw;
   try {
@@ -307,18 +489,18 @@ function collectStagedTargets() {
       i++;
     }
     if (relPath === undefined) continue;
-    let content = '';
+    let buf;
     try {
-      content = execFileSync('git', ['show', `:${relPath}`], {
+      // Без encoding — Buffer: декодирование (cp1251/UTF-16/UTF-8) делает makeTarget.
+      buf = execFileSync('git', ['show', `:${relPath}`], {
         cwd: REPO_ROOT,
-        encoding: 'utf8',
         maxBuffer: 64 * 1024 * 1024,
       });
     } catch (err) {
       unreadable.push({ path: relPath, reason: err.code || err.message });
       continue;
     }
-    targets.push({ path: relPath, content });
+    targets.push(makeTarget(relPath, buf));
   }
   return { targets, unreadable };
 }
@@ -336,14 +518,14 @@ function collectHeadTargets() {
   const unreadable = [];
   for (const relPath of paths) {
     const abs = path.join(REPO_ROOT, relPath);
-    let content;
+    let buf;
     try {
-      content = fs.readFileSync(abs, 'utf8');
+      buf = fs.readFileSync(abs);
     } catch (err) {
       unreadable.push({ path: relPath, reason: err.code || err.message });
       continue;
     }
-    targets.push({ path: relPath, content });
+    targets.push(makeTarget(relPath, buf));
   }
   return { targets, unreadable };
 }
@@ -356,9 +538,9 @@ function collectExplicitTargets(files) {
   for (const file of files) {
     const abs = path.resolve(process.cwd(), file);
     const relPath = toPosix(path.relative(REPO_ROOT, abs));
-    let content;
+    let buf;
     try {
-      content = fs.readFileSync(abs, 'utf8');
+      buf = fs.readFileSync(abs);
     } catch (err) {
       // Тот же fail-closed контракт, что и у авто-режимов (CR-02): раньше
       // здесь подставлялась пустая строка, из-за чего явно названный, но
@@ -366,7 +548,7 @@ function collectExplicitTargets(files) {
       unreadable.push({ path: relPath, reason: err.code || err.message });
       continue;
     }
-    targets.push({ path: relPath, content });
+    targets.push(makeTarget(relPath, buf));
   }
   return { targets, unreadable };
 }
@@ -397,22 +579,76 @@ function scanAllowlist(targets) {
   return violations;
 }
 
+/** Межстрочные n-граммы текста: окна 2..NGRAM_MAX_WORDS слов внутри
+ * абзаца, слова которых лежат на РАЗНЫХ строках (внутристрочные окна уже
+ * даёт extractNgrams). Абзац — подряд идущие строки, в каждой из которых
+ * есть хотя бы одно слово WORD_RE; строка без слов (пустая, «//», «#»,
+ * пунктуация) — граница. Возвращает [{ngram, line}] (line — 1-based строка
+ * первого слова окна). */
+function extractCrossLineNgrams(content) {
+  const out = [];
+  let para = [];
+  const flush = () => {
+    for (let n = 2; n <= NGRAM_MAX_WORDS; n++) {
+      for (let i = 0; i + n <= para.length; i++) {
+        if (para[i].line === para[i + n - 1].line) continue;
+        out.push({
+          ngram: para
+            .slice(i, i + n)
+            .map((w) => w.word)
+            .join(' '),
+          line: para[i].line,
+        });
+      }
+    }
+    para = [];
+  };
+  content.split('\n').forEach((line, idx) => {
+    const words = [...line.matchAll(WORD_RE)].map((m) => m[0]);
+    if (words.length === 0) {
+      flush();
+      return;
+    }
+    for (const word of words) para.push({ word, line: idx + 1 });
+  });
+  flush();
+  return out;
+}
+
+/** Построчные n-граммы текста как [{ngram, line}]. */
+function lineNgrams(content) {
+  const out = [];
+  content.split('\n').forEach((line, idx) => {
+    for (const ngram of extractNgrams(line)) out.push({ ngram, line: idx + 1 });
+  });
+  return out;
+}
+
+/** Все n-граммы текста (построчные + межстрочные) — то, что видит сканер. */
+function allNgrams(content) {
+  return lineNgrams(content).concat(extractCrossLineNgrams(content));
+}
+
+function scanText(p, content, hashMap, lineOverride, violations) {
+  const seen = new Set();
+  const ngrams = [...lineNgrams(content), ...extractCrossLineNgrams(content)];
+  for (const { ngram, line } of ngrams) {
+    const cls = hashMap.get(sha256Hex(normalize(ngram)));
+    if (!cls) continue;
+    const at = lineOverride ?? line;
+    const key = `${at}:${cls}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    violations.push({ path: p, line: at, cls });
+  }
+}
+
 function scanHashes(targets, hashMap) {
   const violations = [];
-  for (const { path: p, content } of targets) {
-    const lines = content.split('\n');
-    lines.forEach((line, idx) => {
-      const seenClasses = new Set();
-      for (const ngram of extractNgrams(line)) {
-        const norm = normalize(ngram);
-        const hash = sha256Hex(norm);
-        const cls = hashMap.get(hash);
-        if (cls && !seenClasses.has(cls)) {
-          violations.push({ path: p, line: idx + 1, cls });
-          seenClasses.add(cls);
-        }
-      }
-    });
+  for (const { path: p, content, pngText } of targets) {
+    scanText(p, content, hashMap, null, violations);
+    // Текст PNG-чанков — без номеров строк (строка 0 = «в метаданных файла»).
+    if (pngText) scanText(p, pngText, hashMap, 0, violations);
   }
   return violations;
 }
@@ -595,61 +831,96 @@ async function runAdd(args) {
     process.exit(1);
   }
 
-  // CR-01: хэшируем НЕ сырой ввод, а каноническую форму сканера. Значение,
-  // которое сканер воспроизвести не может, отклоняется — молча записывать
-  // мёртвую запись в доверенный список нельзя.
-  const canon = canonicalizeAddValue(value);
-  if (!canon.ok) {
-    if (canon.reason === 'no_words') {
-      console.error(
-        `${TAG} FAIL — значение не содержит ни одной буквенно-цифровой последовательности. Сканер токенизирует строки по /[\\p{L}\\p{N}]+/u, поэтому такое значение не совпало бы никогда.`,
-      );
-    } else {
-      console.error(
-        `${TAG} FAIL — значение токенизируется в ${canon.words} слов(а), максимум ${NGRAM_MAX_WORDS}. Окно n-грамм сканера не превышает ${NGRAM_MAX_WORDS} слов, поэтому такой хэш при сканировании не был бы получен НИКОГДА — запись была бы мёртвой и не защищала бы ничего.`,
-      );
-      console.error(
-        `${TAG} Что делать: добавь по отдельности каждую значимую подфразу длиной ≤${NGRAM_MAX_WORDS} слов(а) — ровно такие n-граммы строит сканер. Значение не записано.`,
-      );
-    }
+  // CR-01: хэшируем НЕ сырой ввод, а каноническую форму сканера. Значение
+  // длиннее NGRAM_MAX_WORDS раскладывается на смежные окна (п.2 todo
+  // 2026-09-26) — раньше это был тупик too_many_words.
+  const decomposed = decomposeLongValue(value);
+  if (!decomposed.ok) {
+    console.error(
+      `${TAG} FAIL — значение не содержит ни одной буквенно-цифровой последовательности. Сканер токенизирует строки по /[\\p{L}\\p{N}]+/u, поэтому такое значение не совпало бы никогда.`,
+    );
     process.exit(1);
   }
-  if (canon.canonical !== value) {
+  const { phrases } = decomposed;
+  if (phrases.length === 1 && phrases[0].canonical !== value) {
     // Значение НЕ печатается (D-16) — только факт нормализации и число слов.
     console.error(
-      `${TAG} ПРИМЕЧАНИЕ — значение приведено к канонической форме сканера (${canon.words} слов(а); пунктуация и разделители отброшены, как их отбрасывает токенизатор). Хэш считается именно от неё.`,
+      `${TAG} ПРИМЕЧАНИЕ — значение приведено к канонической форме сканера (${decomposed.words} слов(а); пунктуация и разделители отброшены, как их отбрасывает токенизатор). Хэш считается именно от неё.`,
     );
   }
-  const hash = canon.hash;
-  const newLine = `${hash} ${clsAnswer}`;
+  if (phrases.length > 1) {
+    // Сколько файлов HEAD уже содержат каждую под-фразу как n-грамму сканера
+    // (построчно и через перенос). Ни фразы, ни пути НЕ печатаются (D-16).
+    const { targets } = collectHeadTargets();
+    const hashesAbs = path.resolve(process.cwd(), args.hashesPath);
+    const hashesRel = toPosix(path.relative(REPO_ROOT, hashesAbs));
+    const counts = new Map(phrases.map((ph) => [ph.hash, 0]));
+    for (const t of targets) {
+      if (isExcludedPath(t.path, hashesRel) || isAutoScanExcludedFixture(t.path)) continue;
+      const seen = new Set();
+      for (const text of [t.content, t.pngText]) {
+        if (!text) continue;
+        for (const { ngram } of allNgrams(text)) {
+          const h = sha256Hex(normalize(ngram));
+          if (counts.has(h)) seen.add(h);
+        }
+      }
+      for (const h of seen) counts.set(h, counts.get(h) + 1);
+    }
+    console.error(
+      `${TAG} значение — ${decomposed.words} слов(а), длиннее окна сканера (${NGRAM_MAX_WORDS}). Оно будет записано как ${phrases.length} смежных под-фраз по ${NGRAM_MAX_WORDS} слова: каждая пара соседних слов покрыта, поэтому разрыв значения в любой точке ловится.`,
+    );
+    phrases.forEach((ph, i) => {
+      console.error(
+        `${TAG}   под-фраза ${i + 1}/${phrases.length}: уже встречается в ${counts.get(ph.hash)} файл(ах) HEAD`,
+      );
+    });
+    const rlConfirm = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise((resolve) => {
+      rlConfirm.question(`Записать все ${phrases.length} под-фраз(ы)? [y/N]: `, (a) =>
+        resolve(a.trim().toLowerCase()),
+      );
+    });
+    rlConfirm.close();
+    if (answer !== 'y' && answer !== 'yes' && answer !== 'д' && answer !== 'да') {
+      console.error(`${TAG} отменено — файл хэшей не изменён.`);
+      process.exit(1);
+    }
+  }
 
   const { headerLines, dataLines } = readExistingHashLines(args.hashesPath);
 
-  // IN-02: одно и то же значение под двумя классами оставило бы в файле две
-  // строки, а loadHashes() разрешил бы конфликт молча — по порядку строк.
-  const existingClasses = new Set(
-    [...dataLines].filter((l) => l.split(/\s+/)[0] === hash).map((l) => l.split(/\s+/)[1]),
-  );
-  if (existingClasses.has(clsAnswer)) {
+  let added = 0;
+  for (const { hash } of phrases) {
+    // IN-02: одно и то же значение под двумя классами оставило бы в файле две
+    // строки, а loadHashes() разрешил бы конфликт молча — по порядку строк.
+    const existingClasses = new Set(
+      [...dataLines].filter((l) => l.split(/\s+/)[0] === hash).map((l) => l.split(/\s+/)[1]),
+    );
+    if (existingClasses.has(clsAnswer)) continue;
+    if (existingClasses.size > 0) {
+      console.error(
+        `${TAG} FAIL — хэш ${hash} уже записан с другим классом (${[...existingClasses].sort().join(', ')}). Две строки с разными классами для одного значения разрешались бы молча по порядку сортировки. Исправь класс существующей строки вручную и повтори. Файл не изменён.`,
+      );
+      process.exit(1);
+    }
+    dataLines.add(`${hash} ${clsAnswer}`);
+    added += 1;
+  }
+  if (added === 0) {
     console.error(
       `${TAG} PASS — токен уже присутствует в ${args.hashesPath} с классом ${clsAnswer}; файл не изменён.`,
     );
     process.exit(0);
   }
-  if (existingClasses.size > 0) {
-    console.error(
-      `${TAG} FAIL — этот же хэш уже записан с другим классом (${[...existingClasses].sort().join(', ')}). Две строки с разными классами для одного значения разрешались бы молча по порядку сортировки. Исправь класс существующей строки ${hash} вручную и повтори.`,
-    );
-    process.exit(1);
-  }
 
-  dataLines.add(newLine);
   const sortedData = [...dataLines].sort();
-
   const output = `${[...headerLines, ...sortedData].join('\n')}\n`;
   fs.writeFileSync(args.hashesPath, output, 'utf8');
 
-  console.error(`${TAG} PASS — токен класса ${clsAnswer} добавлен в ${args.hashesPath}`);
+  console.error(
+    `${TAG} PASS — класс ${clsAnswer}: добавлено ${added} хэш(ей) в ${args.hashesPath}`,
+  );
   process.exit(0);
 }
 
@@ -766,4 +1037,19 @@ if (invokedDirectly) {
   await main();
 }
 
-export { scanForbiddenPaths, canonicalizeAddValue, extractNgrams, normalize, sha256Hex, NGRAM_MAX_WORDS };
+export {
+  scanForbiddenPaths,
+  canonicalizeAddValue,
+  decomposeLongValue,
+  extractNgrams,
+  extractCrossLineNgrams,
+  allNgrams,
+  extractPngText,
+  decodeBuffer,
+  decodeCp1251,
+  isExcludedPath,
+  isAutoScanExcludedFixture,
+  normalize,
+  sha256Hex,
+  NGRAM_MAX_WORDS,
+};
