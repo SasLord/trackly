@@ -895,7 +895,7 @@ const DIRECT_CALL_MARKERS = [
     module: '$lib/api/groups',
     exportName: 'groups',
     method: 'addDevices',
-    minSites: 5,
+    minSites: 4,
     label: 'добавление в состав (groups.addDevices)',
   },
   {
@@ -906,7 +906,7 @@ const DIRECT_CALL_MARKERS = [
     label: 'вложение группы (groups.setParent)',
   },
   // Фаза 41.8 (D-22): перенос/списание рассылают changed_place_ids; minSites пересчитан от
-  // репозитория (addDevices 5, setParent 4, moveDevices 4, writeOff* по 1). notifyAfter —
+  // репозитория (addDevices 4 — после D-28 без второго вызова в «Создать деталь», setParent 4, moveDevices 4, writeOff* по 1). notifyAfter —
   // структурное правило: инвалидация на пути успеха.
   {
     module: '$lib/api/groups',

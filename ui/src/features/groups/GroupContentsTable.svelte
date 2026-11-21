@@ -17,7 +17,8 @@
   // просмотр. Одиночный клик по первой ячейке только фокусирует строку.
   //
   // Источник истины — сервер: «устройство уже в группе», цикл, teardown,
-  // потолок пакета — отказ приходит с сервера и показывается Toast. Пометка
+  // потолок пакета — отказ приходит с сервера; «уже в группе» показывается попапом
+  // D-16 «Отменить / Переместить», прочие отказы — Toast. Пометка
   // «уже в группе «…»» — подсказка (одним запросом groups.forDevices на
   // результат поиска), выбор занятого устройства НЕ блокируется.
   import { onMount, untrack } from 'svelte';
@@ -39,6 +40,7 @@
     canWriteOff,
     isOwnKeyEvent,
     isRowOverlayEvent,
+    STATUS_WRITTEN_OFF,
   } from '../devices/deviceRowMenu';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
@@ -622,11 +624,11 @@
     onChanged?.();
   }
 
-  // Фаза 41.1 (D-17/D-18/D-35): «Создать деталь» — форма устройства в
-  // create-режиме с местом записи разбора, затем ВТОРОЙ вызов groups.addDevices
-  // (происхождение ставит сервер, D-33). Атомарной операции нет намеренно: при
-  // сбое второго вызова деталь уже создана и лежит в месте группы — поэтому
-  // счётчики «Мест» инвалидируем ДО второго вызова, а ошибка называет созданное.
+  // Фаза 41.1 (D-17/D-18/D-35), D-28: «Создать деталь» — форма устройства в
+  // create-режиме; происхождение (origin_group_id) передаёт клиент, а деталь
+  // вводит в состав сервер той же транзакцией, что и создание. Второго вызова
+  // groups.addDevices нет (повторный ввод был бы ошибкой). Здесь — только
+  // инвалидация счётчиков «Мест» по созданным устройствам и перечитывание состава.
   let detailModalOpen = $state(false);
 
   async function handleDetailSaved(result?: { created?: DeviceDto[] }): Promise<void> {
@@ -636,32 +638,8 @@
     const createdPlaceIds = Array.from(
       new Set(created.map((d) => d.place_id).filter((id): id is number => id !== null)),
     );
-    // Первый вызов (devices.create/bulkCreate) уже положил устройства в место —
-    // эта строка обязана стоять до groups.addDevices, иначе сбой второго вызова
-    // оставит счётчики устаревшими.
     notifyPlaceContentChanged(createdPlaceIds);
-    try {
-      const res = await groups.addDevices({
-        group_id: group.id,
-        device_ids: created.map((d) => d.id),
-      });
-      notifyPlaceContentChanged(res.changed_place_ids);
-    } catch (e) {
-      const reason = errMessage(e, 'ошибка сервера');
-      if (created.length === 1) {
-        pushToast(
-          'error',
-          `Деталь «${created[0].name}» создана, но не добавлена в запись разбора: ${reason}. Верните её поиском в составе.`,
-        );
-      } else {
-        const noun = pluralizeRu(created.length, ['устройство', 'устройства', 'устройств']);
-        pushToast(
-          'error',
-          `Создано ${created.length} ${noun}, но они не добавлены в запись разбора: ${reason}. Верните их поиском в составе.`,
-        );
-      }
-    }
-    // На обеих ветках состав и счётчики перечитываются.
+    // Состав и счётчики перечитываются.
     await loadComposition();
     onChanged?.();
   }
@@ -683,7 +661,7 @@
     {@const id = d.device_id}
     <TableRow
       indent={nested}
-      inactive={d.status_code === 'списано'}
+      inactive={d.status_code === STATUS_WRITTEN_OFF}
       oncontextmenu={(e) => {
         if (isRowOverlayEvent(e.target)) return;
         e.preventDefault();
