@@ -437,7 +437,10 @@
       if (seq !== searchSeq) return;
       suggestions = [
         ...devGroups.map((g): SearchItem => ({ kind: 'device', key: `d-${g.repr.id}`, group: g })),
-        ...hits.map((h): SearchItem => ({ kind: 'group', key: `g-${h.id}`, hit: h })),
+        // D-17: группа типа «Разбор» целью вложения не предлагается.
+        ...hits
+          .filter((h) => h.type_behavior !== 'teardown')
+          .map((h): SearchItem => ({ kind: 'group', key: `g-${h.id}`, hit: h })),
       ];
       void loadOccupancy(devGroups.flatMap((g) => g.ids));
     } finally {
@@ -549,28 +552,63 @@
 
   // Оба пути добавления устройств (поиск и модалка) идут в ОДИН серверный
   // обработчик groups.addDevices (D-01).
-  async function addDevice(deviceId: number): Promise<void> {
+  async function addDevice(deviceId: number, subjectName: string): Promise<void> {
     try {
       const result = await groups.addDevices({ group_id: group.id, device_ids: [deviceId] });
       notifyPlaceContentChanged(result.changed_place_ids);
       await afterComposed();
     } catch (e) {
+      // D-16: «уже в группе» различается по коду; вместо тоста — попап переноса.
+      if (isAlreadyInGroup(e)) {
+        occupiedPopup = {
+          kind: 'device',
+          subjectName,
+          currentGroupName: e.details.items[0]?.group_name ?? '',
+          run: async () => {
+            const res = await groups.moveDevices({ group_id: group.id, device_ids: [deviceId] });
+            notifyPlaceContentChanged(res.changed_place_ids);
+            pushToast('success', `Устройство перемещено в группу «${group.name}»`);
+            occupiedPopup = null;
+            await afterComposed();
+          },
+        };
+        return;
+      }
       pushToast('error', errMessage(e, 'Не удалось добавить устройство.'));
     }
   }
 
   async function attachGroup(hit: GroupSearchHitDto): Promise<void> {
-    try {
-      // groups.search возвращает кандидата без version — берём свежую.
+    // groups.search возвращает кандидата без version — берём свежую.
+    const setParent = async (replaceParent: boolean) => {
       const fresh = await groups.get(hit.id);
-      const result = await groups.setParent({
+      return groups.setParent({
         id: hit.id,
         version: fresh.version,
         parent_group_id: group.id,
+        replace_parent: replaceParent,
       });
+    };
+    try {
+      const result = await setParent(false);
       notifyPlaceContentChanged(result.changed_place_ids);
       await afterComposed();
     } catch (e) {
+      if (isAlreadyInGroup(e)) {
+        occupiedPopup = {
+          kind: 'group',
+          subjectName: hit.name,
+          currentGroupName: e.details.items[0]?.group_name ?? '',
+          run: async () => {
+            const res = await setParent(true);
+            notifyPlaceContentChanged(res.changed_place_ids);
+            pushToast('success', `Группа «${hit.name}» перемещена в «${group.name}»`);
+            occupiedPopup = null;
+            await afterComposed();
+          },
+        };
+        return;
+      }
       pushToast('error', errMessage(e, 'Не удалось вложить группу.'));
     }
   }
@@ -630,13 +668,13 @@
 
   function pickItem(item: SearchItem): void {
     if (item.kind === 'group') void attachGroup(item.hit);
-    else void addDevice(firstFree(item.group.ids));
+    else void addDevice(firstFree(item.group.ids), item.group.repr.name);
   }
 
   function pickMember(m: MemberRow): void {
     if (m.kind === 'group') void attachGroup(m.hit);
-    else if (m.kind === 'instance') void addDevice(m.device.id);
-    else void addDevice(firstFree(m.devices.map((d) => d.id)));
+    else if (m.kind === 'instance') void addDevice(m.device.id, m.device.name);
+    else void addDevice(firstFree(m.devices.map((d) => d.id)), m.devices[0].name);
   }
 </script>
 
