@@ -39,12 +39,28 @@
 //       и `:has(` — мёртвое правило), есть правило удержания `.row-actions` видимым;
 //   [K] у `<ActionMenu` нет атрибутов `backdrop`/`highlight` (флаг на вызове запрещён).
 //
+// Фаза 41.8 (план 31, D-35 — вложенный попап ActionSubmenu):
+//   [L] в разметке ActionSubmenu ровно один элемент с `data-action-submenu`: use:portal и
+//       role="menu" в его теге;
+//   [M] обработчик клика триггера (onTriggerClick) содержит `stopPropagation` (иначе
+//       onclick панели закроет всё меню); Escape-ветка обработчика попапа зовёт
+//       `preventDefault`;
+//   [N] документный onKey ActionMenu содержит `if (e.defaultPrevented ... data-action-submenu
+//       ...) return` РАНЬШЕ ветки `close(true)`: слушатель висит на document, stopPropagation
+//       подменю до него не защищает (наличие stopPropagation механизмом не считается);
+//   [O] onDown ActionMenu ссылается на `data-action-submenu` до `open = false` (клик внутри
+//       подменю не закрывает меню);
+//   [P] у ActionSubmenu нет `position: absolute`, у `.action-submenu-panel` есть
+//       `position: fixed` и z-index строго больше z-index `.action-menu-panel`;
+//   [Q] ActionMenu отдаёт контекст (`setContext(` с ACTION_MENU_CONTEXT), ActionSubmenu
+//       читает его (`getContext(`).
+//
 // Комментарии (HTML, JS, SCSS) перед проверкой затираются с сохранением длины
 // и переводов строк, поэтому цитаты форм в комментариях гейт не обманывают, а
 // номера строк в сообщениях честные.
 //
-// Self-test (`--selftest`): корректная фикстура в памяти (обязана пройти) и 9
-// мутантов, каждый получен заменой с ПРОВЕРКОЙ, что якорь встречается ровно
+// Self-test (`--selftest`): корректная фикстура в памяти (обязана пройти) и
+// мутанты (до 41.8-31 их 19, добавлено 9),// мутантов, каждый получен заменой с ПРОВЕРКОЙ, что якорь встречается ровно
 // один раз. Негативная фикстура обязана провалить гейт ТЕМ правилом, ради
 // которого написана.
 //
@@ -67,6 +83,7 @@ const TAG = '[check-action-menu-portal]';
 const MENU_FILE = 'src/lib/components/ActionMenu.svelte';
 const TABLE_ROW_FILE = 'src/lib/components/TableRow.svelte';
 const GLOBAL_SCSS_FILE = 'src/styles/global.scss';
+const SUBMENU_FILE = 'src/lib/components/ActionSubmenu.svelte';
 // Сколько вызовов <ActionMenu есть в src/**/*.svelte (инвентарь плана 41.1-16):
 // 21 = сумма `grep -rc '<ActionMenu' src --include='*.svelte'` по файлам
 // (в плане 41-27 было 13; 41.1-16/41.1-02: 15; 41.8-13 пересчитан от репозитория: 21 —
@@ -175,6 +192,8 @@ function lineOf(src, idx) {
 function scanSources(files, minCallSites, violations) {
   const add = (file, line, rule, msg) =>
     violations.push(`${file}${line ? `:${line}` : ''} — [${rule}] ${msg}`);
+
+  let menuZ = null;
 
   // --- ActionMenu: правила A, B, C ------------------------------------------
   const menuSrc = files.get(MENU_FILE);
@@ -357,6 +376,144 @@ function scanSources(files, minCallSites, violations) {
         'в openAt нет `elementFromPoint(` — строка правого клика не определяется по точке.',
       );
     }
+
+    // [O] клик внутри подменю не закрывает меню
+    if (od) {
+      const smRef = od.body.indexOf('data-action-submenu');
+      const closeIdx = od.body.search(/\bopen\s*=\s*false\b/);
+      if (smRef === -1 || (closeIdx !== -1 && smRef > closeIdx)) {
+        add(
+          MENU_FILE,
+          lineOf(script, od.start),
+          'O',
+          'onDown не исключает цель внутри `[data-action-submenu]` до `open = false`: клик в подменю закроет меню раньше обработчика варианта.',
+        );
+      }
+    }
+
+    // [N] защита Esc подменю живёт в документном onKey
+    const okM = /function\s+onKey\s*\(/.exec(script);
+    const okBraceIdx = okM ? script.indexOf('{', okM.index) : -1;
+    const ok = okBraceIdx === -1 ? null : extractBalanced(script, okBraceIdx, '{', '}');
+    if (!ok) {
+      add(
+        MENU_FILE,
+        0,
+        'N',
+        'не найден документный onKey — гейт не может проверить защиту Esc подменю.',
+      );
+    } else {
+      const guard =
+        /\bif\s*\(\s*e\.defaultPrevented[\s\S]*?data-action-submenu[\s\S]*?\)\s*return\b/.exec(
+          ok.body,
+        );
+      const closeIdx = ok.body.search(/\bclose\(\s*true\s*\)/);
+      if (!guard || (closeIdx !== -1 && guard.index > closeIdx)) {
+        add(
+          MENU_FILE,
+          lineOf(script, ok.start),
+          'N',
+          'onKey не возвращается раньше ветки `close(true)` при `e.defaultPrevented`/цели внутри `[data-action-submenu]`: Esc в подменю закроет всё меню (stopPropagation на document не защищает).',
+        );
+      }
+    }
+
+    // [Q] контекст (сторона ActionMenu)
+    if (!/\bsetContext\s*(<[^>]*>)?\s*\(\s*ACTION_MENU_CONTEXT\b/.test(script)) {
+      add(
+        MENU_FILE,
+        0,
+        'Q',
+        'ActionMenu не отдаёт контекст: нет `setContext(ACTION_MENU_CONTEXT`.',
+      );
+    }
+
+    const zM = /\.action-menu-panel\s*\{[^}]*?z-index\s*:\s*(\d+)/.exec(style);
+    menuZ = zM ? Number(zM[1]) : null;
+  }
+
+  // --- ActionSubmenu: правила L, M, P, Q ---------------------------------------
+  const smSrc = files.get(SUBMENU_FILE);
+  if (smSrc === undefined) {
+    add(SUBMENU_FILE, 0, 'L', 'файл не найден — гейт не может проверить подменю.');
+  } else {
+    const sm = splitSvelte(smSrc);
+    const dm = [...sm.markup.matchAll(/data-action-submenu/g)];
+    if (dm.length !== 1) {
+      add(
+        SUBMENU_FILE,
+        0,
+        'L',
+        `в разметке ${dm.length} вхождений data-action-submenu, ожидается ровно одно (портальный попап).`,
+      );
+    } else {
+      const st = sm.markup.lastIndexOf('<', dm[0].index);
+      const en = tagEnd(sm.markup, st);
+      const tag = en === -1 ? '' : sm.markup.slice(st, en + 1);
+      if (!/\buse:portal\b/.test(tag)) {
+        add(
+          SUBMENU_FILE,
+          lineOf(sm.markup, dm[0].index),
+          'L',
+          'у попапа подменю нет `use:portal`.',
+        );
+      }
+      if (!/role\s*=\s*"menu"/.test(tag)) {
+        add(SUBMENU_FILE, lineOf(sm.markup, dm[0].index), 'L', 'у попапа подменю нет role="menu".');
+      }
+    }
+
+    const tcM = /function\s+onTriggerClick\s*\(/.exec(sm.script);
+    const tcBrace = tcM ? sm.script.indexOf('{', tcM.index) : -1;
+    const tc = tcBrace === -1 ? null : extractBalanced(sm.script, tcBrace, '{', '}');
+    if (!tc || !/\bstopPropagation\(\)/.test(tc.body)) {
+      add(
+        SUBMENU_FILE,
+        tc ? lineOf(sm.script, tc.start) : 0,
+        'M',
+        'обработчик клика триггера (onTriggerClick) не зовёт `stopPropagation()`: onclick панели закроет всё меню.',
+      );
+    }
+    const pkM = /function\s+onPopupKeydown\s*\(/.exec(sm.script);
+    const pkBrace = pkM ? sm.script.indexOf('{', pkM.index) : -1;
+    const pk = pkBrace === -1 ? null : extractBalanced(sm.script, pkBrace, '{', '}');
+    const escIdx = pk ? pk.body.indexOf("'Escape'") : -1;
+    if (!pk || escIdx === -1 || !/preventDefault\(\)/.test(pk.body.slice(escIdx))) {
+      add(
+        SUBMENU_FILE,
+        0,
+        'M',
+        'в обработчике клавиш попапа ветка Escape не зовёт `preventDefault()` (сигнал `defaultPrevented` для ActionMenu).',
+      );
+    }
+
+    const abs2 = /position\s*:\s*absolute/.exec(sm.style);
+    if (abs2) {
+      add(SUBMENU_FILE, lineOf(sm.style, abs2.index), 'P', '`position: absolute` в style подменю.');
+    }
+    const prM = /\.action-submenu-panel\s*\{/.exec(sm.style);
+    const pr = prM ? extractBalanced(sm.style, prM.index + prM[0].length - 1, '{', '}') : null;
+    if (!pr || !/position\s*:\s*fixed/.test(pr.body)) {
+      add(SUBMENU_FILE, 0, 'P', 'в `.action-submenu-panel` нет `position: fixed`.');
+    }
+    const pz = pr ? /z-index\s*:\s*(\d+)/.exec(pr.body) : null;
+    if (!pz || menuZ === null || Number(pz[1]) <= menuZ) {
+      add(
+        SUBMENU_FILE,
+        0,
+        'P',
+        `z-index попапа (${pz ? pz[1] : 'нет'}) не больше z-index панели ActionMenu (${menuZ ?? 'нет'}): подменю окажется под панелью.`,
+      );
+    }
+
+    if (!/\bgetContext\s*(<[^>]*>)?\s*\(\s*ACTION_MENU_CONTEXT\b/.test(sm.script)) {
+      add(
+        SUBMENU_FILE,
+        0,
+        'Q',
+        'ActionSubmenu не читает контекст: нет `getContext(ACTION_MENU_CONTEXT`.',
+      );
+    }
   }
 
   // --- [J] выделение строки: TableRow.svelte + global.scss --------------------
@@ -509,6 +666,8 @@ function checkRepo(root, violations) {
 // их игнорировать.
 const CLEAN_MENU = `<script lang="ts">
   import { portal } from '$lib/utils/portal';
+  import { setContext } from 'svelte';
+  import { ACTION_MENU_CONTEXT } from './actionMenuContext';
   // раньше: portal: usePortal = false
   interface Props {
     /** раньше было portal?: boolean — проп удалён */
@@ -535,9 +694,16 @@ const CLEAN_MENU = `<script lang="ts">
   $effect(() => {
     function onDown(e) {
       const insideBackdrop = backdropEl?.contains(e.target) ?? false;
-      if (open && !insideBackdrop) open = false;
+      const insideSubmenu = !!e.target?.closest?.('[data-action-submenu]');
+      if (open && !insideBackdrop && !insideSubmenu) open = false;
+    }
+    function onKey(e) {
+      if (e.defaultPrevented || e.target?.closest?.('[data-action-submenu]')) return;
+      if (e.key !== 'Escape' || !open) return;
+      close(true);
     }
   });
+  setContext(ACTION_MENU_CONTEXT, { close });
 </script>
 
 <div class="action-menu" bind:this={rootEl}>
@@ -591,6 +757,44 @@ const CLEAN_MENU = `<script lang="ts">
 
   .action-menu-panel :global(button) {
     width: 100%;
+  }
+</style>
+`;
+
+const CLEAN_SUBMENU = `<script lang="ts">
+  import { getContext } from 'svelte';
+  import { portal } from '$lib/utils/portal';
+  import { ACTION_MENU_CONTEXT } from './actionMenuContext';
+  const menu = getContext(ACTION_MENU_CONTEXT);
+  function onTriggerClick(e) {
+    e.stopPropagation();
+  }
+  function onPopupKeydown(e) {
+    if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+</script>
+
+<button type="button" role="menuitem" aria-haspopup="menu" onclick={onTriggerClick}>x</button>
+{#if open}
+  <div
+    class="action-submenu-panel"
+    role="menu"
+    data-action-submenu
+    use:portal
+    onkeydown={onPopupKeydown}
+  >
+    {@render children()}
+  </div>
+{/if}
+
+<style lang="scss">
+  // раньше: position: absolute
+  .action-submenu-panel {
+    position: fixed;
+    z-index: 1001;
   }
 </style>
 `;
@@ -665,6 +869,7 @@ const CLEAN_GLOBAL = `.tr-row[data-menu-open] .row-actions {
 }
 `;
 
+const PATH_SUBMENU = SUBMENU_FILE;
 const PATH_CALLER_1 = 'src/features/a/First.svelte';
 const PATH_CALLER_2 = 'src/features/b/Second.svelte';
 
@@ -684,6 +889,7 @@ function fixtureFiles(over = {}) {
     [PATH_CALLER_2, over.caller2 ?? CALLER_2],
     [TABLE_ROW_FILE, over.tableRow ?? CLEAN_TABLE_ROW],
     [GLOBAL_SCSS_FILE, over.global ?? CLEAN_GLOBAL],
+    [PATH_SUBMENU, over.submenu ?? CLEAN_SUBMENU],
   ]);
 }
 
@@ -864,8 +1070,8 @@ function runSelfTest() {
             '      const insideBackdrop = backdropEl?.contains(e.target) ?? false;\n',
             '',
           ),
-          'if (open && !insideBackdrop) open = false;',
-          'if (open) open = false;',
+          'if (open && !insideBackdrop && !insideSubmenu) open = false;',
+          'if (open && !insideSubmenu) open = false;',
         ),
       }),
       codes: ['H'],
@@ -905,6 +1111,109 @@ function runSelfTest() {
       codes: ['I'],
       mention: /elementFromPoint/,
     });
+    fixtures.push({
+      name: 'M20 попап подменю без use:portal',
+      files: fixtureFiles({
+        submenu: mutate(
+          CLEAN_SUBMENU,
+          '    data-action-submenu\n    use:portal\n',
+          '    data-action-submenu\n',
+        ),
+      }),
+      codes: ['L'],
+      mention: /нет `use:portal`/,
+    });
+    fixtures.push({
+      name: 'M21 триггер подменю без stopPropagation',
+      files: fixtureFiles({
+        submenu: mutate(
+          CLEAN_SUBMENU,
+          '  function onTriggerClick(e) {\n    e.stopPropagation();\n  }',
+          '  function onTriggerClick(e) {\n    void e;\n  }',
+        ),
+      }),
+      codes: ['M'],
+      mention: /onTriggerClick/,
+    });
+    fixtures.push({
+      name: 'M22 onKey без защиты Esc подменю (оператор с defaultPrevented удалён)',
+      files: fixtureFiles({
+        menu: mutate(
+          CLEAN_MENU,
+          "      if (e.defaultPrevented || e.target?.closest?.('[data-action-submenu]')) return;\n",
+          '',
+        ),
+      }),
+      codes: ['N'],
+    });
+    fixtures.push({
+      name: 'M23 защита Esc в onKey перенесена после ветки close',
+      files: fixtureFiles({
+        menu: mutate(
+          mutate(
+            CLEAN_MENU,
+            "      if (e.defaultPrevented || e.target?.closest?.('[data-action-submenu]')) return;\n",
+            '',
+          ),
+          '      close(true);\n    }\n  });\n  setContext',
+          "      close(true);\n      if (e.defaultPrevented || e.target?.closest?.('[data-action-submenu]')) return;\n    }\n  });\n  setContext",
+        ),
+      }),
+      codes: ['N'],
+    });
+    fixtures.push({
+      name: 'M24 onDown без исключения подменю',
+      files: fixtureFiles({
+        menu: mutate(
+          mutate(
+            CLEAN_MENU,
+            "      const insideSubmenu = !!e.target?.closest?.('[data-action-submenu]');\n",
+            '',
+          ),
+          'if (open && !insideBackdrop && !insideSubmenu) open = false;',
+          'if (open && !insideBackdrop) open = false;',
+        ),
+      }),
+      codes: ['O'],
+    });
+    fixtures.push({
+      name: 'M25 z-index попапа ниже панели',
+      files: fixtureFiles({
+        submenu: mutate(CLEAN_SUBMENU, 'z-index: 1001;', 'z-index: 900;'),
+      }),
+      codes: ['P'],
+      mention: /z-index попапа/,
+    });
+    fixtures.push({
+      name: 'M26 ActionSubmenu без getContext',
+      files: fixtureFiles({
+        submenu: mutate(
+          CLEAN_SUBMENU,
+          '  const menu = getContext(ACTION_MENU_CONTEXT);\n',
+          '  const menu = null;\n',
+        ),
+      }),
+      codes: ['Q'],
+    });
+    fixtures.push({
+      name: 'M27 ActionMenu без setContext',
+      files: fixtureFiles({
+        menu: mutate(CLEAN_MENU, '  setContext(ACTION_MENU_CONTEXT, { close });', ''),
+      }),
+      codes: ['Q'],
+    });
+    fixtures.push({
+      name: 'M28 Escape попапа без preventDefault',
+      files: fixtureFiles({
+        submenu: mutate(
+          CLEAN_SUBMENU,
+          "    if (e.key === 'ArrowLeft' || e.key === 'Escape') {\n      e.preventDefault();\n",
+          "    if (e.key === 'ArrowLeft' || e.key === 'Escape') {\n",
+        ),
+      }),
+      codes: ['M'],
+      mention: /preventDefault/,
+    });
   } catch (e) {
     console.error(`${TAG} [selftest] FAIL — ${e.message}`);
     return false;
@@ -920,13 +1229,13 @@ function runSelfTest() {
       ok = v.length === 0;
       expected = '0 нарушений';
     } else {
-      const got = new Set(v.map((line) => /— \[([A-K])\]/.exec(line)?.[1]));
+      const got = new Set(v.map((line) => /— \[([A-Q])\]/.exec(line)?.[1]));
       ok = f.codes.every((c) => got.has(c)) && [...got].every((c) => f.codes.includes(c));
       if (ok && f.mention) ok = v.some((line) => f.mention.test(line));
       expected = `правила ${f.codes.join('+')}${f.mention ? `, текст ${f.mention}` : ''}`;
     }
     const gotCodes =
-      [...new Set(v.map((line) => /— \[([A-K])\]/.exec(line)?.[1]))].join('+') || '—';
+      [...new Set(v.map((line) => /— \[([A-Q])\]/.exec(line)?.[1]))].join('+') || '—';
     console.error(
       `${TAG} [selftest] ${ok ? 'PASS' : 'FAIL'} — ${f.name} (ожидалось: ${expected}; поймано: ${gotCodes})`,
     );
