@@ -46,6 +46,7 @@
   import GroupTreeNode from './GroupTreeNode.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Badge from '$lib/components/Badge.svelte';
+  import { STATUS_TO_WRITE_OFF } from '../devices/deviceRowMenu';
 
   let groupMenu = $state<ReturnType<typeof ActionMenu> | null>(null);
   let typeMenu = $state<ReturnType<typeof ActionMenu> | null>(null);
@@ -129,7 +130,7 @@
 
   // D-21: «Списать» — только у группы с якорем «на списание» (у АРМ якоря нет).
   const canWriteOff = $derived(
-    item.kind === 'group' && item.group?.anchor_status_code === 'на_списание',
+    item.kind === 'group' && item.group?.anchor_status_code === STATUS_TO_WRITE_OFF,
   );
   // D-09: «Разбор» вложением не переносится.
   const canMoveToGroup = $derived(isNestedGroup && item.group?.type_behavior !== 'teardown');

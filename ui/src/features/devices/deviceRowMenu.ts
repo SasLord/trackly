@@ -86,7 +86,9 @@ const LABEL_RETURN_TO_TEARDOWN = 'Вернуть в разбор';
 const LABEL_DELETE = 'Удалить';
 
 /** Машинные коды статусов (не подписи), при которых групповые действия бессмысленны. */
-const BLOCKED_STATUS_CODES = ['списано', 'на_списание'];
+export const STATUS_WRITTEN_OFF = 'списано';
+export const STATUS_TO_WRITE_OFF = 'на_списание';
+const BLOCKED_STATUS_CODES = [STATUS_WRITTEN_OFF, STATUS_TO_WRITE_OFF];
 
 /** Роли с правом MutateGroups / списания: зеркало серверных отказов. */
 const MUTATE_ROLES = ['admin', 'manager'];
@@ -182,7 +184,7 @@ export function canWriteOff(input: { role: string | null; statusCode: string }):
   return (
     input.role !== null &&
     WRITE_OFF_ROLES.includes(input.role) &&
-    input.statusCode === 'на_списание'
+    input.statusCode === STATUS_TO_WRITE_OFF
   );
 }
 
@@ -199,7 +201,7 @@ export function canReturnToTeardown(input: {
     input.role !== null &&
     MUTATE_ROLES.includes(input.role) &&
     !input.isDeleted &&
-    input.statusCode !== 'списано'
+    input.statusCode !== STATUS_WRITTEN_OFF
   );
 }
 

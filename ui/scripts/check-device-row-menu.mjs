@@ -1097,8 +1097,16 @@ const SOURCE_MUTANTS = [
     from: 'input.isMember || input.isAnchor',
     to: 'input.isAnchor',
   },
-  { name: 'не блокировать на_списание', from: "['списано', 'на_списание']", to: "['списано']" },
-  { name: 'не блокировать списано', from: "['списано', 'на_списание']", to: "['на_списание']" },
+  {
+    name: 'не блокировать на_списание',
+    from: '[STATUS_WRITTEN_OFF, STATUS_TO_WRITE_OFF]',
+    to: '[STATUS_WRITTEN_OFF]',
+  },
+  {
+    name: 'не блокировать списано',
+    from: '[STATUS_WRITTEN_OFF, STATUS_TO_WRITE_OFF]',
+    to: '[STATUS_TO_WRITE_OFF]',
+  },
   {
     name: 'не фильтровать выключенные быстрые действия',
     from: 't.quick_action_enabled === true',
@@ -1189,7 +1197,7 @@ const SOURCE_MUTANTS = [
   },
   {
     name: 'canWriteOff: без проверки статуса',
-    from: "input.statusCode === 'на_списание'",
+    from: 'input.statusCode === STATUS_TO_WRITE_OFF',
     to: 'true',
   },
   {
@@ -1209,7 +1217,7 @@ const SOURCE_MUTANTS = [
   },
   {
     name: 'canReturnToTeardown: списанная деталь тоже',
-    from: "input.statusCode !== 'списано'",
+    from: 'input.statusCode !== STATUS_WRITTEN_OFF',
     to: 'true',
   },
   {
