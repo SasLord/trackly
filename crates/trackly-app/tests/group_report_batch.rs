@@ -565,16 +565,25 @@ async fn report_batch_csv_full_composition() {
     let text = text.trim_start_matches('\u{FEFF}');
     let mut lines = text.lines().filter(|l| !l.is_empty());
     let header = lines.next().expect("заголовок CSV");
+    // quick-261121-hef (INT-06/F18): колонка «Пакет» — последняя; набор
+    // прочих колонок не менялся.
     assert_eq!(
-        header, "Дата;Предмет;Тип;Откуда;Куда;Кем;Причина",
-        "набор колонок CSV не менялся"
+        header, "Дата;Предмет;Тип;Откуда;Куда;Кем;Причина;Пакет",
+        "набор колонок CSV: прежние + «Пакет» последней"
     );
     let data: Vec<&str> = lines.collect();
     assert_eq!(data.len(), 7);
     let group_rows: Vec<&&str> = data.iter().filter(|l| l.contains(";Группа;")).collect();
     assert_eq!(group_rows.len(), 1);
     assert!(group_rows[0].contains(GROUP_NAME));
-    assert!(group_rows[0].ends_with("перенос группы"));
+    assert_eq!(csv_cell(group_rows[0], 6), "перенос группы");
+    // Каждая строка пакета (группа + 6 устройств) несёт ячейку «Пакет».
+    for l in &data {
+        assert!(
+            csv_cell(l, 7).starts_with(&format!("Перенос группы «{GROUP_NAME}»")),
+            "ячейка «Пакет» в строке {l}"
+        );
+    }
     for name in device_names() {
         assert_eq!(
             data.iter()
@@ -585,7 +594,13 @@ async fn report_batch_csv_full_composition() {
         );
     }
     let reason = expected_member_reason();
-    assert_eq!(data.iter().filter(|l| l.ends_with(&reason)).count(), 6);
+    assert_eq!(data.iter().filter(|l| csv_cell(l, 6) == reason).count(), 6);
+}
+
+/// Ячейка CSV «Перемещений» по индексу колонки (разделитель `;`, в фикстуре
+/// ячеек с `;` нет). quick-261121-hef: «Причина» — 6, «Пакет» — 7 (последняя).
+fn csv_cell(line: &str, idx: usize) -> &str {
+    line.split(';').nth(idx).unwrap_or("")
 }
 
 // ---------------------------------------------------------------------------
@@ -718,7 +733,14 @@ async fn report_batch_act_package_folds_like_group_transfer() {
             "устройство {name} в CSV пакета акта"
         );
     }
-    assert_eq!(data.iter().filter(|l| l.ends_with(&reason)).count(), 7);
+    // quick-261121-hef: строка кончается ячейкой «Пакет» — причину берём по колонке.
+    assert_eq!(data.iter().filter(|l| csv_cell(l, 6) == reason).count(), 7);
+    for l in &data {
+        assert!(
+            csv_cell(l, 7).starts_with("Перенос группы «"),
+            "ячейка «Пакет» у строки пакета акта: {l}"
+        );
+    }
 }
 
 #[test]
