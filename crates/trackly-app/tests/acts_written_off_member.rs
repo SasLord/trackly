@@ -117,13 +117,7 @@ async fn seed_group(ctx: &AppCtx, behavior: &'static str, name: &str, place: i64
         .expect("seed group")
 }
 
-async fn seed_device(
-    ctx: &AppCtx,
-    name: &str,
-    place: i64,
-    status: i64,
-    group: Option<i64>,
-) -> i64 {
+async fn seed_device(ctx: &AppCtx, name: &str, place: i64, status: i64, group: Option<i64>) -> i64 {
     let name = name.to_string();
     ctx.writer
         .execute(move |conn| {
@@ -354,7 +348,10 @@ async fn written_off_member_direct_inclusion_is_rejected() {
             .await
             .expect_err("списанного не включить");
         let reason = conflict_reason(err);
-                assert!(reason.contains("Списано"), "текст называет статус: {reason}");
+        assert!(
+            reason.contains("Списано"),
+            "текст называет статус: {reason}"
+        );
         assert!(is_written_off(&ctx, kb).await);
         assert_eq!(member_rows(&ctx, kb).await, 1, "состав не тронут");
         assert_eq!(act_count(&ctx).await, before);
@@ -403,7 +400,10 @@ async fn written_off_member_return_conflicts_and_rolls_back() {
             .await
             .expect_err("списанное не вернуть");
         let reason = conflict_reason(err);
-        assert!(reason.contains("Списано"), "текст называет статус: {reason}");
+        assert!(
+            reason.contains("Списано"),
+            "текст называет статус: {reason}"
+        );
         assert_eq!(act_count(&ctx).await, acts_before, "акт возврата не создан");
         assert_eq!(status_of(&ctx, mouse).await, IN_WORK, "остальное откатано");
         return_ok(&ctx, handover, &[mouse], Some(a)).await;
@@ -427,7 +427,10 @@ async fn written_off_member_update_return_added_conflicts() {
             .await
             .expect_err("списанное не добавить в возврат");
         let reason = conflict_reason(err);
-        assert!(reason.contains("Списано"), "текст называет статус: {reason}");
+        assert!(
+            reason.contains("Списано"),
+            "текст называет статус: {reason}"
+        );
         assert!(is_written_off(&ctx, monitor).await);
         assert_eq!(status_of(&ctx, mouse).await, ON_WAREHOUSE);
     })

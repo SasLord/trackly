@@ -51,6 +51,8 @@ pub(crate) struct ActGroupSnapshot {
     direct: HashMap<i64, Vec<i64>>,
     group_of_device: HashMap<i64, i64>,
     anchors: HashSet<i64>,
+    /// Списанные устройства (D-27): не входят в состав для акта и не разворачиваются.
+    written_off: HashSet<i64>,
 }
 
 impl ActGroupSnapshot {
@@ -94,7 +96,18 @@ impl ActGroupSnapshot {
             direct,
             group_of_device,
             anchors,
+            written_off: HashSet::new(),
         }
+    }
+
+    /// Исключить списанные устройства (D-27, CR-01): единственное место фильтра. Они
+    /// остаются в БД членами группы (D-20), но для планировщика и разворота состава нет.
+    pub(crate) fn with_written_off(mut self, written_off: HashSet<i64>) -> Self {
+        for devices in self.direct.values_mut() {
+            devices.retain(|d| !written_off.contains(d));
+        }
+        self.written_off = written_off;
+        self
     }
 
     fn group(&self, id: i64) -> Option<&PlanGroupRow> {
@@ -367,6 +380,10 @@ pub(crate) fn plan(snapshot: &ActGroupSnapshot, act_device_ids: &[i64]) -> ActGr
             continue;
         };
         if moved_devices.contains(&device_id) {
+            continue;
+        }
+        // D-27: списанный не выносится — акт его всё равно отклонит, а состав он не меняет.
+        if snapshot.written_off.contains(&device_id) {
             continue;
         }
         // Якорь не выносится никогда (D-13, D-14 фазы 41.1).
@@ -652,10 +669,12 @@ fn collect_units(
         return;
     };
     if let Some(anchor) = group.anchor_device_id {
-        out.push(ActUnit {
-            device_id: anchor,
-            via_group_name: via.map(str::to_string),
-        });
+        if !snap.written_off.contains(&anchor) {
+            out.push(ActUnit {
+                device_id: anchor,
+                via_group_name: via.map(str::to_string),
+            });
+        }
         return;
     }
     for d in snap.direct_of(group_id) {
@@ -683,7 +702,19 @@ pub(crate) fn load_snapshot(
 ) -> Result<ActGroupSnapshot, AppError> {
     let rows = groups.list_live_groups_for_plan(conn)?;
     let members = groups.list_live_memberships(conn)?;
-    Ok(ActGroupSnapshot::new(rows, members))
+    // D-27: списанные определяются по коду статуса справочника, не по id и не по подписи.
+    let mut stmt = conn
+        .prepare(
+            "SELECT d.id FROM devices d JOIN device_statuses s ON s.id = d.status_id \
+             WHERE s.code = 'списано' AND d.deleted_at_utc IS NULL",
+        )
+        .map_err(map_rusqlite)?;
+    let written_off: HashSet<i64> = stmt
+        .query_map([], |r| r.get::<_, i64>(0))
+        .map_err(map_rusqlite)?
+        .collect::<Result<_, _>>()
+        .map_err(map_rusqlite)?;
+    Ok(ActGroupSnapshot::new(rows, members).with_written_off(written_off))
 }
 
 /// Текст отказа включения в акт устройства с открытой ремонтной заявкой (D-22).
@@ -2443,6 +2474,50 @@ mod tests {
                 via_group_name: None
             }]
         );
+    }
+
+    fn ids_of(units: &[ActUnit]) -> Vec<i64> {
+        units.iter().map(|u| u.device_id).collect()
+    }
+
+    #[test]
+    fn act_units_skip_written_off_direct_member() {
+        let snap = container_fixture().with_written_off([11].into_iter().collect());
+        assert_eq!(ids_of(&act_units(&snap, 1)), vec![10, 12]);
+    }
+
+    #[test]
+    fn act_units_skip_written_off_nested_member_and_anchor() {
+        let snap = ActGroupSnapshot::new(
+            vec![
+                grp(1, None, "АРМ #3", Some(5), None),
+                grp(2, Some(1), "Периферия #1", Some(5), None),
+                grp(3, Some(1), "Замена #5", Some(5), Some(30)),
+            ],
+            vec![(10, 1), (20, 2), (21, 2), (30, 3), (31, 3)],
+        )
+        .with_written_off([21, 30].into_iter().collect());
+        assert_eq!(ids_of(&act_units(&snap, 1)), vec![10, 20]);
+    }
+
+    #[test]
+    fn plan_ignores_written_off_member_and_consistency_holds() {
+        let snap = container_fixture().with_written_off([12].into_iter().collect());
+        let units = ids_of(&act_units(&snap, 1));
+        assert_eq!(units, vec![10, 11]);
+        let p = plan(&snap, &units);
+        assert_eq!(p.moves.len(), 1);
+        assert_eq!(p.moves[0].root_group_id, 1);
+        assert_eq!(p.moves[0].subtree_device_ids, vec![10, 11]);
+        assert!(p.releases.is_empty());
+        assert!(!p.requires_confirmation());
+    }
+
+    #[test]
+    fn plan_does_not_release_a_written_off_device_in_the_act() {
+        let snap = container_fixture().with_written_off([12].into_iter().collect());
+        let p = plan(&snap, &[12]);
+        assert!(p.releases.is_empty());
     }
 
     #[test]
