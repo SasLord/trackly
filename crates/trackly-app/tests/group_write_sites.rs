@@ -2955,6 +2955,55 @@ fn write_site_gate_act_restore_release_adjacent() {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 41.8, план 24 (D-27): откат по снимку не воскрешает списанное устройство.
+// Каждый вызов `restore_from_snapshot_in_tx(` в act_service.rs (update, update_return,
+// undo) обязан иметь выше, не дальше `WRITTEN_OFF_WINDOW` строк, вызов
+// `snapshot_keeping_written_off_in_tx(`: иначе снимок «до» акта перезаписал бы «Списано».
+// ---------------------------------------------------------------------------
+
+const WRITTEN_OFF_GUARD: &str = "snapshot_keeping_written_off_in_tx(";
+const WRITTEN_OFF_WINDOW: usize = 12;
+
+/// Строки (с 1) вызовов `restore_from_snapshot_in_tx(` без охраны выше; второй элемент —
+/// сколько вызовов найдено всего.
+fn restore_without_written_off_guard(src: &str) -> (Vec<usize>, usize) {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut bad = Vec::new();
+    let mut total = 0;
+    for (at, line) in lines.iter().enumerate() {
+        let code = code_of_phase_412(line);
+        if code.contains("fn ") || !act_has_call(code, "restore_from_snapshot_in_tx(") {
+            continue;
+        }
+        total += 1;
+        let guarded = (at.saturating_sub(WRITTEN_OFF_WINDOW)..at)
+            .any(|j| act_has_call(code_of_phase_412(lines[j]), WRITTEN_OFF_GUARD));
+        if !guarded {
+            bad.push(at + 1);
+        }
+    }
+    (bad, total)
+}
+
+#[test]
+fn write_site_gate_act_restore_keeps_written_off() {
+    let src = ACT_SERVICE_SRC_PHASE_412;
+    let (bad, total) = restore_without_written_off_guard(src);
+    assert_eq!(bad, Vec::<usize>::new(), "restore без охраны «списано»");
+    assert_eq!(
+        total, 3,
+        "restore-путей должно быть 3 (update, update_return, undo)"
+    );
+    // Мутант: имя охраны заменено (якорь встречается ровно в трёх вызовах act_service).
+    assert_eq!(src.matches(WRITTEN_OFF_GUARD).count(), 3);
+    let mutated = src.replacen(WRITTEN_OFF_GUARD, "some_other_snapshot_fix_in_tx(", 1);
+    assert!(
+        !restore_without_written_off_guard(&mutated).0.is_empty(),
+        "снятая охрана обязана краснеть"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Phase 41.4 (D-14/D-15): вердикт «исключение по статусу».
 //
 // Сайты записи устройства, которые ИСКЛЮЧЕНИЕ обходят сознательно (устройство в статусе

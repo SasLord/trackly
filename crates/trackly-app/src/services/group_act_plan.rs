@@ -33,7 +33,7 @@ use trackly_core::domain::groups::{
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
-use trackly_infra::repos::{SqliteGroupRepository, SqliteRepairRepository};
+use trackly_infra::repos::{SqliteDeviceRepository, SqliteGroupRepository, SqliteRepairRepository};
 
 use crate::services::act_service::device_snapshot_json;
 use crate::services::group_membership::{
@@ -1399,6 +1399,27 @@ pub(crate) fn snapshot_keeping_group_place_in_tx(
     };
     if let Some(obj) = snapshot.as_object_mut() {
         obj.insert("place_id".into(), serde_json::json!(place));
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// D-27 (план 24): откат акта по снимку «до» не воскрешает устройство, списанное уже
+/// после акта. Если текущий статус «Списано», в снимке `status_id` заменяется текущим;
+/// остальные поля (место, состояние) восстанавливаются как обычно. Возвращает `true`,
+/// если подмена выполнена.
+pub(crate) fn snapshot_keeping_written_off_in_tx(
+    tx: &Transaction<'_>,
+    devices: &SqliteDeviceRepository,
+    device_id: i64,
+    snapshot: &mut serde_json::Value,
+) -> Result<bool, AppError> {
+    let current = devices.get_in_tx(tx, device_id)?;
+    if current.status_code != "списано" {
+        return Ok(false);
+    }
+    if let Some(obj) = snapshot.as_object_mut() {
+        obj.insert("status_id".into(), serde_json::json!(current.status_id));
         return Ok(true);
     }
     Ok(false)

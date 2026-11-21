@@ -469,3 +469,29 @@ async fn written_off_member_update_return_retained_keeps_written_off() {
     })
     .await;
 }
+
+// 9 (план 24, D-27, restore_from_snapshot_in_tx): откат акта передачи не воскрешает
+// устройство, списанное уже после акта.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn written_off_member_undo_handover_does_not_resurrect() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (handover, monitor, _mouse) = lone_pair(&ctx, a, b, "WO-9").await;
+        write_off(&ctx, monitor).await;
+        let version = scalar_i64(
+            &ctx,
+            "SELECT version FROM acts WHERE id = ?1",
+            vec![Value::Integer(handover)],
+        )
+        .await;
+        let res = ctx.acts.delete_soft(handover, version).await;
+        eprintln!("PROBE undo result ok={}", res.is_ok());
+        assert!(
+            is_written_off(&ctx, monitor).await,
+            "статус «Списано» не перезаписан снимком до акта"
+        );
+    })
+    .await;
+}

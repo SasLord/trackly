@@ -1550,6 +1550,13 @@ impl ActService {
                                 &mut snapshot,
                                 &kept_groups,
                             )?;
+                            // D-27: списанное после акта остаётся списанным.
+                            crate::services::group_act_plan::snapshot_keeping_written_off_in_tx(
+                                &tx,
+                                &devices_repo,
+                                removed_id,
+                                &mut snapshot,
+                            )?;
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                             // Phase 41 D-22: акт выводит устройство из состава группы.
@@ -3063,6 +3070,13 @@ impl ActService {
                                 removed_id,
                                 &mut snapshot,
                                 &kept_groups,
+                            )?;
+                            // D-27: списанное после акта остаётся списанным.
+                            crate::services::group_act_plan::snapshot_keeping_written_off_in_tx(
+                                &tx,
+                                &devices_repo,
+                                removed_id,
+                                &mut snapshot,
                             )?;
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
@@ -4995,6 +5009,13 @@ fn undo_device_mutations_for_act(
                     device_id,
                     &mut snapshot,
                     &kept_groups,
+                )?;
+                // D-27: списанное после акта остаётся списанным.
+                crate::services::group_act_plan::snapshot_keeping_written_off_in_tx(
+                    tx,
+                    devices_repo,
+                    device_id,
+                    &mut snapshot,
                 )?;
                 let restored =
                     devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
