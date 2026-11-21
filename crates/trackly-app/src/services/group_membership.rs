@@ -17,6 +17,15 @@ use crate::services::group_place::{
     apply_group_place_to_device_in_tx, GroupMoveCause, GroupMoveDeps,
 };
 
+/// Phase 41.8 (D-26): единственный источник текста отказа «якорь группы списывается
+/// через группу» — им пользуются `write_off_device` и обновление устройства.
+pub(crate) fn anchor_write_off_error(group_name: &str, field: &str) -> AppError {
+    AppError::Validation {
+        field: field.to_string(),
+        message: format!("Устройство — якорь группы «{group_name}»; спишите его через группу."),
+    }
+}
+
 /// Режим следа при освобождении устройства на restore-путях акта (Phase 41.2).
 ///
 /// `Skip` — обычный restore: вывод на restore-пути НЕ есть исходное членство, повторный

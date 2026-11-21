@@ -48,8 +48,8 @@ use crate::csv::{decode_to_string, detect, parse_rows, ImportSession};
 use crate::dto::device::{
     ColumnLabelCheck, ContainerListResponse, ContainerRowDto, CsvImportPreviewResponse,
     CsvImportReport, DeviceDto, DeviceEntriesResponse, DeviceEntryDto, DeviceFilter, DeviceGroup,
-    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, LabelSample, Pagination,
-    RowError, RowWarning, StatusCount, STATE_HINTS,
+    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, GroupWriteOffChoice,
+    LabelSample, Pagination, RowError, RowWarning, StatusCount, STATE_HINTS,
 };
 use crate::dto::device_status::DeviceStatusDto;
 use crate::dto::device_type::DeviceTypeDto;
@@ -586,6 +586,8 @@ fn enrich_devices<'a>(
     }
     Ok(())
 }
+
+const STATUS_CODE_WRITTEN_OFF: &str = "списано";
 
 impl DeviceService {
     /// Construct a new `DeviceService`.
@@ -1435,6 +1437,9 @@ impl DeviceService {
         // патч не переносится. Читаем ДО `patch.into()`. Тип Option<Option<i64>> —
         // три случая: None = не трогать, Some(None) = сбросить, Some(Some(id)) = задать.
         let usb_host_patch: Option<Option<i64>> = patch.usb_host_device_id;
+        // Phase 41.8 (D-26): выбор судьбы членства при списании читаем ДО `patch.into()`.
+        let write_off_choice: Option<GroupWriteOffChoice> = patch.group_write_off;
+        let audit_repo = self.audit_repo.clone();
         // Phase 41.13 Plan 09 (D-13): сеть принтера (IP, community) — тоже колонки
         // `printers`. Читаем ДО `patch.into()`; IP нормализуется ДО открытия
         // транзакции (ошибка уходит вызывающему, ничего не записано). Внутреннее
@@ -1466,7 +1471,7 @@ impl DeviceService {
         // границу (Plan 40-03, аналог `place_service::create`).
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let (updated_row, before_place_id) = self
+        let (updated_row, before_place_id, group_ids) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -1551,7 +1556,49 @@ impl DeviceService {
                     }
                 }
 
+                // Phase 41.8 (D-26): перевод на «Списано» через обычное обновление.
+                // Якорь через форму не списывается (охрана ВЫШЕ записи), участник группы
+                // обязан выбрать «оставить / вывести»; вывод исполняется ниже той же
+                // транзакцией. Определяем по КОДУ статуса, не по id и не по подписи.
+                let to_written_off = effective_status_code.as_deref() == Some(STATUS_CODE_WRITTEN_OFF)
+                    && prior_status_code.as_deref() != Some(STATUS_CODE_WRITTEN_OFF);
+                let mut write_off_group_id: Option<i64> = None;
+                if to_written_off {
+                    if let Some(anchor_group) = groups.anchor_group_of_device_in_tx(&tx, id)? {
+                        return Err(crate::services::group_membership::anchor_write_off_error(
+                            &anchor_group.name,
+                            "status_id",
+                        ));
+                    }
+                    if let Some(member_of) = groups.group_of_device_in_tx(&tx, id)? {
+                        if write_off_choice.is_none() {
+                            return Err(AppError::Validation {
+                                field: "group_write_off".to_string(),
+                                message: format!(
+                                    "Устройство входит в группу «{}»: выберите, оставить его в группе списанным или вывести из группы.",
+                                    member_of.name
+                                ),
+                            });
+                        }
+                        write_off_group_id = Some(member_of.id);
+                    }
+                }
+
                 let mut after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
+                if write_off_choice == Some(GroupWriteOffChoice::Release)
+                    && write_off_group_id.is_some()
+                {
+                    crate::services::group_membership::release_device_in_tx(
+                        &tx,
+                        &groups,
+                        &audit_repo,
+                        id,
+                        None,
+                        user_id_opt,
+                        now,
+                    )?;
+                    after = repo.get_in_tx(&tx, id)?;
+                }
                 // Phase 41.4 (D-17): исключённый статус сменён на обычный, а место
                 // устройства разошлось с местом группы — переносим на место группы той же
                 // транзакцией (журнал перемещений Manual и аудит пишет примитив).
@@ -1559,7 +1606,7 @@ impl DeviceService {
                     .as_deref()
                     .is_some_and(is_repair_exempt_status_code);
                 let mut group_moved = false;
-                if was_exempt && !status_is_exempt {
+                if was_exempt && !status_is_exempt && !to_written_off {
                     if let Some(g) = groups.group_of_device_in_tx(&tx, id)? {
                         if let Some(group_place) = g.place_id {
                             if after.place_id != Some(group_place) {
@@ -1723,7 +1770,7 @@ impl DeviceService {
                 }
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok((after, before_place_id))
+                Ok((after, before_place_id, write_off_group_id.into_iter().collect::<Vec<i64>>()))
             })
             .await?;
 
@@ -1733,7 +1780,7 @@ impl DeviceService {
             .into_iter()
             .chain(updated_row.place_id)
             .collect();
-        self.broadcast_entities("update", place_ids, vec![id], Vec::new());
+        self.broadcast_entities("update", place_ids, vec![id], group_ids);
 
         if number_changed {
             self.broadcast_number_space_changed();

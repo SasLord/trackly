@@ -985,13 +985,10 @@ impl GroupService {
                 if let Some(anchor_group) =
                     groups.anchor_group_of_device_in_tx(&tx, dto.device_id)?
                 {
-                    return Err(AppError::Validation {
-                        field: "device_id".to_string(),
-                        message: format!(
-                            "Устройство — якорь группы «{}»; спишите его через группу.",
-                            anchor_group.name
-                        ),
-                    });
+                    return Err(crate::services::group_membership::anchor_write_off_error(
+                        &anchor_group.name,
+                        "device_id",
+                    ));
                 }
                 let before_json = to_json(&DeviceDto::from(device.clone()))?;
                 let status_id = written_off_status_id(&tx)?;
