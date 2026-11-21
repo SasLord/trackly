@@ -739,7 +739,7 @@ async fn import_commit_records_audit_log() {
 /// строка-в-строку со `switch (h)` модалки; при правке одной таблицы обязана
 /// правиться и вторая (заголовки, которые модалка НЕ узнаёт, пользователь
 /// выбирает руками — см. `auto_map_with_manual_place`).
-fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
+pub(crate) fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
 
     for header in headers {

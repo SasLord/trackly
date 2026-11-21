@@ -411,6 +411,62 @@ fn hydrate_entries(
     Ok(rows)
 }
 
+/// Размер пачки id при обогащении CSV-выгрузки (INT-32): заметно ниже лимита
+/// переменных SQLite при любой сборке.
+const EXPORT_ENRICH_CHUNK: usize = 500;
+
+/// Подпись роли устройства в группе для CSV-выгрузки (INT-32): якорь важнее
+/// членства (якорь обычно сам член своей группы).
+fn export_group_role(device: &DeviceDto) -> &'static str {
+    if device.anchor_group_id.is_some() {
+        "якорь"
+    } else if device.group_id.is_some() {
+        "в составе"
+    } else {
+        ""
+    }
+}
+
+/// INT-17: подпись USB-хоста принтеров из `ids` — «{имя} ({инв. №})» либо
+/// «{имя}». Один запрос на пачку; id — только параметры (T-hef-02).
+fn usb_host_labels(
+    conn: &rusqlite::Connection,
+    ids: &[i64],
+) -> Result<HashMap<i64, String>, AppError> {
+    let mut out = HashMap::new();
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let marks = (1..=ids.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT p.device_id, h.name, h.inventory_number FROM printers p \
+         JOIN devices h ON h.id = p.usb_host_device_id \
+         WHERE p.device_id IN ({marks})"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(map_rusqlite)?;
+    for row in rows {
+        let (device_id, name, inv) = row.map_err(map_rusqlite)?;
+        let label = match inv.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            Some(inv) => format!("{name} ({inv})"),
+            None => name,
+        };
+        out.insert(device_id, label);
+    }
+    Ok(out)
+}
+
 /// Phase 41.1 Plan 12 (D-12, D-19): обогащает строки списка информацией о группе,
 /// якоре и происхождении ПАЧКОЙ запросов `WHERE ... IN (...)` — без запроса на
 /// строку. Приватна и не владеет writer'ом (реестр write-site'ов её не видит).
@@ -2510,9 +2566,21 @@ impl DeviceService {
         use trackly_core::ports::devices::DeviceRepository;
         let statuses_readers = readers.clone();
         let types_readers = readers.clone();
-        let rows = tokio::task::spawn_blocking(move || {
+        // INT-32/INT-17: выгрузка несёт то же, что экран — группу, роль в ней,
+        // происхождение и USB-хост. Обогащение пачками по EXPORT_ENRICH_CHUNK id
+        // (enrich строит `IN (?1..?N)`, 50 000 параметров разом упёрлись бы в
+        // лимит переменных SQLite) на том же reader-соединении (T-hef-04).
+        let (items, usb_hosts) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.as_ref().list_all(&conn, &domain_filter, max_rows)
+            let rows = repo.as_ref().list_all(&conn, &domain_filter, max_rows)?;
+            let mut items: Vec<DeviceDto> = rows.into_iter().map(DeviceDto::from).collect();
+            let mut usb_hosts: HashMap<i64, String> = HashMap::new();
+            for chunk in items.chunks_mut(EXPORT_ENRICH_CHUNK) {
+                let ids: Vec<i64> = chunk.iter().map(|d| d.id).collect();
+                enrich_devices(&conn, chunk.iter_mut())?;
+                usb_hosts.extend(usb_host_labels(&conn, &ids)?);
+            }
+            Ok::<_, AppError>((items, usb_hosts))
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -2524,13 +2592,6 @@ impl DeviceService {
         let statuses = StatusLookup::load(statuses_readers).await?;
         // Подпись типа — тоже из справочника (INT-14): никакой карты id -> имя в коде.
         let types = TypeLookup::load(types_readers).await?;
-
-        struct ExportItems {
-            items: Vec<DeviceDto>,
-        }
-        let response = ExportItems {
-            items: rows.into_iter().map(DeviceDto::from).collect(),
-        };
 
         let mut wtr = csv::WriterBuilder::new()
             .delimiter(b';')
@@ -2548,12 +2609,18 @@ impl DeviceService {
             "Состояние",
             "Место",
             "Статус",
+            // INT-32/INT-17: новые колонки — В КОНЕЦ, прежние 10 не сдвигаются.
+            // Импорт их не сопоставляет и игнорирует (T-02-05-08).
+            "Группа",
+            "Роль в группе",
+            "Происхождение",
+            "USB-хост",
         ])
         .map_err(|e| AppError::Internal {
             source_chain: format!("csv writer headers: {e}"),
         })?;
 
-        for device in &response.items {
+        for device in &items {
             // Имя типа — из справочника по type_id.
             let type_name = types.name_for_id(device.type_id);
             // Имя статуса — из справочника по status_id.
@@ -2570,6 +2637,16 @@ impl DeviceService {
                 csv_safe(device.state.as_deref().unwrap_or("")),
                 csv_safe(device.full_path.as_deref().unwrap_or("")),
                 csv_safe(&status_name),
+                csv_safe(
+                    device
+                        .group_name
+                        .as_deref()
+                        .or(device.anchor_group_name.as_deref())
+                        .unwrap_or(""),
+                ),
+                csv_safe(export_group_role(device)),
+                csv_safe(device.origin_group_name.as_deref().unwrap_or("")),
+                csv_safe(usb_hosts.get(&device.id).map(String::as_str).unwrap_or("")),
             ])
             .map_err(|e| AppError::Internal {
                 source_chain: format!("csv writer row: {e}"),

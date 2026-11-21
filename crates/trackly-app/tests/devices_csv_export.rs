@@ -933,3 +933,249 @@ fn export_max_rows_is_in_sane_range() {
         "EXPORT_MAX_ROWS = {EXPORT_MAX_ROWS} вне разумного диапазона"
     );
 }
+
+// ---------------------------------------------------------------------------
+// quick-261121-hef (INT-32, INT-17): выгрузка несёт группу, роль в группе,
+// происхождение и USB-хост — то, что видно на экране «Устройств». Новые
+// колонки стоят ПОСЛЕ прежних 10, импорт их игнорирует (round-trip).
+// ---------------------------------------------------------------------------
+
+const HEF_NOW: i64 = 1_700_000_000;
+
+async fn hef_seed_device(svc: &DeviceService, type_id: i64, name: &str, inv: Option<&str>) -> i64 {
+    let (name, inv) = (name.to_string(), inv.map(str::to_string));
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices (type_id, name, inventory_number, status_id, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, ?3, 1, ?4, ?4, 1)",
+                rusqlite::params![type_id, name, inv, HEF_NOW],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed device")
+}
+
+async fn hef_seed_group(svc: &DeviceService, name: &str, seq: i64) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            let type_id: i64 = conn
+                .query_row(
+                    "SELECT id FROM group_types WHERE behavior = 'substitute' LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .or_else(|_| {
+                    conn.execute(
+                        "INSERT INTO group_types (code, name, behavior, created_at_utc, \
+                         updated_at_utc) VALUES ('hef_t', 'Тип', 'substitute', ?1, ?1)",
+                        rusqlite::params![HEF_NOW],
+                    )?;
+                    Ok::<_, rusqlite::Error>(conn.last_insert_rowid())
+                })
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            conn.execute(
+                "INSERT INTO groups (type_id, name, seq, parent_group_id, version, \
+                 created_at_utc, updated_at_utc) VALUES (?1, ?2, ?3, NULL, 1, ?4, ?4)",
+                rusqlite::params![type_id, name, seq, HEF_NOW],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed group")
+}
+
+async fn hef_exec(svc: &DeviceService, sql: &'static str, p: Vec<i64>) {
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(sql, rusqlite::params_from_iter(p.iter()))
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("exec");
+}
+
+/// Якорь «Стенд А» + член, устройство с происхождением «Разбор Б»,
+/// USB-принтер на хосте «АРМ-1» (ИНВ-7), сетевой принтер, обычное устройство.
+async fn hef_seed_rich(svc: &DeviceService) {
+    let anchor = hef_seed_device(svc, 1, "Якорь стенда", Some("ИНВ-1")).await;
+    let member = hef_seed_device(svc, 1, "Монитор стенда", Some("ИНВ-2")).await;
+    let origin = hef_seed_device(svc, 1, "Планка из разбора", Some("ИНВ-3")).await;
+    let host = hef_seed_device(svc, 1, "АРМ-1", Some("ИНВ-7")).await;
+    let usb = hef_seed_device(svc, 2, "Принтер USB", Some("ИНВ-8")).await;
+    let net = hef_seed_device(svc, 2, "Принтер сетевой", Some("ИНВ-9")).await;
+    hef_seed_device(svc, 1, "Мышь одиночная", Some("ИНВ-10")).await;
+
+    let stand = hef_seed_group(svc, "Стенд А", 1).await;
+    let parsed = hef_seed_group(svc, "Разбор Б", 2).await;
+    hef_exec(
+        svc,
+        "UPDATE groups SET anchor_device_id = ?1 WHERE id = ?2",
+        vec![anchor, stand],
+    )
+    .await;
+    for d in [anchor, member] {
+        hef_exec(
+            svc,
+            "INSERT INTO group_devices (device_id, group_id, added_at_utc) \
+             VALUES (?1, ?2, 1700000000)",
+            vec![d, stand],
+        )
+        .await;
+    }
+    hef_exec(
+        svc,
+        "UPDATE devices SET origin_group_id = ?1 WHERE id = ?2",
+        vec![parsed, origin],
+    )
+    .await;
+    hef_exec(
+        svc,
+        "INSERT INTO printers (device_id, usb_host_device_id, created_at_utc, updated_at_utc) \
+         VALUES (?1, ?2, 1700000000, 1700000000)",
+        vec![usb, host],
+    )
+    .await;
+    hef_exec(
+        svc,
+        "INSERT INTO printers (device_id, ip_address, created_at_utc, updated_at_utc) \
+         VALUES (?1, '192.0.2.50', 1700000000, 1700000000)",
+        vec![net],
+    )
+    .await;
+}
+
+/// Строки выгрузки по наименованию -> ячейки (BOM снят, разделитель `;`).
+fn hef_rows(csv: &str) -> (Vec<String>, std::collections::HashMap<String, Vec<String>>) {
+    let mut lines = csv.trim_start_matches('\u{FEFF}').lines();
+    let header: Vec<String> = lines
+        .next()
+        .unwrap_or("")
+        .split(';')
+        .map(str::to_string)
+        .collect();
+    let rows = lines
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let cells: Vec<String> = l.split(';').map(str::to_string).collect();
+            (cells[1].clone(), cells)
+        })
+        .collect();
+    (header, rows)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_export_header_appends_four_columns_after_previous_ten() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let csv = svc
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export");
+        let (header, _) = hef_rows(&csv);
+        assert_eq!(
+            header,
+            vec![
+                "Тип",
+                "Наименование",
+                "Инвентарный №",
+                "Серийный №",
+                "Модель",
+                "Технические характеристики",
+                "Комплектация",
+                "Состояние",
+                "Место",
+                "Статус",
+                "Группа",
+                "Роль в группе",
+                "Происхождение",
+                "USB-хост",
+            ]
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_export_fills_group_role_origin_and_usb_host() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        hef_seed_rich(&svc).await;
+        let csv = svc
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export");
+        let (_, rows) = hef_rows(&csv);
+        let tail = |name: &str| -> Vec<String> {
+            rows.get(name)
+                .unwrap_or_else(|| panic!("нет строки {name}"))[10..14]
+                .to_vec()
+        };
+        assert_eq!(tail("Якорь стенда"), vec!["Стенд А", "якорь", "", ""]);
+        assert_eq!(tail("Монитор стенда"), vec!["Стенд А", "в составе", "", ""]);
+        assert_eq!(tail("Планка из разбора"), vec!["", "", "Разбор Б", ""]);
+        assert_eq!(tail("Принтер USB"), vec!["", "", "", "АРМ-1 (ИНВ-7)"]);
+        assert_eq!(tail("Принтер сетевой"), vec!["", "", "", ""]);
+        assert_eq!(tail("Мышь одиночная"), vec!["", "", "", ""]);
+        assert_eq!(tail("АРМ-1"), vec!["", "", "", ""]);
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_export_import_round_trip_has_no_errors_or_warnings() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (src, _dir_src) = make_service();
+        let place = seed_place(&src, None, PlaceKind::Room, "Кабинет тестовый").await;
+        hef_seed_rich(&src).await;
+        hef_exec(
+            &src,
+            "UPDATE devices SET place_id = ?1 WHERE name = 'Мышь одиночная'",
+            vec![place],
+        )
+        .await;
+        let csv = src
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export");
+        let exported = csv
+            .trim_start_matches('\u{FEFF}')
+            .lines()
+            .skip(1)
+            .filter(|l| !l.trim().is_empty())
+            .count();
+        assert_eq!(exported, 7);
+
+        let (dst, _dir_dst) = make_service();
+        seed_place(&dst, None, PlaceKind::Room, "Кабинет тестовый").await;
+        let preview = dst
+            .import_csv_preview(csv.into_bytes())
+            .await
+            .expect("preview");
+        let mapping = crate::devices_csv_import::auto_map(&preview.headers);
+        for new_col in ["Группа", "Роль в группе", "Происхождение", "USB-хост"]
+        {
+            assert!(
+                !mapping.contains_key(new_col),
+                "{new_col} не сопоставляется авто-маппингом"
+            );
+        }
+        let report = dst
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit");
+        assert!(report.failed.is_empty(), "{:?}", report.failed);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(report.inserted as usize, exported);
+    })
+    .await
+    .expect("timeout");
+}
