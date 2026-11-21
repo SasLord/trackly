@@ -175,9 +175,11 @@
   });
 
   function errorMessage(e: unknown, fallback: string): string {
-    return e && typeof e === 'object' && 'message' in e
-      ? String((e as { message: unknown }).message)
-      : fallback;
+    const msg =
+      e && typeof e === 'object' && 'message' in e
+        ? String((e as { message: unknown }).message)
+        : '';
+    return msg !== '' ? msg : fallback;
   }
 
   /**
@@ -345,9 +347,7 @@
     } catch (e: unknown) {
       pushToast(
         'error',
-        e && typeof e === 'object' && 'message' in e
-          ? errorMessage(e, '')
-          : 'Не удалось вывести из группы. Проверьте подключение и повторите.',
+        errorMessage(e, 'Не удалось вывести из группы. Проверьте подключение и повторите.'),
       );
     } finally {
       removing = false;
