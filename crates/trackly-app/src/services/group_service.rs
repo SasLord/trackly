@@ -25,7 +25,7 @@ use trackly_core::domain::groups::{
     validate_name, GroupBehavior, GroupNew, GroupRow, GroupTypeRow, GroupValueRow,
     PropertyDataType, MAX_DEVICES_PER_BATCH, MAX_REFS_PER_PROPERTY,
 };
-use trackly_core::error::AppError;
+use trackly_core::error::{AppError, OccupiedItem};
 use trackly_core::ports::group_types::GroupTypeRepository;
 use trackly_core::ports::groups::GroupRepository;
 use trackly_core::ports::places::PlaceRepository;
@@ -41,8 +41,8 @@ use crate::dto::device::DeviceDto;
 use crate::dto::groups::{
     DeviceMembershipDto, GroupActExpansionDto, GroupActUnitDto, GroupAddDevicesResultDto,
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
-    GroupMemberDeviceDto, GroupMoveResultDto, GroupPrinterDto, GroupPropertyValueDto,
-    GroupSearchHitDto, GroupUserDto, GroupValueInputDto, UserOptionDto,
+    GroupMemberDeviceDto, GroupMoveDevicesResultDto, GroupMoveResultDto, GroupPrinterDto,
+    GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto, UserOptionDto,
 };
 use crate::dto::printer::WsEvent;
 use crate::services::group_act_plan;
@@ -935,11 +935,139 @@ fn push_unique_place(out: &mut Vec<i64>, id: i64) {
     }
 }
 
+/// Режим ввода одного устройства в группу.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AddMode {
+    /// Обычный ввод: занятое устройство отказывает (D-16).
+    Plain,
+    /// Перенос: устройство уже снято с прежней группы в этой же транзакции (D-04).
+    MoveOccupied,
+}
+
+/// Исход ввода одного устройства.
+enum AddOne {
+    Added,
+    /// Уже входит в эту группу — пропущено.
+    Skipped,
+    /// Занято другой группой (только `AddMode::Plain`).
+    Occupied(OccupiedItem),
+}
+
+/// Примитив ввода одного устройства: общие правила для `add_devices` и `move_devices`.
+#[allow(clippy::too_many_arguments)]
+fn add_one_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group: &GroupRow,
+    target_behavior: Option<GroupBehavior>,
+    device_id: i64,
+    mode: AddMode,
+    user_id: Option<i64>,
+    now: i64,
+    added: &mut Vec<i64>,
+    changed_places: &mut Vec<i64>,
+) -> Result<AddOne, AppError> {
+    let group_id = group.id;
+    let device = match deps.devices.get_in_tx(tx, device_id) {
+        Ok(d) => d,
+        Err(AppError::NotFound { .. }) => {
+            return Err(device_ids_error("Устройство не найдено.".to_string()))
+        }
+        Err(e) => return Err(e),
+    };
+    // D-08/D-15/D-17: разбор — только донор; принимается лишь собственная деталь.
+    if target_behavior == Some(GroupBehavior::Teardown) {
+        let origin: Option<i64> = tx
+            .query_row(
+                "SELECT origin_group_id FROM devices WHERE id = ?1",
+                rusqlite::params![device_id],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        if origin != Some(group_id) {
+            return Err(device_ids_error(
+                "В разбор нельзя добавить существующее устройство: детали появляются только через «Создать деталь».".to_string(),
+            ));
+        }
+        if device.deleted_at_utc.is_some() {
+            return Err(device_ids_error(
+                "Удалённую деталь вернуть нельзя.".to_string(),
+            ));
+        }
+    }
+    if device.deleted_at_utc.is_some() {
+        return Err(device_ids_error(format!(
+            "Устройство «{}» удалено и не может входить в группу.",
+            device.name
+        )));
+    }
+    if let Some(existing) = deps.groups.group_of_device_in_tx(tx, device_id)? {
+        if existing.id == group_id {
+            return Ok(AddOne::Skipped);
+        }
+        if mode == AddMode::Plain {
+            return Ok(AddOne::Occupied(OccupiedItem::device(
+                device_id,
+                device.name,
+                existing.id,
+                existing.name,
+            )));
+        }
+    }
+    // Серверные отказы бессмысленных действий (D-05): скрытые пункты UI — только UX.
+    if device.status_code == STATUS_CODE_WRITTEN_OFF {
+        return Err(device_ids_error(format!(
+            "Устройство «{}» со статусом «Списано» в группу не добавляется.",
+            device.name
+        )));
+    }
+    // «На списание» входит только в разбор: деталь на списание — нормальный
+    // случай записи разбора (D-18/D-35).
+    if device.status_code == STATUS_CODE_TO_WRITE_OFF
+        && target_behavior != Some(GroupBehavior::Teardown)
+    {
+        return Err(device_ids_error(format!(
+            "Устройство «{}» со статусом «На списание» в группу не добавляется.",
+            device.name
+        )));
+    }
+    deps.groups.add_device_in_tx(tx, group_id, device_id, now)?;
+    added.push(device_id);
+
+    // D-21: место присваивает только группа С местом.
+    // Phase 41.4 (D-14): устройство в исключённом статусе не стягивается в место группы.
+    if let Some(place) = group
+        .place_id
+        .filter(|_| !is_repair_exempt_status_code(&device.status_code))
+    {
+        let change = apply_group_place_to_device_in_tx(
+            tx,
+            deps,
+            device_id,
+            place,
+            None,
+            Some(&group.name),
+            group_id,
+            user_id,
+            now,
+            GroupMoveCause::GROUP,
+        )?;
+        if change.changed {
+            if let Some(p) = change.previous_place {
+                push_unique_place(changed_places, p);
+            }
+            push_unique_place(changed_places, place);
+        }
+    }
+    Ok(AddOne::Added)
+}
+
 impl GroupService {
     /// Добавить устройства в группу (GRP-05, D-01, D-21). Один обработчик для обоих
-    /// путей UI; пакет атомарен: занятое, удалённое или несуществующее устройство
-    /// отменяет весь пакет. Группа С местом присваивает его устройствам (журнал
-    /// `source='group'` с `group_id` для ссылки D-28); группа БЕЗ места место не трогает.
+    /// путей UI; пакет атомарен: удалённое или несуществующее устройство отменяет весь
+    /// пакет, занятое отдаёт `AlreadyInGroup` со всеми занятыми (D-16). Разбор принимает
+    /// только собственные детали (D-08). Группа С местом присваивает его устройствам
+    /// (журнал `source='group'` с `group_id` для ссылки D-28); группа БЕЗ места место не трогает.
     pub async fn add_devices(
         &self,
         caller: &Identity,
@@ -966,84 +1094,27 @@ impl GroupService {
 
                 let mut added: Vec<i64> = Vec::new();
                 let mut changed_places: Vec<i64> = Vec::new();
+                let mut occupied: Vec<OccupiedItem> = Vec::new();
                 for device_id in &device_ids {
-                    let device = match deps.devices.get_in_tx(&tx, *device_id) {
-                        Ok(d) => d,
-                        Err(AppError::NotFound { .. }) => {
-                            return Err(device_ids_error("Устройство не найдено.".to_string()))
-                        }
-                        Err(e) => return Err(e),
-                    };
-                    if device.deleted_at_utc.is_some() {
-                        return Err(device_ids_error(format!(
-                            "Устройство «{}» удалено и не может входить в группу.",
-                            device.name
-                        )));
+                    match add_one_in_tx(
+                        &tx,
+                        &deps,
+                        &group,
+                        target_behavior,
+                        *device_id,
+                        AddMode::Plain,
+                        user_id,
+                        now,
+                        &mut added,
+                        &mut changed_places,
+                    )? {
+                        AddOne::Occupied(item) => occupied.push(item),
+                        AddOne::Added | AddOne::Skipped => {}
                     }
-                    if let Some(existing) = deps.groups.group_of_device_in_tx(&tx, *device_id)? {
-                        if existing.id == group_id {
-                            continue;
-                        }
-                        return Err(device_ids_error(format!(
-                            "Устройство «{}» уже входит в группу «{}». \
-                             Сначала выведите его из состава.",
-                            device.name, existing.name
-                        )));
-                    }
-                    // Серверные отказы бессмысленных действий (D-05): скрытые пункты
-                    // UI — только UX.
-                    if device.status_code == STATUS_CODE_WRITTEN_OFF {
-                        return Err(device_ids_error(format!(
-                            "Устройство «{}» со статусом «Списано» в группу не добавляется.",
-                            device.name
-                        )));
-                    }
-                    // «На списание» входит только в разбор: деталь на списание — нормальный
-                    // случай записи разбора (D-18/D-35).
-                    if device.status_code == STATUS_CODE_TO_WRITE_OFF
-                        && target_behavior != Some(GroupBehavior::Teardown)
-                    {
-                        return Err(device_ids_error(format!(
-                            "Устройство «{}» со статусом «На списание» в группу не добавляется.",
-                            device.name
-                        )));
-                    }
-                    deps.groups
-                        .add_device_in_tx(&tx, group_id, *device_id, now)?;
-                    added.push(*device_id);
-                    // D-16/D-33: происхождение пишется только пока NULL; результат
-                    // `false` (уже записано) не ошибка.
-                    if target_behavior == Some(GroupBehavior::Teardown) {
-                        deps.groups
-                            .set_device_origin_if_null_in_tx(&tx, *device_id, group_id)?;
-                    }
-
-                    // D-21: место присваивает только группа С местом.
-                    // Phase 41.4 (D-14): устройство в исключённом статусе не стягивается
-                    // в место группы (членство оформлено выше).
-                    if let Some(place) = group
-                        .place_id
-                        .filter(|_| !is_repair_exempt_status_code(&device.status_code))
-                    {
-                        let change = apply_group_place_to_device_in_tx(
-                            &tx,
-                            &deps,
-                            *device_id,
-                            place,
-                            None,
-                            Some(&group.name),
-                            group_id,
-                            user_id,
-                            now,
-                            GroupMoveCause::GROUP,
-                        )?;
-                        if change.changed {
-                            if let Some(p) = change.previous_place {
-                                push_unique_place(&mut changed_places, p);
-                            }
-                            push_unique_place(&mut changed_places, place);
-                        }
-                    }
+                }
+                // D-16/D-18: все занятые одним отказом; транзакция откатывается целиком.
+                if !occupied.is_empty() {
+                    return Err(AppError::AlreadyInGroup { items: occupied });
                 }
 
                 if !added.is_empty() {
@@ -1077,6 +1148,118 @@ impl GroupService {
         let device_ids = added;
         let group_ids = vec![group_id];
         self.broadcast_entities("add_devices", place_ids, device_ids, group_ids);
+        Ok(result)
+    }
+
+    /// Перенести устройства из других групп (или свободные) в группу: одна операция
+    /// (D-04) — снятие членства и ввод в одной транзакции, одна запись аудита и одно
+    /// событие. «Всё или ничего» (D-18). Якорь не переносится (D-00).
+    pub async fn move_devices(
+        &self,
+        caller: &Identity,
+        group_id: i64,
+        device_ids: Vec<i64>,
+    ) -> Result<GroupMoveDevicesResultDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        let device_ids = normalize_device_ids(device_ids)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let type_repo = self.type_repo.clone();
+
+        let (result, added, source_groups) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let deps = GroupMoveDeps::new();
+                let group = deps.groups.get_group_in_tx(&tx, group_id)?;
+                let target_behavior = GroupBehavior::from_str_lenient(
+                    &type_repo.get_type(&tx, group.type_id)?.behavior,
+                );
+
+                let mut added: Vec<i64> = Vec::new();
+                let mut changed_places: Vec<i64> = Vec::new();
+                // device_id -> исходная группа (только реально перенесённые).
+                let mut from: Vec<(i64, i64)> = Vec::new();
+                for device_id in &device_ids {
+                    if let Some(existing) = deps.groups.group_of_device_in_tx(&tx, *device_id)? {
+                        if existing.id == group_id {
+                            return Err(device_ids_error(
+                                "Устройство уже входит в эту группу.".to_string(),
+                            ));
+                        }
+                        // Якорь не переносится (§15.3): охрана раньше снятия членства.
+                        if let Some(anchor_group) =
+                            deps.groups.anchor_group_of_device_in_tx(&tx, *device_id)?
+                        {
+                            let device_name: String = tx
+                                .query_row(
+                                    "SELECT name FROM devices WHERE id = ?1",
+                                    rusqlite::params![device_id],
+                                    |r| r.get(0),
+                                )
+                                .unwrap_or_default();
+                            return Err(device_ids_error(format!(
+                                "Устройство «{}» — якорь группы «{}»: вывести его из состава нельзя. Чтобы расформировать группу, удалите её в разделе «Группы».",
+                                device_name, anchor_group.name
+                            )));
+                        }
+                        deps.groups.remove_device_in_tx(&tx, *device_id)?;
+                        from.push((*device_id, existing.id));
+                    }
+                    add_one_in_tx(
+                        &tx,
+                        &deps,
+                        &group,
+                        target_behavior,
+                        *device_id,
+                        AddMode::MoveOccupied,
+                        user_id,
+                        now,
+                        &mut added,
+                        &mut changed_places,
+                    )?;
+                }
+
+                let mut groups_touched: Vec<i64> = vec![group_id];
+                for (_, g) in &from {
+                    if !groups_touched.contains(g) {
+                        groups_touched.push(*g);
+                    }
+                }
+                let from_json: Vec<serde_json::Value> = from
+                    .iter()
+                    .map(|(d, g)| serde_json::json!({ "device_id": d, "group_id": g }))
+                    .collect();
+                deps.audit.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "group",
+                        entity_id: group_id,
+                        action: "move_devices",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(to_json(&serde_json::json!({
+                            "device_ids": added,
+                            "from": from_json,
+                            "to_group_id": group_id,
+                        }))?),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                let result = GroupMoveDevicesResultDto {
+                    added: added.len() as i32,
+                    moved: from.len() as i32,
+                    changed_place_ids: changed_places,
+                };
+                Ok((result, added, groups_touched))
+            })
+            .await?;
+
+        let place_ids = result.changed_place_ids.clone();
+        self.broadcast_entities("move_devices", place_ids, added, source_groups);
         Ok(result)
     }
 

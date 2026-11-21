@@ -194,6 +194,24 @@ pub struct GroupAddDevicesResultDto {
     pub changed_place_ids: Vec<i64>,
 }
 
+/// Перенос устройств в группу одной операцией (D-04).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupMoveDevicesDto {
+    #[specta(type = i32)]
+    pub group_id: i64,
+    #[specta(type = Vec<i32>)]
+    pub device_ids: Vec<i64>,
+}
+
+/// Итог переноса (D-18): всего введено и сколько из них пришло из других групп.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupMoveDevicesResultDto {
+    pub added: i32,
+    pub moved: i32,
+    #[specta(type = Vec<i32>)]
+    pub changed_place_ids: Vec<i64>,
+}
+
 /// Вывод устройств из группы (D-02): без подтверждения, место не меняется.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct GroupRemoveDevicesDto {
