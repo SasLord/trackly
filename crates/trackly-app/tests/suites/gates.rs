@@ -47,6 +47,8 @@ mod html_page_parity;
 mod http_route_parity;
 #[path = "../number_space_broadcast_gate.rs"]
 mod number_space_broadcast_gate;
+#[path = "../printer_identity_gate.rs"]
+mod printer_identity_gate;
 #[path = "../specta_roundtrip.rs"]
 mod specta_roundtrip;
 #[path = "../suite_wiring.rs"]
