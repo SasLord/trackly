@@ -4998,3 +4998,135 @@ async fn return_and_rollback_refused_when_device_has_open_repair() {
     })
     .await;
 }
+
+// ---------------------------------------------------------------------------
+// D-32 (UAT-25-07): пустые вложенные группы не мешают переносу родителя
+// ---------------------------------------------------------------------------
+
+/// «АРМ #3» с тремя устройствами (второе потом списывается) и, при `with_empty`, двумя
+/// пустыми вложенными «Кабели #1/#2».
+async fn d32_fixture(ctx: &AppCtx, place: i64, with_empty: bool) -> (Arm, Vec<i64>) {
+    let arm = seed_arm(ctx, place).await;
+    let mut nested = Vec::new();
+    if with_empty {
+        for name in ["Кабели #1", "Кабели #2"] {
+            nested.push(seed_group(ctx, name, Some(place), Some(arm.group)).await);
+        }
+    }
+    let written = arm.devices[1];
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET status_id = \
+                 (SELECT id FROM device_statuses WHERE code = 'списано') WHERE id = ?1",
+                params![written],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("write off");
+    (arm, nested)
+}
+
+async fn d32_units(ctx: &AppCtx, root: i64) -> Vec<i64> {
+    ctx.groups
+        .act_expansion(&admin(), root)
+        .await
+        .expect("act_expansion")
+        .units
+        .iter()
+        .map(|u| u.device_id)
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn d32_handover_group_with_empty_nested_moves_whole_group() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, nested) = d32_fixture(&ctx, a, true).await;
+
+        let mut units = d32_units(&ctx, arm.group).await;
+        units.sort_unstable();
+        assert_eq!(units, vec![arm.devices[0], arm.devices[2]]);
+
+        // Без подтверждения выноса: Created, а не NeedsGroupRelease.
+        let act = create_ok(&ctx, dto("D32-1", &units, Some(b), false)).await;
+
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        for g in &nested {
+            assert_eq!(group_place(&ctx, *g).await, Some(b), "вложенная едет");
+        }
+        for d in &arm.devices {
+            assert_eq!(
+                member_rows(&ctx, *d).await,
+                1,
+                "никто не вынесен из состава"
+            );
+        }
+        assert_eq!(effects(&ctx, act, "move").await, 1);
+        assert_eq!(effects(&ctx, act, "release").await, 0);
+        // Списанное осталось «Списано» и в составе.
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM devices d JOIN device_statuses s ON s.id = d.status_id \
+                 WHERE d.id = ?1 AND s.code = 'списано'",
+                vec![int(arm.devices[1])]
+            )
+            .await,
+            1
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn d32_control_without_empty_nested_gives_the_same_result() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, nested) = d32_fixture(&ctx, a, false).await;
+        assert!(nested.is_empty());
+
+        let mut units = d32_units(&ctx, arm.group).await;
+        units.sort_unstable();
+        assert_eq!(units, vec![arm.devices[0], arm.devices[2]]);
+        let act = create_ok(&ctx, dto("D32-2", &units, Some(b), false)).await;
+
+        assert_eq!(group_place(&ctx, arm.group).await, Some(b));
+        for d in &arm.devices {
+            assert_eq!(member_rows(&ctx, *d).await, 1);
+        }
+        assert_eq!(effects(&ctx, act, "move").await, 1);
+        assert_eq!(effects(&ctx, act, "release").await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn d32_return_of_group_with_empty_nested_needs_no_split_choice() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let (arm, nested) = d32_fixture(&ctx, a, true).await;
+        let units = d32_units(&ctx, arm.group).await;
+        let act = create_ok(&ctx, dto("D32-3", &units, Some(b), false)).await;
+
+        // Возврат тех же позиций, место возврата одно: без выбора split и без отказа по местам.
+        return_ok(&ctx, act, &units, Some(a)).await;
+
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a));
+        for g in &nested {
+            assert_eq!(group_place(&ctx, *g).await, Some(a));
+        }
+        for d in &arm.devices {
+            assert_eq!(member_rows(&ctx, *d).await, 1);
+        }
+    })
+    .await;
+}
