@@ -30,6 +30,7 @@
 //       (MAX_ACT_ITEMS) стоит ВЫШЕ первого onChange( в теле функции; константа
 //       MAX_ACT_ITEMS равна 100; строка единицы создаётся через groupRow с
 //       `quantity: 1`.
+//   (F) D-32: fetchMembers отфильтровывает «Списано» по `status_code !== STATUS_WRITTEN_OFF`.
 //   (D) FormItemRow и маркер `complectation_at_time !== undefined` (в двух ячейках) на месте
 //       (D-12: сохранённая семантика RETAINED-позиций не тронута).
 //
@@ -202,6 +203,27 @@ export function scanSource(raw, violations) {
     }
   } else {
     violations.push(`(E) ${FILE}: не найдена функция fetchWorking — антивакуум (D-34).`);
+  }
+
+  // (F) D-32: источник участников групп не предлагает «Списано» отдельным выбором —
+  // фильтр по КОДУ через STATUS_WRITTEN_OFF (литерал статуса запрещён словарным гейтом).
+  if (membersFn !== null) {
+    if (!/\bstatus_code\s*!==\s*STATUS_WRITTEN_OFF\b/.test(membersFn)) {
+      violations.push(
+        `(F) ${FILE}: fetchMembers не отфильтровывает устройства «Списано» (\`status_code !== STATUS_WRITTEN_OFF\`) — списанное предлагалось бы отдельным выбором (D-32).`,
+      );
+    }
+  } else {
+    violations.push(`(F) ${FILE}: не найдена функция fetchMembers — антивакуум (D-32).`);
+  }
+  if (
+    !/\bimport\s*\{[^}]*\bSTATUS_WRITTEN_OFF\b[^}]*\}\s*from\s*'\.\.\/devices\/deviceRowMenu'/.test(
+      code,
+    )
+  ) {
+    violations.push(
+      `(F) ${FILE}: STATUS_WRITTEN_OFF не импортирован из ../devices/deviceRowMenu (D-32).`,
+    );
   }
 
   // (C) разворот группы.
@@ -418,6 +440,16 @@ function runSelfTest() {
           'working-not-in-order',
         ),
         rule: 'A',
+      },
+      {
+        name: '(12) из fetchMembers убран фильтр «Списано» (D-32)',
+        src: mutate(
+          raw,
+          'd.status_code !== STATUS_WRITTEN_OFF',
+          'd.status_code !== undefined',
+          'members-no-written-off-filter',
+        ),
+        rule: 'F',
       },
     ];
   } catch (e) {

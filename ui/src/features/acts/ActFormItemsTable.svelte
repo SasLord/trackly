@@ -24,6 +24,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { REPAIR_ACT_NOTE, loadOpenRepairs } from '../requests/repairLocks';
+  import { STATUS_WRITTEN_OFF } from '../devices/deviceRowMenu';
   import type { DeviceDto, DeviceGroup, GroupActUnitDto, GroupSearchHitDto } from '../../bindings';
 
   export interface FormItemRow {
@@ -359,16 +360,19 @@
         },
         { offset: 0, limit: 20 },
       );
-      if (res.items.length === 0) return [];
+      // D-32: «Списано» отдельным выбором не предлагается (серверный отказ D-27 остаётся
+      // границей безопасности, тут только удобство).
+      const items = res.items.filter((d) => d.status_code !== STATUS_WRITTEN_OFF);
+      if (items.length === 0) return [];
       const owners = new Map<number, string>();
       try {
-        for (const m of await groups.forDevices(res.items.map((d) => d.id))) {
+        for (const m of await groups.forDevices(items.map((d) => d.id))) {
           owners.set(m.device_id, m.group_name);
         }
       } catch {
         // Имя группы — подсказка; без неё устройство всё равно можно выбрать.
       }
-      return res.items.map((device) => ({ device, groupName: owners.get(device.id) ?? '—' }));
+      return items.map((device) => ({ device, groupName: owners.get(device.id) ?? '—' }));
     } catch {
       return [];
     }
