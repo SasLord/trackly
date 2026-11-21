@@ -69,6 +69,7 @@ fn make_row(
         batch_id: None,
         batch_role: None,
         batch_size: None,
+        batch_shown: None,
         batch_label: None,
         repair_device_label: None,
         repair_fault: None,

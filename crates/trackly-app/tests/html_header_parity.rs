@@ -278,6 +278,7 @@ async fn render_header_fragments_for_org(
             batch_id: None,
             batch_role: None,
             batch_size: None,
+            batch_shown: None,
             batch_label: None,
             repair_device_label: None,
             repair_fault: None,

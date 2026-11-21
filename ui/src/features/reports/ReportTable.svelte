@@ -43,6 +43,9 @@
     batch_id?: string | null;
     batch_role?: 'header' | 'member' | null | string;
     batch_size?: number | null;
+    // F18: devices of this batch in the VISIBLE set, counted by the server;
+    // < batch_size means the batch is shown partially (LIMIT or a filter).
+    batch_shown?: number | null;
     batch_label?: string | null;
     [key: string]: unknown;
   }
@@ -286,6 +289,7 @@
       batch_id: batchId,
       batch_role: 'header',
       batch_size: first.batch_size ?? null,
+      batch_shown: first.batch_shown ?? null,
       batch_label: first.batch_label ?? null,
     };
   }
@@ -341,6 +345,10 @@
   function batchCounter(header: ReportRow): string | null {
     const n = header.batch_size;
     if (typeof n !== 'number') return null;
+    // F18: K comes from the server (batch_shown) — the same «показано K из N»
+    // as CSV and print; no counting formula here.
+    const k = header.batch_shown;
+    if (typeof k === 'number' && k < n) return `(показано ${k} из ${n} устройств)`;
     return `(${n} ${pluralizeRu(n, ['устройство', 'устройства', 'устройств'])})`;
   }
 

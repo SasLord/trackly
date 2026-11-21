@@ -1199,6 +1199,45 @@ impl ReportService {
 /// `export_pdf` — always `true`) must pass a literal, never a computed
 /// value, per T-39.1-13 — the two outputs must never accidentally move in
 /// lockstep on a future refactor.
+/// INT-06/F18: ячейка «Пакет» отчёта «Перемещения». Вне пакета — пусто;
+/// иначе «Перенос группы «{имя}» (N устройств)», а если пакет показан
+/// частично (`batch_shown < batch_size`) — «… (показано K из N устройств)».
+pub(crate) fn batch_cell(row: &ReportRow) -> String {
+    if row.batch_id.is_none() {
+        return String::new();
+    }
+    let label = row
+        .batch_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .unwrap_or("без имени");
+    let total = row.batch_size.unwrap_or(0);
+    match row.batch_shown {
+        Some(shown) if shown < total => {
+            format!("Перенос группы «{label}» (показано {shown} из {total} устройств)")
+        }
+        _ => format!(
+            "Перенос группы «{label}» ({total} {})",
+            plural_devices(total)
+        ),
+    }
+}
+
+/// Русская форма слова «устройство» после числа (1 устройство, 2 устройства,
+/// 5 устройств) — то же правило, что `pluralizeRu` на экране.
+fn plural_devices(n: i64) -> &'static str {
+    let n = n.abs();
+    let (m10, m100) = (n % 10, n % 100);
+    if m10 == 1 && m100 != 11 {
+        "устройство"
+    } else if (2..=4).contains(&m10) && !(12..=14).contains(&m100) {
+        "устройства"
+    } else {
+        "устройств"
+    }
+}
+
 fn row_field(row: &ReportRow, col: &str, tz: UtcOffset, shorten: bool) -> String {
     match col {
         "number" => row.number.as_deref().unwrap_or("").to_string(),
@@ -1259,6 +1298,8 @@ fn row_field(row: &ReportRow, col: &str, tz: UtcOffset, shorten: bool) -> String
         "actor_name" => row.actor_name.as_deref().unwrap_or("").to_string(),
         "reason" => row.reason.as_deref().unwrap_or("").to_string(),
         "entity_type_label" => row.entity_type_label.as_deref().unwrap_or("").to_string(),
+        // INT-06/F18: пакет переноса группы — в CSV и печати, как на экране.
+        "batch" => batch_cell(row),
         // D-30: отчёт «Ремонты».
         "repair_device_label" => row.repair_device_label.as_deref().unwrap_or("").to_string(),
         "repair_fault" => row.repair_fault.as_deref().unwrap_or("").to_string(),
@@ -1432,6 +1473,7 @@ fn query_repairs_inner(
                 batch_id: None,
                 batch_role: None,
                 batch_size: None,
+                batch_shown: None,
                 batch_label: None,
                 repair_device_label: Some(label),
                 repair_fault: r.get(4)?,
@@ -1654,6 +1696,7 @@ fn query_acts_inner(
                 batch_id: None,
                 batch_role: None,
                 batch_size: None,
+                batch_shown: None,
                 batch_label: None,
                 repair_device_label: None,
                 repair_fault: None,
@@ -1891,6 +1934,8 @@ fn query_movements_inner(
         .map_err(map_rusqlite)?;
 
     let mut rows = Vec::new();
+    // F18: признак «строка — устройство» параллельно `rows` — для batch_shown.
+    let mut is_device_row: Vec<bool> = Vec::new();
     for row in row_iter {
         let (
             id,
@@ -1945,6 +1990,7 @@ fn query_movements_inner(
             None => (None, None),
         };
         let actor_name = actor_name.unwrap_or_else(|| "система".to_string());
+        is_device_row.push(entity_type == MovementEntityKind::Device.as_str());
 
         rows.push(ReportRow {
             id,
@@ -1972,6 +2018,7 @@ fn query_movements_inner(
             batch_id,
             batch_role,
             batch_size,
+            batch_shown: None,
             batch_label,
             repair_device_label: None,
             repair_fault: None,
@@ -1984,6 +2031,25 @@ fn query_movements_inner(
             repair_request_id: None,
         });
     }
+    // F18: сколько устройств каждого пакета попало в ВОЗВРАЩЁННЫЙ набор
+    // (после LIMIT и фильтров) — одним проходом; 0, если видны только строка
+    // группы или картриджи.
+    let mut shown_by_batch: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
+    for (row, is_device) in rows.iter().zip(is_device_row.iter()) {
+        if let Some(batch_id) = row.batch_id.as_ref() {
+            let entry = shown_by_batch.entry(batch_id.clone()).or_insert(0);
+            if *is_device {
+                *entry += 1;
+            }
+        }
+    }
+    for row in rows.iter_mut() {
+        if let Some(batch_id) = row.batch_id.as_ref() {
+            row.batch_shown = shown_by_batch.get(batch_id).copied();
+        }
+    }
+
     // W-B03: ceiling reached -> the true count with the same conditions.
     let total = if rows.len() as i64 >= MOVEMENTS_REPORT_LIMIT {
         let count_sql = format!(
@@ -2119,6 +2185,7 @@ fn query_device_snapshot(
                 batch_id: None,
                 batch_role: None,
                 batch_size: None,
+                batch_shown: None,
                 batch_label: None,
                 repair_device_label: None,
                 repair_fault: None,
@@ -2291,6 +2358,7 @@ fn query_cartridge_audit(
                 batch_id: None,
                 batch_role: None,
                 batch_size: None,
+                batch_shown: None,
                 batch_label: None,
                 repair_device_label: None,
                 repair_fault: None,
@@ -2443,6 +2511,7 @@ fn query_cartridge_snapshot(
                 batch_id: None,
                 batch_role: None,
                 batch_size: None,
+                batch_shown: None,
                 batch_label: None,
                 repair_device_label: None,
                 repair_fault: None,
@@ -2608,6 +2677,7 @@ fn query_requests_inner(
                 batch_id: None,
                 batch_role: None,
                 batch_size: None,
+                batch_shown: None,
                 batch_label: None,
                 repair_device_label: None,
                 repair_fault: None,
@@ -3567,6 +3637,77 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // INT-06/F18: ячейка «Пакет» (quick-261121-hef)
+    // -----------------------------------------------------------------------
+
+    fn batch_row(size: Option<i64>, shown: Option<i64>) -> ReportRow {
+        let mut row = make_row("2026-01", "Монитор", "Иванов И.И.");
+        row.batch_id = Some("b-1".to_string());
+        row.batch_role = Some("member".to_string());
+        row.batch_label = Some("Стенд А".to_string());
+        row.batch_size = size;
+        row.batch_shown = shown;
+        row
+    }
+
+    #[test]
+    fn batch_cell_empty_outside_batch() {
+        let row = make_row("2026-01", "Монитор", "Иванов И.И.");
+        assert_eq!(batch_cell(&row), "");
+        assert_eq!(row_field(&row, "batch", UtcOffset::UTC, false), "");
+    }
+
+    #[test]
+    fn batch_cell_full_batch_shows_plural_count() {
+        let row = batch_row(Some(3), Some(3));
+        assert_eq!(batch_cell(&row), "Перенос группы «Стенд А» (3 устройства)");
+        assert_eq!(
+            row_field(&row, "batch", UtcOffset::UTC, true),
+            "Перенос группы «Стенд А» (3 устройства)"
+        );
+    }
+
+    #[test]
+    fn batch_cell_partial_batch_shows_k_of_n() {
+        let row = batch_row(Some(3), Some(2));
+        assert_eq!(
+            batch_cell(&row),
+            "Перенос группы «Стенд А» (показано 2 из 3 устройств)"
+        );
+    }
+
+    #[test]
+    fn batch_cell_plural_forms_match_screen() {
+        for (n, word) in [
+            (1, "устройство"),
+            (2, "устройства"),
+            (5, "устройств"),
+            (11, "устройств"),
+            (12, "устройств"),
+            (21, "устройство"),
+            (22, "устройства"),
+            (111, "устройств"),
+        ] {
+            let row = batch_row(Some(n), Some(n));
+            assert_eq!(
+                batch_cell(&row),
+                format!("Перенос группы «Стенд А» ({n} {word})"),
+                "n = {n}"
+            );
+        }
+    }
+
+    #[test]
+    fn batch_cell_empty_label_reads_without_name() {
+        let mut row = batch_row(Some(1), Some(1));
+        row.batch_label = Some("  ".to_string());
+        assert_eq!(
+            batch_cell(&row),
+            "Перенос группы «без имени» (1 устройство)"
+        );
+    }
+
+    // -----------------------------------------------------------------------
     // export_pdf HTML-render behavior tests (Phase 17, D-01..D-08)
     // -----------------------------------------------------------------------
 
@@ -3615,6 +3756,7 @@ mod tests {
             batch_id: None,
             batch_role: None,
             batch_size: None,
+            batch_shown: None,
             batch_label: None,
             repair_device_label: None,
             repair_fault: None,

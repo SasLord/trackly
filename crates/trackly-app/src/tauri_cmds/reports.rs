@@ -73,6 +73,8 @@ fn columns_for(report_type: &str, omit_type_column: bool) -> Vec<&'static str> {
                 "place_path",
                 "actor_name",
                 "reason",
+                // INT-06/F18: пакет переноса группы — последней колонкой.
+                "batch",
             ];
             if omit_type_column {
                 cols.retain(|c| *c != "entity_type_label");
@@ -123,7 +125,16 @@ fn column_labels_for(report_type: &str, omit_type_column: bool) -> Vec<&'static 
         }
         // HST-04 (D-23) — index-aligned with columns_for("movements") above.
         "movements" => {
-            let mut labels = vec!["Дата", "Предмет", "Тип", "Откуда", "Куда", "Кем", "Причина"];
+            let mut labels = vec![
+                "Дата",
+                "Предмет",
+                "Тип",
+                "Откуда",
+                "Куда",
+                "Кем",
+                "Причина",
+                "Пакет",
+            ];
             if omit_type_column {
                 labels.retain(|l| *l != "Тип");
             }
@@ -990,8 +1001,10 @@ mod tests {
             !labels.contains(&"Тип"),
             "Тип label must be omitted: {labels:?}"
         );
-        assert_eq!(cols.len(), 6);
-        assert_eq!(labels.len(), 6);
+        assert_eq!(cols.len(), 7);
+        assert_eq!(labels.len(), 7);
+        assert_eq!(cols.last(), Some(&"batch"));
+        assert_eq!(labels.last(), Some(&"Пакет"));
     }
 
     /// Mirror of the test above: the flag unset (default, no type filter
@@ -1002,8 +1015,10 @@ mod tests {
         let labels = column_labels_for("movements", false);
         assert!(cols.contains(&"entity_type_label"));
         assert!(labels.contains(&"Тип"));
-        assert_eq!(cols.len(), 7);
-        assert_eq!(labels.len(), 7);
+        assert_eq!(cols.len(), 8);
+        assert_eq!(labels.len(), 8);
+        assert_eq!(cols.last(), Some(&"batch"));
+        assert_eq!(labels.last(), Some(&"Пакет"));
     }
 
     /// `omit_type_column` is meaningful only for `"movements"` — every other

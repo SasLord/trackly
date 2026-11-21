@@ -347,3 +347,134 @@ fn report_trunc_notice_matches_golden_fixture() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// quick-261121-hef (INT-06, F18): LIMIT режет пакет переноса группы — экран,
+// CSV и печать честно пишут «показано K из N», а не голое N.
+// ---------------------------------------------------------------------------
+
+/// Пакет переноса группы «Стенд А»: строка группы + `devices` устройств,
+/// `created_at_utc` от `start_ts`. Тот же `batch_id` и снимок имени.
+async fn seed_group_batch(ctx: &AppCtx, from: i64, to: i64, devices: &[i64], start_ts: i64) {
+    exec(
+        ctx,
+        "INSERT INTO place_movements (entity_type, entity_id, from_place_id, from_place_path, \
+         to_place_id, to_place_path, source, created_at_utc, batch_id, entity_label) \
+         VALUES ('group', 1, ?1, 'Склад А', ?2, 'Склад Б', 'manual', ?3, 'hef-batch', 'Стенд А')",
+        vec![int(from), int(to), int(start_ts)],
+    )
+    .await;
+    for (i, d) in devices.iter().enumerate() {
+        exec(
+            ctx,
+            "INSERT INTO place_movements (entity_type, entity_id, from_place_id, \
+             from_place_path, to_place_id, to_place_path, source, created_at_utc, batch_id, \
+             entity_label) \
+             VALUES ('device', ?1, ?2, 'Склад А', ?3, 'Склад Б', 'manual', ?4, 'hef-batch', \
+             'Стенд А')",
+            vec![int(*d), int(from), int(to), int(start_ts + 1 + i as i64)],
+        )
+        .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_trunc_hef_limit_cutting_batch_reports_shown_of_total() {
+    let (ctx, _dir) = make_test_ctx().await;
+    // 998 обычных перемещений, затем пакет: группа + 3 устройства. LIMIT 1000
+    // оставляет строку группы и одно устройство пакета.
+    let s = seed_basic(&ctx, 998).await;
+    let mut devs = Vec::new();
+    for i in 0..3 {
+        devs.push(
+            seed_device(
+                &ctx,
+                &format!("Монитор {i}"),
+                &format!("INV-B-{i}"),
+                1,
+                s.place_a,
+            )
+            .await,
+        );
+    }
+    seed_group_batch(&ctx, s.place_a, s.place_b, &devs, 1_800_000_000).await;
+
+    let resp = build_reports_list_movements(&ctx, &admin(), ReportFilter::default(), wide_period())
+        .await
+        .expect("movements report");
+    assert_eq!(resp.rows.len(), 1000);
+    let batch_rows: Vec<_> = resp
+        .rows
+        .iter()
+        .filter(|r| r.batch_id.as_deref() == Some("hef-batch"))
+        .collect();
+    assert_eq!(batch_rows.len(), 2, "строка группы + одно устройство");
+    for r in &batch_rows {
+        assert_eq!(r.batch_size, Some(3));
+        assert_eq!(
+            r.batch_shown,
+            Some(1),
+            "batch_shown < batch_size при усечении"
+        );
+    }
+    assert!(resp
+        .rows
+        .iter()
+        .filter(|r| r.batch_id.is_none())
+        .all(|r| r.batch_shown.is_none()));
+
+    let expected = "Перенос группы «Стенд А» (показано 1 из 3 устройств)";
+    let bytes = build_reports_export_csv(
+        &ctx,
+        &admin(),
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(wide_period()),
+    )
+    .await
+    .expect("csv");
+    let text = String::from_utf8(bytes).expect("utf8");
+    let header = text.trim_start_matches('\u{FEFF}').lines().next().unwrap();
+    assert!(header.ends_with(";Пакет"), "{header}");
+    assert_eq!(text.matches(expected).count(), 2, "обе строки пакета в CSV");
+
+    let html = build_reports_export_pdf(
+        &ctx,
+        &admin(),
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(wide_period()),
+    )
+    .await
+    .expect("html");
+    assert!(html.contains("Пакет"), "колонка «Пакет» в печати");
+    assert!(html.contains(expected), "«показано K из N» в печати");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_trunc_hef_full_batch_shown_equals_size() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let s = seed_basic(&ctx, 2).await;
+    let mut devs = Vec::new();
+    for i in 0..2 {
+        devs.push(
+            seed_device(
+                &ctx,
+                &format!("Монитор {i}"),
+                &format!("INV-B-{i}"),
+                1,
+                s.place_a,
+            )
+            .await,
+        );
+    }
+    seed_group_batch(&ctx, s.place_a, s.place_b, &devs, 1_800_000_000).await;
+    let resp = build_reports_list_movements(&ctx, &admin(), ReportFilter::default(), wide_period())
+        .await
+        .expect("movements report");
+    let batch_rows: Vec<_> = resp.rows.iter().filter(|r| r.batch_id.is_some()).collect();
+    assert_eq!(batch_rows.len(), 3);
+    for r in &batch_rows {
+        assert_eq!((r.batch_size, r.batch_shown), (Some(2), Some(2)));
+    }
+}

@@ -69,6 +69,7 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
             batch_id: None,
             batch_role: None,
             batch_size: None,
+            batch_shown: None,
             batch_label: None,
             repair_device_label: None,
             repair_fault: None,
@@ -172,6 +173,7 @@ async fn csv_export_guards_formula_injection() {
             batch_id: None,
             batch_role: None,
             batch_size: None,
+            batch_shown: None,
             batch_label: None,
             repair_device_label: None,
             repair_fault: None,
@@ -203,4 +205,98 @@ async fn csv_export_guards_formula_injection() {
         body.contains("'+payload"),
         "cell starting with '+' must be escaped; got: {body:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// quick-261121-hef (INT-06): CSV «Перемещений» несёт колонку «Пакет» — имя
+// группы в каждой строке пакета, пусто у обычного перемещения. Сквозной путь
+// через `build_reports_export_csv` (колонки — из `columns_for`).
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn csv_export_movements_has_batch_column_for_group_transfer() {
+    use trackly_app::context::AppCtx;
+    use trackly_app::dto::reports::{PeriodDto, ReportFilter};
+    use trackly_app::tauri_cmds::reports::build_reports_export_csv;
+    use trackly_core::auth::Identity;
+    use trackly_infra::error_conversions::map_rusqlite;
+
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let paths = trackly_infra::Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("paths");
+    let config = trackly_infra::AppConfig::default();
+    let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
+    let ctx = AppCtx::build(paths, config, guard).await.expect("ctx");
+
+    ctx.writer
+        .execute(|conn| {
+            conn.execute_batch(
+                "INSERT INTO places (id, kind, name, parent_id, is_storage, created_at_utc, \
+                   updated_at_utc, version) \
+                 VALUES (901, 'room', 'Склад А', NULL, 0, 1700000000, 1700000000, 1), \
+                        (902, 'room', 'Склад Б', NULL, 0, 1700000000, 1700000000, 1); \
+                 INSERT INTO devices (id, type_id, name, inventory_number, place_id, status_id, \
+                   created_at_utc, updated_at_utc, version) \
+                 VALUES (801, 1, 'Монитор одиночный', 'INV-H-1', 901, 1, 1700000000, 1700000000, 1), \
+                        (802, 1, 'Системный блок стенда', 'INV-H-2', 902, 1, 1700000000, 1700000000, 1), \
+                        (803, 1, 'Монитор стенда', 'INV-H-3', 902, 1, 1700000000, 1700000000, 1); \
+                 INSERT INTO place_movements (entity_type, entity_id, from_place_id, \
+                   from_place_path, to_place_id, to_place_path, source, created_at_utc, \
+                   batch_id, entity_label) \
+                 VALUES ('device', 801, 901, 'Склад А', 902, 'Склад Б', 'manual', 1800000000, NULL, NULL), \
+                        ('group', 1, 901, 'Склад А', 902, 'Склад Б', 'manual', 1800000100, 'hef-b', 'Стенд А'), \
+                        ('device', 802, 901, 'Склад А', 902, 'Склад Б', 'manual', 1800000101, 'hef-b', 'Стенд А'), \
+                        ('device', 803, 901, 'Склад А', 902, 'Склад Б', 'manual', 1800000102, 'hef-b', 'Стенд А');",
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("seed");
+
+    let bytes = build_reports_export_csv(
+        &ctx,
+        &Identity::trusted_admin(),
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(PeriodDto {
+            mode: "range".to_string(),
+            year: None,
+            month: None,
+            date_from: Some("2000-01-01".to_string()),
+            date_to: Some("2099-12-31".to_string()),
+        }),
+    )
+    .await
+    .expect("csv");
+    let text = String::from_utf8(bytes).expect("utf8");
+    let mut lines = text
+        .trim_start_matches('\u{FEFF}')
+        .lines()
+        .filter(|l| !l.is_empty());
+    let header: Vec<&str> = lines.next().unwrap().split(';').collect();
+    let batch_idx = header
+        .iter()
+        .position(|h| *h == "Пакет")
+        .unwrap_or_else(|| panic!("нет колонки «Пакет»: {header:?}"));
+    assert_eq!(batch_idx, header.len() - 1, "«Пакет» — последняя колонка");
+
+    let rows: Vec<Vec<&str>> = lines.map(|l| l.split(';').collect()).collect();
+    assert_eq!(rows.len(), 4);
+    let cell = |needle: &str| -> &str {
+        rows.iter()
+            .find(|r| r.iter().any(|c| c.contains(needle)))
+            .unwrap_or_else(|| panic!("нет строки {needle}"))[batch_idx]
+    };
+    assert_eq!(cell("Монитор одиночный"), "", "обычное перемещение");
+    for name in ["Системный блок стенда", "Монитор стенда"] {
+        assert_eq!(
+            cell(name),
+            "Перенос группы «Стенд А» (2 устройства)",
+            "{name}"
+        );
+    }
+    let batch_cells = rows
+        .iter()
+        .filter(|r| r[batch_idx].contains("Стенд А"))
+        .count();
+    assert_eq!(batch_cells, 3, "строка группы тоже несёт ячейку пакета");
 }

@@ -161,6 +161,12 @@ pub struct ReportRow {
     /// фильтр не искажают подпись «(N устройств)».
     #[specta(type = Option<i32>)]
     pub batch_size: Option<i64>,
+    /// F18: число строк УСТРОЙСТВ этого пакета в ВИДИМОМ (возвращённом)
+    /// наборе. `< batch_size` значит, что пакет показан частично (усечение
+    /// LIMIT или фильтр) — экран, CSV и печать пишут «показано K из N».
+    /// `None` вне пакета и во всех остальных доменах отчётов.
+    #[specta(type = Option<i32>)]
+    pub batch_shown: Option<i64>,
     /// Имя группы (снимок `place_movements.entity_label`) — одинаково в каждой
     /// строке пакета.
     pub batch_label: Option<String>,
