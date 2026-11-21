@@ -361,3 +361,36 @@ pub struct GroupCardDto {
     #[specta(type = Option<i32>)]
     pub link_property_id: Option<i64>,
 }
+
+/// Списать устройство (D-19, D-20): `version` — CAS по версии устройства.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupWriteOffDeviceDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    /// `true` — вывести из группы; `false` — оставить в группе неактивной строкой.
+    #[serde(default)]
+    pub release_from_group: bool,
+}
+
+/// Списать якорь группы (D-21): `version` — CAS по версии группы.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupWriteOffGroupDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+}
+
+/// Итог списания.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupWriteOffResultDto {
+    /// Освобождено из группы (устройство при выводе или члены расформированной группы).
+    #[specta(type = i32)]
+    pub released_devices: i32,
+    /// Группа расформирована.
+    pub disbanded: bool,
+    #[specta(type = Vec<i32>)]
+    pub changed_place_ids: Vec<i64>,
+}

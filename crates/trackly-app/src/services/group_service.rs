@@ -34,7 +34,8 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::{
-    SqliteDeviceRepository, SqliteGroupRepository, SqliteGroupTypeRepository, SqlitePlaceRepository,
+    SqliteDeviceRepository, SqliteGroupRepository, SqliteGroupTypeRepository,
+    SqlitePlaceRepository, SqliteRepairRepository,
 };
 
 use crate::dto::device::DeviceDto;
@@ -43,7 +44,7 @@ use crate::dto::groups::{
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
     GroupGhostDeviceDto, GroupMemberDeviceDto, GroupMoveDevicesResultDto, GroupMoveResultDto,
     GroupPrinterDto, GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto,
-    UserOptionDto,
+    GroupWriteOffDeviceDto, GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
 };
 use crate::dto::printer::WsEvent;
 use crate::services::group_act_plan;
@@ -238,6 +239,54 @@ fn device_briefs(conn: &Connection, ids: &[i64]) -> Result<HashMap<i64, DeviceBr
         out.extend(rows);
     }
     Ok(out)
+}
+
+/// Общее расформирование группы (D-22): жёсткое удаление строки группы (члены
+/// освобождаются каскадом, вложенные становятся корневыми) и запись аудита `delete`.
+/// Зовётся из `delete_group` и из `write_off_group` (substitute): тело одно.
+fn delete_group_in_tx_audited(
+    tx: &rusqlite::Transaction<'_>,
+    repo: &SqliteGroupRepository,
+    audit_repo: &SqliteAuditLogRepository,
+    before: &GroupDto,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<(), AppError> {
+    repo.delete_group_in_tx(tx, before.id)?;
+    audit_repo.insert(
+        tx,
+        AuditEntry {
+            entity_type: "group",
+            entity_id: before.id,
+            action: "delete",
+            user_id,
+            before_json: Some(to_json(before)?),
+            after_json: None,
+            payload_json: Some(to_json(&serde_json::json!({
+                "released_devices": before.direct_device_count,
+                "nested_groups": before.nested_group_count,
+            }))?),
+            created_at_utc: now,
+        },
+    )?;
+    Ok(())
+}
+
+/// Id статуса «Списано» по коду (не по подписи).
+fn written_off_status_id(tx: &rusqlite::Transaction<'_>) -> Result<i64, AppError> {
+    tx.query_row(
+        "SELECT id FROM device_statuses WHERE code = ?1",
+        rusqlite::params![STATUS_CODE_WRITTEN_OFF],
+        |r| r.get(0),
+    )
+    .map_err(map_rusqlite)
+}
+
+fn write_off_status_error() -> AppError {
+    AppError::Validation {
+        field: "id".to_string(),
+        message: "Списать можно только устройство со статусом «На списание».".to_string(),
+    }
 }
 
 fn to_json<T: serde::Serialize>(v: &T) -> Result<String, AppError> {
@@ -868,23 +917,7 @@ impl GroupService {
                         });
                     }
                 }
-                repo.delete_group_in_tx(&tx, id)?;
-                audit_repo.insert(
-                    &tx,
-                    AuditEntry {
-                        entity_type: "group",
-                        entity_id: id,
-                        action: "delete",
-                        user_id,
-                        before_json: Some(to_json(&before)?),
-                        after_json: None,
-                        payload_json: Some(to_json(&serde_json::json!({
-                            "released_devices": released,
-                            "nested_groups": nested,
-                        }))?),
-                        created_at_utc: now,
-                    },
-                )?;
+                delete_group_in_tx_audited(&tx, &repo, &audit_repo, &before, user_id, now)?;
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(GroupDeleteResultDto {
                     released_devices: released as i32,
@@ -897,6 +930,196 @@ impl GroupService {
         let group_ids = vec![id];
         self.broadcast_entities("delete_group", place_ids, device_ids, group_ids);
         Ok(out)
+    }
+
+    /// Списать устройство (D-19, D-20, D-22): статус «Списано» по коду, при
+    /// `release_from_group` — вывод из группы; одна транзакция, одна запись аудита.
+    /// Якорь группы списывается только через группу.
+    pub async fn write_off_device(
+        &self,
+        caller: &Identity,
+        dto: GroupWriteOffDeviceDto,
+    ) -> Result<GroupWriteOffResultDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        authorize(caller, &Action::MutateDevices)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let audit_repo = self.audit_repo.clone();
+
+        let (result, device_id, group_ids) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let groups = SqliteGroupRepository;
+                let devices = SqliteDeviceRepository;
+                let device = devices.get_in_tx(&tx, dto.device_id)?;
+                if device.version != dto.version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "device",
+                        id: dto.device_id,
+                        expected: dto.version,
+                        actual: device.version,
+                    });
+                }
+                if device.status_code != STATUS_CODE_TO_WRITE_OFF {
+                    return Err(write_off_status_error());
+                }
+                if SqliteRepairRepository
+                    .open_repair_request_id(&tx, dto.device_id)?
+                    .is_some()
+                {
+                    return Err(AppError::Conflict {
+                        reason: "Нельзя изменить устройство: по нему открыта заявка на ремонт."
+                            .to_string(),
+                    });
+                }
+                if let Some(anchor_group) =
+                    groups.anchor_group_of_device_in_tx(&tx, dto.device_id)?
+                {
+                    return Err(AppError::Validation {
+                        field: "device_id".to_string(),
+                        message: format!(
+                            "Устройство — якорь группы «{}»; спишите его через группу.",
+                            anchor_group.name
+                        ),
+                    });
+                }
+                let status_id = written_off_status_id(&tx)?;
+                devices.set_status_in_tx(&tx, dto.device_id, status_id, now)?;
+
+                let membership = groups.group_of_device_in_tx(&tx, dto.device_id)?;
+                let mut released_group_id: Option<i64> = None;
+                let mut group_ids: Vec<i64> = Vec::new();
+                if let Some(m) = &membership {
+                    group_ids.push(m.id);
+                    if dto.release_from_group {
+                        groups.remove_device_in_tx(&tx, dto.device_id)?;
+                        released_group_id = Some(m.id);
+                    }
+                }
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "device",
+                        entity_id: dto.device_id,
+                        action: "write_off",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(to_json(&serde_json::json!({
+                            "released_group_id": released_group_id,
+                        }))?),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                let result = GroupWriteOffResultDto {
+                    released_devices: i32::from(released_group_id.is_some()),
+                    disbanded: false,
+                    changed_place_ids: device.place_id.into_iter().collect(),
+                };
+                Ok((result, dto.device_id, group_ids))
+            })
+            .await?;
+
+        let place_ids = result.changed_place_ids.clone();
+        self.broadcast_entities("write_off_device", place_ids, vec![device_id], group_ids);
+        Ok(result)
+    }
+
+    /// Списать якорь группы (D-21, D-22). substitute: якорь списан, группа
+    /// расформирована, члены свободны (статус и место не меняются). teardown:
+    /// списан только донор, запись разбора и детали остаются.
+    pub async fn write_off_group(
+        &self,
+        caller: &Identity,
+        dto: GroupWriteOffGroupDto,
+    ) -> Result<GroupWriteOffResultDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        authorize(caller, &Action::MutateDevices)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let type_repo = self.type_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let (result, anchor_id, group_id) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let devices = SqliteDeviceRepository;
+                let before = group_dto_on(&tx, &repo, &type_repo, dto.id)?;
+                if before.version != dto.version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "group",
+                        id: dto.id,
+                        expected: dto.version,
+                        actual: before.version,
+                    });
+                }
+                let Some(anchor_id) = before.anchor_device_id else {
+                    return Err(AppError::Validation {
+                        field: "id".to_string(),
+                        message: "У этой группы нет якоря.".to_string(),
+                    });
+                };
+                let anchor = devices.get_in_tx(&tx, anchor_id)?;
+                if anchor.status_code != STATUS_CODE_TO_WRITE_OFF {
+                    return Err(write_off_status_error());
+                }
+                if SqliteRepairRepository
+                    .open_repair_request_id(&tx, anchor_id)?
+                    .is_some()
+                {
+                    return Err(AppError::Conflict {
+                        reason: "Нельзя изменить устройство: по нему открыта заявка на ремонт."
+                            .to_string(),
+                    });
+                }
+                let status_id = written_off_status_id(&tx)?;
+                devices.set_status_in_tx(&tx, anchor_id, status_id, now)?;
+                let disband = before.type_behavior == "substitute";
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "device",
+                        entity_id: anchor_id,
+                        action: "write_off",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(to_json(&serde_json::json!({
+                            "group_id": dto.id,
+                            "disbanded": disband,
+                        }))?),
+                        created_at_utc: now,
+                    },
+                )?;
+                let mut released = 0;
+                if disband {
+                    released = before.direct_device_count as i32;
+                    delete_group_in_tx_audited(&tx, &repo, &audit_repo, &before, user_id, now)?;
+                }
+                tx.commit().map_err(map_rusqlite)?;
+                let result = GroupWriteOffResultDto {
+                    released_devices: released,
+                    disbanded: disband,
+                    changed_place_ids: anchor.place_id.into_iter().collect(),
+                };
+                Ok((result, anchor_id, dto.id))
+            })
+            .await?;
+
+        let place_ids = result.changed_place_ids.clone();
+        self.broadcast_entities(
+            "write_off_group",
+            place_ids,
+            vec![anchor_id],
+            vec![group_id],
+        );
+        Ok(result)
     }
 
     /// Перенести группу вместе с составом (GRP-06, D-17/D-20/D-24). Одна транзакция:
