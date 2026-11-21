@@ -55,5 +55,7 @@ mod acts_undo;
 mod acts_update;
 #[path = "../acts_update_return.rs"]
 mod acts_update_return;
+#[path = "../acts_written_off_member.rs"]
+mod acts_written_off_member;
 #[path = "../group_act_expansion.rs"]
 mod group_act_expansion;
