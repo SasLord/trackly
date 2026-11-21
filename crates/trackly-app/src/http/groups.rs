@@ -13,17 +13,19 @@ use crate::context::AppCtx;
 use crate::dto::groups::{
     DeviceMembershipDto, GroupActExpansionDto, GroupAddDevicesDto, GroupAddDevicesResultDto,
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
-    GroupMoveDto, GroupMoveResultDto, GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto,
-    GroupSetValuesDto, UserOptionDto,
+    GroupMoveDevicesDto, GroupMoveDevicesResultDto, GroupMoveDto, GroupMoveResultDto,
+    GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto, GroupSetValuesDto,
+    GroupWriteOffDeviceDto, GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::groups::{
     build_groups_act_expansion, build_groups_add_devices, build_groups_card,
     build_groups_composition, build_groups_create, build_groups_delete, build_groups_for_devices,
-    build_groups_get, build_groups_list, build_groups_move, build_groups_remove_devices,
-    build_groups_search, build_groups_set_parent, build_groups_set_values, build_groups_update,
-    build_groups_user_options,
+    build_groups_get, build_groups_list, build_groups_move, build_groups_move_devices,
+    build_groups_remove_devices, build_groups_search, build_groups_set_parent,
+    build_groups_set_values, build_groups_update, build_groups_user_options,
+    build_groups_write_off_device, build_groups_write_off_group,
 };
 
 // ---------------------------------------------------------------------------
@@ -85,6 +87,24 @@ pub struct SetParentPayload {
 #[serde(rename_all = "camelCase")]
 pub struct AddDevicesPayload {
     pub dto: GroupAddDevicesDto,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveDevicesPayload {
+    pub dto: GroupMoveDevicesDto,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteOffDevicePayload {
+    pub dto: GroupWriteOffDeviceDto,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteOffGroupPayload {
+    pub dto: GroupWriteOffGroupDto,
 }
 
 #[derive(serde::Deserialize)]
@@ -303,6 +323,51 @@ pub async fn handler_add_devices(
     ))
 }
 
+pub async fn handler_move_devices(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<MoveDevicesPayload>,
+) -> Result<Json<GroupMoveDevicesResultDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_groups_move_devices(&ctx, &identity, payload.dto)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_write_off_device(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<WriteOffDevicePayload>,
+) -> Result<Json<GroupWriteOffResultDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_groups_write_off_device(&ctx, &identity, payload.dto)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_write_off_group(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<WriteOffGroupPayload>,
+) -> Result<Json<GroupWriteOffResultDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_groups_write_off_group(&ctx, &identity, payload.dto)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_remove_devices(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -363,6 +428,15 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/groups_delete", post(handler_delete))
         .route("/api/v1/groups_set_parent", post(handler_set_parent))
         .route("/api/v1/groups_add_devices", post(handler_add_devices))
+        .route("/api/v1/groups_move_devices", post(handler_move_devices))
+        .route(
+            "/api/v1/groups_write_off_device",
+            post(handler_write_off_device),
+        )
+        .route(
+            "/api/v1/groups_write_off_group",
+            post(handler_write_off_group),
+        )
         .route(
             "/api/v1/groups_remove_devices",
             post(handler_remove_devices),

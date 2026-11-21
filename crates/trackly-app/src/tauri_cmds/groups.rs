@@ -20,8 +20,9 @@ use crate::context::AppCtx;
 use crate::dto::groups::{
     DeviceMembershipDto, GroupActExpansionDto, GroupAddDevicesDto, GroupAddDevicesResultDto,
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
-    GroupMoveDto, GroupMoveResultDto, GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto,
-    GroupSetValuesDto, UserOptionDto,
+    GroupMoveDevicesDto, GroupMoveDevicesResultDto, GroupMoveDto, GroupMoveResultDto,
+    GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto, GroupSetValuesDto,
+    GroupWriteOffDeviceDto, GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -168,6 +169,38 @@ pub async fn build_groups_add_devices(
     ctx.groups
         .add_devices(caller, dto.group_id, dto.device_ids)
         .await
+}
+
+/// Мутация: `MutateGroups` — перенос устройств в группу одной операцией (D-04).
+pub async fn build_groups_move_devices(
+    ctx: &AppCtx,
+    caller: &Identity,
+    dto: GroupMoveDevicesDto,
+) -> Result<GroupMoveDevicesResultDto, AppError> {
+    authorize(caller, &Action::MutateGroups)?;
+    ctx.groups
+        .move_devices(caller, dto.group_id, dto.device_ids)
+        .await
+}
+
+/// Мутация: `MutateGroups` — списание устройства (D-19, D-20).
+pub async fn build_groups_write_off_device(
+    ctx: &AppCtx,
+    caller: &Identity,
+    dto: GroupWriteOffDeviceDto,
+) -> Result<GroupWriteOffResultDto, AppError> {
+    authorize(caller, &Action::MutateGroups)?;
+    ctx.groups.write_off_device(caller, dto).await
+}
+
+/// Мутация: `MutateGroups` — списание якоря группы (D-21).
+pub async fn build_groups_write_off_group(
+    ctx: &AppCtx,
+    caller: &Identity,
+    dto: GroupWriteOffGroupDto,
+) -> Result<GroupWriteOffResultDto, AppError> {
+    authorize(caller, &Action::MutateGroups)?;
+    ctx.groups.write_off_group(caller, dto).await
 }
 
 /// Мутация: `MutateGroups` — вывод устройств из группы (D-02); число выведенных.
@@ -336,6 +369,36 @@ pub async fn groups_set_parent(
 ) -> Result<GroupMoveResultDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_groups_set_parent(state.inner(), &caller, dto).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn groups_move_devices(
+    state: tauri::State<'_, AppCtx>,
+    dto: GroupMoveDevicesDto,
+) -> Result<GroupMoveDevicesResultDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_groups_move_devices(state.inner(), &caller, dto).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn groups_write_off_device(
+    state: tauri::State<'_, AppCtx>,
+    dto: GroupWriteOffDeviceDto,
+) -> Result<GroupWriteOffResultDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_groups_write_off_device(state.inner(), &caller, dto).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn groups_write_off_group(
+    state: tauri::State<'_, AppCtx>,
+    dto: GroupWriteOffGroupDto,
+) -> Result<GroupWriteOffResultDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_groups_write_off_group(state.inner(), &caller, dto).await
 }
 
 #[tauri::command]
