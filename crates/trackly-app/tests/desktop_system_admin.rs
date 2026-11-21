@@ -95,13 +95,16 @@ async fn system_admin_closes_first_run_wizard() {
     assert!(!ctx.auth.needs_bootstrap().await.unwrap());
     let err = ctx
         .auth
-        .bootstrap_first_admin(UserNew {
-            login: "ivanov".into(),
-            full_name: "Иванов И.И.".into(),
-            password: "correct-horse-1".into(),
-            role: "admin".into(),
-            email: None,
-        })
+        .bootstrap_first_admin(
+            UserNew {
+                login: "ivanov".into(),
+                full_name: "Иванов И.И.".into(),
+                password: "correct-horse-1".into(),
+                role: "admin".into(),
+                email: None,
+            },
+            None,
+        )
         .await
         .expect_err("bootstrap closed");
     assert!(matches!(err, AppError::Conflict { .. }), "{err:?}");

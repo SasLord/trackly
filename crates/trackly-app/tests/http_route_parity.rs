@@ -633,8 +633,9 @@ async fn live_router_answers_every_tauri_command_path() {
 /// получает `404` + `application/json` (тело `AppError`, `code: NOT_FOUND`).
 ///
 /// Префикс сверяется по границе сегмента: `/apiary` — это SPA-путь и JSON-404
-/// получать не должен (охранный кейс, проверяется только если `ui/dist`
-/// собран и вшит в бинарник — иначе fallback честно отвечает 404 text/plain).
+/// получать не должен (проверяется всегда; без вшитого `ui/dist` fallback
+/// честно отвечает 404 text/plain). `GET /` проверяется только при собранном
+/// `ui/dist`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unknown_api_path_answers_json_404_not_spa() {
     let dir = tempfile::TempDir::new().expect("tempdir");
@@ -705,23 +706,27 @@ async fn unknown_api_path_answers_json_404_not_spa() {
         );
     }
 
-    // Охранные кейсы — только при вшитом ui/dist/index.html.
+    // /apiary — SPA-путь: JSON-404 недопустим НЕЗАВИСИМО от сборки ui/dist
+    // (без вшитого index.html fallback отвечает 404 text/plain — это не JSON).
+    // WR-08 ревью 41.7: раньше проба жила внутри `if ui_bundled` и в CI без
+    // ui/dist молча не исполнялась.
+    let (status, ct, _) = probe(&app, "GET", "/apiary").await;
+    assert!(
+        !(status == 404 && ct.contains("application/json")),
+        "GET /apiary получил JSON-404: префикс сверяется не по границе сегмента"
+    );
+
+    // GET / — только при вшитом ui/dist/index.html.
     let ui_bundled = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../ui/dist/index.html")
         .exists();
     if ui_bundled {
         let (status, _, _) = probe(&app, "GET", "/").await;
         assert_eq!(status, 200, "GET / должен по-прежнему отдавать SPA");
-
-        let (status, ct, _) = probe(&app, "GET", "/apiary").await;
-        assert!(
-            !(status == 404 && ct.contains("application/json")),
-            "GET /apiary получил JSON-404: префикс сверяется не по границе сегмента"
-        );
     } else {
         eprintln!(
             "unknown_api_path_answers_json_404_not_spa: ui/dist/index.html не собран — \
-             охранные кейсы GET / и GET /apiary пропущены"
+             охранный кейс GET / пропущен"
         );
     }
 

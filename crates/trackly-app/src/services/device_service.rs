@@ -923,6 +923,9 @@ impl DeviceService {
         let outcome = self.create_without_broadcast(new, printer).await?;
         if let DeviceSaveOutcome::Created(ref dto) = outcome {
             // Unconditional: sent regardless of the inventory number (trap P4).
+            // Без места place_ids пуст, но deviceIds шлём всегда (IN-03): устройство
+            // без места видно в списках «Устройств» — картридж без места не виден
+            // нигде, поэтому cartridge_service::create для него не шлёт ничего.
             let place_ids: Vec<i64> = dto.place_id.into_iter().collect();
             let device_ids = vec![dto.id];
             self.broadcast_entities(

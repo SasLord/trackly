@@ -31,10 +31,12 @@ use trackly_infra::error_conversions::map_rusqlite;
 
 const PEER: &str = "203.0.113.7:54321";
 
-async fn build_test_components() -> anyhow::Result<(axum::Router, AppCtx)> {
+/// Третий элемент — `TempDir`: держится вызывающим до конца теста и удаляется
+/// при drop (IN-02 ревью 41.7: `dir.keep()` протекал каталогами во временную
+/// папку на каждый прогон).
+async fn build_test_components() -> anyhow::Result<(axum::Router, AppCtx, tempfile::TempDir)> {
     let dir = tempfile::TempDir::new()?;
-    let dir_path = dir.keep(); // не дропаем TempDir — путь нужен живым
-    let paths = trackly_infra::Paths::resolve_for_exe_dir(dir_path)?;
+    let paths = trackly_infra::Paths::resolve_for_exe_dir(dir.path().to_path_buf())?;
     let config = trackly_infra::AppConfig::default();
     let log_guard = trackly_app::logging::init(&paths, &config).or_else(|_| {
         let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
@@ -54,7 +56,7 @@ async fn build_test_components() -> anyhow::Result<(axum::Router, AppCtx)> {
         .await?;
     let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
     let router = build_router(&ctx, session_store);
-    Ok((router, ctx))
+    Ok((router, ctx, dir))
 }
 
 /// Тело запроса. Роль «employee» присылается СПЕЦИАЛЬНО неверной: сервер обязан
@@ -106,6 +108,16 @@ async fn scalar_i64(ctx: &AppCtx, sql: &'static str) -> i64 {
         .expect("scalar query")
 }
 
+async fn text_scalar(ctx: &AppCtx, sql: &'static str) -> String {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(sql, [], |r| r.get::<_, String>(0))
+                .map_err(map_rusqlite)
+        })
+        .await
+        .expect("text query")
+}
+
 async fn admin_count(ctx: &AppCtx) -> i64 {
     scalar_i64(
         ctx,
@@ -127,7 +139,7 @@ fn user_new(login: &str) -> UserNew {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_route_open_when_needs_bootstrap() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         let (status, bytes) = post(
@@ -161,6 +173,22 @@ async fn bootstrap_route_open_when_needs_bootstrap() {
         .await;
         assert_eq!(audit, 1, "ровно одна запись аудита без автора");
 
+        // WR-05: аудит LAN-маршрута несёт IP пира из ConnectInfo.
+        let payload = text_scalar(
+            &ctx,
+            "SELECT payload_json FROM audit_log WHERE action = 'custom:bootstrap'",
+        )
+        .await;
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload).expect("payload_json bootstrap обязан быть JSON");
+        let peer_ip = PEER
+            .parse::<std::net::SocketAddr>()
+            .expect("PEER")
+            .ip()
+            .to_string();
+        assert_eq!(payload["login"], "bootstrap_admin", "{payload}");
+        assert_eq!(payload["peer"], peer_ip.as_str(), "{payload}");
+
         ctx.shutdown.cancel();
     })
     .await
@@ -170,7 +198,7 @@ async fn bootstrap_route_open_when_needs_bootstrap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_route_closed_after_first_user() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         let (first, _) = post(
@@ -209,7 +237,7 @@ async fn bootstrap_route_closed_after_first_user() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_route_open_when_only_non_admins_exist() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         // Предикат — «нет активного админа», а не «нуль пользователей».
@@ -246,7 +274,7 @@ async fn bootstrap_route_open_when_only_non_admins_exist() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_route_race_exactly_one_wins() {
     tokio::time::timeout(std::time::Duration::from_secs(120), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         let (a, b) = tokio::join!(
@@ -279,7 +307,7 @@ async fn bootstrap_route_race_exactly_one_wins() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_route_rate_limited_per_peer() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         // Невалидный ввод (короткий пароль) -> быстрые 400 без argon2 и без
@@ -314,7 +342,7 @@ async fn bootstrap_route_rate_limited_per_peer() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn users_create_still_requires_session() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         let (status, bytes) = post(
@@ -343,7 +371,7 @@ async fn users_create_still_requires_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_invalid_input_rejected() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         let (status, bytes) = post(
@@ -390,7 +418,7 @@ async fn bootstrap_invalid_input_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_refuses_to_revive_soft_deleted_login() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (router, ctx) = build_test_components().await.expect("components");
+        let (router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         // Мягко удалённый НЕ-админ — окно bootstrap остаётся открытым.
@@ -461,13 +489,23 @@ async fn bootstrap_refuses_to_revive_soft_deleted_login() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_tauri_and_http_share_one_path() {
     tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        let (_router, ctx) = build_test_components().await.expect("components");
+        let (_router, ctx, _dir) = build_test_components().await.expect("components");
         assert!(ctx.auth.needs_bootstrap().await.expect("needs_bootstrap"));
 
         let created = build_auth_bootstrap_tauri(&ctx, user_new("bootstrap_admin"))
             .await
             .expect("первый вызов на чистой БД");
         assert_eq!(created.role, "admin", "Tauri-путь тоже навязывает роль");
+        // WR-05: на пути Tauri пира нет — peer = null.
+        let payload = text_scalar(
+            &ctx,
+            "SELECT payload_json FROM audit_log WHERE action = 'custom:bootstrap'",
+        )
+        .await;
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload).expect("payload_json bootstrap обязан быть JSON");
+        assert_eq!(payload["login"], "bootstrap_admin", "{payload}");
+        assert!(payload["peer"].is_null(), "{payload}");
 
         let again = build_auth_bootstrap_tauri(&ctx, user_new("second_admin")).await;
         assert!(
@@ -481,6 +519,7 @@ async fn bootstrap_tauri_and_http_share_one_path() {
             BootstrapPayload {
                 user_new: user_new("third_admin"),
             },
+            None,
         )
         .await;
         assert!(matches!(http, Err(AppError::Conflict { .. })));

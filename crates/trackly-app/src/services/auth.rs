@@ -1482,6 +1482,7 @@ impl AuthService {
                         role: &role,
                         email: email.as_deref(),
                         now,
+                        audit_payload: None,
                     },
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
@@ -1506,7 +1507,12 @@ impl AuthService {
     ///
     /// Роль присланного `UserNew` игнорируется (mass assignment): сервер
     /// навязывает `admin` до валидации. Запись в `audit_log` — без автора
-    /// (`user_id = NULL`, `action = 'custom:bootstrap'`).
+    /// (`user_id = NULL`, `action = 'custom:bootstrap'`), `payload_json` —
+    /// JSON-объект `{"login": .., "peer": ..}`: `peer` — IP пира TCP-соединения
+    /// (`ConnectInfo`, не заголовки — их подделывает клиент) на LAN-маршруте и
+    /// `null` на пути Tauri. Так аудит отвечает на вопрос D-13 «какой хост занял
+    /// установку» (WR-05 ревью 41.7). Формат `payload_json` у `create_user` —
+    /// прежний (голый логин).
     ///
     /// Путь умеет ТОЛЬКО вставлять: `insert_user_in_tx` вызывается с
     /// `allow_revive = false`, поэтому занятый логин — в том числе мягко
@@ -1515,7 +1521,11 @@ impl AuthService {
     ///
     /// Принятый риск (T-41.7-09): окно откроется снова, если мягко удалён или
     /// деактивирован последний активный администратор; след остаётся в аудите.
-    pub async fn bootstrap_first_admin(&self, mut new: UserNew) -> Result<UserDto, AppError> {
+    pub async fn bootstrap_first_admin(
+        &self,
+        mut new: UserNew,
+        peer: Option<String>,
+    ) -> Result<UserDto, AppError> {
         // Mass assignment: присланная роль не имеет значения (ДО валидации).
         new.role = "admin".to_string();
         Self::validate_user_new(&new)?;
@@ -1537,6 +1547,7 @@ impl AuthService {
         let full_name = new.full_name.clone();
         let role = new.role.clone();
         let email = new.email.clone();
+        let audit_payload = serde_json::json!({ "login": login, "peer": peer }).to_string();
 
         let id = self
             .writer
@@ -1560,6 +1571,7 @@ impl AuthService {
                         role: &role,
                         email: email.as_deref(),
                         now,
+                        audit_payload: Some(&audit_payload),
                     },
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
@@ -2428,6 +2440,8 @@ struct NewUserRow<'a> {
     role: &'a str,
     email: Option<&'a str>,
     now: i64,
+    /// `payload_json` аудита; `None` — голый логин (формат `create_user`).
+    audit_payload: Option<&'a str>,
 }
 
 /// Вставка пользователя (или ревайв мягко удалённого с тем же логином) и запись
@@ -2462,6 +2476,7 @@ fn insert_user_in_tx(
         role,
         email,
         now,
+        audit_payload,
     } = *row;
 
     // Soft-delete leaves the row (with its login) behind, but the schema
@@ -2528,7 +2543,7 @@ fn insert_user_in_tx(
         "INSERT INTO audit_log \
          (entity_type, entity_id, action, user_id, before_json, after_json, payload_json, created_at_utc) \
          VALUES ('user', ?1, ?2, ?3, NULL, NULL, ?4, ?5)",
-        rusqlite::params![id, action, caller_id, login, now],
+        rusqlite::params![id, action, caller_id, audit_payload.unwrap_or(login), now],
     )
     .map_err(map_rusqlite)?;
 

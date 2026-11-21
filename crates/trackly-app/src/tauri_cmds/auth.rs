@@ -61,7 +61,8 @@ pub async fn build_auth_bootstrap_tauri(
     ctx: &AppCtx,
     user_new: UserNew,
 ) -> Result<UserDto, AppError> {
-    ctx.auth.bootstrap_first_admin(user_new).await
+    // Десктоп: пира нет — аудит получит peer = null (WR-05).
+    ctx.auth.bootstrap_first_admin(user_new, None).await
 }
 
 /// Таури server_toggle: старт / стоп axum сервера.

@@ -389,7 +389,9 @@ impl CartridgeService {
 
         // Phase 41.7 (D-16, trap P4): independent of the number-space block
         // above. A cartridge without a place feeds no tree counter, so the
-        // helper sends nothing for it.
+        // helper sends nothing for it. IN-03: device_service, напротив, шлёт
+        // deviceIds и для устройства без места — оно видно в списках, а картридж
+        // без места не виден ни в дереве, ни в списках по месту.
         let place_ids: Vec<i64> = created_place_id.into_iter().collect();
         self.broadcast_entities("create", place_ids, Vec::new(), Vec::new());
 
@@ -767,9 +769,10 @@ impl CartridgeService {
             })
             .await?;
 
-        let dto = self.get(cartridge_id).await?;
+        // IN-01 ревью 41.7: событие сразу после коммита, ДО read-back — ошибка
+        // повторного чтения не должна проглотить уже закоммиченное изменение.
         self.broadcast_entities("transition", place_ids, device_ids, Vec::new());
-        Ok(dto)
+        self.get(cartridge_id).await
     }
 
     // -----------------------------------------------------------------------

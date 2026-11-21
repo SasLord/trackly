@@ -191,12 +191,14 @@ pub async fn build_request_ad_restore(
 /// Создание первого администратора (INT-03). ПУБЛИЧНЫЙ маршрут: ни `Session`,
 /// ни `session_identity` — у вызывающего ещё нет учётной записи. Граница
 /// безопасности — условие «нет активного админа» внутри
-/// `AuthService::bootstrap_first_admin`.
+/// `AuthService::bootstrap_first_admin`. `peer` — IP пира TCP-соединения для
+/// аудита `custom:bootstrap` (WR-05 ревью 41.7); `None`, если адреса нет.
 pub async fn build_auth_bootstrap(
     ctx: &AppCtx,
     payload: BootstrapPayload,
+    peer: Option<String>,
 ) -> Result<UserDto, AppError> {
-    ctx.auth.bootstrap_first_admin(payload.user_new).await
+    ctx.auth.bootstrap_first_admin(payload.user_new, peer).await
 }
 
 /// Logout — flush session.
@@ -351,10 +353,15 @@ pub async fn handler_request_ad_restore(
 
 pub async fn handler_auth_bootstrap(
     State(ctx): State<AppCtx>,
+    // Адрес пира из TCP-соединения (ConnectInfo вставляет сервер), НЕ из
+    // X-Forwarded-For: заголовок подделывает клиент (T-hjw-01). Экстрактор
+    // терпим к отсутствию — без ConnectInfo аудит получит peer = null.
+    connect_info: Option<axum::Extension<axum::extract::ConnectInfo<std::net::SocketAddr>>>,
     Json(payload): Json<BootstrapPayload>,
 ) -> Result<Json<UserDto>, AppErrorResponse> {
+    let peer = connect_info.map(|axum::Extension(ci)| ci.0.ip().to_string());
     Ok(Json(
-        build_auth_bootstrap(&ctx, payload)
+        build_auth_bootstrap(&ctx, payload, peer)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
