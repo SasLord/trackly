@@ -891,7 +891,6 @@ impl GroupService {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let before = group_dto_on(&tx, &repo, &type_repo, id)?;
                 let released = before.direct_device_count;
-                let nested = before.nested_group_count;
                 // Phase 41.1 (D-20): запись разбора с живыми деталями не удаляется,
                 // иначе теряется происхождение деталей. Детали считаются без якоря.
                 if before.type_behavior == "teardown" {
