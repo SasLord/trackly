@@ -274,6 +274,10 @@ const FUNCTIONS = [
   'isRowOverlayEvent',
   'isOwnKeyEvent',
   'canRemoveFromGroup',
+  'canMoveToGroup',
+  'canWriteOff',
+  'canReturnToTeardown',
+  'ghostMenuSections',
 ];
 
 /** Возвращает список текстов провалов (пустой — всё в порядке). */
@@ -329,6 +333,13 @@ function runCases(mod, cases) {
         }
       } else if (c.fn === 'canRemoveFromGroup') {
         got = mod.canRemoveFromGroup(c.input);
+      } else if (
+        c.fn === 'canMoveToGroup' ||
+        c.fn === 'canWriteOff' ||
+        c.fn === 'canReturnToTeardown' ||
+        c.fn === 'ghostMenuSections'
+      ) {
+        got = mod[c.fn](JSON.parse(JSON.stringify(c.input)));
       } else if (c.fn === 'isOwnKeyEvent') {
         const objs = { A: { id: 'A' }, B: { id: 'B' } };
         const pick = (k) => (k === null ? null : objs[k]);
@@ -1063,13 +1074,13 @@ const SOURCE_MUTANTS = [
   { name: 'не фильтровать пустые секции', from: '.filter((s) => s.length > 0)', to: '' },
   {
     name: 'порядок: «Удалить» раньше групповой секции',
-    from: '[poll, main, group, del]',
-    to: '[poll, main, del, group]',
+    from: '[poll, main, membership, group, tail]',
+    to: '[poll, main, membership, tail, group]',
   },
   {
     name: 'порядок: опрос после просмотра',
-    from: '[poll, main, group, del]',
-    to: '[main, poll, group, del]',
+    from: '[poll, main, membership, group, tail]',
+    to: '[main, poll, membership, group, tail]',
   },
   {
     name: 'групповые пункты без groupActionsVisible',
@@ -1152,9 +1163,59 @@ const SOURCE_MUTANTS = [
     to: 'true',
   },
   {
-    name: 'buildMenuSections: «Вывести из состава» раньше «Добавить в группу»',
-    from: "group.push({ kind: 'removeFromGroup'",
-    to: "group.unshift({ kind: 'removeFromGroup'",
+    name: 'buildMenuSections: секция «Вывести/Переместить» после секции «Добавить в группу»',
+    from: '[poll, main, membership, group, tail]',
+    to: '[poll, main, group, membership, tail]',
+  },
+  {
+    name: 'buildMenuSections: «Переместить» без флага moveToGroup',
+    from: 'input.moveToGroup === true',
+    to: 'true',
+  },
+  {
+    name: 'buildMenuSections: «Списать» без флага writeOff',
+    from: 'input.writeOff === true',
+    to: 'true',
+  },
+  {
+    name: 'canMoveToGroup: снять охрану статусов',
+    from: '!BLOCKED_STATUS_CODES.includes(input.statusCode) && input.anchorGroupId === null',
+    to: 'input.anchorGroupId === null',
+  },
+  {
+    name: 'canMoveToGroup: якорь тоже можно перемещать',
+    from: '!BLOCKED_STATUS_CODES.includes(input.statusCode) && input.anchorGroupId === null',
+    to: '!BLOCKED_STATUS_CODES.includes(input.statusCode)',
+  },
+  {
+    name: 'canWriteOff: без проверки статуса',
+    from: "input.statusCode === 'на_списание'",
+    to: 'true',
+  },
+  {
+    name: 'canWriteOff: сотрудник среди разрешённых ролей',
+    from: "const WRITE_OFF_ROLES = ['admin', 'manager'];",
+    to: "const WRITE_OFF_ROLES = ['admin', 'manager', 'employee'];",
+  },
+  {
+    name: 'buildMenuSections: «Списать» с danger',
+    from: "{ kind: 'writeOff', label: LABEL_WRITE_OFF }",
+    to: "{ kind: 'writeOff', label: LABEL_WRITE_OFF, danger: true }",
+  },
+  {
+    name: 'canReturnToTeardown: удалённая деталь тоже',
+    from: '!input.isDeleted && ',
+    to: '',
+  },
+  {
+    name: 'canReturnToTeardown: списанная деталь тоже',
+    from: "input.statusCode !== 'списано'",
+    to: 'true',
+  },
+  {
+    name: 'LABEL_REMOVE_FROM_GROUP: старая подпись',
+    from: "const LABEL_REMOVE_FROM_GROUP = 'Вывести из группы';",
+    to: "const LABEL_REMOVE_FROM_GROUP = 'Вывести из состава';",
   },
 ];
 

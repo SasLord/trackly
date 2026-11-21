@@ -1086,7 +1086,7 @@
     "expected": false
   },
   {
-    "name": "buildMenuSections: removeFromGroup без групповых пунктов: свой раздел между правкой и удалением",
+    "name": "buildMenuSections: removeFromGroup без групповых пунктов: своя секция между правкой и удалением",
     "fn": "buildMenuSections",
     "input": {
       "hasPoll": false,
@@ -1109,7 +1109,7 @@
       [
         {
           "kind": "removeFromGroup",
-          "label": "Вывести из состава"
+          "label": "Вывести из группы"
         }
       ],
       [
@@ -1122,7 +1122,7 @@
     ]
   },
   {
-    "name": "buildMenuSections: removeFromGroup идёт после «Добавить в группу» и быстрых действий",
+    "name": "buildMenuSections: removeFromGroup идёт ДО «Добавить в группу» отдельной секцией",
     "fn": "buildMenuSections",
     "input": {
       "hasPoll": false,
@@ -1149,6 +1149,12 @@
       ],
       [
         {
+          "kind": "removeFromGroup",
+          "label": "Вывести из группы"
+        }
+      ],
+      [
+        {
           "kind": "addToGroup",
           "label": "Добавить в группу"
         },
@@ -1156,10 +1162,6 @@
           "kind": "quick",
           "label": "Действие А",
           "typeId": 7
-        },
-        {
-          "kind": "removeFromGroup",
-          "label": "Вывести из состава"
         }
       ],
       [
@@ -1200,5 +1202,619 @@
         }
       ]
     ]
+  },
+  {
+    "name": "buildMenuSections: участник рабочий: Вывести, Переместить, без Добавить",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "removeFromGroup": true,
+      "moveToGroup": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "removeFromGroup",
+          "label": "Вывести из группы"
+        },
+        {
+          "kind": "moveToGroup",
+          "label": "Переместить в группу"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: свободное «На списание»: Списать есть, Добавить нет",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "writeOff": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "writeOff",
+          "label": "Списать"
+        },
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: участник «На списание»: Вывести, Списать, без Переместить",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "removeFromGroup": true,
+      "writeOff": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "removeFromGroup",
+          "label": "Вывести из группы"
+        }
+      ],
+      [
+        {
+          "kind": "writeOff",
+          "label": "Списать"
+        },
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: участник «Списано»: Вывести, без Переместить и Списать",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "removeFromGroup": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "removeFromGroup",
+          "label": "Вывести из группы"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: якорь «На списание»: Списать есть, Вывести нет",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "writeOff": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "writeOff",
+          "label": "Списать"
+        },
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: свободное рабочее: Добавить + быстрые, без Списать",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": true,
+      "quickActions": [
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        }
+      ]
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        },
+        {
+          "kind": "quick",
+          "label": "Действие А",
+          "typeId": 7
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: полный набор: порядок секций D-03",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": true,
+      "hasPrint": true,
+      "groupActionsVisible": true,
+      "quickActions": [
+        {
+          "typeId": 7,
+          "label": "Действие А"
+        }
+      ],
+      "removeFromGroup": true,
+      "moveToGroup": true,
+      "writeOff": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "poll",
+          "label": "Опросить сейчас"
+        }
+      ],
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "removeFromGroup",
+          "label": "Вывести из группы"
+        },
+        {
+          "kind": "moveToGroup",
+          "label": "Переместить в группу"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        },
+        {
+          "kind": "quick",
+          "label": "Действие А",
+          "typeId": 7
+        }
+      ],
+      [
+        {
+          "kind": "writeOff",
+          "label": "Списать"
+        },
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: moveToGroup=false и writeOff=false не добавляют пунктов",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "removeFromGroup": false,
+      "moveToGroup": false,
+      "writeOff": false
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "canMoveToGroup: роль admin, участник в работе",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "admin",
+      "groupId": 5,
+      "anchorGroupId": null,
+      "statusCode": "в_работе"
+    },
+    "expected": true
+  },
+  {
+    "name": "canMoveToGroup: роль manager, участник в работе",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "manager",
+      "groupId": 5,
+      "anchorGroupId": null,
+      "statusCode": "в_работе"
+    },
+    "expected": true
+  },
+  {
+    "name": "canMoveToGroup: роль employee, участник в работе",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "employee",
+      "groupId": 5,
+      "anchorGroupId": null,
+      "statusCode": "в_работе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canMoveToGroup: роль null, участник в работе",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": null,
+      "groupId": 5,
+      "anchorGroupId": null,
+      "statusCode": "в_работе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canMoveToGroup: свободное устройство",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "admin",
+      "groupId": null,
+      "anchorGroupId": null,
+      "statusCode": "в_работе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canMoveToGroup: якорь группы",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "admin",
+      "groupId": 5,
+      "anchorGroupId": 5,
+      "statusCode": "в_работе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canMoveToGroup: участник «Списано»",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "manager",
+      "groupId": 5,
+      "anchorGroupId": null,
+      "statusCode": "списано"
+    },
+    "expected": false
+  },
+  {
+    "name": "canMoveToGroup: участник «На списание»",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "manager",
+      "groupId": 5,
+      "anchorGroupId": null,
+      "statusCode": "на_списание"
+    },
+    "expected": false
+  },
+  {
+    "name": "canMoveToGroup: участник на складе",
+    "fn": "canMoveToGroup",
+    "input": {
+      "role": "manager",
+      "groupId": 5,
+      "anchorGroupId": null,
+      "statusCode": "на_складе"
+    },
+    "expected": true
+  },
+  {
+    "name": "canWriteOff: роль admin, «На списание»",
+    "fn": "canWriteOff",
+    "input": {
+      "role": "admin",
+      "statusCode": "на_списание"
+    },
+    "expected": true
+  },
+  {
+    "name": "canWriteOff: роль manager, «На списание»",
+    "fn": "canWriteOff",
+    "input": {
+      "role": "manager",
+      "statusCode": "на_списание"
+    },
+    "expected": true
+  },
+  {
+    "name": "canWriteOff: роль employee, «На списание»",
+    "fn": "canWriteOff",
+    "input": {
+      "role": "employee",
+      "statusCode": "на_списание"
+    },
+    "expected": false
+  },
+  {
+    "name": "canWriteOff: роль null, «На списание»",
+    "fn": "canWriteOff",
+    "input": {
+      "role": null,
+      "statusCode": "на_списание"
+    },
+    "expected": false
+  },
+  {
+    "name": "canWriteOff: в работе",
+    "fn": "canWriteOff",
+    "input": {
+      "role": "admin",
+      "statusCode": "в_работе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canWriteOff: уже «Списано»",
+    "fn": "canWriteOff",
+    "input": {
+      "role": "admin",
+      "statusCode": "списано"
+    },
+    "expected": false
+  },
+  {
+    "name": "canWriteOff: на складе",
+    "fn": "canWriteOff",
+    "input": {
+      "role": "manager",
+      "statusCode": "на_складе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canReturnToTeardown: роль admin, живая деталь",
+    "fn": "canReturnToTeardown",
+    "input": {
+      "role": "admin",
+      "isDeleted": false,
+      "statusCode": "на_складе"
+    },
+    "expected": true
+  },
+  {
+    "name": "canReturnToTeardown: роль manager, живая деталь",
+    "fn": "canReturnToTeardown",
+    "input": {
+      "role": "manager",
+      "isDeleted": false,
+      "statusCode": "на_складе"
+    },
+    "expected": true
+  },
+  {
+    "name": "canReturnToTeardown: роль employee, живая деталь",
+    "fn": "canReturnToTeardown",
+    "input": {
+      "role": "employee",
+      "isDeleted": false,
+      "statusCode": "на_складе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canReturnToTeardown: роль null, живая деталь",
+    "fn": "canReturnToTeardown",
+    "input": {
+      "role": null,
+      "isDeleted": false,
+      "statusCode": "на_складе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canReturnToTeardown: удалённая деталь",
+    "fn": "canReturnToTeardown",
+    "input": {
+      "role": "admin",
+      "isDeleted": true,
+      "statusCode": "на_складе"
+    },
+    "expected": false
+  },
+  {
+    "name": "canReturnToTeardown: списанная деталь",
+    "fn": "canReturnToTeardown",
+    "input": {
+      "role": "admin",
+      "isDeleted": false,
+      "statusCode": "списано"
+    },
+    "expected": false
+  },
+  {
+    "name": "canReturnToTeardown: деталь «На списание» ещё можно вернуть",
+    "fn": "canReturnToTeardown",
+    "input": {
+      "role": "manager",
+      "isDeleted": false,
+      "statusCode": "на_списание"
+    },
+    "expected": true
+  },
+  {
+    "name": "ghostMenuSections: admin, живая деталь: один пункт «Вернуть в разбор»",
+    "fn": "ghostMenuSections",
+    "input": {
+      "role": "admin",
+      "isDeleted": false,
+      "statusCode": "на_складе"
+    },
+    "expected": [
+      [
+        {
+          "kind": "returnToTeardown",
+          "label": "Вернуть в разбор"
+        }
+      ]
+    ]
+  },
+  {
+    "name": "ghostMenuSections: сотрудник: пусто",
+    "fn": "ghostMenuSections",
+    "input": {
+      "role": "employee",
+      "isDeleted": false,
+      "statusCode": "на_складе"
+    },
+    "expected": []
+  },
+  {
+    "name": "ghostMenuSections: удалённая деталь: пусто",
+    "fn": "ghostMenuSections",
+    "input": {
+      "role": "admin",
+      "isDeleted": true,
+      "statusCode": "на_складе"
+    },
+    "expected": []
+  },
+  {
+    "name": "ghostMenuSections: списанная деталь: пусто",
+    "fn": "ghostMenuSections",
+    "input": {
+      "role": "manager",
+      "isDeleted": false,
+      "statusCode": "списано"
+    },
+    "expected": []
   }
 ]
