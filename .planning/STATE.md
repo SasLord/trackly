@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: ready_to_plan
-last_updated: 2026-11-20T19:26:44.479Z
-last_activity: 2026-11-21 -- Phase 41.6 complete (UAT approved, verification passed 10/10)
+last_updated: "2026-11-21T14:18:19.598Z"
+last_activity: 2026-11-21 -- Phase 41.8 context gathered (discuss-phase, D-00..D-25; GRW-02/06 уточнены, GRW-08 добавлен)
 progress:
   total_phases: 27
   completed_phases: 20
   total_plans: 389
   completed_plans: 389
   percent: 74
-stopped_at: Phase 41.6 complete (12/12, UAT approved 2026-11-21) — next Phase 41.8
+stopped_at: Phase 41.8 context gathered (2026-11-21) — next /gsd-plan-phase 41.8
 ---
 
 # Project State
@@ -1690,9 +1690,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-20T12:16:53.016Z
-Stopped at: Completed 41.6-10-PLAN.md
-Resume file: None
+Last session: 2026-11-21T14:18:19.586Z
+Stopped at: Phase 41.8 context gathered
+Resume file: .planning/phases/41.8-groups-workspace/41.8-CONTEXT.md
 
 None
 
