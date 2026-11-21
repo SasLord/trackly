@@ -43,3 +43,5 @@ mod repair_participants;
 mod repair_send_receive;
 #[path = "../repair_visibility.rs"]
 mod repair_visibility;
+#[path = "../repair_ws_signals.rs"]
+mod repair_ws_signals;

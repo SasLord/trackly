@@ -47,6 +47,8 @@ mod devices_location_roundtrip;
 mod devices_numbering;
 #[path = "../devices_printer_create_ip.rs"]
 mod devices_printer_create_ip;
+#[path = "../devices_printer_link_audit.rs"]
+mod devices_printer_link_audit;
 #[path = "../devices_printer_network.rs"]
 mod devices_printer_network;
 #[path = "../devices_search.rs"]

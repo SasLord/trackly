@@ -1548,6 +1548,10 @@ impl DeviceService {
                     }
                 }
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now, None)?;
+                // INT-30 (quick 261121-hed): снимок подключения принтера ДО записи
+                // сети/хоста — фактические значения строки, не патч (set_network_in_tx
+                // сам подставляет 'public' при пустом IP).
+                let connection_before = read_printer_connection_in_tx(&tx, id)?;
                 // Phase 41.13 Plan 09 (D-13): запись сети принтера при РЕДАКТИРОВАНИИ —
                 // отдельная операция ПОСЛЕ sync_printer_row_in_tx и мимо его exists-гарда
                 // (на существующей строке тот молчит). Хост не читается и не трогается
@@ -1590,6 +1594,20 @@ impl DeviceService {
                                 .to_string(),
                         });
                     }
+                }
+                // INT-30: одна строка аудита «кто и когда сменил IP/хост/community»
+                // только по изменившимся полям; значение community не пишется (секрет).
+                let connection_after = read_printer_connection_in_tx(&tx, id)?;
+                if let Some(payload) =
+                    printer_connection_diff(connection_before.as_ref(), connection_after.as_ref())
+                {
+                    tx.execute(
+                        "INSERT INTO audit_log \
+                         (entity_type, entity_id, action, user_id, before_json, after_json, payload_json, created_at_utc) \
+                         VALUES ('device', ?1, 'custom:printer_connection', ?2, NULL, NULL, ?3, ?4)",
+                        rusqlite::params![id, user_id_opt, payload.to_string(), now],
+                    )
+                    .map_err(map_rusqlite)?;
                 }
                 let after_json =
                     serde_json::to_string(&DeviceDto::from(after.clone())).map_err(|e| {
@@ -2870,5 +2888,130 @@ impl DeviceService {
         count: u32,
     ) -> Result<Vec<DeviceDto>, AppError> {
         self.bulk_create_with_printer(new, count, None).await
+    }
+}
+
+/// Подключение принтера, как оно лежит в строке `printers` (INT-30).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PrinterConnection {
+    ip_address: Option<String>,
+    community: Option<String>,
+    usb_host_device_id: Option<i64>,
+}
+
+/// Строка `printers` устройства или `None` (не принтер).
+fn read_printer_connection_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    device_id: i64,
+) -> Result<Option<PrinterConnection>, AppError> {
+    match tx.query_row(
+        "SELECT ip_address, community, usb_host_device_id FROM printers WHERE device_id = ?1",
+        rusqlite::params![device_id],
+        |r| {
+            Ok(PrinterConnection {
+                ip_address: r.get(0)?,
+                community: r.get(1)?,
+                usb_host_device_id: r.get(2)?,
+            })
+        },
+    ) {
+        Ok(c) => Ok(Some(c)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(map_rusqlite(e)),
+    }
+}
+
+/// INT-30 (quick 261121-hed): payload строки аудита `custom:printer_connection` —
+/// только изменившиеся поля. IP и USB-хост — «было/стало» (`from`/`to`, `null`
+/// допустим); community — только факт смены `{"changed": true}`: это секрет SNMP,
+/// его значение не попадает ни в журнал, ни в UI (T-hed-03). `None` — ничего не
+/// изменилось (строки аудита нет). Отсутствующая строка `printers` (не принтер)
+/// читается как «все поля пусты».
+fn printer_connection_diff(
+    before: Option<&PrinterConnection>,
+    after: Option<&PrinterConnection>,
+) -> Option<serde_json::Value> {
+    let empty = PrinterConnection {
+        ip_address: None,
+        community: None,
+        usb_host_device_id: None,
+    };
+    let b = before.unwrap_or(&empty);
+    let a = after.unwrap_or(&empty);
+    let mut out = serde_json::Map::new();
+    if b.ip_address != a.ip_address {
+        out.insert(
+            "ip_address".to_string(),
+            serde_json::json!({ "from": b.ip_address, "to": a.ip_address }),
+        );
+    }
+    if b.usb_host_device_id != a.usb_host_device_id {
+        out.insert(
+            "usb_host_device_id".to_string(),
+            serde_json::json!({ "from": b.usb_host_device_id, "to": a.usb_host_device_id }),
+        );
+    }
+    if b.community != a.community {
+        out.insert(
+            "community".to_string(),
+            serde_json::json!({ "changed": true }),
+        );
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(out))
+    }
+}
+
+#[cfg(test)]
+mod printer_connection_tests {
+    use super::*;
+
+    fn conn(ip: Option<&str>, community: &str, host: Option<i64>) -> PrinterConnection {
+        PrinterConnection {
+            ip_address: ip.map(str::to_string),
+            community: Some(community.to_string()),
+            usb_host_device_id: host,
+        }
+    }
+
+    #[test]
+    fn unchanged_connection_gives_none() {
+        let c = conn(Some("10.0.0.5"), "public", Some(3));
+        assert_eq!(printer_connection_diff(Some(&c), Some(&c.clone())), None);
+        assert_eq!(printer_connection_diff(None, None), None);
+    }
+
+    #[test]
+    fn ip_change_is_from_to_only() {
+        let b = conn(Some("10.0.0.5"), "public", None);
+        let a = conn(Some("10.0.0.6"), "public", None);
+        let p = printer_connection_diff(Some(&b), Some(&a)).expect("diff");
+        assert_eq!(
+            p,
+            serde_json::json!({ "ip_address": { "from": "10.0.0.5", "to": "10.0.0.6" } })
+        );
+    }
+
+    #[test]
+    fn host_cleared_is_recorded() {
+        let b = conn(None, "public", Some(7));
+        let a = conn(None, "public", None);
+        let p = printer_connection_diff(Some(&b), Some(&a)).expect("diff");
+        assert_eq!(
+            p,
+            serde_json::json!({ "usb_host_device_id": { "from": 7, "to": null } })
+        );
+    }
+
+    #[test]
+    fn community_change_never_carries_value() {
+        let b = conn(Some("10.0.0.5"), "public", None);
+        let a = conn(Some("10.0.0.5"), "s3cr3t-comm", None);
+        let p = printer_connection_diff(Some(&b), Some(&a)).expect("diff");
+        assert_eq!(p, serde_json::json!({ "community": { "changed": true } }));
+        assert!(!p.to_string().contains("s3cr3t-comm"));
+        assert!(!p.to_string().contains("public"));
     }
 }

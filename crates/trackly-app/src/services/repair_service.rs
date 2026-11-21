@@ -193,6 +193,16 @@ impl RepairService {
         request_id: i64,
         caller: &Identity,
     ) -> Result<RepairTransitionResultDto, AppError> {
+        let request = self.notify_request_status(request_id).await?;
+        let state = self.get_state(request_id, caller).await?;
+        Ok(RepairTransitionResultDto { request, state })
+    }
+
+    /// Свежая заявка после коммита + `RequestStatusChanged` автору, участникам и
+    /// Admin/Manager (видимость события не расширяется — T-hed-02). Общий путь
+    /// `finish_transition` и `link_scans` (NEW-7). Вызывать только ПОСЛЕ `.await`
+    /// writer'а, не внутри замыкания (D-04/D-15).
+    async fn notify_request_status(&self, request_id: i64) -> Result<RequestDto, AppError> {
         let readers = self.readers.clone();
         let request_repo = self.request_repo.clone();
         let row = tokio::task::spawn_blocking(move || {
@@ -211,8 +221,7 @@ impl RepairService {
                 participant_user_ids: participants,
             });
         }
-        let state = self.get_state(request_id, caller).await?;
-        Ok(RepairTransitionResultDto { request, state })
+        Ok(request)
     }
 
     /// Участники заявки для маршрутизации WS (читается после коммита).
@@ -755,6 +764,15 @@ impl RepairService {
                     request_type: dto.request_type.clone(),
                     requester_name: dto.requester_name.clone().unwrap_or_default(),
                 });
+                // NEW-4 (quick 261121-hed): новая заявка на устройство ставит у него
+                // пометку «Есть заявка» — сотрудники того же АРМ перечитывают свои
+                // устройства. Событие без данных и видно только Employee
+                // (`is_visible_to`), список клиент берёт своей командой со своей
+                // областью (BOLA) — чужим ничего не утекает (T-hed-01). Присоединение
+                // (joined) не шлёт: пометка уже стояла.
+                if device_id.is_some() {
+                    let _ = ws.send(WsEvent::EmployeeScopeChanged {});
+                }
             }
         }
 
@@ -1961,6 +1979,10 @@ impl RepairService {
                 Ok(visit.request_id)
             })
             .await?;
+        // NEW-7 (quick 261121-hed): привязка сканов версию заявки не меняет —
+        // открытая карточка ремонта у второго клиента перечитывает состояние по
+        // RequestStatusChanged (RequestDetail.svelte). После коммита, вне замыкания.
+        self.notify_request_status(request_id).await?;
         self.get_state(request_id, caller).await
     }
 }

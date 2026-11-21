@@ -394,7 +394,7 @@ pub const REGISTRY: &[Entry] = &[
     ex(
         REPAIR,
         "link_scans",
-        "связывает уже загруженные вложения с заходом и не меняет места, устройства и группы; вложения шлют AttachmentsChanged сами",
+        "связывает уже загруженные вложения с заходом и не меняет места, устройства и группы; сигнал отдельным WsEvent RequestStatusChanged участникам заявки (NEW-7)",
     ),
     // ---- выход из цикла (Phase 41.4, план 13) -------------------------------
     b(REPAIR, "complete"),
@@ -406,7 +406,7 @@ pub const REGISTRY: &[Entry] = &[
     ex(
         REPAIR,
         "create",
-        "создание заявки не меняет места, устройства и группы; сигнал отдельные WsEvent NewRequest и RequestStatusChanged",
+        "создание заявки не меняет места, устройства и группы; сигнал отдельные WsEvent NewRequest и RequestStatusChanged, а новая заявка на устройство — EmployeeScopeChanged для пометки «Есть заявка» у сотрудников (NEW-4)",
     ),
     ex(
         REPAIR,

@@ -383,6 +383,17 @@
         void loadRepairState(id);
         void loadHistory(id, true);
       }
+      // NEW-7 (quick 261121-hed): привязка сканов к заходу версию заявки не меняет,
+      // поэтому перечитывание заявки страницей не перезапускает loadRepairState —
+      // состояние ремонта перечитывается здесь по событию своей заявки.
+      if (
+        id !== undefined &&
+        ev.type === 'request_status_changed' &&
+        ev.requestId === id &&
+        request?.requestType === 'repair'
+      ) {
+        void loadRepairState(id);
+      }
     });
     return off;
   });
