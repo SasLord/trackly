@@ -25,6 +25,45 @@
 use serde::{Serialize, Serializer};
 use serde_json::{json, Value};
 
+/// Элемент, уже занятый другой группой (D-16/D-18): деталь или группа.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct OccupiedItem {
+    /// `"device"` или `"group"`.
+    pub kind: String,
+    /// Идентификатор элемента.
+    pub id: i64,
+    /// Отображаемое имя элемента.
+    pub name: String,
+    /// Идентификатор группы, в которой элемент уже состоит.
+    pub group_id: i64,
+    /// Имя этой группы.
+    pub group_name: String,
+}
+
+impl OccupiedItem {
+    /// Занятая деталь/устройство.
+    pub fn device(id: i64, name: String, group_id: i64, group_name: String) -> Self {
+        Self {
+            kind: "device".into(),
+            id,
+            name,
+            group_id,
+            group_name,
+        }
+    }
+
+    /// Занятая группа (уже вложена в другого родителя).
+    pub fn group(id: i64, name: String, group_id: i64, group_name: String) -> Self {
+        Self {
+            kind: "group".into(),
+            id,
+            name,
+            group_id,
+            group_name,
+        }
+    }
+}
+
 /// Главный тип ошибки приложения. См. D-AppError-01.
 ///
 /// `specta::Type` реализован **вручную** ниже (а не derive) — у нас уже manual
@@ -151,6 +190,14 @@ pub enum AppError {
         /// пользователя на эту ветку, но защищаемся явно).
         rejection_reason: Option<String>,
     },
+
+    /// Элементы пакета уже состоят в других группах (D-16, D-18). Несёт ВСЕ
+    /// занятые элементы; клиент читает `details.items`, а не текст сообщения.
+    #[error("already in group: {} item(s)", items.len())]
+    AlreadyInGroup {
+        /// Все занятые элементы пакета.
+        items: Vec<OccupiedItem>,
+    },
 }
 
 impl AppError {
@@ -169,6 +216,7 @@ impl AppError {
             Self::ServiceUnavailable { .. } => "SERVICE_UNAVAILABLE",
             Self::RegistrationPending { .. } => "REGISTRATION_PENDING",
             Self::AccessBlocked { .. } => "ACCESS_BLOCKED",
+            Self::AlreadyInGroup { .. } => "ALREADY_IN_GROUP",
         }
     }
 
@@ -204,6 +252,7 @@ impl AppError {
                 pending,
                 rejection_reason,
             } => json!({ "pending": pending, "rejection_reason": rejection_reason }),
+            Self::AlreadyInGroup { items } => json!({ "items": items }),
         }
     }
 }
@@ -331,6 +380,27 @@ mod tests {
             .code(),
             "ACCESS_BLOCKED"
         );
+        assert_eq!(
+            AppError::AlreadyInGroup { items: vec![] }.code(),
+            "ALREADY_IN_GROUP"
+        );
+    }
+
+    #[test]
+    fn serialize_already_in_group_items() {
+        let v = ser(&AppError::AlreadyInGroup {
+            items: vec![
+                OccupiedItem::device(5, "SSD 256 ГБ".into(), 7, "АРМ #3".into()),
+                OccupiedItem::group(9, "Разбор #7".into(), 8, "АРМ #4".into()),
+            ],
+        });
+        assert_eq!(v["code"], "ALREADY_IN_GROUP");
+        assert_eq!(v["details"]["items"][0]["kind"], "device");
+        assert_eq!(v["details"]["items"][0]["id"], 5);
+        assert_eq!(v["details"]["items"][0]["group_id"], 7);
+        assert_eq!(v["details"]["items"][0]["group_name"], "АРМ #3");
+        assert_eq!(v["details"]["items"][1]["kind"], "group");
+        assert_eq!(v["details"]["items"].as_array().expect("arr").len(), 2);
     }
 
     #[test]

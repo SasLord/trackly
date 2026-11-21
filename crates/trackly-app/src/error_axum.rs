@@ -3,7 +3,7 @@
 //!
 //! HTTP-маппинг:
 //! - NotFound → 404
-//! - Conflict / OptimisticLockMismatch → 409
+//! - Conflict / OptimisticLockMismatch / AlreadyInGroup → 409
 //! - WriteQueueBusy / ServiceUnavailable → 503
 //! - DatabaseFromNewerVersion / Internal → 500
 //! - Validation → 400
@@ -32,6 +32,7 @@ impl IntoResponse for AppErrorResponse {
         let status = match &self.0 {
             AppError::NotFound { .. } => StatusCode::NOT_FOUND,
             AppError::Conflict { .. } => StatusCode::CONFLICT,
+            AppError::AlreadyInGroup { .. } => StatusCode::CONFLICT,
             AppError::OptimisticLockMismatch { .. } => StatusCode::CONFLICT,
             AppError::WriteQueueBusy => StatusCode::SERVICE_UNAVAILABLE,
             AppError::DatabaseFromNewerVersion { .. } => StatusCode::INTERNAL_SERVER_ERROR,

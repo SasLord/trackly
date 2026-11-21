@@ -19,5 +19,5 @@ pub mod primitives;
 pub mod text;
 
 pub use auth::{authorize, Action, Identity, Role};
-pub use error::AppError;
+pub use error::{AppError, OccupiedItem};
 pub use primitives::{Clock, Secret};
