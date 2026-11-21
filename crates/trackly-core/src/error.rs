@@ -193,7 +193,7 @@ pub enum AppError {
 
     /// Элементы пакета уже состоят в других группах (D-16, D-18). Несёт ВСЕ
     /// занятые элементы; клиент читает `details.items`, а не текст сообщения.
-    #[error("already in group: {} item(s)", items.len())]
+    #[error("Элементы уже состоят в других группах: {}", items.len())]
     AlreadyInGroup {
         /// Все занятые элементы пакета.
         items: Vec<OccupiedItem>,

@@ -249,6 +249,7 @@ fn delete_group_in_tx_audited(
     repo: &SqliteGroupRepository,
     audit_repo: &SqliteAuditLogRepository,
     before: &GroupDto,
+    released_devices: i64,
     user_id: Option<i64>,
     now: i64,
 ) -> Result<(), AppError> {
@@ -263,7 +264,7 @@ fn delete_group_in_tx_audited(
             before_json: Some(to_json(before)?),
             after_json: None,
             payload_json: Some(to_json(&serde_json::json!({
-                "released_devices": before.direct_device_count,
+                "released_devices": released_devices,
                 "nested_groups": before.nested_group_count,
             }))?),
             created_at_utc: now,
@@ -916,7 +917,15 @@ impl GroupService {
                         });
                     }
                 }
-                delete_group_in_tx_audited(&tx, &repo, &audit_repo, &before, user_id, now)?;
+                delete_group_in_tx_audited(
+                    &tx,
+                    &repo,
+                    &audit_repo,
+                    &before,
+                    released,
+                    user_id,
+                    now,
+                )?;
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(GroupDeleteResultDto {
                     released_devices: released as i32,
@@ -984,8 +993,10 @@ impl GroupService {
                         ),
                     });
                 }
+                let before_json = to_json(&DeviceDto::from(device.clone()))?;
                 let status_id = written_off_status_id(&tx)?;
                 devices.set_status_in_tx(&tx, dto.device_id, status_id, now)?;
+                let after_json = to_json(&DeviceDto::from(devices.get_in_tx(&tx, dto.device_id)?))?;
 
                 let membership = groups.group_of_device_in_tx(&tx, dto.device_id)?;
                 let mut released_group_id: Option<i64> = None;
@@ -993,8 +1004,16 @@ impl GroupService {
                 if let Some(m) = &membership {
                     group_ids.push(m.id);
                     if dto.release_from_group {
-                        groups.remove_device_in_tx(&tx, dto.device_id)?;
-                        released_group_id = Some(m.id);
+                        // D-29: общий примитив освобождения пишет запись по устройству.
+                        released_group_id = release_device_in_tx(
+                            &tx,
+                            &groups,
+                            &audit_repo,
+                            dto.device_id,
+                            None,
+                            user_id,
+                            now,
+                        )?;
                     }
                 }
                 audit_repo.insert(
@@ -1004,8 +1023,8 @@ impl GroupService {
                         entity_id: dto.device_id,
                         action: "write_off",
                         user_id,
-                        before_json: None,
-                        after_json: None,
+                        before_json: Some(before_json),
+                        after_json: Some(after_json),
                         payload_json: Some(to_json(&serde_json::json!({
                             "released_group_id": released_group_id,
                         }))?),
@@ -1077,8 +1096,10 @@ impl GroupService {
                             .to_string(),
                     });
                 }
+                let before_json = to_json(&DeviceDto::from(anchor.clone()))?;
                 let status_id = written_off_status_id(&tx)?;
                 devices.set_status_in_tx(&tx, anchor_id, status_id, now)?;
+                let after_json = to_json(&DeviceDto::from(devices.get_in_tx(&tx, anchor_id)?))?;
                 let disband = before.type_behavior == "substitute";
                 audit_repo.insert(
                     &tx,
@@ -1087,8 +1108,8 @@ impl GroupService {
                         entity_id: anchor_id,
                         action: "write_off",
                         user_id,
-                        before_json: None,
-                        after_json: None,
+                        before_json: Some(before_json),
+                        after_json: Some(after_json),
                         payload_json: Some(to_json(&serde_json::json!({
                             "group_id": dto.id,
                             "disbanded": disband,
@@ -1098,8 +1119,46 @@ impl GroupService {
                 )?;
                 let mut released = 0;
                 if disband {
-                    released = before.direct_device_count as i32;
-                    delete_group_in_tx_audited(&tx, &repo, &audit_repo, &before, user_id, now)?;
+                    // D-29: участники (кроме якоря) освобождаются общим примитивом,
+                    // по каждому пишется запись по устройству; якорь не считается.
+                    let member_ids: Vec<i64> = {
+                        let mut st = tx
+                            .prepare(
+                                "SELECT device_id FROM group_devices \
+                                 WHERE group_id = ?1 AND device_id <> ?2 ORDER BY device_id",
+                            )
+                            .map_err(map_rusqlite)?;
+                        let rows = st
+                            .query_map(rusqlite::params![dto.id, anchor_id], |r| r.get(0))
+                            .map_err(map_rusqlite)?
+                            .collect::<Result<Vec<i64>, _>>()
+                            .map_err(map_rusqlite)?;
+                        rows
+                    };
+                    for member in member_ids {
+                        if release_device_in_tx(
+                            &tx,
+                            &SqliteGroupRepository,
+                            &audit_repo,
+                            member,
+                            None,
+                            user_id,
+                            now,
+                        )?
+                        .is_some()
+                        {
+                            released += 1;
+                        }
+                    }
+                    delete_group_in_tx_audited(
+                        &tx,
+                        &repo,
+                        &audit_repo,
+                        &before,
+                        i64::from(released),
+                        user_id,
+                        now,
+                    )?;
                 }
                 tx.commit().map_err(map_rusqlite)?;
                 let result = GroupWriteOffResultDto {
@@ -1489,7 +1548,15 @@ impl GroupService {
                                 device_name, anchor_group.name
                             )));
                         }
-                        deps.groups.remove_device_in_tx(&tx, *device_id)?;
+                        release_device_in_tx(
+                            &tx,
+                            &deps.groups,
+                            &deps.audit,
+                            *device_id,
+                            None,
+                            user_id,
+                            now,
+                        )?;
                         from.push((*device_id, existing.id));
                     }
                     add_one_in_tx(

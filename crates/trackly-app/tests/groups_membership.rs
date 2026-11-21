@@ -1351,8 +1351,8 @@ async fn membership_move_devices_moves_with_single_audit_record() {
     );
     assert_eq!(
         audit_total(&ctx, "custom:group_member_released").await,
-        released_before,
-        "release_device_in_tx не использован"
+        released_before + 1,
+        "D-29: перенос освобождает через release_device_in_tx, одна запись на перенесённое"
     );
     assert_eq!(audit_total(&ctx, "add_devices").await, 0);
 }
