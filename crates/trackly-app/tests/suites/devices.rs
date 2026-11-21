@@ -59,3 +59,5 @@ mod devices_search;
 mod devices_type_conversion;
 #[path = "../devices_usb_host.rs"]
 mod devices_usb_host;
+#[path = "../devices_write_off_via_form.rs"]
+mod devices_write_off_via_form;

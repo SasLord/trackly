@@ -270,6 +270,22 @@ pub struct DevicePatch {
     /// community в `public` (правило сохранено с пути создания).
     #[serde(default)]
     pub printer_community: Option<String>,
+    /// Phase 41.8 (D-26): выбор при переводе участника группы на «Списано» через
+    /// обычное обновление — оставить в группе или вывести. Обязателен для участника
+    /// группы при смене статуса на «Списано», иначе отказ Validation. В доменный
+    /// патч не переносится: читается в `DeviceService::update` до `patch.into()`.
+    #[serde(default)]
+    pub group_write_off: Option<GroupWriteOffChoice>,
+}
+
+/// Phase 41.8 (D-26): выбор судьбы членства списываемого устройства.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupWriteOffChoice {
+    /// Оставить списанное устройство в составе группы.
+    Keep,
+    /// Вывести устройство из состава группы той же транзакцией.
+    Release,
 }
 
 impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
