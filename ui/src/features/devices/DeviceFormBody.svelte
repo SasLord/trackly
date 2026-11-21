@@ -93,7 +93,7 @@
   // could never persist a change from a component that is supposed to be
   // strictly a mirror of the current record.
 
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
@@ -112,6 +112,7 @@
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { devices } from './api';
+  import { loadDeviceCreateDefaults, saveDeviceCreateDefaults } from './createDefaults';
   import {
     ensureLoaded as ensureStatusesLoaded,
     orderedStatuses,
@@ -243,6 +244,36 @@
     presetStatusApplied = true;
     statusId = String(id);
   });
+  // Последние выбранные при создании «Место» и «Статус» (createDefaults.ts).
+  // Только create-режим и только когда вызывающий не задал свой пресет —
+  // контекстный пресет (например, место группы разбора) важнее памяти.
+  // Удалённые место/статус молча не подставляются.
+  // Снимок на момент монтирования: форма монтируется заново на каждое открытие.
+  const rememberedDefaults = untrack(() =>
+    target === null && !readonly
+      ? loadDeviceCreateDefaults(authStore.user?.id)
+      : { placeId: null, statusId: null },
+  );
+  let rememberedStatusApplied = false;
+  $effect(() => {
+    if (rememberedStatusApplied || presetStatusCode || rememberedDefaults.statusId === null) return;
+    // Справочник ещё не загружен — ждём; эффект перезапустится, когда стор заполнится.
+    if (orderedStatuses().length === 0) return;
+    rememberedStatusApplied = true;
+    // Пользователь уже выбрал сам — не перетираем.
+    if (statusId !== '') return;
+    if (statusById(rememberedDefaults.statusId) === undefined) return;
+    statusId = String(rememberedDefaults.statusId);
+  });
+  function rememberCreateDefaults() {
+    // Создание детали из записи разбора — особый контекст со своим пресетом
+    // места; в память обычного создания его не переносим.
+    if (originGroup !== null) return;
+    saveDeviceCreateDefaults(authStore.user?.id, {
+      placeId,
+      statusId: statusId === '' ? null : parseInt(statusId, 10),
+    });
+  }
   // Фаза 41.1 (D-16): происхождение — ссылка на запись разбора (не на
   // устройство). Правка: из DeviceDto; создание: из переданной записи.
   const originRef = $derived<{ id: number; name: string } | null>(
@@ -741,6 +772,17 @@
     void ensureStatusesLoaded();
 
     let cancelled = false;
+    // Запомненное место подставляем, только если оно ещё существует:
+    // places_get падает на удалённом — тогда поле остаётся пустым, без ошибки.
+    const rememberedPlaceId = rememberedDefaults.placeId;
+    if (rememberedPlaceId !== null && presetPlaceId === null) {
+      apiCall<unknown>('places_get', { id: rememberedPlaceId })
+        .then(() => {
+          // Пользователь успел выбрать место сам — не перетираем.
+          if (!cancelled && placeId === null) placeId = rememberedPlaceId;
+        })
+        .catch(() => {});
+    }
     apiCall<number[]>('cartridge_storage_place_ids', {})
       .then((ids) => {
         if (cancelled) return;
@@ -1031,6 +1073,7 @@
     if (outcome.outcome === 'created') {
       pendingConfirm = null;
       pushToast('success', typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано');
+      rememberCreateDefaults();
       onSaved(placeId, [outcome]);
       return;
     }
@@ -1164,6 +1207,7 @@
           };
           const createdList = await devices.bulkCreate(newDevice, qty);
           pushToast('success', `Создано ${qty} устройств`);
+          rememberCreateDefaults();
           onSaved(placeId, createdList);
         }
       }
