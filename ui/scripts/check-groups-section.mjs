@@ -28,9 +28,13 @@
 //       с оригиналом); GroupTreeNode.svelte берёт DOM id и ключ each из `item.key`,
 //       а не из id группы, и рисует подпись `item.aliasOf`; счёт совпадений поиска
 //       идёт по множеству `kind:id` (`hits.size`), а не по числу узлов.
+//   (F) 41.8 (D-31, CR-02): GroupAddDevicesModal.svelte не блокирует чекбокс строки
+//       занятостью в ДРУГОЙ группе (`disabled={busyIn`), иначе шаг «N устройств уже
+//       в других группах» (D-18) недостижим; блокировка «уже в этой группе»
+//       (`group_id === group.id`) сохранена.
 //
-// Self-test (`--selftest`): 6 фикстур в памяти — 1 корректная (должна пройти)
-// и 5 негативных, каждая получена из корректной мутацией с ПРОВЕРКОЙ, что
+// Self-test (`--selftest`): 16 фикстур (6 в памяти + 7 по (E) + 3 по (F)); корректные проходят,
+// негативные — каждая получена из корректной мутацией с ПРОВЕРКОЙ, что
 // якорь мутации встречается ровно один раз (иначе мутант мог бы снять гейт у
 // соседней записи и тест «прошёл бы» зря). Негативная фикстура обязана
 // провалить гейт именно ТЕМ правилом, ради которого написана.
@@ -272,6 +276,25 @@ function scanTree(treeRaw, nodeRaw, violations) {
   need(node, NODE_FILE, /\{#if item\.aliasOf\}/, 'нет подписи двойника `item.aliasOf` (D-25).');
 }
 
+const ADD_MODAL_FILE = 'src/features/groups/GroupAddDevicesModal.svelte';
+
+/** (F) занятость в другой группе не блокирует выбор (D-31), «эта группа» блокируется. */
+function scanAddModal(modalRaw, violations) {
+  const code = stripComments(modalRaw);
+  if (/disabled=\{[^}]*busyIn/.test(code)) {
+    violations.push(
+      `${ADD_MODAL_FILE}: чекбокс строки блокируется занятостью в другой группе (busyIn) — ` +
+        `шаг переноса «N устройств уже в других группах» недостижим (D-31, D-18).`,
+    );
+  }
+  if (!/group_id === group\.id/.test(code)) {
+    violations.push(
+      `${ADD_MODAL_FILE}: нет сравнения \`group_id === group.id\` — устройство, уже входящее в ` +
+        `ЭТУ группу, перестало блокироваться (D-31).`,
+    );
+  }
+}
+
 function checkRepo(srcRoot, violations) {
   const read = (rel) => {
     const abs = path.join(srcRoot, rel);
@@ -288,6 +311,8 @@ function checkRepo(srcRoot, violations) {
   const tree = read(TREE_FILE);
   const node = read(NODE_FILE);
   if (tree !== null && node !== null) scanTree(tree, node, violations);
+  const modal = read(ADD_MODAL_FILE);
+  if (modal !== null) scanAddModal(modal, violations);
 }
 
 // ---------------------------------------------------------------------------
@@ -505,6 +530,41 @@ function runSelfTest() {
     }
   }
   fixtures.push(...treeCases);
+
+  // (F) модалка «Добавить несколько…»: мутации по РЕАЛЬНОМУ исходнику.
+  const modalSrc = fs.readFileSync(path.join(UI_ROOT, ADD_MODAL_FILE), 'utf8');
+  const modalCases = [];
+  try {
+    modalCases.push({
+      name: '(н) модалка: реальный исходник (позитив)',
+      m: modalSrc,
+      mention: null,
+    });
+    modalCases.push({
+      name: '(о) модалка: возвращена блокировка занятых строк',
+      m: mutate(modalSrc, 'disabled={here || busy}', 'disabled={busyIn !== undefined || busy}'),
+      mention: /busyIn/,
+    });
+    modalCases.push({
+      name: '(п) модалка: убрана блокировка «уже в этой группе»',
+      m: mutate(modalSrc, 'm.group_id === group.id', 'false'),
+      mention: /group_id === group\.id/,
+    });
+  } catch (e) {
+    console.error(`${TAG} [selftest] FAIL — ${e.message}`);
+    return false;
+  }
+  for (const c of modalCases) {
+    const v = [];
+    scanAddModal(c.m, v);
+    const ok = c.mention === null ? v.length === 0 : v.some((line) => c.mention.test(line));
+    console.error(`${TAG} [selftest] ${ok ? 'PASS' : 'FAIL'} — ${c.name} (got ${v.length})`);
+    if (!ok) {
+      failed++;
+      for (const line of v) console.error(`${TAG} [selftest]   ${line}`);
+    }
+  }
+  fixtures.push(...modalCases);
 
   if (failed > 0) {
     console.error(`${TAG} [selftest] FAIL — ${failed} из ${fixtures.length} фикстур не совпали.`);
