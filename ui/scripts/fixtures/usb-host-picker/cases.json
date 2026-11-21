@@ -1285,7 +1285,7 @@
       "reject": [],
       "excludeDeviceId": null
     },
-    "expected": { "ids": [101, 102], "fetched": [1, 2] }
+    "expected": { "ids": [101, 102], "fetched": [1, 2], "capReachedCalls": 0 }
   },
   {
     "name": "walkGroupSubtree: пустой якорь — ни одного пункта, но узел загружен",
@@ -1307,6 +1307,6 @@
       "reject": [],
       "excludeDeviceId": null
     },
-    "expected": { "count": 50, "fetchedCount": 50 }
+    "expected": { "count": 50, "fetchedCount": 50, "capReachedCalls": 1 }
   }
 ]

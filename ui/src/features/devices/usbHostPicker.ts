@@ -43,6 +43,10 @@ export interface CompositionLike {
  *  любого устройства. */
 export const SUBTREE_CAP = 50;
 
+/** Подсказка, когда обход поддерева упёрся в SUBTREE_CAP: часть групп состава
+ *  не обойдена, секция «В составе …» неполна (quick 261121-heg, INT-36г). */
+export const SUBTREE_CAP_NOTICE = `Показаны первые ${SUBTREE_CAP} групп состава — уточните поиск.`;
+
 /** Текст ошибки загрузки списка. */
 export const HOST_LIST_ERROR = 'Не удалось загрузить список устройств. Попробуйте ещё раз.';
 /** Текст отказа сервера выбрать это устройство хостом. */
@@ -71,12 +75,15 @@ export function hostSub(item: HostItem): string | undefined {
 
 /** Обход поддерева в ширину через переданную функцию загрузки состава.
  *  Якорь входит в результат: состав отдаёт прямых членов, включая якорь.
- *  Ошибка одного узла молча пропускает его, остальные продолжаются. */
+ *  Ошибка одного узла молча пропускает его, остальные продолжаются.
+ *  `onCapReached` зовётся один раз, когда непосещённая дочерняя группа
+ *  пропущена из-за SUBTREE_CAP (уже посещённая — не повод). */
 export async function walkGroupSubtree(
   fetchComposition: (groupId: number) => Promise<CompositionLike>,
   rootGroupId: number,
-  options: { excludeDeviceId?: number | null } = {},
+  options: { excludeDeviceId?: number | null; onCapReached?: () => void } = {},
 ): Promise<HostItem[]> {
+  let capReported = false;
   const visited = new Set<number>([rootGroupId]);
   const seenDevices = new Set<number>();
   const out: HostItem[] = [];
@@ -103,7 +110,13 @@ export async function walkGroupSubtree(
       }
       for (const child of comp.child_groups) {
         if (visited.has(child.id)) continue;
-        if (visited.size >= SUBTREE_CAP) continue;
+        if (visited.size >= SUBTREE_CAP) {
+          if (!capReported) {
+            capReported = true;
+            options.onCapReached?.();
+          }
+          continue;
+        }
         visited.add(child.id);
         next.push(child.id);
       }

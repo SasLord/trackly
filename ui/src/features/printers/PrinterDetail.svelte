@@ -468,6 +468,10 @@
               {#if printer.usbHostName}
                 Подключён по USB к: {printer.usbHostName}{#if printer.usbHostInventoryNo}
                   · инв. <span class="tr-mono">{printer.usbHostInventoryNo}</span>{/if}
+                {#if printer.usbHostDeleted}
+                  <!-- INT-36в: хост мягко удалён, подпись сохранена (D-37). -->
+                  <span class="muted-inline">(удалён)</span>
+                {/if}
               {:else}
                 Подключён по USB
               {/if}
@@ -597,6 +601,10 @@
     color: var(--tr-text-tertiary);
     font-size: var(--tr-font-size-body);
     margin: 0;
+  }
+
+  .muted-inline {
+    color: var(--tr-text-tertiary);
   }
 
   .muted-hint {

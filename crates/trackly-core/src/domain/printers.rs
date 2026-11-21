@@ -31,6 +31,10 @@ pub struct PrinterRow {
     /// Joined from `devices` по `usb_host_device_id` (инвентарный номер
     /// USB-хоста). Без фильтра удаления, D-37.
     pub usb_host_inventory_no: Option<String>,
+    /// USB-хост мягко удалён (`devices.deleted_at_utc IS NOT NULL` у хоста).
+    /// Подпись хоста остаётся (D-37), карточка помечает её «(удалён)»
+    /// (quick 261121-heg, INT-36в). Без хоста — false.
+    pub usb_host_deleted: bool,
     /// Joined from devices.name.
     pub device_name: Option<String>,
     /// Resolved current place path, joined from `place_full_paths` via
@@ -236,10 +240,12 @@ impl RequestTransitionOp {
 /// Правило намеренно мягкое. Отклоняется только то, что опасно или не работает:
 /// - строка с двоеточием. `RealSnmpClient` (`snmp/real.rs`) дописывает порт
 ///   `:161` только если двоеточия в строке нет, иначе отдаёт строку сессии
-///   как есть; значит `адрес:порт` направил бы UDP-запрос на произвольный порт.
-///   Отсюда же следует, что IPv6 не поддерживался и раньше (любое двоеточие
-///   принимается за порт), так что отказ для него — не регресс, а закрепление
-///   существующего факта;
+///   как есть; значит `адрес:порт` направил бы UDP-запрос на произвольный порт;
+/// - IPv6 (строка в квадратных скобках или с двумя и более двоеточиями). По
+///   той же причине он не работал и раньше: любое двоеточие клиент принимает
+///   за порт. Отказ для него — закрепление существующего факта, но с честным
+///   собственным сообщением «IPv6 не поддерживается», а не про порт
+///   (quick 261121-heg, INT-36б). Ровно одно двоеточие — сообщение про порт;
 /// - пробелы и управляющие символы внутри строки.
 ///
 /// Всё остальное — и IPv4 в точечной записи, и имя хоста — пропускается как
@@ -252,6 +258,13 @@ pub fn normalize_printer_ip(raw: &str) -> Result<Option<String>, AppError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Ok(None);
+    }
+    if trimmed.starts_with('[') || trimmed.matches(':').count() >= 2 {
+        return Err(AppError::Validation {
+            field: "printer_ip_address".into(),
+            message: "IPv6 не поддерживается: опрос принтера идёт по IPv4-адресу или имени хоста."
+                .into(),
+        });
     }
     if trimmed.contains(':') {
         return Err(AppError::Validation {
@@ -372,11 +385,26 @@ mod tests {
     }
 
     #[test]
-    fn printer_ip_rejects_port_and_ipv6() {
-        for raw in ["192.0.2.10:161", "printer.local:9999", "::1", "2001:db8::1"] {
+    fn printer_ip_rejects_port() {
+        for raw in ["192.0.2.10:161", "printer.local:9999"] {
             let (field, message) = ip_err(raw);
             assert_eq!(field, "printer_ip_address", "{raw}");
             assert!(message.contains("Порт"), "{raw}: {message}");
+        }
+    }
+
+    /// quick 261121-heg (INT-36б): IPv6 получает собственный честный отказ,
+    /// а не сообщение про порт.
+    #[test]
+    fn printer_ip_rejects_ipv6_honestly() {
+        for raw in ["::1", "2001:db8::1", "[2001:db8::1]"] {
+            let (field, message) = ip_err(raw);
+            assert_eq!(field, "printer_ip_address", "{raw}");
+            assert!(
+                message.contains("IPv6 не поддерживается"),
+                "{raw}: {message}"
+            );
+            assert!(!message.contains("Порт"), "{raw}: {message}");
         }
     }
 

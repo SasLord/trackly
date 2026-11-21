@@ -43,6 +43,9 @@ pub struct PrinterDto {
     pub usb_host_name: Option<String>,
     /// Инвентарный номер USB-хоста; None, если хоста нет или номера нет.
     pub usb_host_inventory_no: Option<String>,
+    /// USB-хост мягко удалён — карточка помечает подпись «(удалён)»
+    /// (quick 261121-heg, INT-36в). Без хоста — false.
+    pub usb_host_deleted: bool,
     /// Latest reading fields (denormalized for card display).
     /// Parsed from toner_levels JSON; None if no reading yet.
     pub toner_levels: Option<serde_json::Value>,
@@ -80,6 +83,7 @@ impl From<PrinterRow> for PrinterDto {
             usb_host_device_id: r.usb_host_device_id,
             usb_host_name: r.usb_host_name,
             usb_host_inventory_no: r.usb_host_inventory_no,
+            usb_host_deleted: r.usb_host_deleted,
             // Reading fields populated by service (get_last_reading).
             toner_levels: None,
             page_count: None,

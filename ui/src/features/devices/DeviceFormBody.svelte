@@ -136,6 +136,7 @@
     HOST_FIELD_HINT,
     HOST_LIST_ERROR,
     HOST_REJECTED_ERROR,
+    SUBTREE_CAP_NOTICE,
     buildHostList,
     effectiveQuery,
     hostLabel,
@@ -305,6 +306,8 @@
   let loadedPrinterIp = $state<string | null>(null);
   let sectionOne = $state<HostItem[]>([]);
   let sectionOneTitle = $state('');
+  // INT-36г: обход поддерева упёрся в SUBTREE_CAP — секция «В составе …» неполна.
+  let subtreeCapReached = $state(false);
   let hostResults = $state<HostItem[]>([]);
   let hostSearching = $state(false);
   let hostListError = $state<string | null>(null);
@@ -786,8 +789,12 @@
           // child_groups). Ошибка обхода — секция пуста, без сообщения.
           if (row) {
             sectionOneTitle = `В составе «${row.group_name}»`;
+            subtreeCapReached = false;
             void walkGroupSubtree((id) => groups.composition(id), row.group_id, {
               excludeDeviceId: target.id,
+              onCapReached: () => {
+                if (!cancelled) subtreeCapReached = true;
+              },
             })
               .then((items) => {
                 if (!cancelled) sectionOne = items;
@@ -1530,6 +1537,10 @@
             <p class="field-error" role="alert">{fieldErrors['usb_host_device_id']}</p>
           {/if}
           <p class="usb-host-hint">{HOST_FIELD_HINT}</p>
+          <!-- INT-36г: обход состава упёрся в лимит — честно сказать, что список неполон. -->
+          <p class="usb-host-hint" aria-live="polite">
+            {#if subtreeCapReached}{SUBTREE_CAP_NOTICE}{/if}
+          </p>
         </div>
       {/if}
     </div>
@@ -1625,8 +1636,10 @@
     color: var(--tr-danger);
   }
 
-  // Phase 40.3 Plan 05 (NUM-06/NUM-08): IP/SNMP block, create+Принтер only
-  // — ported verbatim from the now-removed two-step printer-create modal.
+  // Блок принтера (IP/SNMP и USB-хост): виден при типе «Принтер» и при
+  // создании, и при правке (D-13 фазы 41.13 отменила прежнее «только
+  // создание»); при правке — после ответа printers.getByDeviceId. Появился в
+  // фазе 40.3 (план 05) на месте окна двухшагового создания принтера.
   .snmp-section {
     display: flex;
     flex-direction: column;

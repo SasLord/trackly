@@ -39,6 +39,8 @@ pub struct SqlitePrinterRepository;
 /// Phase 41.13: `LEFT JOIN devices h` подтягивает имя и инвентарный номер
 /// USB-хоста. Фильтра по признаку удаления хоста НЕТ намеренно (D-37): строка
 /// `printers` переживает удаление устройства, подпись хоста остаётся.
+/// Признак удаления хоста отдаётся отдельной колонкой `usb_host_deleted`
+/// (quick 261121-heg, INT-36в) — карточка помечает подпись «(удалён)».
 const SELECT_PRINTERS: &str = "
     SELECT p.id, p.device_id, p.ip_address, p.snmp_version, p.vendor,
            p.oid_profile_id, p.last_seen_utc, p.usb_host_device_id,
@@ -47,7 +49,8 @@ const SELECT_PRINTERS: &str = "
            p.created_at_utc, p.updated_at_utc, p.version,
            (p.community <> 'public') AS community_configured,
            h.name AS usb_host_name,
-           h.inventory_number AS usb_host_inventory_no
+           h.inventory_number AS usb_host_inventory_no,
+           (h.deleted_at_utc IS NOT NULL) AS usb_host_deleted
       FROM printers p
       LEFT JOIN devices d ON d.id = p.device_id
       LEFT JOIN devices h ON h.id = p.usb_host_device_id
@@ -75,6 +78,8 @@ fn map_row_printer(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRow> {
         community_configured: row.get(14)?,
         usb_host_name: row.get(15)?,
         usb_host_inventory_no: row.get(16)?,
+        // Без хоста LEFT JOIN даёт NULL в h.deleted_at_utc -> предикат 0.
+        usb_host_deleted: row.get(17)?,
     })
 }
 

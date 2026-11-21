@@ -22,6 +22,8 @@
 //!     мутанты «сброс хоста при IP» и «отказ при заданном хосте»;
 //!   * n11    — создание блоком принтера (канонизация, отказ, хост + IP вместе);
 //!   * n12    — `printers.version` растёт ровно на 1 при записи сети.
+//!   * quick 261121-heg — история опросов `printers_get_readings` (N2) и
+//!     пометка мягко удалённого USB-хоста `usb_host_deleted` (INT-36в).
 //!
 //! (n13 — прямой путь создания принтера — удалён вместе с маршрутом, quick 261121-4nz.)
 //!
@@ -948,7 +950,10 @@ async fn printers_get_readings_newest_first_camel_case_and_not_found() {
             .expect("spawn_blocking")
         };
 
-        let base = 1_700_000_000_i64;
+        // Живой AppCtx поднимает мониторинг (SNMP-мок): он может дописать своё
+        // показание с текущим временем. Засеянные строки — в будущем, чтобы
+        // они гарантированно были новейшими; общий порядок проверяется ниже.
+        let base = 4_000_000_000_i64;
         ctx.writer
             .execute(move |conn| {
                 // Порядок вставки нарочно не совпадает с порядком ts_utc.
@@ -976,9 +981,13 @@ async fn printers_get_readings_newest_first_camel_case_and_not_found() {
             .expect("readings");
         let ts: Vec<i64> = rows.iter().map(|r| r.ts_utc).collect();
         assert_eq!(
-            ts,
-            vec![base + 300, base + 200, base + 100],
+            ts[..3],
+            [base + 300, base + 200, base + 100],
             "новейшие сверху"
+        );
+        assert!(
+            ts.windows(2).all(|w| w[0] >= w[1]),
+            "вся лента по убыванию ts_utc: {ts:?}"
         );
         assert_eq!(rows[0].page_count, None);
         assert_eq!(rows[0].status, "offline");
@@ -1016,4 +1025,65 @@ async fn printers_get_readings_newest_first_camel_case_and_not_found() {
     })
     .await
     .expect("printers_get_readings exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
+// quick 261121-heg (INT-36в): мягко удалённый USB-хост помечен в выборке
+// принтера (`usb_host_deleted`), подпись хоста при этом остаётся (D-37).
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn usb_host_deleted_flag_follows_soft_delete_of_host() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (ctx, _dir) = make_app_ctx().await;
+        let gone = create_device(&ctx.devices, "Рабочая станция А", DEVICE_TYPE_ID).await;
+        let alive = create_device(&ctx.devices, "Рабочая станция Б", DEVICE_TYPE_ID).await;
+        let p_gone = create_printer(&ctx.devices, "Принтер А", None, None, Some(gone.id)).await;
+        let p_alive = create_printer(&ctx.devices, "Принтер Б", None, None, Some(alive.id)).await;
+        let p_none =
+            create_printer(&ctx.devices, "Принтер В", Some("192.0.2.81"), None, None).await;
+
+        // ПРЕДУСЛОВИЕ: до удаления ни один хост не помечен.
+        let before = ctx.printers.get_by_device_id(p_gone.id).await.expect("get");
+        assert_eq!(
+            before.usb_host_device_id,
+            Some(gone.id),
+            "ПРЕДУСЛОВИЕ: хост задан"
+        );
+        assert!(!before.usb_host_deleted, "ПРЕДУСЛОВИЕ: хост жив");
+
+        let host_id = gone.id;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET deleted_at_utc = 1700000000 WHERE id = ?1",
+                    params![host_id],
+                )
+                .expect("soft delete host");
+                Ok(())
+            })
+            .await
+            .expect("soft delete");
+
+        let after = ctx.printers.get_by_device_id(p_gone.id).await.expect("get");
+        assert!(after.usb_host_deleted, "мягко удалённый хост помечен");
+        assert_eq!(
+            after.usb_host_name.as_deref(),
+            Some("Рабочая станция А"),
+            "подпись хоста остаётся (D-37)"
+        );
+        let json = serde_json::to_value(&after).expect("json");
+        assert_eq!(json["usbHostDeleted"], true, "camelCase-ключ для UI");
+
+        let alive_dto = ctx
+            .printers
+            .get_by_device_id(p_alive.id)
+            .await
+            .expect("get");
+        assert!(!alive_dto.usb_host_deleted, "живой хост не помечен");
+        let none_dto = ctx.printers.get_by_device_id(p_none.id).await.expect("get");
+        assert!(!none_dto.usb_host_deleted, "без хоста — false");
+    })
+    .await
+    .expect("usb_host_deleted exceeded 30 s budget");
 }

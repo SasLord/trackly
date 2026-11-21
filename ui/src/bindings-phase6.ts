@@ -27,6 +27,9 @@ export type PrinterDto = {
   usbHostName: string | null;
   /** Инвентарный номер USB-хоста; null, если хоста или номера нет. */
   usbHostInventoryNo: string | null;
+  /** USB-хост мягко удалён — подпись остаётся, карточка помечает её «(удалён)»
+   * (quick 261121-heg, INT-36в). Без хоста — false. */
+  usbHostDeleted: boolean;
   /** Parsed toner levels: Object { label: number|null } or null if no reading. */
   tonerLevels: Record<string, number | null> | null;
   pageCount: number | null;

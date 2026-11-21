@@ -254,6 +254,13 @@ const ALLOWLIST = [
     file: 'src/features/employee/EmployeeDeviceRow.svelte',
     markers: ['в составе группы'],
   },
+  {
+    // quick 261121-heg (INT-36г): подсказка под полем USB-хоста, когда обход
+    // поддерева состава упёрся в SUBTREE_CAP. Один узкий литерал; любая другая
+    // надпись про группу в модуле выбора хоста красная.
+    file: 'src/features/devices/usbHostPicker.ts',
+    markers: ['групп состава'],
+  },
 ];
 
 function allowEntryFor(relPath) {

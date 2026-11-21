@@ -259,6 +259,7 @@ async function runWalkCase(mod, input) {
   const graph = buildGraph(input);
   const reject = new Set(input.reject ?? []);
   const fetched = [];
+  let capReachedCalls = 0;
   const fetchComposition = (gid) => {
     fetched.push(gid);
     if (reject.has(gid)) return Promise.reject(new Error(`узел ${gid} недоступен`));
@@ -271,8 +272,11 @@ async function runWalkCase(mod, input) {
   };
   const items = await mod.walkGroupSubtree(fetchComposition, input.root, {
     excludeDeviceId: input.excludeDeviceId ?? null,
+    onCapReached: () => {
+      capReachedCalls += 1;
+    },
   });
-  return { items, fetched };
+  return { items, fetched, capReachedCalls };
 }
 
 // ---------------------------------------------------------------------------
@@ -547,6 +551,19 @@ function fixtureGuards(cases) {
       'в фикстуре нет кейса walkGroupSubtree, сверяющего порядок загруженных узлов (обход в ширину не проверяется)',
     );
   }
+  // quick 261121-heg (INT-36г): сигнал об упоре в потолок — ровно один вызов
+  // при упоре и ни одного без упора (в том числе на цикле, где дочерний узел
+  // пропущен как уже посещённый, а не из-за потолка).
+  if (!walks.some((c) => c.input.fan && c.expected.capReachedCalls === 1)) {
+    failures.push(
+      'в фикстуре нет кейса walkGroupSubtree с упором в SUBTREE_CAP, сверяющего onCapReached = 1 вызов',
+    );
+  }
+  if (!walks.some((c) => !c.input.fan && c.expected.capReachedCalls === 0)) {
+    failures.push(
+      'в фикстуре нет кейса walkGroupSubtree без упора в потолок, сверяющего onCapReached = 0 вызовов',
+    );
+  }
 
   return failures;
 }
@@ -609,7 +626,7 @@ async function runCases(mod, cases) {
           break;
         }
         case 'walkGroupSubtree': {
-          const { items, fetched } = await runWalkCase(mod, input);
+          const { items, fetched, capReachedCalls } = await runWalkCase(mod, input);
           const checks = [];
           if (Array.isArray(expected.items)) checks.push(['пункты', items, expected.items]);
           if (Array.isArray(expected.ids)) {
@@ -623,6 +640,9 @@ async function runCases(mod, cases) {
           }
           if (typeof expected.fetchedCount === 'number') {
             checks.push(['число загруженных узлов', fetched.length, expected.fetchedCount]);
+          }
+          if (typeof expected.capReachedCalls === 'number') {
+            checks.push(['вызовов onCapReached', capReachedCalls, expected.capReachedCalls]);
           }
           if (checks.length === 0) {
             failures.push(`${c.name}: кейс walkGroupSubtree ничего не утверждает`);
@@ -738,13 +758,23 @@ const SOURCE_MUTANTS = [
   },
   {
     name: 'walkGroupSubtree: потолок >= заменён на > (на один узел больше)',
-    from: 'if (visited.size >= SUBTREE_CAP) continue;',
-    to: 'if (visited.size > SUBTREE_CAP) continue;',
+    from: 'if (visited.size >= SUBTREE_CAP) {',
+    to: 'if (visited.size > SUBTREE_CAP) {',
   },
   {
     name: 'walkGroupSubtree: потолок снят',
-    from: 'if (visited.size >= SUBTREE_CAP) continue;',
+    from: 'if (visited.size >= SUBTREE_CAP) {',
+    to: 'if (false) {',
+  },
+  {
+    name: 'walkGroupSubtree: onCapReached не вызывается при упоре в потолок (INT-36г)',
+    from: 'options.onCapReached?.();',
     to: '',
+  },
+  {
+    name: 'walkGroupSubtree: onCapReached зовётся на каждый пропущенный узел, а не один раз (INT-36г)',
+    from: 'if (!capReported) {',
+    to: 'if (true) {',
   },
   {
     name: 'walkGroupSubtree: якорь не помечен посещённым заранее (цикл грузит его дважды)',

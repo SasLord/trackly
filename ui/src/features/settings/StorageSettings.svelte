@@ -6,6 +6,12 @@
   import { apiCall } from '$lib/api/client';
   import AttachmentSettings from './AttachmentSettings.svelte';
 
+  // INT-10: команда settings_open_db_folder есть только у десктопа (HTTP-маршрута
+  // нет: открыть каталог можно лишь на машине сервера), поэтому кнопка «Открыть
+  // папку с базой данных» вне Tauri не рисуется. Тот же признак гардит смену
+  // расположения БД.
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
   let dbPath = $state('');
   let confirmMove = $state(false);
   let moving = $state(false);
@@ -28,6 +34,7 @@
   });
 
   async function openFolder() {
+    if (!isTauri) return;
     try {
       await apiCall<void>('settings_open_db_folder', {});
     } catch (e: unknown) {
@@ -40,8 +47,6 @@
   }
 
   async function proceedWithMove() {
-    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
     if (!isTauri) {
       pushToast('error', 'Смена расположения БД доступна только в десктоп-приложении.');
       confirmMove = false;
@@ -97,9 +102,11 @@
     </div>
 
     <div class="action-row">
-      <Button variant="ghost" size="sm" onclick={openFolder} disabled={!dbPath}>
-        Открыть папку с базой данных
-      </Button>
+      {#if isTauri}
+        <Button variant="ghost" size="sm" onclick={openFolder} disabled={!dbPath}>
+          Открыть папку с базой данных
+        </Button>
+      {/if}
       <Button
         variant="destructive"
         size="sm"
