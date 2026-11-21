@@ -19,8 +19,8 @@
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use trackly_core::domain::groups::{
-    ActGroupEffectKind, ActGroupEffectNew, ActGroupEffectRow, GroupNew, GroupRow, GroupValueRow,
-    MemberDeviceRow, PlanGroupRow, PrinterRefRow,
+    ActGroupEffectKind, ActGroupEffectNew, ActGroupEffectRow, GhostDeviceRow, GroupNew, GroupRow,
+    GroupValueRow, MemberDeviceRow, PlanGroupRow, PrinterRefRow,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::groups::GroupRepository;
@@ -310,6 +310,23 @@ impl SqliteGroupRepository {
             )
             .map_err(map_rusqlite)?;
         Ok(affected > 0)
+    }
+
+    /// Число призраков разбора (D-13): все устройства с `origin_group_id` = группа,
+    /// не являющиеся её прямыми членами. `deleted_at_utc` НЕ фильтруется (D-14).
+    pub fn count_origin_ghosts_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        group_id: i64,
+    ) -> Result<i64, AppError> {
+        tx.query_row(
+            "SELECT COUNT(*) FROM devices
+             WHERE origin_group_id = ?1
+               AND id NOT IN (SELECT device_id FROM group_devices WHERE group_id = ?1)",
+            rusqlite::params![group_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)
     }
 
     /// Число живых «деталей» прямого состава группы: живые устройства `group_devices`
@@ -840,6 +857,54 @@ impl SqliteGroupRepository {
                     place_path: r.get(6)?,
                     status_name: r.get(7)?,
                     status_code: r.get(8)?,
+                })
+            })
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// Призраки разбора (D-10/D-14): устройства с `origin_group_id` = группа, не
+    /// прямые члены. Удалённые НЕ отфильтрованы. Живые раньше удалённых.
+    pub fn ghost_devices(
+        &self,
+        conn: &Connection,
+        group_id: i64,
+    ) -> Result<Vec<GhostDeviceRow>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT d.id, COALESCE(dt.name, ''), d.name, d.inventory_number,
+                        d.serial_number, d.place_id, pfp.full_path, ds.name, ds.code,
+                        d.deleted_at_utc IS NOT NULL, cg.id, cg.name
+                 FROM devices d
+                 LEFT JOIN device_types dt ON dt.id = d.type_id
+                 LEFT JOIN device_statuses ds ON ds.id = d.status_id
+                 LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
+                 LEFT JOIN group_devices cgd ON cgd.device_id = d.id
+                 LEFT JOIN groups cg ON cg.id = cgd.group_id
+                 WHERE d.origin_group_id = ?1
+                   AND NOT EXISTS (
+                       SELECT 1 FROM group_devices x
+                       WHERE x.device_id = d.id AND x.group_id = ?1)
+                 ORDER BY (d.deleted_at_utc IS NOT NULL), d.name, d.id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(rusqlite::params![group_id], |r| {
+                Ok(GhostDeviceRow {
+                    device_id: r.get(0)?,
+                    type_name: r.get(1)?,
+                    name: r.get(2)?,
+                    inventory_number: r.get(3)?,
+                    serial_number: r.get(4)?,
+                    place_id: r.get(5)?,
+                    place_path: r.get(6)?,
+                    status_name: r.get(7)?,
+                    status_code: r.get(8)?,
+                    is_deleted: r.get(9)?,
+                    current_group_id: r.get(10)?,
+                    current_group_name: r.get(11)?,
                 })
             })
             .map_err(map_rusqlite)?

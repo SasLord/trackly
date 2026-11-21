@@ -240,3 +240,76 @@ fn get_group_reports_anchor_id_and_name() {
         (None, None)
     );
 }
+
+fn set_origin(conn: &Connection, device: i64, group: Option<i64>) {
+    conn.execute(
+        "UPDATE devices SET origin_group_id = ?2 WHERE id = ?1",
+        params![device, group],
+    )
+    .expect("set origin");
+}
+
+/// Фикстура: разбор + четыре различающихся случая происхождения.
+fn ghost_fixture(conn: &mut Connection, repo: &SqliteGroupRepository) -> (GroupRow, GroupRow) {
+    let t = insert_type(conn, "workstation", "АРМ", "container");
+    let razbor = make_group(conn, repo, t, "Разбор #7");
+    let arm = make_group(conn, repo, t, "АРМ #3");
+    insert_device(conn, 201, "SSD 256 ГБ"); // origin + выведен (состоит в АРМ #3)
+    insert_device(conn, 202, "Планка памяти"); // origin + удалён
+    insert_device(conn, 203, "Монитор #2"); // origin, но ещё член разбора
+    insert_device(conn, 204, "Мышь"); // чужой origin
+    insert_device(conn, 205, "Клавиатура"); // пустой origin
+    insert_device(conn, 206, "Блок питания"); // origin + никуда не входит
+    for d in [201, 202, 203, 206] {
+        set_origin(conn, d, Some(razbor.id));
+    }
+    set_origin(conn, 204, Some(arm.id));
+    add_device(conn, repo, arm.id, 201);
+    add_device(conn, repo, razbor.id, 203);
+    soft_delete_device(conn, 202);
+    (razbor, arm)
+}
+
+#[test]
+fn ghost_devices_include_removed_and_deleted_but_not_members_or_foreign() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let (razbor, arm) = ghost_fixture(&mut conn, &repo);
+
+    let rows = repo.ghost_devices(&conn, razbor.id).unwrap();
+    let ids: Vec<i64> = rows.iter().map(|r| r.device_id).collect();
+    // живые раньше удалённых; внутри — по имени (бинарное сравнение: латиница < кириллица)
+    assert_eq!(ids, vec![201, 206, 202]);
+    assert!(!rows[0].is_deleted && !rows[1].is_deleted && rows[2].is_deleted);
+    assert_eq!(rows[0].current_group_id, Some(arm.id));
+    assert_eq!(rows[0].current_group_name.as_deref(), Some("АРМ #3"));
+    assert_eq!(rows[1].current_group_id, None);
+    assert_eq!(rows[0].name, "SSD 256 ГБ");
+    assert_eq!(rows[0].inventory_number.as_deref(), Some("ИНВ-000201"));
+}
+
+#[test]
+fn count_origin_ghosts_counts_all_including_deleted() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let (razbor, arm) = ghost_fixture(&mut conn, &repo);
+
+    let tx = conn.transaction().unwrap();
+    assert_eq!(
+        repo.count_origin_ghosts_in_tx(&tx, razbor.id).unwrap(),
+        3,
+        "выведенный + удалённый + бесхозный; член разбора и чужой origin не считаются"
+    );
+    assert_eq!(repo.count_origin_ghosts_in_tx(&tx, arm.id).unwrap(), 1);
+}
+
+#[test]
+fn member_counters_ignore_ghosts() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let (razbor, _arm) = ghost_fixture(&mut conn, &repo);
+
+    let members = repo.member_devices(&conn, razbor.id).unwrap();
+    assert_eq!(members.len(), 1, "D-11: в составе только живой член 203");
+    assert_eq!(members[0].device_id, 203);
+}

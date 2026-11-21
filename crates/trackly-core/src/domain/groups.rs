@@ -258,6 +258,28 @@ pub struct MemberDeviceRow {
     pub status_code: Option<String>,
 }
 
+/// Призрак разбора (Phase 41.8, D-10/D-14): деталь с `origin_group_id` = группа
+/// разбора, не являющаяся её прямым членом. Включает удалённые устройства.
+/// Сериализации нет: транспортный DTO строится в trackly-app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GhostDeviceRow {
+    pub device_id: i64,
+    pub type_name: String,
+    pub name: String,
+    pub inventory_number: Option<String>,
+    pub serial_number: Option<String>,
+    pub place_id: Option<i64>,
+    /// Полный путь места из `place_full_paths`.
+    pub place_path: Option<String>,
+    pub status_name: Option<String>,
+    pub status_code: Option<String>,
+    /// Устройство мягко удалено (`deleted_at_utc IS NOT NULL`).
+    pub is_deleted: bool,
+    /// Группа, в которой деталь состоит сейчас (если состоит).
+    pub current_group_id: Option<i64>,
+    pub current_group_name: Option<String>,
+}
+
 /// Вид следа действия акта над группой (Phase 41.2, D-08): токены таблицы
 /// `act_group_effects.kind`. В БД токен хранится без SQL CHECK, поэтому чтение
 /// идёт через `from_str_lenient`: неизвестный токен не роняет экран.
