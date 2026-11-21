@@ -53,6 +53,7 @@ fn new_device(name: &str, place: Option<i64>) -> DeviceNew {
         state: None,
         place_id: place,
         status_id: 1,
+        origin_group_id: None,
     }
 }
 

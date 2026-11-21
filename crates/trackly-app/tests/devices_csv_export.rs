@@ -109,6 +109,7 @@ async fn export_uses_semicolon_delimiter() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         })
         .await
         .expect("create device");
@@ -237,6 +238,7 @@ async fn export_place_column_carries_full_tree_path() {
             state: None,
             place_id: Some(room),
             status_id: 1,
+            origin_group_id: None,
         })
         .await
         .expect("create device in nested place");
@@ -298,6 +300,7 @@ async fn export_place_column_empty_when_device_has_no_place() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         })
         .await
         .expect("create device without place");
@@ -358,6 +361,7 @@ async fn export_cyrillic_roundtrip() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         })
         .await
         .expect("create device with cyrillic name");
@@ -424,6 +428,7 @@ async fn export_formula_injection_prevention() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         })
         .await
         .expect("create device with formula name");
@@ -465,6 +470,7 @@ async fn export_list_all_created_devices() {
                 state: None,
                 place_id: None,
                 status_id: 1,
+                origin_group_id: None,
             })
             .await
             .expect("create device");
@@ -555,6 +561,7 @@ async fn export_csv_place_column_stays_full_path_not_shortened() {
             state: None,
             place_id: Some(room),
             status_id: 1,
+            origin_group_id: None,
         })
         .await
         .expect("create device in overridden place");
@@ -632,6 +639,7 @@ async fn create_with_status(svc: &DeviceService, name: &str, code: &str) {
         state: None,
         place_id: None,
         status_id,
+        origin_group_id: None,
     })
     .await
     .expect("create device");
@@ -782,6 +790,7 @@ fn new_device(name: &str, inv: &str) -> DeviceNew {
         state: None,
         place_id: None,
         status_id: 1,
+        origin_group_id: None,
     }
 }
 

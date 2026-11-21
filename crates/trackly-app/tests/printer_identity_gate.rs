@@ -693,7 +693,7 @@ fn printer_identity_every_rule_has_a_fixture() {
         ),
         (
             "P1",
-            "let n = DeviceNew { type_id: 2, name: x };\n",
+            "let n = DeviceNew { type_id: 2, name: x, origin_group_id: None };\n",
             "инициализация структуры",
         ),
         (
@@ -767,7 +767,7 @@ fn f() -> i64 { let status_id = 2; status_id }
 let q = \"SELECT * FROM printers_view\";
 #[cfg(test)]
 mod tests {
-    fn t() { let _ = \"WHERE type_id = 2\"; let _ = \"FROM printers\"; let x = DeviceNew { type_id: 2 }; }
+    fn t() { let _ = \"WHERE type_id = 2\"; let _ = \"FROM printers\"; let x = DeviceNew { type_id: 2, origin_group_id: None }; }
 }
 ";
     let r = scan(&one("crates/x/src/ok.rs", ok), &[]);

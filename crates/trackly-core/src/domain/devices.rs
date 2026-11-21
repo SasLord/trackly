@@ -57,6 +57,9 @@ pub struct DeviceNew {
     pub state: Option<String>,
     pub place_id: Option<i64>,
     pub status_id: i64,
+    /// Группа разбора, из которой деталь пришла; пишется один раз при создании
+    /// (Phase 41.8, D-08). `None` — без происхождения.
+    pub origin_group_id: Option<i64>,
 }
 
 /// Partial update for a device — all fields optional.

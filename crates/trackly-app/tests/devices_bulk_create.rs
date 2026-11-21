@@ -38,6 +38,7 @@ fn non_unique_device(name: &str) -> DeviceNew {
         state: None,
         place_id: None,
         status_id: 1,
+        origin_group_id: None,
     }
 }
 
@@ -358,6 +359,7 @@ async fn bulk_create_each_row_has_independent_serial_and_inv_when_count_eq_1() {
                 state: None,
                 place_id: None,
                 status_id: 1,
+                origin_group_id: None,
             };
             let result = svc.bulk_create(new, 1).await.expect("bulk_create count=1");
             assert_eq!(result.len(), 1);
@@ -403,6 +405,7 @@ async fn bulk_create_single_call_count_eq_1_persists_serial() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
 
         let result = svc
@@ -455,6 +458,7 @@ async fn bulk_create_with_printer_rejects_non_empty_printer_block() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
         let printer = PrinterCreateBlockDto {
             ip_address: Some("192.0.2.10".to_string()),

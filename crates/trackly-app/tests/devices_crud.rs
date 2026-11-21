@@ -73,6 +73,7 @@ fn minimal_new(name: &str) -> DeviceNew {
         state: None,
         place_id: None,
         status_id: 1,
+        origin_group_id: None,
     }
 }
 
@@ -503,6 +504,7 @@ async fn create_persists_serial_number() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
 
         let dto = svc
@@ -552,6 +554,7 @@ async fn create_persists_inventory_and_serial_together() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
 
         let dto = svc
@@ -830,6 +833,7 @@ async fn update_clears_serial_no_via_json_null_without_touching_model() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
         let dto = svc
             .create(new)
@@ -948,6 +952,7 @@ async fn update_clears_place_id_via_json_null_without_touching_name() {
             state: None,
             place_id: Some(place_id),
             status_id: 1,
+            origin_group_id: None,
         };
         let dto = svc
             .create(new)

@@ -36,6 +36,7 @@ fn minimal_new(name: &str) -> DeviceNew {
         state: None,
         place_id: None,
         status_id: 1,
+        origin_group_id: None,
     }
 }
 

@@ -138,6 +138,11 @@ pub struct DeviceNew {
     pub place_id: Option<i64>,
     #[specta(type = i32)]
     pub status_id: i64,
+    /// Группа разбора (behavior = teardown), из которой деталь пришла.
+    /// Принимается только при создании (Phase 41.8, D-08); в `DevicePatch` нет.
+    #[serde(default)]
+    #[specta(type = Option<i32>)]
+    pub origin_group_id: Option<i64>,
 }
 
 impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
@@ -153,6 +158,7 @@ impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
             state: dto.state,
             place_id: dto.place_id,
             status_id: dto.status_id,
+            origin_group_id: dto.origin_group_id,
         }
     }
 }
@@ -645,6 +651,7 @@ mod tests {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
         let json = serde_json::to_string(&new).expect("serialize");
         let back: DeviceNew = serde_json::from_str(&json).expect("deserialize");

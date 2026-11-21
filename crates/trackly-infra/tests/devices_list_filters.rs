@@ -66,6 +66,7 @@ fn add(conn: &mut Connection, spec: Spec) -> i64 {
                 state: spec.state.map(str::to_string),
                 place_id: spec.place,
                 status_id: st,
+                origin_group_id: None,
             },
             NOW,
         )

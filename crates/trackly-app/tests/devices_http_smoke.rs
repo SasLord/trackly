@@ -38,6 +38,7 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
 
         // Tauri-path: trusted_admin — всегда Ok в unlocked desktop mode.

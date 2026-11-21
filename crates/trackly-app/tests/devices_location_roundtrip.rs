@@ -69,6 +69,7 @@ fn new_with_place_id(name: &str, place_id: Option<i64>) -> DeviceNew {
         state: None,
         place_id,
         status_id: 1,
+        origin_group_id: None,
     }
 }
 

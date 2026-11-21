@@ -33,6 +33,7 @@ fn new_device(name: &str, inv: Option<&str>, status_id: i64) -> DeviceNew {
         state: None,
         place_id: None,
         status_id,
+        origin_group_id: None,
     }
 }
 

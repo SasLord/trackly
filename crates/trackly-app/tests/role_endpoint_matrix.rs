@@ -3189,6 +3189,7 @@ async fn role_endpoint_matrix_test() {
                     state: None,
                     place_id: None,
                     status_id: 1,
+                    origin_group_id: None,
                 },
             )
             .await
@@ -3209,6 +3210,7 @@ async fn role_endpoint_matrix_test() {
                     state: None,
                     place_id: None,
                     status_id: 1,
+                    origin_group_id: None,
                 },
             )
             .await
@@ -3268,6 +3270,7 @@ async fn role_endpoint_matrix_test() {
                     state: None,
                     place_id: None,
                     status_id: 1,
+                    origin_group_id: None,
                 },
             )
             .await
@@ -3287,6 +3290,7 @@ async fn role_endpoint_matrix_test() {
                     state: None,
                     place_id: None,
                     status_id: 1,
+                    origin_group_id: None,
                 },
             )
             .await
@@ -3448,6 +3452,7 @@ async fn role_endpoint_matrix_test() {
                 state: None,
                 place_id: None,
                 status_id: 1,
+                origin_group_id: None,
             };
             let host = build_devices_create(
                 &ctx,

@@ -205,6 +205,7 @@ async fn discovered_printer(ctx: &AppCtx, name: &str, model: &str, ip: &str) -> 
                 state: None,
                 place_id: None,
                 status_id: 1,
+                origin_group_id: None,
             },
             Some(PrinterCreateBlockDto {
                 ip_address: Some(ip.into()),

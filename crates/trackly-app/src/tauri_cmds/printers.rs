@@ -210,6 +210,7 @@ pub async fn build_printers_admit(
             // an IP probe); place stays unassigned, D-07 (place optional).
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         };
         let printer_block = PrinterCreateBlockDto {
             ip_address: Some(ip.clone()),

@@ -49,6 +49,7 @@ fn add_device(conn: &mut Connection, name: &str, inv: &str) -> i64 {
                 state: None,
                 place_id: None,
                 status_id: status,
+                origin_group_id: None,
             },
             NOW,
         )

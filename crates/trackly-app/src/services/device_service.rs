@@ -2525,6 +2525,7 @@ impl DeviceService {
                 state,
                 place_id: None,
                 status_id,
+                origin_group_id: None,
             },
             place_text,
             warnings,

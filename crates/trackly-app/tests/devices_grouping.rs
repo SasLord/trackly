@@ -60,6 +60,7 @@ fn non_unique_device(name: &str, status_id: i64) -> DeviceNew {
         state: None,
         place_id: None,
         status_id,
+        origin_group_id: None,
     }
 }
 
@@ -641,6 +642,7 @@ fn device_with_condition(name: &str, condition: &str) -> DeviceNew {
         state: Some(condition.to_string()),
         place_id: None,
         status_id: 1,
+        origin_group_id: None,
     }
 }
 

@@ -421,6 +421,7 @@ async fn import_commit_num16_db_duplicate_vs_in_file_duplicate() {
             state: None,
             place_id: None,
             status_id: 1,
+            origin_group_id: None,
         })
         .await
         .expect("seed DB occupant")

@@ -99,6 +99,7 @@ async fn csv_export_label_equals_dictionary_name_for_every_status() {
                 state: None,
                 place_id: None,
                 status_id: s.id,
+                origin_group_id: None,
             })
             .await
             .expect("create");

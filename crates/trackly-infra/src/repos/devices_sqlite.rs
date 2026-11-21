@@ -709,8 +709,9 @@ impl SqliteDeviceRepository {
             "INSERT INTO devices \
              (type_id, name, inventory_number, serial_number, model, \
               condition, complectation, place_id, status_id, notes, \
+              origin_group_id, \
               version, created_at_utc, updated_at_utc) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, ?11)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?12, 1, ?11, ?11)",
             rusqlite::params![
                 new.type_id,
                 new.name,
@@ -723,6 +724,7 @@ impl SqliteDeviceRepository {
                 new.status_id,
                 new.specs,
                 now_utc,
+                new.origin_group_id,
             ],
         )
         .map_err(map_rusqlite)?;
@@ -1250,8 +1252,9 @@ impl DeviceRepository for SqliteDeviceRepository {
             "INSERT INTO devices \
              (type_id, name, inventory_number, serial_number, model, \
               condition, complectation, place_id, status_id, notes, \
+              origin_group_id, \
               version, created_at_utc, updated_at_utc) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, ?11)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?12, 1, ?11, ?11)",
             rusqlite::params![
                 new.type_id,
                 new.name,
@@ -1264,6 +1267,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 new.status_id,
                 new.specs,
                 now_utc,
+                new.origin_group_id,
             ],
         )
         .map_err(map_rusqlite)?;
