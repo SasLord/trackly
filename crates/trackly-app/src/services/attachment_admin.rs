@@ -90,8 +90,8 @@ impl AttachmentService {
         let store = self.store.clone();
         let readers = self.readers.clone();
         let repo = self.repo.clone();
-        let report =
-            tokio::task::spawn_blocking(move || -> Result<IntegrityReportDto, AppError> {
+        let report = tokio::task::spawn_blocking(
+            move || -> Result<(IntegrityReportDto, Vec<String>), AppError> {
                 let mut report = IntegrityReportDto {
                     checked_at_utc: now_secs,
                     status: "ok".to_string(),
@@ -99,7 +99,7 @@ impl AttachmentService {
                 };
                 if !store.root_available() {
                     report.status = "unavailable".to_string();
-                    return Ok(report);
+                    return Ok((report, Vec::new()));
                 }
                 let scan = store.scan().map_err(|e| AppError::Internal {
                     source_chain: format!("attachments scan: {e}"),
@@ -115,6 +115,7 @@ impl AttachmentService {
                 };
                 let now = SystemTime::UNIX_EPOCH + Duration::from_secs(now_secs.max(0) as u64);
                 let mut on_disk: HashSet<&str> = HashSet::new();
+                let mut candidates: Vec<String> = Vec::new();
                 for b in &scan.blobs {
                     report.files += 1;
                     report.bytes += b.size as i64;
@@ -123,10 +124,9 @@ impl AttachmentService {
                         continue;
                     }
                     if older_than_grace(b.mtime, now) {
-                        match store.remove_blob(&b.hash) {
-                            Ok(()) => report.orphans_removed += 1,
-                            Err(e) => tracing::warn!("attachments scan: orphan not removed: {e}"),
-                        }
+                        // Удаление — НЕ здесь: список кандидатов устаревает, пока
+                        // мы вне писателя (41.3-SECURITY набл. 5).
+                        candidates.push(b.hash.clone());
                     } else {
                         report.orphans_young += 1;
                     }
@@ -142,10 +142,16 @@ impl AttachmentService {
                         }
                     }
                 }
-                Ok(report)
-            })
-            .await
-            .map_err(internal)??;
+                Ok((report, candidates))
+            },
+        )
+        .await
+        .map_err(internal)??;
+        let (mut report, candidates) = report;
+        if !candidates.is_empty() {
+            let (removed, _alive) = self.remove_orphan_candidates(candidates).await?;
+            report.orphans_removed += removed;
+        }
 
         let json = serde_json::to_string(&report).map_err(json_err)?;
         self.writer
@@ -169,6 +175,38 @@ impl AttachmentService {
             );
         }
         Ok(report)
+    }
+
+    /// Удаляет блобы-сироты из списка кандидатов, ПЕРЕПРОВЕРЯЯ ссылки внутри
+    /// замыкания единственного писателя (41.3-SECURITY набл. 5, quick
+    /// 261121-hjw). Загрузка делает `store.commit_staged` и вставку строки в том
+    /// же писателе (T-41.3-26), поэтому перепроверка сериализована с ней:
+    /// кандидат, на который к этому моменту появилась строка (живая или мягко
+    /// удалённая), остаётся на диске. Возвращает `(удалено, оставлено живыми)`.
+    /// Публична только для детерминированного теста устаревшего списка.
+    #[doc(hidden)]
+    pub async fn remove_orphan_candidates(
+        &self,
+        candidates: Vec<String>,
+    ) -> Result<(i64, i64), AppError> {
+        let store = self.store.clone();
+        let repo = self.repo.clone();
+        self.writer
+            .execute(move |conn| {
+                let (mut removed, mut alive) = (0i64, 0i64);
+                for hash in &candidates {
+                    if repo.count_by_hash_on(conn, hash, None)? > 0 {
+                        alive += 1;
+                        continue;
+                    }
+                    match store.remove_blob(hash) {
+                        Ok(()) => removed += 1,
+                        Err(e) => tracing::warn!("attachments scan: orphan not removed: {e}"),
+                    }
+                }
+                Ok((removed, alive))
+            })
+            .await
     }
 
     /// Last persisted report with fresh deleted-attachment totals (Admin only).

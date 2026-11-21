@@ -261,6 +261,60 @@ async fn backup_copies_attachments_incrementally() {
     .expect("budget")
 }
 
+/// 41.3-SECURITY набл. 8 (quick 261121-hjw): копирование вложений (бэкап и
+/// «Переместить БД») пропускает симлинк-шард и симлинк-файл с валидным
+/// хеш-именем — содержимое вне хранилища не утекает в приёмник; обычный блоб
+/// копируется, функция не падает.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn attachment_copy_skips_symlinked_shard_and_file() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (svc, dir, src) = make_with_attachments();
+        put_blob(&src, &h('a'), b"one");
+        // Цель симлинков — ВНЕ хранилища.
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&outside).expect("outside");
+        std::fs::write(outside.join(h('b')), b"secret-b").expect("outside blob");
+        std::fs::write(outside.join("plain"), b"secret-f").expect("outside file");
+        // Симлинк-шард «bb» -> каталог вне хранилища (внутри — файл с валидным именем).
+        std::os::unix::fs::symlink(&outside, src.join("bb")).expect("symlink shard");
+        // Симлинк-файл с валидным 64-hex именем в настоящем шарде.
+        std::os::unix::fs::symlink(outside.join("plain"), src.join("aa").join(h('d')))
+            .expect("symlink file");
+
+        let check = |dest: &std::path::Path| {
+            assert!(
+                dest.join("aa").join(h('a')).is_file(),
+                "обычный блоб не скопирован"
+            );
+            assert!(
+                !dest.join("bb").exists(),
+                "симлинк-шард скопирован в приёмник"
+            );
+            assert!(
+                std::fs::symlink_metadata(dest.join("aa").join(h('d'))).is_err(),
+                "симлинк-файл скопирован в приёмник"
+            );
+        };
+
+        let bdir = dir.path().join("bk");
+        svc.run_backup(bdir.to_str().expect("utf8"))
+            .await
+            .expect("backup");
+        check(&bdir.join("attachments"));
+
+        let moved = dir.path().join("moved_attachments");
+        let n = svc
+            .copy_attachments_to(&moved)
+            .await
+            .expect("copy_attachments_to");
+        assert_eq!(n, 1, "скопирован ровно один настоящий блоб");
+        check(&moved);
+    })
+    .await
+    .expect("budget")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn backup_retention_keeps_attachments() {
     tokio::time::timeout(Duration::from_secs(60), async {

@@ -262,3 +262,25 @@ async fn startup_scan_runs_in_background() {
     }
     assert!(found, "startup scan never stored a report");
 }
+
+/// 41.3-SECURITY набл. 5 (quick 261121-hjw): список кандидатов-сирот
+/// формируется ВНЕ писателя и к моменту удаления может устареть — загрузка
+/// успела вставить строку на тот же хеш. Удаление перепроверяет ссылки внутри
+/// писателя: такой блоб остаётся, настоящая сирота удаляется.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stale_orphan_candidate_with_new_row_is_kept() {
+    let (ctx, _d) = fixture::make_test_ctx().await;
+    settle(&ctx).await;
+    let revived = put_blob(&ctx, &hash('e'), 30);
+    let orphan = put_blob(&ctx, &hash('f'), 30);
+    // Список кандидатов «снят» до появления строки (устаревший).
+    let candidates = vec![hash('e'), hash('f')];
+    seed_row(&ctx, &hash('e'), false).await;
+    let (removed, alive) = timed!(ctx.attachments.remove_orphan_candidates(candidates)).unwrap();
+    assert!(
+        revived.exists(),
+        "блоб, на который появилась строка, удалён"
+    );
+    assert!(!orphan.exists(), "настоящая сирота не удалена");
+    assert_eq!((removed, alive), (1, 1));
+}
