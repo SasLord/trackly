@@ -24,7 +24,10 @@
 //!   ПОСЛЕ последней точки записи тела), `BroadcastWithoutWrite` (строка
 //!   Broadcasts, в теле которой сканер не нашёл ни одной точки записи),
 //!   `ExemptBroadcasts` (строка Exempt не рассылает: освобождение =
-//!   «событие не из этой функции»), `ReadOnlyOwnsWriter`,
+//!   «событие не из этой функции»), `ExemptOwnsWriter` (строка Exempt на
+//!   функции, владеющей записью напрямую или транзитивно: нужен громкий
+//!   вердикт `exw`), `ExemptWritesWithoutWrite` (устаревший `exw` на функции
+//!   без единой точки записи), `ReadOnlyOwnsWriter`,
 //!   `ReadOnlyCallsWriter`, `StaleRow`, `DuplicateFn`, `DeadCodeAllowLeft`.
 //!
 //! ТОЧКА ЗАПИСИ — не только `writer.execute(..)`: запись может быть
@@ -68,6 +71,8 @@ pub enum Kind {
     BroadcastBeforeWriter,
     BroadcastWithoutWrite,
     ExemptBroadcasts,
+    ExemptOwnsWriter,
+    ExemptWritesWithoutWrite,
 }
 
 /// Что гейт реально измерил (D-08: зелёный, ничего не измерив, недопустим).
@@ -76,8 +81,10 @@ pub struct ScanStats {
     /// Строки Broadcasts, у которых проверка порядка отработала (есть и вызов
     /// рассылки, и хотя бы одна точка записи).
     pub broadcasts_ordered: usize,
-    /// Строки Exempt, прошедшие механическую проверку «не рассылает».
+    /// Строки Exempt и ExemptWrites, прошедшие механическую проверку «не рассылает».
     pub exempt_checked: usize,
+    /// Строки ExemptWrites, у которых подтверждена хотя бы одна точка записи.
+    pub exempt_writes_checked: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -688,7 +695,7 @@ pub fn scan_with_stats(rel: &str, src: &str, registry: &[Entry]) -> (Vec<Violati
                     }
                 }
             }
-            Verdict::Exempt(_) => {
+            Verdict::Exempt(_) | Verdict::ExemptWrites(_) => {
                 // D-08: освобождение = «событие не из этой функции»; рассылка в
                 // Exempt-функции противоречит собственной причине и удваивает событие.
                 stats.exempt_checked += 1;
@@ -709,6 +716,23 @@ pub fn scan_with_stats(rel: &str, src: &str, registry: &[Entry]) -> (Vec<Violati
                                 .into(),
                         ));
                     }
+                }
+                // WR-07: владение записью видно в диффе только громким вердиктом exw.
+                let writes = f.owns_write || !write_points(&p, f, &writing).is_empty();
+                match (row.verdict, writes) {
+                    (Verdict::Exempt(_), true) => out.push(v(
+                        &f.name,
+                        Kind::ExemptOwnsWriter,
+                        "Exempt-функция пишет (writer.execute(..) в теле или вызов self-метода, владеющего записью): вердикт exw(..) с причиной"
+                            .into(),
+                    )),
+                    (Verdict::ExemptWrites(_), false) => out.push(v(
+                        &f.name,
+                        Kind::ExemptWritesWithoutWrite,
+                        "устаревший exw: функция больше не пишет, верни ex(..)".into(),
+                    )),
+                    (Verdict::ExemptWrites(_), true) => stats.exempt_writes_checked += 1,
+                    _ => {}
                 }
             }
             Verdict::ReadOnly => {

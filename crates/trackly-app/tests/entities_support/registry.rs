@@ -10,9 +10,17 @@
 //!   ПОСЛЕ коммита, вне скобок `writer.execute(..)`;
 //! * [`Verdict::Exempt`] — освобождение с причиной не короче
 //!   [`MIN_EXEMPT_REASON_CHARS`] СИМВОЛОВ (`chars().count()`, не байт).
-//!   Освобождение = «событие не из этой функции», поэтому Exempt-функция
-//!   механически НЕ содержит `broadcast_entities(..)`: сканер краснит такой
-//!   вызов (`ExemptBroadcasts`, внутри скобок writer — `BroadcastInsideWriter`);
+//!   Exempt = «функция НЕ шлёт событие и НЕ пишет сама»: механически она не
+//!   содержит `broadcast_entities(..)` (сканер краснит такой вызов —
+//!   `ExemptBroadcasts`, внутри скобок writer — `BroadcastInsideWriter`) и не
+//!   владеет записью (ни `writer.execute(..)` в теле, ни транзитивного
+//!   self-вызова владельца записи — иначе `ExemptOwnsWriter`);
+//! * [`Verdict::ExemptWrites`] (конструктор `exw`) — ГРОМКИЙ вердикт: «функция
+//!   пишет, но событие осознанно не из неё» (внутренний помощник, рассылает
+//!   вызывающий; запись вне области событий). Причина подчиняется тому же
+//!   [`MIN_EXEMPT_REASON_CHARS`]; рассылка в теле краснит так же, как у Exempt;
+//!   `exw` на функции, которая больше не пишет, краснит
+//!   (`ExemptWritesWithoutWrite`: верни `ex`). WR-07 ревью 41.7, quick 261121-hjw;
 //! * [`Verdict::ReadOnly`] — функция ничего не пишет.
 //!
 //! Значения по умолчанию нет: функция без строки не «проходит», а краснит
@@ -30,8 +38,10 @@ pub const MIN_EXEMPT_REASON_CHARS: usize = 40;
 pub enum Verdict {
     /// Рассылает `EntitiesChanged` после коммита.
     Broadcasts,
-    /// Освобождена от рассылки; причина обязательна.
+    /// Освобождена от рассылки и сама не пишет; причина обязательна.
     Exempt(&'static str),
+    /// Пишет, но событие осознанно не из этой функции; причина обязательна.
+    ExemptWrites(&'static str),
     /// Ничего не пишет.
     ReadOnly,
 }
@@ -65,6 +75,29 @@ const fn ex(file: &'static str, func: &'static str, reason: &'static str) -> Ent
         file,
         func,
         verdict: Verdict::Exempt(reason),
+    }
+}
+
+const fn exw(file: &'static str, func: &'static str, reason: &'static str) -> Entry {
+    Entry {
+        file,
+        func,
+        verdict: Verdict::ExemptWrites(reason),
+    }
+}
+
+impl Verdict {
+    /// Любое освобождение от рассылки (Exempt или ExemptWrites).
+    pub const fn is_exempt(&self) -> bool {
+        matches!(self, Verdict::Exempt(_) | Verdict::ExemptWrites(_))
+    }
+
+    /// Причина освобождения (для обоих вариантов).
+    pub const fn exempt_reason(&self) -> Option<&'static str> {
+        match self {
+            Verdict::Exempt(r) | Verdict::ExemptWrites(r) => Some(r),
+            _ => None,
+        }
     }
 }
 
@@ -172,7 +205,7 @@ pub const REGISTRY: &[Entry] = &[
     b(PLACE, "move_node"),
     b(PLACE, "archive"),
     b(PLACE, "unarchive"),
-    ex(
+    exw(
         PLACE,
         "set_archived",
         "приватный владелец записи; рассылают оба публичных вызывающих — archive и unarchive, свой вызов дал бы второе событие",
@@ -224,20 +257,20 @@ pub const REGISTRY: &[Entry] = &[
     ro(GTYPE, "plural_groups"),
     ro(GTYPE, "new"),
     ro(GTYPE, "list_types"),
-    ex(GTYPE, "create_type", GTYPE_REASON),
-    ex(
+    exw(GTYPE, "create_type", GTYPE_REASON),
+    exw(
         GTYPE,
         "update_type",
         "СПОРНО (Q8): переименование типа меняет подписи дерева групп, но не место и не состав; страница типов перечитывает по refreshToken",
     ),
-    ex(GTYPE, "delete_type", GTYPE_REASON),
-    ex(GTYPE, "create_property", GTYPE_REASON),
-    ex(GTYPE, "update_property", GTYPE_REASON),
-    ex(GTYPE, "delete_property", GTYPE_REASON),
-    ex(GTYPE, "unarchive_property", GTYPE_REASON),
-    ex(GTYPE, "reorder_properties", GTYPE_REASON),
+    exw(GTYPE, "delete_type", GTYPE_REASON),
+    exw(GTYPE, "create_property", GTYPE_REASON),
+    exw(GTYPE, "update_property", GTYPE_REASON),
+    exw(GTYPE, "delete_property", GTYPE_REASON),
+    exw(GTYPE, "unarchive_property", GTYPE_REASON),
+    exw(GTYPE, "reorder_properties", GTYPE_REASON),
     ro(GTYPE, "empty_groups_for_property"),
-    ex(
+    exw(
         GTYPE,
         "seed_builtin_types_on_startup",
         "посев встроенных типов групп при старте процесса; клиентов ещё нет, состав и места не меняются",
@@ -250,7 +283,7 @@ pub const REGISTRY: &[Entry] = &[
     b(ACT, "create"),
     b(ACT, "update"),
     // Тонкая обёртка над `do_return_with_split` (D-45): сама не пишет и не рассылает.
-    ex(
+    exw(
         ACT,
         "do_return",
         "делегирует в do_return_with_split с выбором Release; запись и рассылка живут там",
@@ -259,14 +292,14 @@ pub const REGISTRY: &[Entry] = &[
     ro(ACT, "return_group_split_preview"),
     b(ACT, "do_return_with_split"),
     // Тонкая обёртка над `update_return_with_split` (D-45): сама не пишет и не рассылает.
-    ex(
+    exw(
         ACT,
         "update_return",
         "делегирует в update_return_with_split с выбором Release; запись и рассылка живут там",
     ),
     // Предпросмотр разбиения группы при правке возврата (CR-01): прогон
     // `update_return_with_split` в режиме Preview, его транзакция всегда откатывается.
-    ex(
+    exw(
         ACT,
         "update_return_group_split_preview",
         "предпросмотр: update_return_with_split в режиме Preview откатывает транзакцию writer'а до коммита и не рассылает",
@@ -277,8 +310,9 @@ pub const REGISTRY: &[Entry] = &[
     ro(ACT, "list"),
     ro(ACT, "counts"),
     ro(ACT, "suggest_person"),
-    // Тонкая обёртка над `delete_soft_with_choices` (D-42): сама не пишет и не рассылает.
-    ex(
+    // Тонкая обёртка над `delete_soft_with_choices` (D-42): writer.execute сама не зовёт и не
+    // рассылает, но пишет транзитивно через делегата — поэтому exw (WR-07).
+    exw(
         ACT,
         "delete_soft",
         "делегирует в delete_soft_with_choices с пустым списком выборов; запись и рассылка живут там",
@@ -295,20 +329,20 @@ pub const REGISTRY: &[Entry] = &[
     // ---- device_service ----------------------------------------------------
     ro(DEVICE, "new"),
     ro(DEVICE, "with_ws_tx"),
-    ex(
+    exw(
         DEVICE,
         "insert_new_and_get",
         "приватный владелец записи; рассылают публичные вызывающие, свой вызов дал бы по событию на каждую строку пакета",
     ),
     // Тонкая обёртка над `create_with_printer_block` (quick 261105-s6s): сама не пишет и не рассылает.
-    ex(
+    exw(
         DEVICE,
         "create",
         "делегирует в create_with_printer_block с блоком None; запись и рассылка живут там",
     ),
     b(DEVICE, "create_with_printer_block"),
     b(DEVICE, "create_single_with_number_check_with_printer"),
-    ex(
+    exw(
         DEVICE,
         "create_single_with_number_check",
         "тонкая обёртка над рассылающим *_with_printer; собственный вызов дал бы ДВА события на одну операцию",
@@ -333,7 +367,7 @@ pub const REGISTRY: &[Entry] = &[
     ro(DEVICE, "export_csv_with_limit"),
     ro(DEVICE, "list_by_ids"),
     b(DEVICE, "bulk_create_with_printer"),
-    ex(
+    exw(
         DEVICE,
         "bulk_create",
         "тонкая обёртка над рассылающим bulk_create_with_printer; собственный вызов дал бы ДВА события на одну операцию",
@@ -354,17 +388,17 @@ pub const REGISTRY: &[Entry] = &[
     ro(CART, "compatible_aggregates_for_printer"),
     ro(CART, "model_list"),
     ro(CART, "model_get"),
-    ex(
+    exw(
         CART,
         "model_create",
         "справочник моделей картриджей, не место и не состав; экран моделей перечитывает данные сам",
     ),
-    ex(
+    exw(
         CART,
         "model_update",
         "справочник моделей картриджей, не место и не состав; экран моделей перечитывает данные сам",
     ),
-    ex(
+    exw(
         CART,
         "model_delete",
         "справочник моделей картриджей, не место и не состав; экран моделей перечитывает данные сам",
@@ -391,7 +425,7 @@ pub const REGISTRY: &[Entry] = &[
     // ---- заход в сервис (Phase 41.4, план 12) -------------------------------
     b(REPAIR, "send"),
     b(REPAIR, "receive"),
-    ex(
+    exw(
         REPAIR,
         "link_scans",
         "связывает уже загруженные вложения с заходом и не меняет места, устройства и группы; сигнал отдельным WsEvent RequestStatusChanged участникам заявки (NEW-7)",
@@ -403,12 +437,12 @@ pub const REGISTRY: &[Entry] = &[
     b(REPAIR, "cancel_by_author"),
     b(REPAIR, "assign_device"),
     // Дальнейшие переходы (планы 14+) добавят строки Broadcasts.
-    ex(
+    exw(
         REPAIR,
         "create",
         "создание заявки не меняет места, устройства и группы; сигнал отдельные WsEvent NewRequest и RequestStatusChanged, а новая заявка на устройство — EmployeeScopeChanged для пометки «Есть заявка» у сотрудников (NEW-4)",
     ),
-    ex(
+    exw(
         REPAIR,
         "merge_into_open",
         "слияние заявок не меняет места, устройства и группы; сообщения чата поглощаемой заявки переносятся в целевую (D-09); сигнал отдельным WsEvent RequestStatusChanged участникам обеих заявок; вложения цели (D-35) сигналятся отдельным WsEvent AttachmentsChanged",

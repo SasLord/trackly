@@ -36,7 +36,10 @@
 //!     слой (2) привязан к реальным `#[tokio::test] async fn scenario_*`;
 //!   * `selftest_broadcast_*`, `selftest_exempt_*`, `selftest_scan_stats_*` —
 //!     порядок «рассылка ПОСЛЕ записи» (WR-06: `BroadcastBeforeWriter`,
-//!     `BroadcastWithoutWrite`) и механика Exempt (WR-07: `ExemptBroadcasts`);
+//!     `BroadcastWithoutWrite`) и механика Exempt (WR-07: `ExemptBroadcasts`,
+//!     громкий вердикт exw — `ExemptOwnsWriter` / `ExemptWritesWithoutWrite`);
+//!   * `mutation_exw_to_ex_in_every_writing_exempt_row_turns_gate_red` — свип
+//!     по КОПИИ реестра: каждая exw-строка, подменённая на ex, краснеет;
 //!   * `mutation_early_broadcast_in_every_broadcasts_row_*`,
 //!     `mutation_broadcast_moved_before_write_*`,
 //!     `mutation_broadcast_in_every_exempt_row_*` — свипы по ВСЕМ строкам
@@ -68,10 +71,7 @@ use trackly_app::dto::printer::WsEvent;
 const MIN_REGISTRY_ROWS: usize = 110;
 
 fn reason_of(e: &Entry) -> Option<&'static str> {
-    match e.verdict {
-        Verdict::Exempt(r) => Some(r),
-        _ => None,
-    }
+    e.verdict.exempt_reason()
 }
 
 #[test]
@@ -370,7 +370,7 @@ impl S {
     }
 }
 "#;
-    let reg = [row("seed", Verdict::Exempt(EXEMPT_REASON))];
+    let reg = [row("seed", Verdict::ExemptWrites(EXEMPT_REASON))];
     let vs = scan(SYN, src, &reg);
     assert!(vs.is_empty(), "{:?}", kinds(&vs));
 }
@@ -597,7 +597,7 @@ impl S {
     let reg = [
         row("get", Verdict::ReadOnly),
         row("get2", Verdict::ReadOnly),
-        row("set_x", Verdict::Exempt(EXEMPT_REASON)),
+        row("set_x", Verdict::ExemptWrites(EXEMPT_REASON)),
     ];
     let vs = scan(SYN, src, &reg);
     assert!(
@@ -736,7 +736,7 @@ fn selftest_broadcast_before_delegated_write_is_red() {
     let call = "self.broadcast_entities(\"archive\", vec![1], vec![], vec![]);";
     let reg = [
         row("archive", Verdict::Broadcasts),
-        row("set_archived", Verdict::Exempt(EXEMPT_REASON)),
+        row("set_archived", Verdict::ExemptWrites(EXEMPT_REASON)),
     ];
     let red = scan(SYN, &archive_like(call, ""), &reg);
     assert!(
@@ -775,7 +775,7 @@ impl S {{
 fn selftest_broadcast_before_transitive_delegate_is_red() {
     let reg = [
         row("create", Verdict::Broadcasts),
-        row("insert_row", Verdict::Exempt(EXEMPT_REASON)),
+        row("insert_row", Verdict::ExemptWrites(EXEMPT_REASON)),
     ];
     let red = scan(SYN, &transitive_like(BCAST_TOP, ""), &reg);
     assert!(
@@ -794,7 +794,7 @@ fn selftest_broadcast_before_transitive_delegate_is_red() {
 fn selftest_broadcast_after_transitive_delegate_is_green() {
     let reg = [
         row("create", Verdict::Broadcasts),
-        row("insert_row", Verdict::Exempt(EXEMPT_REASON)),
+        row("insert_row", Verdict::ExemptWrites(EXEMPT_REASON)),
     ];
     let green = scan(SYN, &transitive_like("", BCAST_TOP), &reg);
     assert!(green.is_empty(), "{:?}", kinds(&green));
@@ -882,7 +882,7 @@ impl S {
 }
 "#;
     let reg = [
-        row("seed", Verdict::Exempt(EXEMPT_REASON)),
+        row("seed", Verdict::ExemptWrites(EXEMPT_REASON)),
         row("wrap", Verdict::Exempt(EXEMPT_REASON)),
     ];
     let vs = scan(SYN, src, &reg);
@@ -902,7 +902,7 @@ impl S {
     }
 }
 "#;
-    let reg = [row("seed", Verdict::Exempt(EXEMPT_REASON))];
+    let reg = [row("seed", Verdict::ExemptWrites(EXEMPT_REASON))];
     let vs = scan(SYN, src, &reg);
     assert!(
         has(&vs, "seed", Kind::BroadcastInsideWriter),
@@ -931,17 +931,120 @@ impl S {
     }
 }
 "#;
-    let reg = [row("seed", Verdict::Exempt(EXEMPT_REASON))];
+    let reg = [row("seed", Verdict::ExemptWrites(EXEMPT_REASON))];
     let (vs, stats) = scan_with_stats(SYN, src, &reg);
     assert!(vs.is_empty(), "{:?}", kinds(&vs));
     assert_eq!(stats.broadcasts_ordered, 0);
     assert_eq!(stats.exempt_checked, 1);
+    assert_eq!(stats.exempt_writes_checked, 1);
 
     // Строка Broadcasts без точки записи ничего не «измерила».
     let none = "impl S { pub async fn create(&self) { self.broadcast_entities(\"create\", vec![], vec![], vec![]); } }";
     let reg = [row("create", Verdict::Broadcasts)];
     let (_, stats) = scan_with_stats(SYN, none, &reg);
     assert_eq!(stats.broadcasts_ordered, 0);
+}
+
+// ---- selftest громкого вердикта ExemptWrites (WR-07, quick 261121-hjw) -------
+
+#[test]
+fn selftest_exempt_on_direct_writer_is_red() {
+    let src = r#"
+impl S {
+    pub async fn seed(&self) {
+        self.writer.execute(|c| Ok(())).await.unwrap();
+    }
+}
+"#;
+    let vs = scan(SYN, src, &[row("seed", Verdict::Exempt(EXEMPT_REASON))]);
+    assert!(has(&vs, "seed", Kind::ExemptOwnsWriter), "{:?}", kinds(&vs));
+    let vs = scan(
+        SYN,
+        src,
+        &[row("seed", Verdict::ExemptWrites(EXEMPT_REASON))],
+    );
+    assert!(
+        vs.is_empty(),
+        "exw на пишущей функции обязан быть зелёным: {:?}",
+        kinds(&vs)
+    );
+}
+
+#[test]
+fn selftest_exempt_on_transitive_writer_is_red() {
+    // seed сам writer.execute не содержит, пишет через self-вызов владельца записи.
+    let src = r#"
+impl S {
+    pub async fn seed(&self) {
+        self.insert_row(1).await.unwrap();
+    }
+    async fn insert_row(&self, x: i64) -> R {
+        self.writer.execute(move |c| { Ok(x) }).await
+    }
+}
+"#;
+    let reg = [
+        row("seed", Verdict::Exempt(EXEMPT_REASON)),
+        row("insert_row", Verdict::ExemptWrites(EXEMPT_REASON)),
+    ];
+    let vs = scan(SYN, src, &reg);
+    assert!(has(&vs, "seed", Kind::ExemptOwnsWriter), "{:?}", kinds(&vs));
+    assert!(
+        !has(&vs, "insert_row", Kind::ExemptOwnsWriter),
+        "{:?}",
+        kinds(&vs)
+    );
+    let reg = [
+        row("seed", Verdict::ExemptWrites(EXEMPT_REASON)),
+        row("insert_row", Verdict::ExemptWrites(EXEMPT_REASON)),
+    ];
+    let vs = scan(SYN, src, &reg);
+    assert!(vs.is_empty(), "{:?}", kinds(&vs));
+}
+
+#[test]
+fn selftest_exempt_writes_without_write_is_red() {
+    let src = r#"
+impl S {
+    pub async fn seed(&self) -> i64 {
+        1
+    }
+}
+"#;
+    let vs = scan(
+        SYN,
+        src,
+        &[row("seed", Verdict::ExemptWrites(EXEMPT_REASON))],
+    );
+    assert!(
+        has(&vs, "seed", Kind::ExemptWritesWithoutWrite),
+        "{:?}",
+        kinds(&vs)
+    );
+    let vs = scan(SYN, src, &[row("seed", Verdict::Exempt(EXEMPT_REASON))]);
+    assert!(
+        vs.is_empty(),
+        "ex на непишущей функции зелёный: {:?}",
+        kinds(&vs)
+    );
+}
+
+#[test]
+fn selftest_exempt_writes_with_broadcast_is_red() {
+    let src = r#"
+impl S {
+    pub async fn seed(&self) {
+        self.writer.execute(|c| Ok(())).await.unwrap();
+        self.broadcast_entities("seed", vec![], vec![], vec![]);
+    }
+}
+"#;
+    let vs = scan(
+        SYN,
+        src,
+        &[row("seed", Verdict::ExemptWrites(EXEMPT_REASON))],
+    );
+    assert!(has(&vs, "seed", Kind::ExemptBroadcasts), "{:?}", kinds(&vs));
 }
 
 // ---- selftest слоя (2): scenarios.rs ----------------------------------------
@@ -1408,10 +1511,7 @@ fn mutation_broadcast_in_every_exempt_row_turns_gate_red() {
     let mut checked = 0usize;
     let mut writer_owning = 0usize;
     let mut files: BTreeSet<&str> = BTreeSet::new();
-    for e in REGISTRY
-        .iter()
-        .filter(|e| matches!(e.verdict, Verdict::Exempt(_)))
-    {
+    for e in REGISTRY.iter().filter(|e| e.verdict.is_exempt()) {
         let src = read_service(e.file);
         let fi = unique_fn(&src, e.file, e.func);
         let before = scan(e.file, &src, REGISTRY);
@@ -1457,10 +1557,7 @@ fn mutation_broadcast_in_every_exempt_row_turns_gate_red() {
     }
     assert_eq!(
         checked,
-        REGISTRY
-            .iter()
-            .filter(|e| matches!(e.verdict, Verdict::Exempt(_)))
-            .count(),
+        REGISTRY.iter().filter(|e| e.verdict.is_exempt()).count(),
         "свип обработал не все строки Exempt"
     );
     assert!(checked >= 20, "свип по Exempt измерил только {checked}");
@@ -1476,24 +1573,60 @@ fn mutation_broadcast_in_every_exempt_row_turns_gate_red() {
     }
 }
 
+/// WR-07: каждая строка exw реального реестра, подменённая в КОПИИ реестра на
+/// ex (текст причины тот же), обязана дать `ExemptOwnsWriter`; файлы на диске
+/// не трогаются.
+#[test]
+fn mutation_exw_to_ex_in_every_writing_exempt_row_turns_gate_red() {
+    let mut checked = 0usize;
+    for (idx, e) in REGISTRY.iter().enumerate() {
+        let Verdict::ExemptWrites(reason) = e.verdict else {
+            continue;
+        };
+        let src = read_service(e.file);
+        let before = scan(e.file, &src, REGISTRY);
+        assert!(
+            !has(&before, e.func, Kind::ExemptOwnsWriter)
+                && !has(&before, e.func, Kind::ExemptWritesWithoutWrite),
+            "{}::{}: красная уже до мутации: {:?}",
+            e.file,
+            e.func,
+            kinds(&before)
+        );
+        let mut copy: Vec<Entry> = REGISTRY.to_vec();
+        copy[idx].verdict = Verdict::Exempt(reason);
+        let after = scan(e.file, &src, &copy);
+        assert!(
+            has(&after, e.func, Kind::ExemptOwnsWriter),
+            "{}::{}: exw -> ex на пишущей функции не покраснел: {:?}",
+            e.file,
+            e.func,
+            kinds(&after)
+        );
+        checked += 1;
+    }
+    assert!(
+        checked > 0,
+        "в реестре нет ни одной строки exw: свип вакуумен"
+    );
+}
+
 #[test]
 fn gate_new_checks_measured_something() {
-    let (mut ordered, mut exempt) = (0usize, 0usize);
+    let (mut ordered, mut exempt, mut exempt_writes) = (0usize, 0usize, 0usize);
     let mut violations: Vec<String> = Vec::new();
     for f in SCOPE_FILES {
         let (vs, stats) = scan_with_stats(f, &read_service(f), REGISTRY);
         ordered += stats.broadcasts_ordered;
         exempt += stats.exempt_checked;
+        exempt_writes += stats.exempt_writes_checked;
         violations.extend(vs.iter().map(|v| v.to_string()));
     }
     let broadcasts_rows = REGISTRY
         .iter()
         .filter(|e| e.verdict == Verdict::Broadcasts)
         .count();
-    let exempt_rows = REGISTRY
-        .iter()
-        .filter(|e| matches!(e.verdict, Verdict::Exempt(_)))
-        .count();
+    let exempt_rows = REGISTRY.iter().filter(|e| e.verdict.is_exempt()).count();
     assert_eq!(
         ordered, broadcasts_rows,
         "проверка порядка отработала не на каждой строке Broadcasts"
@@ -1504,6 +1637,15 @@ fn gate_new_checks_measured_something() {
     );
     assert!(ordered >= 30, "проверка порядка измерила только {ordered}");
     assert!(exempt >= 20, "механика Exempt измерила только {exempt}");
+    let exempt_writes_rows = REGISTRY
+        .iter()
+        .filter(|e| matches!(e.verdict, Verdict::ExemptWrites(_)))
+        .count();
+    assert_eq!(
+        exempt_writes, exempt_writes_rows,
+        "проверка «exw пишет» отработала не на каждой строке exw"
+    );
+    assert!(exempt_writes > 0, "ни одной строки exw: WR-07 не измерен");
     assert!(violations.is_empty(), "нарушения: {violations:?}");
 }
 
