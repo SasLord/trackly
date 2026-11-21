@@ -7,6 +7,7 @@ pub mod attachments;
 pub mod cartridges;
 pub mod chat;
 pub mod devices;
+pub mod group_move_status;
 pub mod group_values;
 pub mod groups;
 pub mod number_templates;
