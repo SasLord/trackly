@@ -1610,3 +1610,130 @@ async fn write_off_group_container_and_stale_version_rejected() {
     assert!(group_alive(&ctx, g).await);
     assert_eq!(status_code_of(&ctx, anchor).await, "на_списание");
 }
+
+// ---- Plan 19 (WR-01, D-29): аудит устройства на путях вывода -----------------
+
+/// (before_json, after_json, payload_json) всех записей аудита устройства с действием.
+async fn device_audit(
+    ctx: &AppCtx,
+    device: i64,
+    action: &'static str,
+) -> Vec<(Option<String>, Option<String>, Option<String>)> {
+    ctx.writer
+        .execute(move |conn| {
+            let mut st = conn
+                .prepare(
+                    "SELECT before_json, after_json, payload_json FROM audit_log \
+                     WHERE entity_type = 'device' AND entity_id = ?1 AND action = ?2 ORDER BY id",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = st
+                .query_map(params![device, action], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
+        })
+        .await
+        .expect("device audit")
+}
+
+fn payload_group_id(payload: &Option<String>) -> Option<i64> {
+    let v: serde_json::Value = serde_json::from_str(payload.as_deref()?).ok()?;
+    v.get("group_id")?.as_i64()
+}
+
+const RELEASED: &str = "custom:group_member_released";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wr01_move_devices_writes_member_released_on_device() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let from = plain_group(&ctx, "container", "АРМ #3").await;
+    let to = plain_group(&ctx, "container", "АРМ #5").await;
+    let dev = seed_device(&ctx, "Монитор #2", "INV-M-1", None).await;
+    ctx.groups
+        .add_devices(&admin(), from, vec![dev])
+        .await
+        .expect("add");
+    ctx.groups
+        .move_devices(&admin(), to, vec![dev])
+        .await
+        .expect("move");
+    let rows = device_audit(&ctx, dev, RELEASED).await;
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(payload_group_id(&rows[0].2), Some(from));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wr01_write_off_device_release_writes_released_and_snapshots() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let g = plain_group(&ctx, "container", "АРМ #3").await;
+    let dev = seed_device(&ctx, "Монитор #2", "INV-M-2", None).await;
+    ctx.groups
+        .add_devices(&admin(), g, vec![dev])
+        .await
+        .expect("add");
+    set_status_by_code(&ctx, dev, "на_списание").await;
+    wo_device(&ctx, dev, true).await.expect("write off");
+    let rel = device_audit(&ctx, dev, RELEASED).await;
+    assert_eq!(rel.len(), 1, "{rel:?}");
+    assert_eq!(payload_group_id(&rel[0].2), Some(g));
+    let wo = device_audit(&ctx, dev, "write_off").await;
+    assert_eq!(wo.len(), 1);
+    let before = wo[0].0.as_deref().expect("before_json");
+    let after = wo[0].1.as_deref().expect("after_json");
+    assert!(before.contains("на_списание"), "{before}");
+    assert!(after.contains("списано"), "{after}");
+    assert_ne!(before, after);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wr01_write_off_device_stay_has_snapshots_without_released() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let g = plain_group(&ctx, "container", "АРМ #3").await;
+    let dev = seed_device(&ctx, "Монитор #2", "INV-M-3", None).await;
+    ctx.groups
+        .add_devices(&admin(), g, vec![dev])
+        .await
+        .expect("add");
+    set_status_by_code(&ctx, dev, "на_списание").await;
+    wo_device(&ctx, dev, false).await.expect("write off");
+    assert!(device_audit(&ctx, dev, RELEASED).await.is_empty());
+    let wo = device_audit(&ctx, dev, "write_off").await;
+    assert_eq!(wo.len(), 1);
+    assert!(wo[0].0.is_some() && wo[0].1.is_some(), "{wo:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wr01_write_off_group_counts_only_released_members_and_audits_each() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let (g, anchor) = make_anchor_group(
+        &ctx,
+        "substitute",
+        "Замена #5",
+        "Системный блок #4",
+        "INV-M-10",
+        None,
+    )
+    .await;
+    let m1 = seed_device(&ctx, "Память 8 ГБ", "INV-M-11", None).await;
+    let m2 = seed_device(&ctx, "SSD 256 ГБ", "INV-M-12", None).await;
+    ctx.groups
+        .add_devices(&admin(), g, vec![m1, m2])
+        .await
+        .expect("add");
+    set_status_by_code(&ctx, anchor, "на_списание").await;
+    let res = wo_group(&ctx, g).await.expect("write off group");
+    assert_eq!(res.released_devices, 2, "якорь не считается");
+    for m in [m1, m2] {
+        let rel = device_audit(&ctx, m, RELEASED).await;
+        assert_eq!(rel.len(), 1, "{m}: {rel:?}");
+        assert_eq!(payload_group_id(&rel[0].2), Some(g));
+    }
+    assert!(device_audit(&ctx, anchor, RELEASED).await.is_empty());
+    let wo = device_audit(&ctx, anchor, "write_off").await;
+    assert_eq!(wo.len(), 1);
+    assert!(wo[0].0.is_some() && wo[0].1.is_some(), "{wo:?}");
+}
