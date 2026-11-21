@@ -30,6 +30,15 @@ jobs:
       - name: Privacy gate (organization requisites / ФИО / infra identifiers)
         run: node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256
 
+      # quick 261121-heg (WR-13): selftest корневых гейтов. Гейт без прогона
+      # selftest может молча ослабнуть; ui/-гейты держит check-lint-selftest-wiring
+      # в pnpm lint, а эти два живут вне ui/ — их подключение держит этот шаг.
+      # Оба самодостаточны (временные каталоги, свой git-репозиторий у второго).
+      - name: Root gate selftests (privacy, write-site gate untouched)
+        run: |
+          node scripts/check-privacy.selftest.mjs
+          node scripts/check-write-site-gate-untouched.mjs --selftest
+
       # На ubuntu-latest кончалось место: ~214 тестовых бинарников, каждый статически
       # линкует весь стек Tauri (прогон 42624283151: «No space left on device»,
       # затем «ld terminated with signal 7 [Bus error]»). Debuginfo выключен до шага
