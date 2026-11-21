@@ -71,14 +71,18 @@
   import PlaceEntityViewModal from '../places/PlaceEntityViewModal.svelte';
   import AddToGroupModal from '../groups/AddToGroupModal.svelte';
   import GroupFormModal from '../groups/GroupFormModal.svelte';
+  import WriteOffDeviceModal from '../groups/WriteOffDeviceModal.svelte';
+  import WriteOffGroupModal from '../groups/WriteOffGroupModal.svelte';
   import {
     buildMenuSections,
+    canMoveToGroup,
     canRemoveFromGroup,
+    canWriteOff,
     isGroupActionAllowed,
     quickActionsForDevice,
     type MenuItemSpec,
   } from './deviceRowMenu';
-  import type { DeviceDto, PlaceContentDto } from '../../bindings';
+  import type { DeviceDto, GroupDto, PlaceContentDto } from '../../bindings';
 
   interface Props {
     /** Устройство строки; null — взять по `deviceId` перед каждым открытием (принтеры). */
@@ -116,6 +120,9 @@
 
   let viewRow = $state<PlaceContentDto | null>(null);
   let addToGroupOpen = $state(false);
+  let moveOpen = $state(false);
+  let writeOffDevice = $state<DeviceDto | null>(null);
+  let writeOffGroup = $state<GroupDto | null>(null);
   let quickTypeId = $state<number | null>(null);
   let refuseOpen = $state(false);
   let confirmOpen = $state(false);
@@ -141,6 +148,17 @@
           groupId: dev.group_id,
           anchorGroupId: dev.anchor_group_id,
         }),
+      moveToGroup:
+        dev !== null &&
+        canMoveToGroup({
+          role: authStore.user?.role ?? null,
+          groupId: dev.group_id,
+          anchorGroupId: dev.anchor_group_id,
+          statusCode: dev.status_code,
+        }),
+      writeOff:
+        dev !== null &&
+        canWriteOff({ role: authStore.user?.role ?? null, statusCode: dev.status_code }),
     }),
   );
 
@@ -254,6 +272,12 @@
       case 'removeFromGroup':
         void removeFromGroup();
         break;
+      case 'moveToGroup':
+        moveOpen = true;
+        break;
+      case 'writeOff':
+        void startWriteOff();
+        break;
       case 'delete':
         // Якорь не скрывается и не блокируется: ведёт в модалку отказа (D-14).
         if (dev?.anchor_group_id != null) refuseOpen = true;
@@ -267,6 +291,32 @@
     onChanged();
   }
 
+  function handleMoved() {
+    moveOpen = false;
+    onChanged();
+  }
+
+  function handleWrittenOff() {
+    writeOffDevice = null;
+    writeOffGroup = null;
+    onChanged();
+  }
+
+  // R-03: у якоря одна подпись «Списать» и один смысл — списание группы.
+  async function startWriteOff() {
+    const target = dev;
+    if (!target) return;
+    if (target.anchor_group_id == null) {
+      writeOffDevice = target;
+      return;
+    }
+    try {
+      writeOffGroup = await groups.get(target.anchor_group_id);
+    } catch {
+      pushToast('error', 'Не удалось загрузить устройство. Проверьте подключение и повторите.');
+    }
+  }
+
   function handleQuickSaved() {
     quickTypeId = null;
     onChanged();
@@ -278,21 +328,27 @@
     if (groupId != null) window.location.hash = '#/groups?id=' + groupId;
   }
 
-  // GRD-12: вывод без подтверждения, как в разделе «Группы» (D-02 фазы 41).
+  // GRD-12: вывод без подтверждения, как в разделе «Группы» (D-02 фазы 41, D-02 фазы 41.8).
   // Группа и устройство захватываются ДО await: `dev` может смениться при
   // перечитывании списка. Место не меняется, поэтому notifyPlaceContentChanged
   // не нужен; остальные клиенты получают WS-событие entities_changed.
   async function removeFromGroup() {
     const target = dev;
     const ownerGroupId = target?.group_id;
+    const ownerGroupName = target?.group_name ?? '';
     if (!target || ownerGroupId == null || removing) return;
     removing = true;
     try {
       await groups.removeDevices({ group_id: ownerGroupId, device_ids: [target.id] });
-      pushToast('success', 'Устройство выведено из состава');
+      pushToast('success', `Устройство выведено из группы «${ownerGroupName}»`);
       onChanged();
     } catch (e: unknown) {
-      pushToast('error', errorMessage(e, 'Не удалось вывести устройство из состава.'));
+      pushToast(
+        'error',
+        e && typeof e === 'object' && 'message' in e
+          ? errorMessage(e, '')
+          : 'Не удалось вывести из группы. Проверьте подключение и повторите.',
+      );
     } finally {
       removing = false;
     }
@@ -358,6 +414,34 @@
     device={{ id: dev.id, name: dev.name }}
     onClose={() => (addToGroupOpen = false)}
     onAdded={handleAdded}
+  />
+{/if}
+
+{#if moveOpen && dev}
+  <AddToGroupModal
+    mode="move"
+    device={{ id: dev.id, name: dev.name }}
+    currentGroup={dev.group_id != null ? { id: dev.group_id, name: dev.group_name ?? '' } : null}
+    onClose={() => (moveOpen = false)}
+    onAdded={handleMoved}
+  />
+{/if}
+
+{#if writeOffDevice}
+  <WriteOffDeviceModal
+    device={writeOffDevice}
+    isTeardownMember={writeOffDevice.origin_group_id != null &&
+      writeOffDevice.origin_group_id === writeOffDevice.group_id}
+    onClose={() => (writeOffDevice = null)}
+    onDone={handleWrittenOff}
+  />
+{/if}
+
+{#if writeOffGroup}
+  <WriteOffGroupModal
+    group={writeOffGroup}
+    onClose={() => (writeOffGroup = null)}
+    onDone={handleWrittenOff}
   />
 {/if}
 
