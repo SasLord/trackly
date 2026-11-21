@@ -1,6 +1,6 @@
 //! Place DTOs — transport contracts for the Places entity (Phase 39).
 //!
-//! `PlaceDto`/`PlaceTreeNodeDto`/`PlacePathDto` are the SOLE source of response shapes
+//! `PlaceDto`/`PlacePathDto` are the SOLE source of response shapes
 //! for every downstream Phase 39 plan (08/12/13/14/19/20) — defined here, before any
 //! transport-layer consumer, mirroring `dto/device.rs`'s `DeviceDto` convention exactly.
 //!
@@ -70,38 +70,6 @@ impl From<PlaceRow> for PlaceDto {
             version: row.version,
         }
     }
-}
-
-/// Tree-node DTO — every `PlaceDto` field plus `content_count` (D-25's per-node
-/// counter, "sum including nested places"). Populated by Plan 08's subtree-stats-
-/// backed list methods — this plan (05) only defines the shape.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub struct PlaceTreeNodeDto {
-    #[specta(type = i32)]
-    pub id: i64,
-    #[specta(type = Option<i32>)]
-    pub parent_id: Option<i64>,
-    pub kind: String,
-    pub name: String,
-    #[specta(type = Option<i32>)]
-    pub level: Option<i64>,
-    pub is_storage: bool,
-    #[specta(type = Option<i32>)]
-    pub sort_order: Option<i64>,
-    #[specta(type = Option<i32>)]
-    pub archived_at_utc: Option<i64>,
-    pub notes: Option<String>,
-    pub full_path: Option<String>,
-    #[specta(type = i32)]
-    pub created_at_utc: i64,
-    #[specta(type = i32)]
-    pub updated_at_utc: i64,
-    #[specta(type = i32)]
-    pub version: i64,
-    /// D-25: sum of devices/printers/cartridges/nested places under this node,
-    /// INCLUDING nested places (Pattern 2 subtree-stats sum, not just direct children).
-    #[specta(type = i32)]
-    pub content_count: i64,
 }
 
 /// Place-search result row (the `places_search` result shape, D-17's flat-list

@@ -59,7 +59,6 @@ impl GroupMoveCause {
     };
 
     /// Перенос как следствие акта `act_id`.
-    #[allow(dead_code)] // первый вызов — планы 41.2-04/06
     pub(crate) const fn act(act_id: i64) -> Self {
         Self {
             source: MovementSource::Act,

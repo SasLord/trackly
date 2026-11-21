@@ -87,8 +87,10 @@ pub struct OpenedAttachment {
 
 /// Employee access to device/printer/cartridge attachments.
 ///
-/// Deny-by-default in 41.3 (D-27): opened by phase 41.6 together with the
-/// Devices section rule for Employee.
+/// Осознанное решение v1.4 (quick 261121-heg, NEW-6): сотрудник не видит
+/// вложений устройства. Запрет по умолчанию введён в 41.3 (D-27); фаза 41.6
+/// открыла сотруднику раздел устройств, но вложения не открывала. Открытие —
+/// отдельное решение с новой веткой роль-матрицы.
 fn employee_can_read_device(_caller: &Identity, _kind: ParentKind, _parent_id: i64) -> bool {
     false
 }
