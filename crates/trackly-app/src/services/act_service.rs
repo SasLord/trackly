@@ -89,10 +89,11 @@ enum ActWriteStep {
 
 /// Устройство можно передать актом (D-34 фазы 41.4; заменяет правило D-02 фазы 41.2).
 ///
-/// Порядок: открытая ремонтная заявка отказывает раньше всего (D-22); затем допустимы
-/// статусы «На складе» и «В работе» (оба определяются по `code`, не по подписи и не по
-/// числовому id) и член живой группы при любом статусе. Вне групп любой другой статус
-/// («Ожидает ремонта», «В ремонте», «На списание», «Списано») акт не допускает.
+/// Порядок: открытая ремонтная заявка отказывает раньше всего (D-22); затем «Списано»
+/// отказывает всегда, в том числе члену группы (D-27, CR-01); затем допустимы статусы
+/// «На складе» и «В работе» (определяются по `code`, не по подписи и не по числовому id)
+/// и член живой группы при любом остальном статусе. Вне групп любой другой статус
+/// («Ожидает ремонта», «В ремонте», «На списание») акт не допускает.
 fn is_act_assignable(
     tx: &rusqlite::Transaction<'_>,
     groups: &SqliteGroupRepository,
@@ -105,6 +106,11 @@ fn is_act_assignable(
         .open_repair_request_id(tx, device.id)?
         .is_some()
     {
+        return Ok(false);
+    }
+    // D-27: списанное устройство (в том числе оставленный в группе участник, D-20)
+    // не передаётся актом ни в одной ветке.
+    if device.status_code == "списано" {
         return Ok(false);
     }
     if device.status_id == on_warehouse_status_id {
@@ -142,6 +148,24 @@ fn assignable_conflict(tx: &rusqlite::Transaction<'_>, dev_id: i64) -> AppError 
                 "Устройство id={dev_id} нельзя передать актом — обновите список и повторите."
             ),
         }
+    };
+    AppError::Conflict { reason }
+}
+
+/// Отказ возврата устройства, не стоящего «В работе». Для «Списано» (D-27) текст называет
+/// причину и подсказывает выход; прочие статусы сохраняют прежний текст.
+fn not_in_work_return_conflict(device: &DeviceRow) -> AppError {
+    let reason = if device.status_code == "списано" {
+        format!(
+            "Устройство «{}» имеет статус «Списано» и не может быть возвращено актом: \
+             уберите его из возврата.",
+            device.name
+        )
+    } else {
+        format!(
+            "Устройство id={} уже не в работе — возможно, оно уже возвращено",
+            device.id
+        )
     };
     AppError::Conflict { reason }
 }
@@ -2250,12 +2274,7 @@ impl ActService {
                         // CR-02 (ACT-13): status guard. Защита от двойного
                         // возврата — device должен быть 'в_работе'.
                         if before.status_id != in_work_status_id {
-                            return Err(AppError::Conflict {
-                                reason: format!(
-                                    "Устройство id={} уже не в работе — возможно, оно уже возвращено",
-                                    device_id
-                                ),
-                            });
+                            return Err(not_in_work_return_conflict(&before));
                         }
 
                         // CR-04 (ACT-13): quantity bound. В G-12 модели handover_qty
@@ -2756,12 +2775,7 @@ impl ActService {
                     }
                     let d = devices_repo.get_in_tx(&tx, dev_id)?;
                     if d.status_id != in_work_status_id {
-                        return Err(AppError::Conflict {
-                            reason: format!(
-                                "Устройство id={} уже не в работе — возможно, оно уже возвращено",
-                                dev_id
-                            ),
-                        });
+                        return Err(not_in_work_return_conflict(&d));
                     }
 
                     // WR-03 (22-REVIEW.md): port `do_return`'s
