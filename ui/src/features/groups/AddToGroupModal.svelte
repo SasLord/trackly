@@ -132,9 +132,11 @@
   // одна операция и инвалидация счётчиков «Мест» (INV-7) в одной функции.
   async function doMove(target: GroupDto) {
     if (subjectGroup) {
+      // Свежая версия (как attachGroup и openMoveToGroup): снимок мог устареть.
+      const fresh = await groups.get(subjectGroup.id);
       const result = await groups.setParent({
         id: subjectGroup.id,
-        version: subjectGroup.version,
+        version: fresh.version,
         parent_group_id: target.id,
         replace_parent: true,
       });
@@ -177,6 +179,10 @@
       // Отказ по правилам — текст сервера в форме; остальное — сбой связи, тостом.
       if (err?.code === 'VALIDATION' || err?.code === 'CONFLICT') {
         fieldErr = err.message ?? 'Устройство нельзя добавить в эту группу.';
+      } else if (err?.code === 'OPTIMISTIC_LOCK_MISMATCH') {
+        fieldErr = 'Группа изменена в другой сессии. Закройте окно и повторите.';
+      } else if (err?.code === 'NOT_FOUND') {
+        fieldErr = 'Группа или устройство уже удалены.';
       } else {
         pushToast(
           'error',
