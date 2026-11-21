@@ -6749,11 +6749,10 @@ async fn fs_helpers_not_exposed_over_http() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn int29_role_matrix_http() {
-    let env = gt_env().await;
-    let (_device_id, attachment_id) = int29_seed_device_attachment(&env).await;
-    for (name, roles, payload) in int29_cases(attachment_id) {
+/// Прогон таблицы кейсов: без сессии 401, Employee 403, Manager по роли,
+/// Admin — гейт пропущен и форма payload'а принята.
+async fn int29_check_cases(env: &GtEnv, cases: Vec<(&'static str, Int29Roles, serde_json::Value)>) {
+    for (name, roles, payload) in cases {
         // Без сессии — 401.
         let status = post_with_cookie(
             gt_app(&env.ctx),
@@ -6769,11 +6768,11 @@ async fn int29_role_matrix_http() {
         );
 
         // Employee — 403 всегда (проверяем ДО мутирующих вызовов допущенных ролей).
-        let (status, _) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+        let (status, _) = gt_post(env, &env.employee_cookie, name, payload.clone()).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "INT-29: Employee → {name}");
 
         // Manager.
-        let (status, body) = gt_post(&env, &env.manager_cookie, name, payload.clone()).await;
+        let (status, body) = gt_post(env, &env.manager_cookie, name, payload.clone()).await;
         match roles {
             Int29Roles::Staff => assert!(
                 int29_not_gate_or_shape_error(status),
@@ -6782,17 +6781,24 @@ async fn int29_role_matrix_http() {
             Int29Roles::AdminOnly => assert_eq!(
                 status,
                 StatusCode::FORBIDDEN,
-                "INT-29: Manager → {name} (ManageSettings) → ожидали 403"
+                "INT-29: Manager → {name} (ManageSettings/ManageUsers) → ожидали 403"
             ),
         }
 
         // Admin: гейт пропускает, форма payload'а принята (иначе проверки отказа вакуумны).
-        let (status, body) = gt_post(&env, &env.admin_cookie, name, payload.clone()).await;
+        let (status, body) = gt_post(env, &env.admin_cookie, name, payload.clone()).await;
         assert!(
             int29_not_gate_or_shape_error(status),
             "INT-29: Admin → {name} → получил {status} ({body})"
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn int29_role_matrix_http() {
+    let env = gt_env().await;
+    let (_device_id, attachment_id) = int29_seed_device_attachment(&env).await;
+    int29_check_cases(&env, int29_cases(attachment_id)).await;
     env.ctx.shutdown.cancel();
 }
 
@@ -6856,12 +6862,226 @@ async fn int29_attachments_upload_role_gate() {
     env.ctx.shutdown.cancel();
 }
 
+// ---------------------------------------------------------------------------
+// Quick 261121-fdw (INT-29, долг): 23 мутирующих маршрута + 14 чтений без Action-гейта.
+// Все цели вымышленные (id 999999, «Орлов О.О.»), побочные эффекты — только во временной БД.
+// ---------------------------------------------------------------------------
+
+fn int29_org_patch() -> serde_json::Value {
+    json!({
+        "org_name": "Тест-организация", "inn": "", "kpp": "", "address": "",
+        "phone": "", "fax": "", "email": "", "okpo": "", "ogrn": "",
+        "address_line2": "", "full_name": ""
+    })
+}
+
+/// Мутирующие маршруты (группа «ДОЛГ» quick 261121-57x) с ролями по `Action` из кода.
+///
+/// Успешный путь НЕ проверяется (только гейт, форма payload'а и отказ после гейта):
+/// - `settings_set_network` — port 0 отбивается валидацией ПОСЛЕ гейта (смена порта/хоста
+///   сервера процессное состояние; настоящая запись не делается);
+/// - `backup_run_manual` — папка бэкапа не задана → 400 после гейта (запись вне tempdir исключена);
+/// - `settings_save_org_logo`, `devices_import_csv_commit` — пустой/заведомо неверный payload
+///   (никаких файловых путей сервера);
+/// - `server_toggle` исполняется с `enable:false` (на тестовом ctx сервера нет — безопасно).
+fn int29_debt_mutation_cases() -> Vec<(&'static str, Int29Roles, serde_json::Value)> {
+    use Int29Roles::{AdminOnly, Staff};
+    let model_create = json!({ "brand": "Тест-бренд", "model": "Т-1", "kind_id": 1, "color": null, "notes": null, "compatibility": [] });
+    let model_patch = json!({
+        "id": 999999, "version": 1, "brand": "Тест-бренд", "model": "Т-2", "kind_id": 1,
+        "color": null, "notes": null, "compatibility": []
+    });
+    vec![
+        // MutateCartridges (Admin|Manager)
+        (
+            "cartridge_models_create",
+            Staff,
+            json!({ "payload": model_create }),
+        ),
+        (
+            "cartridge_models_update",
+            Staff,
+            json!({ "payload": model_patch }),
+        ),
+        (
+            "cartridge_models_delete",
+            Staff,
+            json!({ "id": 999999, "version": 1 }),
+        ),
+        (
+            "cartridges_update",
+            Staff,
+            json!({ "id": 999999, "version": 1, "placeId": null, "notes": null }),
+        ),
+        (
+            "cartridges_delete",
+            Staff,
+            json!({ "id": 999999, "version": 1 }),
+        ),
+        // MutateDevices (Admin|Manager)
+        (
+            "devices_bulk_create",
+            Staff,
+            json!({ "device": {
+                "type_id": 1, "name": "Тест-устройство", "inventory_no": null, "serial_no": null,
+                "model": null, "specs": null, "kit": null, "state": null, "place_id": null,
+                "status_id": 1 }, "count": 0 }),
+        ),
+        (
+            "devices_delete",
+            Staff,
+            json!({ "id": 999999, "version": 1 }),
+        ),
+        (
+            "devices_import_csv_commit",
+            Staff,
+            json!({ "token": "no-such-token", "mapping": {} }),
+        ),
+        // ManageUsers (Admin only)
+        (
+            "requests_approve_ad_register",
+            AdminOnly,
+            json!({ "payload": { "requestId": 999999, "version": 1, "role": "employee" } }),
+        ),
+        (
+            "users_update",
+            AdminOnly,
+            json!({ "id": 999999, "version": 1, "patch": { "full_name": "Орлов О.О." } }),
+        ),
+        (
+            "users_delete",
+            AdminOnly,
+            json!({ "id": 999999, "version": 1 }),
+        ),
+        (
+            "users_reset_password",
+            AdminOnly,
+            json!({ "userId": 999999, "newPassword": "Test-Pass-12345" }),
+        ),
+        // ManageSettings (Admin only)
+        (
+            "settings_save_org_fields",
+            AdminOnly,
+            json!({ "patch": int29_org_patch() }),
+        ),
+        (
+            "settings_save_org_logo",
+            AdminOnly,
+            json!({ "logoBytes": [], "logoMime": "image/png" }),
+        ),
+        ("settings_remove_org_logo", AdminOnly, json!({})),
+        (
+            "settings_set_low_stock_threshold",
+            AdminOnly,
+            json!({ "threshold": 3 }),
+        ),
+        (
+            "settings_save_backup_config",
+            AdminOnly,
+            json!({ "patch": { "backup_folder": null, "schedule": null, "retention": null } }),
+        ),
+        (
+            "templates_update_body",
+            AdminOnly,
+            json!({ "kind": "nonexistent_kind", "body": "x" }),
+        ),
+        (
+            "templates_reset_to_default",
+            AdminOnly,
+            json!({ "kind": "nonexistent_kind" }),
+        ),
+        ("backup_run_manual", AdminOnly, json!({})),
+        ("server_toggle", AdminOnly, json!({ "enable": false })),
+        (
+            "settings_set_network",
+            AdminOnly,
+            json!({ "patch": { "host": "127.0.0.1", "port": 0, "cert_path": "" } }),
+        ),
+        ("desktop_set_lock", AdminOnly, json!({ "enabled": false })),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn int29_debt_mutations_role_matrix_http() {
+    let env = gt_env().await;
+    let cases = int29_debt_mutation_cases();
+    assert_eq!(
+        cases.len(),
+        23,
+        "группа ДОЛГ — ровно 23 мутирующих маршрута"
+    );
+    int29_check_cases(&env, cases).await;
+    env.ctx.shutdown.cancel();
+}
+
+/// Чтения, у которых раньше не было Action-гейта (часть B). Фактическая проба 2026-11-21
+/// показала: БЕЗ сессии отвечали 200 `server_status`, `organization_get`,
+/// `templates_get_active` (и `templates_render_preview` рендерил реальный акт по id).
+/// Теперь все 401 без сессии (драйвер) и недоступны Employee.
+///
+/// Потребители в ui/src (grep по `apiCall('<имя>')`):
+/// settings_get_* и templates_list_for_editor — только страницы раздела «Настройки»
+/// (роль admin в sidebar-config), devices_import_csv_preview — DevicesPage (Admin|Manager);
+/// server_status / organization_get / templates_get_active / templates_render_preview —
+/// UI-вызовов нет вовсе (в lib/api остались неиспользуемые обёртки).
+fn int29_read_cases() -> Vec<(&'static str, Int29Roles, serde_json::Value)> {
+    use Int29Roles::{AdminOnly, Staff};
+    vec![
+        ("server_status", AdminOnly, json!({})),
+        ("organization_get", Staff, json!({})),
+        ("settings_get_org", AdminOnly, json!({})),
+        ("settings_get_org_logo", AdminOnly, json!({})),
+        ("settings_get_db_path", AdminOnly, json!({})),
+        ("settings_get_backup_config", AdminOnly, json!({})),
+        ("settings_get_low_stock_basis", AdminOnly, json!({})),
+        ("settings_get_low_stock_threshold", AdminOnly, json!({})),
+        ("settings_get_place_path_defaults", AdminOnly, json!({})),
+        ("templates_list_for_editor", AdminOnly, json!({})),
+        (
+            "templates_get_active",
+            AdminOnly,
+            json!({ "kind": "act_handover" }),
+        ),
+        (
+            "templates_render_preview",
+            AdminOnly,
+            json!({ "kind": "act_handover", "sampleActId": 999999 }),
+        ),
+        ("devices_import_csv_preview", Staff, json!({ "bytes": [] })),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn int29_ungated_reads_role_matrix_http() {
+    let env = gt_env().await;
+    int29_check_cases(&env, int29_read_cases()).await;
+    env.ctx.shutdown.cancel();
+}
+
+/// `auth_me` — проба сессии: без сессии 401, любая вошедшая роль получает СВОЮ запись.
+/// Action-гейт не нужен (субъект берётся из сессии, не из тела).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn int29_auth_me_session_probe() {
+    let env = gt_env().await;
+    let st = post_with_cookie(gt_app(&env.ctx), "/api/v1/auth_me", json!({}), None).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED, "auth_me без сессии");
+    for (who, cookie) in [
+        ("Admin", &env.admin_cookie),
+        ("Manager", &env.manager_cookie),
+        ("Employee", &env.employee_cookie),
+    ] {
+        let (st, body) = gt_post(&env, cookie, "auth_me", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "auth_me под {who}: {body}");
+    }
+    env.ctx.shutdown.cancel();
+}
+
 // ===========================================================================
 // Quick 261121-57x (INT-29): инвентарь маршрутов роутера (ratchet).
 // Каждый маршрут `/api/v1/<имя>` из src/http/*.rs обязан либо встречаться в тексте
 // этой матрицы (вне комментариев и вне массива EXEMPT), либо стоять в
-// `ROUTE_MATRIX_EXEMPT` с причиной. Группа «ДОЛГ» — мутирующие или открытые
-// маршруты без роль-теста; их нужно переводить в матрицу, а не множить.
+// `ROUTE_MATRIX_EXEMPT` с причиной. Группы «ДОЛГ» больше нет (quick 261121-fdw):
+// каждая запись ниже — read-only/публичная/самообслуживание с конкретной причиной.
 // ===========================================================================
 
 // ROUTE-MATRIX-EXEMPT-BEGIN
@@ -6923,22 +7143,6 @@ const ROUTE_MATRIX_EXEMPT: &[(&str, &str)] = &[
     ("auth_ad_sso", "публичный маршрут аутентификации (вне session-гейта; login/bootstrap/restore лимитируются Governor)"),
     ("health", "служебный пинг: build_health без данных пользователя и без записи (health.rs)"),
     ("ws", "поток WebSocket (GET-upgrade): ws_auth_middleware требует сессию (401 без неё), мутаций нет"),
-    // read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет
-    ("auth_me", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("server_status", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("organization_get", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("settings_get_org", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("settings_get_org_logo", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("settings_get_db_path", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("settings_get_backup_config", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("settings_get_low_stock_basis", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("settings_get_low_stock_threshold", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("settings_get_place_path_defaults", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("templates_list_for_editor", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    ("templates_get_active", "read-only: любой вошедший пользователь, без Action-гейта (handler только session_identity/без неё), ничего не пишет"),
-    // read-only разбор/рендер без записи, но БЕЗ роль-гейта в build_* (наблюдение, не мутация)
-    ("devices_import_csv_preview", "read-only разбор/рендер без записи, но БЕЗ роль-гейта в build_* (наблюдение, не мутация)"),
-    ("templates_render_preview", "read-only разбор/рендер без записи, но БЕЗ роль-гейта в build_* (наблюдение, не мутация)"),
     // мутирующий, роль-тест в профильном файле tests/: acts_delete_choice_http.rs
     ("acts_delete", "мутирующий, роль-тест в профильном файле tests/: acts_delete_choice_http.rs"),
     // мутирующий, роль-тест в профильном файле tests/: acts_return_split_http.rs
@@ -6948,31 +7152,6 @@ const ROUTE_MATRIX_EXEMPT: &[(&str, &str)] = &[
     ("ad_test_connection", "мутирующий, роль-тест в профильном файле tests/: settings_ad.rs (Employee → 403)"),
     // самообслуживание: субъект берётся из сессии, не из тела (CR-02), нужен текущий пароль; роль не применима
     ("users_change_password", "самообслуживание: субъект берётся из сессии, не из тела (CR-02), нужен текущий пароль; роль не применима"),
-    // ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/
-    ("cartridge_models_create", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("cartridge_models_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("cartridge_models_update", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("cartridges_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("cartridges_update", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("devices_bulk_create", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("devices_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("devices_import_csv_commit", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("requests_approve_ad_register", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("users_update", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("users_delete", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("users_reset_password", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("settings_save_org_fields", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("settings_save_org_logo", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("settings_remove_org_logo", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("settings_set_low_stock_threshold", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("settings_save_backup_config", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("templates_update_body", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("templates_reset_to_default", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("backup_run_manual", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("server_toggle", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("settings_set_network", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    ("desktop_set_lock", "ДОЛГ: мутирующий маршрут (гейт в коде есть: Mutate*/Manage*), роль-теста нет ни в матрице, ни в tests/"),
-    // ДОЛГ: файловый маршрут БЕЗ роль-гейта в handler/build_* (любой вошедший читает/пишет .csv на сервере), роль-теста нет
 ];
 // ROUTE-MATRIX-EXEMPT-END
 
