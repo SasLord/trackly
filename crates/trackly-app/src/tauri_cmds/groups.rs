@@ -148,7 +148,13 @@ pub async fn build_groups_set_parent(
 ) -> Result<GroupMoveResultDto, AppError> {
     authorize(caller, &Action::MutateGroups)?;
     ctx.groups
-        .set_parent(caller, dto.id, dto.version, dto.parent_group_id)
+        .set_parent(
+            caller,
+            dto.id,
+            dto.version,
+            dto.parent_group_id,
+            dto.replace_parent,
+        )
         .await
 }
 

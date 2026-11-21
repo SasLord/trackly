@@ -46,6 +46,9 @@ pub struct GroupDto {
     #[specta(type = Option<i32>)]
     pub anchor_device_id: Option<i64>,
     pub anchor_device_name: Option<String>,
+    /// Код статуса устройства-якоря (D-21): UI показывает «Списать» при «На списание»;
+    /// сервер перепроверяет сам. `None` — у группы нет якоря.
+    pub anchor_status_code: Option<String>,
 }
 
 /// Создание группы. `name = None` — имя по умолчанию «{тип} #{seq}».
@@ -83,11 +86,34 @@ pub struct GroupMemberDeviceDto {
     pub status_code: Option<String>,
 }
 
+/// Призрак разбора: деталь, выведенная из состава, но хранящая происхождение (D-10..D-14).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupGhostDeviceDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub type_name: String,
+    pub name: String,
+    pub inventory_number: Option<String>,
+    pub serial_number: Option<String>,
+    pub place_path_short: Option<String>,
+    pub place_path: Option<String>,
+    pub status_name: Option<String>,
+    pub status_code: Option<String>,
+    /// Деталь мягко удалена (D-14): призрак остаётся.
+    pub is_deleted: bool,
+    /// Группа, в которой деталь состоит сейчас (для «Вернуть в разбор»).
+    #[specta(type = Option<i32>)]
+    pub current_group_id: Option<i64>,
+    pub current_group_name: Option<String>,
+}
+
 /// Состав группы: прямые устройства и прямые вложенные группы (D-03).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct GroupCompositionDto {
     pub devices: Vec<GroupMemberDeviceDto>,
     pub child_groups: Vec<GroupDto>,
+    /// Призраки: только у групп типа «Разбор», иначе пусто (D-10).
+    pub ghosts: Vec<GroupGhostDeviceDto>,
 }
 
 /// Кандидат во вложенные группы (D-04).
@@ -97,6 +123,8 @@ pub struct GroupSearchHitDto {
     pub id: i64,
     pub name: String,
     pub type_name: String,
+    /// Поведение типа группы (D-17): UI скрывает «Разбор» в пикерах вложения.
+    pub type_behavior: String,
     #[specta(type = i32)]
     pub device_count: i64,
     pub has_parent: bool,
@@ -230,6 +258,9 @@ pub struct GroupSetParentDto {
     pub version: i64,
     #[specta(type = Option<i32>)]
     pub parent_group_id: Option<i64>,
+    /// Подтверждённая смена родителя (D-16): без флага занятая группа отказывает.
+    #[serde(default)]
+    pub replace_parent: bool,
 }
 
 /// Ссылка в значении свойства `users`/`device_refs`: `is_primary` — основной пользователь.

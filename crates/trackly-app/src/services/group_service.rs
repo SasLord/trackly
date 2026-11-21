@@ -41,8 +41,9 @@ use crate::dto::device::DeviceDto;
 use crate::dto::groups::{
     DeviceMembershipDto, GroupActExpansionDto, GroupActUnitDto, GroupAddDevicesResultDto,
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
-    GroupMemberDeviceDto, GroupMoveDevicesResultDto, GroupMoveResultDto, GroupPrinterDto,
-    GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto, UserOptionDto,
+    GroupGhostDeviceDto, GroupMemberDeviceDto, GroupMoveDevicesResultDto, GroupMoveResultDto,
+    GroupPrinterDto, GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto,
+    UserOptionDto,
 };
 use crate::dto::printer::WsEvent;
 use crate::services::group_act_plan;
@@ -85,6 +86,8 @@ struct GroupSnapshot {
     direct: HashMap<i64, i64>,
     paths: HashMap<i64, String>,
     nested: HashMap<i64, i64>,
+    /// Код статуса якоря по id группы (D-21): один запрос на снимок.
+    anchor_status: HashMap<i64, String>,
 }
 
 impl GroupSnapshot {
@@ -108,6 +111,23 @@ impl GroupSnapshot {
                 *nested.entry(p).or_insert(0) += 1;
             }
         }
+        let mut anchor_status: HashMap<i64, String> = HashMap::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT g.id, ds.code FROM groups g
+                     JOIN devices d ON d.id = g.anchor_device_id
+                     JOIN device_statuses ds ON ds.id = d.status_id",
+                )
+                .map_err(map_rusqlite)?;
+            let it = stmt
+                .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+                .map_err(map_rusqlite)?;
+            for row in it {
+                let (gid, code) = row.map_err(map_rusqlite)?;
+                anchor_status.insert(gid, code);
+            }
+        }
         Ok(Self {
             rows,
             types,
@@ -115,6 +135,7 @@ impl GroupSnapshot {
             direct,
             paths,
             nested,
+            anchor_status,
         })
     }
 
@@ -161,6 +182,7 @@ impl GroupSnapshot {
             nested_group_count: self.nested.get(&row.id).copied().unwrap_or(0),
             anchor_device_id: row.anchor_device_id,
             anchor_device_name: row.anchor_device_name.clone(),
+            anchor_status_code: self.anchor_status.get(&row.id).cloned(),
         })
     }
 }
@@ -349,9 +371,40 @@ impl GroupService {
                 .iter()
                 .map(|r| snap.dto(r))
                 .collect::<Result<Vec<_>, _>>()?;
+            let is_teardown = snap
+                .row(group_id)
+                .and_then(|r| snap.types.get(&r.type_id))
+                .map(|t| GroupBehavior::from_str_lenient(&t.behavior))
+                == Some(Some(GroupBehavior::Teardown));
+            let ghosts = if is_teardown {
+                repo.ghost_devices(&conn, group_id)?
+                    .into_iter()
+                    .map(|g| GroupGhostDeviceDto {
+                        place_path_short: compute_place_path_short_with_conn(
+                            &conn,
+                            g.place_id,
+                            g.place_path.clone(),
+                        ),
+                        device_id: g.device_id,
+                        type_name: g.type_name,
+                        name: g.name,
+                        inventory_number: g.inventory_number,
+                        serial_number: g.serial_number,
+                        place_path: g.place_path,
+                        status_name: g.status_name,
+                        status_code: g.status_code,
+                        is_deleted: g.is_deleted,
+                        current_group_id: g.current_group_id,
+                        current_group_name: g.current_group_name,
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             Ok(GroupCompositionDto {
                 devices,
                 child_groups,
+                ghosts,
             })
         })
         .await
@@ -482,6 +535,7 @@ impl GroupService {
                     id: dto.id,
                     name: dto.name,
                     type_name: dto.type_name,
+                    type_behavior: dto.type_behavior,
                     device_count: dto.device_count,
                     has_parent: dto.parent_group_id.is_some(),
                     place_path_short: compute_place_path_short_with_conn(
@@ -793,14 +847,23 @@ impl GroupService {
                 // иначе теряется происхождение деталей. Детали считаются без якоря.
                 if before.type_behavior == "teardown" {
                     let parts = repo.count_live_parts_in_tx(&tx, id)?;
-                    if parts > 0 {
+                    // D-13 (A2): удалённые детали тоже хранят происхождение.
+                    let ghosts = repo.count_origin_ghosts_in_tx(&tx, id)?;
+                    let total = parts + ghosts;
+                    if total > 0 {
+                        let tail = if ghosts > 0 {
+                            format!(", из них {ghosts} выведены")
+                        } else {
+                            String::new()
+                        };
                         return Err(AppError::Validation {
                             field: "id".to_string(),
                             message: format!(
-                                "Группу «{}» нельзя удалить: в ней {} {}. Сначала выведите детали из состава.",
+                                "Группу «{}» нельзя удалить: с ней связаны {} {}{}. Запись разбора хранит происхождение деталей.",
                                 before.name,
-                                parts,
-                                ru_plural(parts, "деталь", "детали", "деталей")
+                                total,
+                                ru_plural(total, "деталь", "детали", "деталей"),
+                                tail
                             ),
                         });
                     }
@@ -1354,11 +1417,13 @@ impl GroupService {
         id: i64,
         version: i64,
         parent_group_id: Option<i64>,
+        replace_parent: bool,
     ) -> Result<GroupMoveResultDto, AppError> {
         authorize(caller, &Action::MutateGroups)?;
 
         let now = self.clock.unix_seconds();
         let user_id = caller.user_id;
+        let type_repo = self.type_repo.clone();
 
         let outcome = self
             .writer
@@ -1366,6 +1431,34 @@ impl GroupService {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let deps = GroupMoveDeps::new();
                 let before = deps.groups.get_group_in_tx(&tx, id)?;
+                // D-09: правило только здесь, не в set_parent_in_tx (его использует
+                // откат акта над унаследованной вложенностью).
+                if let Some(new_parent) = parent_group_id {
+                    let own_behavior = GroupBehavior::from_str_lenient(
+                        &type_repo.get_type(&tx, before.type_id)?.behavior,
+                    );
+                    if own_behavior == Some(GroupBehavior::Teardown) {
+                        return Err(AppError::Validation {
+                            field: "parent_group_id".to_string(),
+                            message: "Группу типа «Разбор» нельзя вложить в другую группу."
+                                .to_string(),
+                        });
+                    }
+                    // D-16: смена родителя без подтверждения отказывает.
+                    if let Some(cur) = before.parent_group_id {
+                        if cur != new_parent && !replace_parent {
+                            let cur_row = deps.groups.get_group_in_tx(&tx, cur)?;
+                            return Err(AppError::AlreadyInGroup {
+                                items: vec![OccupiedItem::group(
+                                    id,
+                                    before.name.clone(),
+                                    cur,
+                                    cur_row.name,
+                                )],
+                            });
+                        }
+                    }
+                }
                 deps.groups
                     .set_parent_in_tx(&tx, id, version, parent_group_id, now)?;
 
