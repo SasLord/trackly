@@ -20,6 +20,8 @@ import type {
   GroupCreateDto,
   GroupDeleteResultDto,
   GroupDto,
+  GroupMoveDevicesDto,
+  GroupMoveDevicesResultDto,
   GroupMoveDto,
   GroupMoveResultDto,
   GroupRefDto,
@@ -34,6 +36,9 @@ import type {
   PropertyCreateDto,
   PropertyDeleteOutcomeDto,
   PropertyUpdateDto,
+  GroupWriteOffDeviceDto,
+  GroupWriteOffGroupDto,
+  GroupWriteOffResultDto,
   UserOptionDto,
 } from '../../bindings';
 
@@ -70,7 +75,7 @@ export const groupTypes = {
     apiCall<GroupRefDto[]>('group_type_properties_empty_groups', { propertyId }),
 };
 
-/** Группы (16 команд; чтение — ReadGroups, мутации — MutateGroups). */
+/** Группы (19 команд; чтение — ReadGroups, мутации — MutateGroups). */
 export const groups = {
   list: () => apiCall<GroupDto[]>('groups_list'),
 
@@ -103,6 +108,15 @@ export const groups = {
 
   addDevices: (dto: GroupAddDevicesDto) =>
     apiCall<GroupAddDevicesResultDto>('groups_add_devices', { dto }),
+
+  moveDevices: (dto: GroupMoveDevicesDto) =>
+    apiCall<GroupMoveDevicesResultDto>('groups_move_devices', { dto }),
+
+  writeOffDevice: (dto: GroupWriteOffDeviceDto) =>
+    apiCall<GroupWriteOffResultDto>('groups_write_off_device', { dto }),
+
+  writeOffGroup: (dto: GroupWriteOffGroupDto) =>
+    apiCall<GroupWriteOffResultDto>('groups_write_off_group', { dto }),
 
   removeDevices: (dto: GroupRemoveDevicesDto) => apiCall<number>('groups_remove_devices', { dto }),
 
