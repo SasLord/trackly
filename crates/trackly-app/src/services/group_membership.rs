@@ -597,8 +597,8 @@ mod tests {
     fn restore_deleted_group_is_skipped() {
         let (mut conn, _g) = fresh_db();
         seed(&conn);
-        conn.execute("UPDATE groups SET deleted_at_utc = ?1 WHERE id = 1", [NOW])
-            .unwrap();
+        // Удаление группы жёсткое (INT-12, quick 261121-hei): DELETE, членство каскадом.
+        conn.execute("DELETE FROM groups WHERE id = 1", []).unwrap();
         let out = with_tx!(conn, tx, { restore(&tx, 1, 1, Some(1)) });
         assert_eq!(
             out,
@@ -608,7 +608,8 @@ mod tests {
             })
         );
         assert_eq!(member_of(&conn, 1), None);
-        // Группы с таким id не было вовсе — то же правило.
+        // Группы с таким id не было вовсе — то же правило (после жёсткого удаления
+        // «удалена» и «не было» неразличимы — это и есть правило).
         let out = with_tx!(conn, tx, { restore(&tx, 1, 999, Some(1)) });
         assert!(matches!(out, RestoreOutcome::Skipped(_)));
     }
@@ -788,8 +789,8 @@ mod tests {
         });
         assert_eq!(out, RestoreResult::Restored);
         // (a) группа удалена.
-        conn.execute("UPDATE groups SET deleted_at_utc = ?1 WHERE id = 1", [NOW])
-            .unwrap();
+        // Удаление группы жёсткое (INT-12, quick 261121-hei): DELETE, членство каскадом.
+        conn.execute("DELETE FROM groups WHERE id = 1", []).unwrap();
         let out = with_tx!(conn, tx, {
             restore_with(&tx, 2, 1, Some(2), PlaceConflictPolicy::Ask)
         });

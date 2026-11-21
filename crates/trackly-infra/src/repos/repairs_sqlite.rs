@@ -569,14 +569,13 @@ impl SqliteRepairRepository {
             WITH RECURSIVE bound(id) AS (
                 SELECT DISTINCT g.id FROM group_property_values v
                 JOIN group_type_properties p ON p.id = v.property_id AND p.data_type = 'users'
-                JOIN groups g ON g.id = v.group_id AND g.deleted_at_utc IS NULL
+                JOIN groups g ON g.id = v.group_id
                 WHERE v.value_ref = ?1
             ),
             sub(id) AS (
                 SELECT id FROM bound
                 UNION
                 SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id
-                WHERE g.deleted_at_utc IS NULL
             ),
             members(id) AS (
                 SELECT gd.device_id FROM group_devices gd
@@ -616,14 +615,13 @@ impl SqliteRepairRepository {
             WITH RECURSIVE bound(id) AS (
                 SELECT DISTINCT g.id FROM group_property_values v
                 JOIN group_type_properties p ON p.id = v.property_id AND p.data_type = 'users'
-                JOIN groups g ON g.id = v.group_id AND g.deleted_at_utc IS NULL
+                JOIN groups g ON g.id = v.group_id
                 WHERE v.value_ref = ?1
             ),
             sub(id, root) AS (
                 SELECT id, id FROM bound
                 UNION
                 SELECT g.id, sub.root FROM groups g JOIN sub ON g.parent_group_id = sub.id
-                WHERE g.deleted_at_utc IS NULL
             ),
             members(device_id, root) AS (
                 SELECT gd.device_id, sub.root FROM group_devices gd
@@ -674,7 +672,7 @@ impl SqliteRepairRepository {
             SELECT EXISTS(
                 SELECT 1 FROM group_property_values v
                 JOIN group_type_properties p ON p.id = v.property_id AND p.data_type = 'users'
-                JOIN groups g ON g.id = v.group_id AND g.deleted_at_utc IS NULL
+                JOIN groups g ON g.id = v.group_id
                 WHERE v.value_ref = ?1
             )";
         conn.query_row(SQL, params![user_id], |r| r.get::<_, bool>(0))

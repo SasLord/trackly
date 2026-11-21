@@ -2538,7 +2538,7 @@ mod tests {
     }
 
     #[test]
-    fn load_snapshot_skips_soft_deleted_groups_and_devices() {
+    fn load_snapshot_skips_deleted_groups_and_soft_deleted_devices() {
         let (conn, _guard) = fresh_db();
         seed(&conn);
         conn.execute(
@@ -2552,11 +2552,8 @@ mod tests {
         assert_eq!(p.moves.len(), 1);
         assert!(p.releases.is_empty());
 
-        conn.execute(
-            "UPDATE groups SET deleted_at_utc = ?1 WHERE id = 1",
-            rusqlite::params![NOW],
-        )
-        .unwrap();
+        // Удаление группы жёсткое (INT-12, quick 261121-hei): DELETE, членство каскадом.
+        conn.execute("DELETE FROM groups WHERE id = 1", []).unwrap();
         let snap = load_snapshot(&conn, &SqliteGroupRepository).expect("snapshot");
         assert_eq!(plan(&snap, &[1, 2]), ActGroupPlan::default());
     }

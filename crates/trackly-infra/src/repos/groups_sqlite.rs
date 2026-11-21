@@ -10,6 +10,12 @@
 //! вызывающего сервиса. Инварианты, которые нельзя нарушить даже при ошибке
 //! сервиса, живут здесь: одна группа на устройство (PK `group_devices.device_id`),
 //! отсутствие циклов вложенности, запрет вложения в группу «Разбор».
+//!
+//! `groups.deleted_at_utc` — реликт схемы V045: прод-код его не пишет и не
+//! читает, удаление группы жёсткое (`DELETE`, каскады `group_devices` и
+//! значений свойств, `parent_group_id` -> `NULL` по V048). Колонка оставлена,
+//! чтобы не перестраивать таблицу миграцией (INT-12, quick 261121-hei). Фильтр
+//! по ней в запросы не добавлять — «мягко удалённых» групп не бывает.
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use trackly_core::domain::groups::{
@@ -36,10 +42,9 @@ const CYCLE_MESSAGE: &str = "Нельзя вложить группу в сам�
 
 /// Рекурсивный CTE `sub(id)`: корень (параметр `?1`) и все его живые потомки.
 const SUBTREE_CTE: &str = "WITH RECURSIVE sub(id) AS (
-        SELECT id FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL
+        SELECT id FROM groups WHERE id = ?1
         UNION
         SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id
-        WHERE g.deleted_at_utc IS NULL
      )";
 
 fn group_from_row_at(row: &rusqlite::Row<'_>, o: usize) -> rusqlite::Result<GroupRow> {
@@ -63,12 +68,7 @@ fn group_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<GroupRow> {
 }
 
 fn get_group_impl(conn: &Connection, id: i64) -> Result<GroupRow, AppError> {
-    let sql = [
-        "SELECT ",
-        GROUP_COLS,
-        " FROM groups g WHERE g.id = ?1 AND g.deleted_at_utc IS NULL",
-    ]
-    .concat();
+    let sql = ["SELECT ", GROUP_COLS, " FROM groups g WHERE g.id = ?1"].concat();
     conn.query_row(&sql, rusqlite::params![id], group_from_row)
         .map_err(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
@@ -83,7 +83,7 @@ fn get_group_impl(conn: &Connection, id: i64) -> Result<GroupRow, AppError> {
 fn resolve_group_cas_failure(conn: &Connection, id: i64, expected: i64) -> AppError {
     let actual: Option<i64> = conn
         .query_row(
-            "SELECT version FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL",
+            "SELECT version FROM groups WHERE id = ?1",
             rusqlite::params![id],
             |r| r.get(0),
         )
@@ -165,7 +165,7 @@ impl SqliteGroupRepository {
         let affected = tx
             .execute(
                 "UPDATE groups SET name = ?1, updated_at_utc = ?2, version = version + 1
-                 WHERE id = ?3 AND version = ?4 AND deleted_at_utc IS NULL",
+                 WHERE id = ?3 AND version = ?4",
                 rusqlite::params![name, now_utc, id, version],
             )
             .map_err(map_rusqlite)?;
@@ -178,6 +178,8 @@ impl SqliteGroupRepository {
     /// Жёстко удалить группу. Каскады БД: строки `group_devices` и значения
     /// свойств исчезают, вложенные группы получают `parent_group_id = NULL`;
     /// `devices.place_id` бывших членов не меняется. Нет строки -> `NotFound`.
+    /// Единственный путь удаления группы: `groups.deleted_at_utc` не пишется
+    /// (реликт схемы, INT-12 — см. doc модуля).
     pub fn delete_group_in_tx(&self, tx: &Transaction<'_>, id: i64) -> Result<(), AppError> {
         let affected = tx
             .execute("DELETE FROM groups WHERE id = ?1", rusqlite::params![id])
@@ -248,7 +250,7 @@ impl SqliteGroupRepository {
             "SELECT ",
             GROUP_COLS,
             " FROM group_devices gd JOIN groups g ON g.id = gd.group_id
-              WHERE gd.device_id = ?1 AND g.deleted_at_utc IS NULL",
+              WHERE gd.device_id = ?1",
         ]
         .concat();
         tx.query_row(&sql, rusqlite::params![device_id], group_from_row)
@@ -266,7 +268,7 @@ impl SqliteGroupRepository {
         let sql = [
             "SELECT ",
             GROUP_COLS,
-            " FROM groups g WHERE g.anchor_device_id = ?1 AND g.deleted_at_utc IS NULL",
+            " FROM groups g WHERE g.anchor_device_id = ?1",
         ]
         .concat();
         tx.query_row(&sql, rusqlite::params![device_id], group_from_row)
@@ -340,7 +342,7 @@ impl SqliteGroupRepository {
             "SELECT ",
             GROUP_COLS,
             " FROM group_devices gd JOIN groups g ON g.id = gd.group_id
-              WHERE gd.device_id = ?1 AND g.deleted_at_utc IS NULL AND g.place_id IS NOT NULL",
+              WHERE gd.device_id = ?1 AND g.place_id IS NOT NULL",
         ]
         .concat();
         tx.query_row(&sql, rusqlite::params![device_id], group_from_row)
@@ -386,7 +388,7 @@ impl SqliteGroupRepository {
     ) -> Result<String, AppError> {
         tx.query_row(
             "SELECT t.behavior FROM groups g JOIN group_types t ON t.id = g.type_id
-             WHERE g.id = ?1 AND g.deleted_at_utc IS NULL",
+             WHERE g.id = ?1",
             rusqlite::params![parent_id],
             |r| r.get(0),
         )
@@ -427,7 +429,7 @@ impl SqliteGroupRepository {
         let affected = tx
             .execute(
                 "UPDATE groups SET parent_group_id = ?1, updated_at_utc = ?2, version = version + 1
-                 WHERE id = ?3 AND version = ?4 AND deleted_at_utc IS NULL",
+                 WHERE id = ?3 AND version = ?4",
                 rusqlite::params![parent, now_utc, id, version],
             )
             .map_err(map_rusqlite)?;
@@ -442,10 +444,9 @@ impl SqliteGroupRepository {
     pub fn root_group_id_in_tx(&self, tx: &Transaction<'_>, id: i64) -> Result<i64, AppError> {
         tx.query_row(
             "WITH RECURSIVE up(id, parent) AS (
-                SELECT id, parent_group_id FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL
+                SELECT id, parent_group_id FROM groups WHERE id = ?1
                 UNION
                 SELECT g.id, g.parent_group_id FROM groups g JOIN up ON g.id = up.parent
-                WHERE g.deleted_at_utc IS NULL
              )
              SELECT id FROM up WHERE parent IS NULL LIMIT 1",
             rusqlite::params![id],
@@ -786,10 +787,9 @@ impl SqliteGroupRepository {
         let mut stmt = conn
             .prepare(
                 "WITH RECURSIVE closure(root, id) AS (
-                    SELECT id, id FROM groups WHERE deleted_at_utc IS NULL
+                    SELECT id, id FROM groups
                     UNION ALL
                     SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id
-                    WHERE g.deleted_at_utc IS NULL
                  )
                  SELECT c.root, COUNT(d.id)
                  FROM closure c
@@ -855,7 +855,7 @@ impl SqliteGroupRepository {
             .prepare(
                 "SELECT gd.group_id, COUNT(d.id)
                  FROM group_devices gd
-                 JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL
+                 JOIN groups g ON g.id = gd.group_id
                  JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
                  GROUP BY gd.group_id
                  ORDER BY gd.group_id",
@@ -877,7 +877,6 @@ impl SqliteGroupRepository {
                 "SELECT g.id, pfp.full_path
                  FROM groups g
                  JOIN place_full_paths pfp ON pfp.place_id = g.place_id
-                 WHERE g.deleted_at_utc IS NULL
                  ORDER BY g.id",
             )
             .map_err(map_rusqlite)?;
@@ -892,10 +891,7 @@ impl SqliteGroupRepository {
     /// Число живых групп по типам: `(type_id, group_count)`, `ORDER BY type_id`.
     pub fn group_counts_by_type(&self, conn: &Connection) -> Result<Vec<(i64, i64)>, AppError> {
         let mut stmt = conn
-            .prepare(
-                "SELECT type_id, COUNT(*) FROM groups
-                 WHERE deleted_at_utc IS NULL GROUP BY type_id ORDER BY type_id",
-            )
+            .prepare("SELECT type_id, COUNT(*) FROM groups GROUP BY type_id ORDER BY type_id")
             .map_err(map_rusqlite)?;
         let rows = stmt
             .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
@@ -947,7 +943,7 @@ impl SqliteGroupRepository {
         let affected = tx
             .execute(
                 "UPDATE groups SET updated_at_utc = ?1, version = version + 1
-                 WHERE id = ?2 AND version = ?3 AND deleted_at_utc IS NULL",
+                 WHERE id = ?2 AND version = ?3",
                 rusqlite::params![now_utc, id, version],
             )
             .map_err(map_rusqlite)?;
@@ -1215,7 +1211,7 @@ impl SqliteGroupRepository {
         let mut stmt = conn
             .prepare(
                 "SELECT id, parent_group_id, name, place_id, version, anchor_device_id
-                 FROM groups WHERE deleted_at_utc IS NULL ORDER BY id",
+                 FROM groups ORDER BY id",
             )
             .map_err(map_rusqlite)?;
         let rows = stmt
@@ -1241,7 +1237,7 @@ impl SqliteGroupRepository {
             .prepare(
                 "SELECT gd.device_id, gd.group_id
                  FROM group_devices gd
-                 JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL
+                 JOIN groups g ON g.id = gd.group_id
                  JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
                  ORDER BY gd.device_id",
             )
@@ -1266,7 +1262,7 @@ impl GroupRepository for SqliteGroupRepository {
         let sql = [
             "SELECT ",
             GROUP_COLS,
-            " FROM groups g WHERE g.deleted_at_utc IS NULL ORDER BY g.type_id, g.seq",
+            " FROM groups g ORDER BY g.type_id, g.seq",
         ]
         .concat();
         collect_groups(conn, &sql, [])
@@ -1286,7 +1282,7 @@ impl GroupRepository for SqliteGroupRepository {
             "SELECT gd.device_id, ",
             GROUP_COLS,
             " FROM group_devices gd JOIN groups g ON g.id = gd.group_id
-              WHERE g.deleted_at_utc IS NULL AND gd.device_id IN (",
+              WHERE gd.device_id IN (",
             &placeholders,
             ") ORDER BY gd.device_id",
         ]
@@ -1310,7 +1306,7 @@ impl GroupRepository for SqliteGroupRepository {
         let sql = [
             "SELECT ",
             GROUP_COLS,
-            " FROM groups g WHERE g.parent_group_id = ?1 AND g.deleted_at_utc IS NULL
+            " FROM groups g WHERE g.parent_group_id = ?1
               ORDER BY g.type_id, g.seq",
         ]
         .concat();

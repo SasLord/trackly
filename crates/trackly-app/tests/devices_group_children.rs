@@ -81,24 +81,15 @@ async fn seed_group(
     seq: i64,
     parent: Option<i64>,
     anchor: Option<i64>,
-    deleted: bool,
 ) -> i64 {
     let name = name.to_string();
     svc.writer
         .execute(move |conn| {
             conn.execute(
                 "INSERT INTO groups (type_id, name, seq, parent_group_id, anchor_device_id, \
-                 deleted_at_utc, version, created_at_utc, updated_at_utc) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
-                params![
-                    type_id,
-                    name,
-                    seq,
-                    parent,
-                    anchor,
-                    if deleted { Some(NOW) } else { None },
-                    NOW
-                ],
+                 version, created_at_utc, updated_at_utc) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+                params![type_id, name, seq, parent, anchor, NOW],
             )
             .map_err(map_rusqlite)?;
             Ok(conn.last_insert_rowid())
@@ -151,10 +142,10 @@ async fn fixture() -> Fx {
     let n1 = seed_device(&svc, 1, "Мышь #1", "ИНВ-000005").await;
     let n2 = seed_device(&svc, 1, "Клавиатура #1", "ИНВ-000006").await;
 
-    let c1 = seed_group(&svc, container, "АРМ #3", 1, None, None, false).await;
-    let g2 = seed_group(&svc, anchored, "Группа якоря", 2, Some(c1), Some(a2), false).await;
-    let c2 = seed_group(&svc, container, "АРМ #7", 3, Some(c1), None, false).await;
-    let _c3 = seed_group(&svc, container, "АРМ #8", 4, Some(c1), None, false).await;
+    let c1 = seed_group(&svc, container, "АРМ #3", 1, None, None).await;
+    let g2 = seed_group(&svc, anchored, "Группа якоря", 2, Some(c1), Some(a2)).await;
+    let c2 = seed_group(&svc, container, "АРМ #7", 3, Some(c1), None).await;
+    let _c3 = seed_group(&svc, container, "АРМ #8", 4, Some(c1), None).await;
 
     for (d, g) in [(monitor, c1), (p1, c1), (a2, g2), (n1, g2), (n2, c2)] {
         member(&svc, d, g).await;
@@ -238,15 +229,13 @@ async fn group_children_deleted_or_missing_group_is_empty() {
         f.svc
             .writer
             .execute(move |conn| {
-                conn.execute(
-                    "UPDATE groups SET deleted_at_utc = ?2 WHERE id = ?1",
-                    params![gid, NOW],
-                )
-                .map_err(map_rusqlite)?;
+                // Удаление группы жёсткое (INT-12, quick 261121-hei).
+                conn.execute("DELETE FROM groups WHERE id = ?1", params![gid])
+                    .map_err(map_rusqlite)?;
                 Ok(())
             })
             .await
-            .expect("soft delete");
+            .expect("delete group");
         let deleted = f.svc.group_children(f.c1, page(0, 100)).await.unwrap();
         assert!(deleted.rows.is_empty(), "удалённая группа — пустой ответ");
         assert_eq!(deleted.total, 0);

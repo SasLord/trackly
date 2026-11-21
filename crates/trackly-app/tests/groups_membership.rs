@@ -207,9 +207,7 @@ async fn assert_place_invariant(ctx: &AppCtx, step: &str) -> usize {
         .writer
         .execute(|conn| {
             let mut stmt = conn
-                .prepare(
-                    "SELECT id, parent_group_id, place_id FROM groups WHERE deleted_at_utc IS NULL",
-                )
+                .prepare("SELECT id, parent_group_id, place_id FROM groups")
                 .map_err(map_rusqlite)?;
             let rows = stmt
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))

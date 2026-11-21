@@ -76,29 +76,32 @@ async fn seed_group(
     seq: i64,
     parent: Option<i64>,
     anchor: Option<i64>,
-    deleted: bool,
 ) -> i64 {
     svc.writer
         .execute(move |conn| {
             conn.execute(
                 "INSERT INTO groups (type_id, name, seq, parent_group_id, anchor_device_id, \
-                 deleted_at_utc, version, created_at_utc, updated_at_utc) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
-                params![
-                    type_id,
-                    format!("Группа {seq}"),
-                    seq,
-                    parent,
-                    anchor,
-                    if deleted { Some(NOW) } else { None },
-                    NOW
-                ],
+                 version, created_at_utc, updated_at_utc) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+                params![type_id, format!("Группа {seq}"), seq, parent, anchor, NOW],
             )
             .map_err(map_rusqlite)?;
             Ok(conn.last_insert_rowid())
         })
         .await
         .expect("seed group")
+}
+
+/// Удаление группы жёсткое (INT-12, quick 261121-hei): членство уходит каскадом.
+async fn delete_group(svc: &DeviceService, group: i64) {
+    svc.writer
+        .execute(move |conn| {
+            conn.execute("DELETE FROM groups WHERE id = ?1", params![group])
+                .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("delete group")
 }
 
 async fn member(svc: &DeviceService, device: i64, group: i64) {
@@ -138,12 +141,12 @@ async fn fixture() -> Fx {
     let d1 = seed_device(&svc, 1, "Кабель #1", "ИНВ-000011").await;
     let t1 = seed_device(&svc, 1, "Кабель #2", "ИНВ-000012").await;
 
-    let c1 = seed_group(&svc, container, 1, None, None, false).await;
-    let g2 = seed_group(&svc, anchored, 2, Some(c1), Some(a2), false).await;
-    let c2 = seed_group(&svc, container, 3, Some(c1), None, false).await;
-    let g3 = seed_group(&svc, anchored, 4, None, Some(a3), false).await;
-    let c4 = seed_group(&svc, container, 5, None, None, true).await;
-    let td = seed_group(&svc, teardown, 6, None, None, false).await;
+    let c1 = seed_group(&svc, container, 1, None, None).await;
+    let g2 = seed_group(&svc, anchored, 2, Some(c1), Some(a2)).await;
+    let c2 = seed_group(&svc, container, 3, Some(c1), None).await;
+    let g3 = seed_group(&svc, anchored, 4, None, Some(a3)).await;
+    let c4 = seed_group(&svc, container, 5, None, None).await;
+    let td = seed_group(&svc, teardown, 6, None, None).await;
 
     for (d, g) in [
         (m1, c1),
@@ -159,6 +162,8 @@ async fn fixture() -> Fx {
     ] {
         member(&svc, d, g).await;
     }
+    // c4 удалена вместе с членством d1 — d1 становится обычным устройством.
+    delete_group(&svc, c4).await;
 
     Fx {
         svc,

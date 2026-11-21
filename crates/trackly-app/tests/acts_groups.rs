@@ -1242,15 +1242,13 @@ async fn update_removing_a_released_member_of_a_deleted_group_still_passes() {
         let group = arm.group;
         ctx.writer
             .execute(move |conn| {
-                conn.execute(
-                    "UPDATE groups SET deleted_at_utc = 1700000100 WHERE id = ?1",
-                    params![group],
-                )
-                .map_err(map_rusqlite)?;
+                // Удаление группы жёсткое (INT-12, quick 261121-hei).
+                conn.execute("DELETE FROM groups WHERE id = ?1", params![group])
+                    .map_err(map_rusqlite)?;
                 Ok(())
             })
             .await
-            .expect("soft delete group");
+            .expect("delete group");
 
         update_ok(&ctx, act, &[solo, y], false).await;
 

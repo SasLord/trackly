@@ -628,11 +628,10 @@ fn employee_device_origins_exclusions_and_has_groups() {
         params![f.pc_a, NOW],
     )
     .unwrap();
-    conn.execute(
-        "UPDATE groups SET deleted_at_utc = ?2 WHERE id = ?1",
-        params![f.g2, NOW],
-    )
-    .unwrap();
+    // Удаление группы жёсткое (INT-12, quick 261121-hei): значения свойств и
+    // членство g2 уходят каскадом.
+    conn.execute("DELETE FROM groups WHERE id = ?1", params![f.g2])
+        .unwrap();
     let rows = repo().employee_device_origins(&conn, f.user_a).unwrap();
     assert!(rows.iter().all(|r| r.device_id != f.pc_a));
     assert!(rows.iter().all(|r| r.group_id != f.g2));

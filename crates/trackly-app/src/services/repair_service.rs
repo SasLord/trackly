@@ -476,7 +476,7 @@ impl RepairService {
                 let anchor: Option<(i64, Option<i64>)> = conn
                     .query_row(
                         "SELECT id, parent_group_id FROM groups \
-                         WHERE anchor_device_id = ?1 AND deleted_at_utc IS NULL",
+                         WHERE anchor_device_id = ?1",
                         params![dev],
                         |r| Ok((r.get(0)?, r.get(1)?)),
                     )
@@ -491,7 +491,6 @@ impl RepairService {
                                  SELECT ?1 \
                                  UNION \
                                  SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id \
-                                 WHERE g.deleted_at_utc IS NULL \
                              ) \
                              SELECT COUNT(*) FROM group_devices gd \
                              JOIN sub ON gd.group_id = sub.id \
@@ -2134,7 +2133,7 @@ fn return_place_for_device(
     let anchor: Option<Option<i64>> = conn
         .query_row(
             "SELECT parent_group_id FROM groups \
-             WHERE anchor_device_id = ?1 AND deleted_at_utc IS NULL",
+             WHERE anchor_device_id = ?1",
             params![device_id],
             |r| r.get::<_, Option<i64>>(0),
         )
@@ -2143,7 +2142,7 @@ fn return_place_for_device(
     let group_place = match anchor {
         Some(Some(parent)) => conn
             .query_row(
-                "SELECT place_id FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL",
+                "SELECT place_id FROM groups WHERE id = ?1",
                 params![parent],
                 |r| r.get::<_, Option<i64>>(0),
             )
@@ -2154,7 +2153,7 @@ fn return_place_for_device(
         None => conn
             .query_row(
                 "SELECT g.place_id FROM group_devices gd \
-                 JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL \
+                 JOIN groups g ON g.id = gd.group_id \
                  WHERE gd.device_id = ?1",
                 params![device_id],
                 |r| r.get::<_, Option<i64>>(0),
@@ -2217,7 +2216,7 @@ fn apply_device_state_in_tx(
         let anchor: Option<(i64, Option<i64>)> = tx
             .query_row(
                 "SELECT id, parent_group_id FROM groups \
-                 WHERE anchor_device_id = ?1 AND deleted_at_utc IS NULL",
+                 WHERE anchor_device_id = ?1",
                 params![device_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )

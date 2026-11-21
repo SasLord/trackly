@@ -490,7 +490,7 @@ fn enrich_devices<'a>(
     {
         let sql = format!(
             "SELECT gd.device_id, g.id, g.name FROM group_devices gd \
-             JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL \
+             JOIN groups g ON g.id = gd.group_id \
              WHERE gd.device_id IN ({marks})"
         );
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
@@ -516,17 +516,16 @@ fn enrich_devices<'a>(
         let sql = format!(
             "WITH RECURSIVE t(root, gid) AS ( \
                SELECT id, id FROM groups \
-               WHERE anchor_device_id IN ({marks}) AND deleted_at_utc IS NULL \
+               WHERE anchor_device_id IN ({marks}) \
                UNION \
-               SELECT t.root, g.id FROM groups g JOIN t ON g.parent_group_id = t.gid \
-               WHERE g.deleted_at_utc IS NULL) \
+               SELECT t.root, g.id FROM groups g JOIN t ON g.parent_group_id = t.gid) \
              SELECT g.anchor_device_id, g.id, g.name, \
                     (SELECT COUNT(*) FROM group_devices gd \
                      JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL \
                      WHERE gd.group_id IN (SELECT gid FROM t WHERE t.root = g.id) \
                        AND gd.device_id <> g.anchor_device_id) \
              FROM groups g \
-             WHERE g.anchor_device_id IN ({marks}) AND g.deleted_at_utc IS NULL"
+             WHERE g.anchor_device_id IN ({marks})"
         );
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt
@@ -551,7 +550,7 @@ fn enrich_devices<'a>(
     {
         let sql = format!(
             "SELECT d.id, d.origin_group_id, g.name FROM devices d \
-             LEFT JOIN groups g ON g.id = d.origin_group_id AND g.deleted_at_utc IS NULL \
+             LEFT JOIN groups g ON g.id = d.origin_group_id \
              WHERE d.origin_group_id IS NOT NULL AND d.id IN ({marks})"
         );
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
@@ -1305,7 +1304,7 @@ impl DeviceService {
             // Несуществующая или удалённая группа — пустой состав, не ошибка.
             let alive: bool = conn
                 .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL)",
+                    "SELECT EXISTS(SELECT 1 FROM groups WHERE id = ?1)",
                     [group_id],
                     |r| r.get(0),
                 )

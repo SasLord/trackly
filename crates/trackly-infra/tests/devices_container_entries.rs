@@ -55,21 +55,12 @@ fn add_group(
     seq: i64,
     parent: Option<i64>,
     anchor: Option<i64>,
-    deleted: bool,
 ) -> i64 {
     conn.execute(
         "INSERT INTO groups (type_id, name, seq, parent_group_id, anchor_device_id, \
-         deleted_at_utc, version, created_at_utc, updated_at_utc) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
-        params![
-            type_id,
-            name,
-            seq,
-            parent,
-            anchor,
-            deleted.then_some(NOW),
-            NOW
-        ],
+         version, created_at_utc, updated_at_utc) \
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+        params![type_id, name, seq, parent, anchor, NOW],
     )
     .unwrap();
     conn.last_insert_rowid()
@@ -119,24 +110,27 @@ fn fixture(conn: &mut Connection) -> Fx {
     )
     .unwrap();
 
-    let arm = add_group(conn, t_cont, "АРМ #3", 1, None, None, false);
+    let arm = add_group(conn, t_cont, "АРМ #3", 1, None, None);
     join(conn, mon, arm);
     join(conn, printer_member, arm);
     // Вложенная якорная группа: якорь sysblock, член drive.
-    let arm_anchored = add_group(conn, t_rep, "Разбор 2", 2, Some(arm), Some(sysblock), false);
+    let arm_anchored = add_group(conn, t_rep, "Разбор 2", 2, Some(arm), Some(sysblock));
     join(conn, sysblock, arm_anchored);
     join(conn, drive, arm_anchored);
     // Вложенный АРМ без якоря с одним членом.
-    let arm_nested = add_group(conn, t_cont, "Стойка #8", 3, Some(arm), None, false);
+    let arm_nested = add_group(conn, t_cont, "Стойка #8", 3, Some(arm), None);
     join(conn, nested_member, arm_nested);
     // Вложенный пустой АРМ (единственный член удалён).
-    let arm_nested_empty = add_group(conn, t_cont, "Пустая стойка", 4, Some(arm), None, false);
+    let arm_nested_empty = add_group(conn, t_cont, "Пустая стойка", 4, Some(arm), None);
     join(conn, in_empty, arm_nested_empty);
     // Корневой пустой АРМ.
-    let arm_empty = add_group(conn, t_cont, "Пустой АРМ", 5, None, None, false);
-    // Удалённый АРМ с членом.
-    let arm_deleted = add_group(conn, t_cont, "Удалённый АРМ", 6, None, None, true);
+    let arm_empty = add_group(conn, t_cont, "Пустой АРМ", 5, None, None);
+    // Удалённый АРМ с членом. Удаление группы жёсткое (INT-12, quick 261121-hei):
+    // членство уходит каскадом group_devices, бывший член становится обычным устройством.
+    let arm_deleted = add_group(conn, t_cont, "Удалённый АРМ", 6, None, None);
     join(conn, del_member, arm_deleted);
+    conn.execute("DELETE FROM groups WHERE id = ?1", params![arm_deleted])
+        .unwrap();
 
     Fx {
         del_member,
@@ -365,8 +359,8 @@ fn container_entries_parent_cycle_terminates() {
     let t_cont = add_type(&conn, "t_cycle", "container");
     let dev_a = add_device(&mut conn, 1, "Монитор #21", "ИНВ-000021");
     let dev_b = add_device(&mut conn, 1, "Мышь #22", "ИНВ-000022");
-    let a = add_group(&conn, t_cont, "Цикл A", 1, None, None, false);
-    let b = add_group(&conn, t_cont, "Цикл B", 2, Some(a), None, false);
+    let a = add_group(&conn, t_cont, "Цикл A", 1, None, None);
+    let b = add_group(&conn, t_cont, "Цикл B", 2, Some(a), None);
     join(&conn, dev_a, a);
     join(&conn, dev_b, b);
     // Замыкаем цикл a -> b -> a в обход проверок записи.

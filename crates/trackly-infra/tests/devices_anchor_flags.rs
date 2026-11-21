@@ -340,11 +340,9 @@ fn group_members_only_narrows_list_and_count() {
     join(&conn, live_a, live_group);
     join(&conn, live_b, live_group);
     join(&conn, dead, dead_group);
-    conn.execute(
-        "UPDATE groups SET deleted_at_utc = ?1 WHERE id = ?2",
-        params![NOW, dead_group],
-    )
-    .unwrap();
+    // Удаление группы жёсткое (INT-12): членство уходит каскадом group_devices.
+    conn.execute("DELETE FROM groups WHERE id = ?1", params![dead_group])
+        .unwrap();
 
     // Без флага — все четверо.
     let (got, total) = ids(&conn, &DeviceFilter::default());
@@ -359,9 +357,6 @@ fn group_members_only_narrows_list_and_count() {
     let (got, total) = ids(&conn, &flt);
     assert_eq!(got, sorted(vec![live_a, live_b]));
     assert_eq!(total, 2);
-    assert!(
-        !got.contains(&dead),
-        "член мягко удалённой группы не входит"
-    );
+    assert!(!got.contains(&dead), "член удалённой группы не входит");
     assert!(!got.contains(&outside), "устройство вне групп не входит");
 }

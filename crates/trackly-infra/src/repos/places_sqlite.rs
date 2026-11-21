@@ -233,12 +233,11 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
                 SELECT g.id, g.id, g.parent_group_id
                   FROM group_devices gd
                   JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
-                  JOIN groups g ON g.id = gd.group_id AND g.deleted_at_utc IS NULL
+                  JOIN groups g ON g.id = gd.group_id
                  WHERE d.place_id IN (SELECT id FROM subtree)
                 UNION
                 SELECT up.start_id, g.id, g.parent_group_id
                   FROM groups g JOIN up ON g.id = up.parent
-                 WHERE g.deleted_at_utc IS NULL
               )
               SELECT up.id AS root_id FROM up
                 JOIN groups r ON r.id = up.id
@@ -273,7 +272,6 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
 const HIDE_GROUP_MEMBER_PREDICATE: &str = "AND NOT EXISTS (
              SELECT 1 FROM group_devices gd
              JOIN groups g ON g.id = gd.group_id
-              AND g.deleted_at_utc IS NULL
               AND g.place_id IS NOT NULL
               AND g.place_id = d.place_id
              WHERE gd.device_id = d.id)";
@@ -284,10 +282,9 @@ const HIDE_GROUP_MEMBER_PREDICATE: &str = "AND NOT EXISTS (
 /// `SqliteGroupRepository::tree_counts`).
 const GROUP_CLOSURE_CTE: &str = "closure(root, id) AS (
             SELECT id, id FROM groups
-             WHERE deleted_at_utc IS NULL AND parent_group_id IS NULL
+             WHERE parent_group_id IS NULL
             UNION ALL
             SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id
-             WHERE g.deleted_at_utc IS NULL
          )";
 
 /// Builds one `PlaceContentRow` from the shared 11-column shape of every branch
@@ -402,8 +399,7 @@ fn list_subtree_contents_impl(
              JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL
              GROUP BY c.root
          ) gc ON gc.root = g.id
-         WHERE g.deleted_at_utc IS NULL
-           AND g.parent_group_id IS NULL
+         WHERE g.parent_group_id IS NULL
            AND g.place_id {place_filter}"
         )
     };
@@ -474,10 +470,9 @@ fn list_group_members_impl(
     let mut stmt = conn
         .prepare(concat!(
             "WITH RECURSIVE sub(id) AS (
-                SELECT id FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL
+                SELECT id FROM groups WHERE id = ?1
                 UNION
                 SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id
-                WHERE g.deleted_at_utc IS NULL
              )
              SELECT CASE WHEN d.type_id = ",
             trackly_core::printer_type_id_sql!(),

@@ -136,11 +136,9 @@ fn list_group_members_deleted_or_missing_group_is_empty() {
             .len(),
         1
     );
-    conn.execute(
-        "UPDATE groups SET deleted_at_utc = ?2 WHERE id = ?1",
-        params![g, NOW],
-    )
-    .unwrap();
+    // Удаление группы жёсткое (INT-12, quick 261121-hei).
+    conn.execute("DELETE FROM groups WHERE id = ?1", params![g])
+        .unwrap();
     assert!(SqlitePlaceRepository
         .list_group_members(&conn, g)
         .unwrap()

@@ -22,10 +22,11 @@ fn fresh_db() -> (Connection, TempDir) {
     (conn, dir)
 }
 
-/// Тип группы, две живые группы (id 1 и 2), мягко удалённая группа (id 3),
-/// три живых устройства и одно мягко удалённое. Членство: устройства 1 и 2 в
-/// группе 1, устройство 3 в группе 2, удалённое устройство 4 в группе 1,
-/// устройство 5 (живое) в мягко удалённой группе 3.
+/// Тип группы, две живые группы (id 1 и 2), удалённая группа (id 3), три живых
+/// устройства и одно мягко удалённое. Членство: устройства 1 и 2 в группе 1,
+/// устройство 3 в группе 2, удалённое устройство 4 в группе 1, устройство 5
+/// (живое) было в группе 3. Удаление группы жёсткое (INT-12, quick 261121-hei):
+/// группа 3 удаляется `DELETE`, её членство уходит каскадом group_devices.
 fn seed(conn: &Connection) {
     conn.execute_batch(&format!(
         "INSERT INTO places (id, parent_id, kind, name, is_storage, created_at_utc, updated_at_utc)
@@ -35,8 +36,8 @@ fn seed(conn: &Connection) {
          INSERT INTO groups (id, type_id, name, seq, place_id, created_at_utc, updated_at_utc)
            VALUES (1, 100, 'АРМ #1', 1, 1, {NOW}, {NOW}),
                   (2, 100, 'АРМ #2', 2, NULL, {NOW}, {NOW});
-         INSERT INTO groups (id, type_id, name, seq, place_id, created_at_utc, updated_at_utc, deleted_at_utc)
-           VALUES (3, 100, 'АРМ #3', 3, NULL, {NOW}, {NOW}, {NOW});
+         INSERT INTO groups (id, type_id, name, seq, place_id, created_at_utc, updated_at_utc)
+           VALUES (3, 100, 'АРМ #3', 3, NULL, {NOW}, {NOW});
          INSERT INTO devices (id, type_id, name, inventory_number, status_id, place_id,
                               created_at_utc, updated_at_utc)
            VALUES (1, 1, 'Монитор #1', 'ИНВ-000001', 2, 1, {NOW}, {NOW}),
@@ -47,7 +48,8 @@ fn seed(conn: &Connection) {
                               created_at_utc, updated_at_utc, deleted_at_utc)
            VALUES (4, 1, 'Списанный блок', 'ИНВ-000004', 2, 1, {NOW}, {NOW}, {NOW});
          INSERT INTO group_devices (device_id, group_id, added_at_utc)
-           VALUES (1, 1, {NOW}), (2, 1, {NOW}), (3, 2, {NOW}), (4, 1, {NOW}), (5, 3, {NOW});"
+           VALUES (1, 1, {NOW}), (2, 1, {NOW}), (3, 2, {NOW}), (4, 1, {NOW}), (5, 3, {NOW});
+         DELETE FROM groups WHERE id = 3;"
     ))
     .expect("seed");
 }
@@ -188,7 +190,7 @@ fn effect_survives_hard_delete_of_group_and_keeps_label() {
 }
 
 #[test]
-fn live_groups_for_plan_excludes_soft_deleted_group() {
+fn live_groups_for_plan_excludes_deleted_group() {
     let (conn, _guard) = fresh_db();
     seed(&conn);
     let repo = SqliteGroupRepository;
@@ -200,15 +202,11 @@ fn live_groups_for_plan_excludes_soft_deleted_group() {
     assert_eq!(groups[0].version, 1);
     assert_eq!(groups[0].parent_group_id, None);
     assert_eq!(groups[0].anchor_device_id, None);
-    // Фикстура содержит мягко удалённую группу 3, иначе проверка вакуумна.
-    let soft_deleted: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM groups WHERE deleted_at_utc IS NOT NULL",
-            [],
-            |r| r.get(0),
-        )
+    // Группа 3 в фикстуре была создана и удалена (жёстко), иначе проверка вакуумна.
+    let gone: i64 = conn
+        .query_row("SELECT COUNT(*) FROM groups WHERE id = 3", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(soft_deleted, 1);
+    assert_eq!(gone, 0);
 }
 
 #[test]
@@ -216,12 +214,12 @@ fn live_memberships_exclude_deleted_group_and_deleted_device() {
     let (conn, _guard) = fresh_db();
     seed(&conn);
     let repo = SqliteGroupRepository;
-    // Обе «мёртвые» пары присутствуют в group_devices: (4, 1) — удалённое
-    // устройство, (5, 3) — удалённая группа.
+    // «Мёртвая» пара (4, 1) — удалённое устройство — присутствует в
+    // group_devices; пара (5, 3) ушла каскадом вместе с удалённой группой 3.
     let raw: i64 = conn
         .query_row("SELECT COUNT(*) FROM group_devices", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(raw, 5);
+    assert_eq!(raw, 4);
     let pairs = repo.list_live_memberships(&conn).unwrap();
     assert_eq!(pairs, vec![(1, 1), (2, 1), (3, 2)]);
 }

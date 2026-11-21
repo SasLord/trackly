@@ -579,7 +579,7 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
 
     fn count_groups_of_type(&self, conn: &Connection, type_id: i64) -> Result<i64, AppError> {
         conn.query_row(
-            "SELECT COUNT(*) FROM groups WHERE type_id = ?1 AND deleted_at_utc IS NULL",
+            "SELECT COUNT(*) FROM groups WHERE type_id = ?1",
             rusqlite::params![type_id],
             |r| r.get(0),
         )
@@ -678,7 +678,7 @@ impl GroupTypeRepository for SqliteGroupTypeRepository {
         let mut stmt = conn
             .prepare(
                 "SELECT g.id, g.name FROM groups g
-                 WHERE g.type_id = ?1 AND g.deleted_at_utc IS NULL
+                 WHERE g.type_id = ?1
                    AND NOT EXISTS (
                      SELECT 1 FROM group_property_values v
                      WHERE v.group_id = g.id AND v.property_id = ?2

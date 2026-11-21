@@ -191,13 +191,7 @@ async fn member_rows(ctx: &AppCtx, device_id: i64) -> i64 {
 }
 
 async fn group_alive(ctx: &AppCtx, id: i64) -> bool {
-    scalar_i64(
-        ctx,
-        "SELECT COUNT(*) FROM groups WHERE id = ?1 AND deleted_at_utc IS NULL",
-        id,
-    )
-    .await
-        == 1
+    scalar_i64(ctx, "SELECT COUNT(*) FROM groups WHERE id = ?1", id).await == 1
 }
 
 fn validation(err: AppError, expected_field: &str) -> String {

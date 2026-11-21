@@ -37,7 +37,7 @@ pub struct SqliteDeviceRepository;
 macro_rules! anchor_ids_sql {
     () => {
         "SELECT anchor_device_id FROM groups \
-         WHERE anchor_device_id IS NOT NULL AND deleted_at_utc IS NULL"
+         WHERE anchor_device_id IS NOT NULL"
     };
 }
 
@@ -48,14 +48,13 @@ macro_rules! anchor_members_sql {
     () => {
         "WITH RECURSIVE a(gid, anchor) AS ( \
            SELECT id, anchor_device_id FROM groups \
-           WHERE anchor_device_id IS NOT NULL AND deleted_at_utc IS NULL \
+           WHERE anchor_device_id IS NOT NULL \
            UNION \
            SELECT g.id, NULL FROM groups g JOIN group_types t ON t.id = g.type_id \
            WHERE t.behavior = 'container' AND g.anchor_device_id IS NULL \
-           AND g.parent_group_id IS NULL AND g.deleted_at_utc IS NULL \
+           AND g.parent_group_id IS NULL \
            UNION \
-           SELECT g.id, a.anchor FROM groups g JOIN a ON g.parent_group_id = a.gid \
-           WHERE g.deleted_at_utc IS NULL) \
+           SELECT g.id, a.anchor FROM groups g JOIN a ON g.parent_group_id = a.gid) \
          SELECT gd.device_id FROM group_devices gd JOIN a ON a.gid = gd.group_id \
          WHERE gd.device_id IS NOT a.anchor"
     };
@@ -68,10 +67,9 @@ macro_rules! group_subtree_members_sql {
             "WITH RECURSIVE sub(id) AS ( \
                SELECT id FROM groups WHERE id = ",
             $grp,
-            " AND deleted_at_utc IS NULL \
+            " \
                UNION \
-               SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id \
-               WHERE g.deleted_at_utc IS NULL) \
+               SELECT g.id FROM groups g JOIN sub ON g.parent_group_id = sub.id) \
              SELECT gd.device_id FROM group_devices gd JOIN sub ON sub.id = gd.group_id \
              WHERE gd.device_id IS NOT (SELECT anchor_device_id FROM groups WHERE id = ",
             $grp,
@@ -114,8 +112,7 @@ const LIST_FLAG_PREDICATES: &str = concat!(
     group_subtree_members_sql!("?9"),
     ")) AND (?13 = 0 OR d.id IN (\
        SELECT gd.device_id FROM group_devices gd \
-       JOIN groups g ON g.id = gd.group_id \
-       WHERE g.deleted_at_utc IS NULL))"
+       JOIN groups g ON g.id = gd.group_id))"
 );
 
 /// Поддерево мест `$place` для `d.place_id IN (...)`: само место и все вложенные,
@@ -171,10 +168,9 @@ static DEVICE_LIST_WHERE: std::sync::LazyLock<String> = std::sync::LazyLock::new
 macro_rules! nonempty_group_ids_sql {
     () => {
         "WITH RECURSIVE closure(root, id) AS ( \
-           SELECT id, id FROM groups WHERE deleted_at_utc IS NULL \
+           SELECT id, id FROM groups \
            UNION \
-           SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id \
-           WHERE g.deleted_at_utc IS NULL) \
+           SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id) \
          SELECT c.root FROM closure c \
          JOIN group_devices gd ON gd.group_id = c.id \
          JOIN devices d ON d.id = gd.device_id AND d.deleted_at_utc IS NULL \
@@ -187,7 +183,7 @@ macro_rules! root_container_where_sql {
     () => {
         concat!(
             "t.behavior = 'container' AND g.anchor_device_id IS NULL \
-             AND g.parent_group_id IS NULL AND g.deleted_at_utc IS NULL \
+             AND g.parent_group_id IS NULL \
              AND g.id IN (",
             nonempty_group_ids_sql!(),
             ")"
@@ -213,8 +209,7 @@ fn entry_union_sql() -> String {
 fn container_count_cte(seed: &str) -> String {
     format!(
         "WITH RECURSIVE closure(root, id) AS ( {seed} UNION \
-           SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id \
-           WHERE g.deleted_at_utc IS NULL) "
+           SELECT c.root, g.id FROM groups g JOIN closure c ON g.parent_group_id = c.id) "
     )
 }
 
@@ -601,7 +596,7 @@ impl SqliteDeviceRepository {
             cte = container_count_cte(
                 "SELECT g.id, g.id FROM groups g JOIN group_types t ON t.id = g.type_id \
                  WHERE t.behavior = 'container' AND g.anchor_device_id IS NULL \
-                 AND g.parent_group_id IS NULL AND g.deleted_at_utc IS NULL"
+                 AND g.parent_group_id IS NULL"
             ),
             cols = CONTAINER_ROW_COLUMNS,
             root_where = root_container_where_sql!(),
@@ -631,9 +626,9 @@ impl SqliteDeviceRepository {
         let sql = format!(
             "{cte} SELECT {cols} FROM groups g \
              LEFT JOIN place_full_paths pfp ON pfp.place_id = g.place_id \
-             WHERE g.deleted_at_utc IS NULL AND g.id IN ({placeholders})",
+             WHERE g.id IN ({placeholders})",
             cte = container_count_cte(&format!(
-                "SELECT id, id FROM groups WHERE deleted_at_utc IS NULL AND id IN ({placeholders})"
+                "SELECT id, id FROM groups WHERE id IN ({placeholders})"
             )),
             cols = CONTAINER_ROW_COLUMNS,
         );
@@ -670,12 +665,12 @@ impl SqliteDeviceRepository {
              UNION ALL \
              SELECT 0, d.id, d.name FROM groups c \
                JOIN devices d ON d.id = c.anchor_device_id AND d.deleted_at_utc IS NULL \
-               WHERE c.parent_group_id = ?1 AND c.deleted_at_utc IS NULL \
+               WHERE c.parent_group_id = ?1 \
                  AND c.anchor_device_id IS NOT NULL \
                  AND d.id NOT IN (SELECT device_id FROM group_devices WHERE group_id = ?1) \
              UNION ALL \
              SELECT 1, g.id, g.name FROM groups g \
-               WHERE g.parent_group_id = ?1 AND g.deleted_at_utc IS NULL \
+               WHERE g.parent_group_id = ?1 \
                  AND g.anchor_device_id IS NULL AND g.id IN (",
             nonempty_group_ids_sql!(),
             ")"
