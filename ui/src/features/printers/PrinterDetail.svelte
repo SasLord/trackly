@@ -35,6 +35,7 @@
   import { cartridges } from '../cartridges/api';
   import { apiCall } from '$lib/api/client';
   import { push } from 'svelte-spa-router';
+  import { openRequestTarget } from '../requests/requestTarget';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import type { PrinterDto, PrinterReadingDto } from '../../bindings-phase6';
@@ -411,6 +412,7 @@
           onNavigateToPlace={(id) => push(`#/places?id=${id}`)}
           onNavigateToAct={(id) => push(`#/acts?id=${id}`)}
           onNavigateToGroup={(id) => push(`#/groups?id=${id}`)}
+          onNavigateToRequest={(id) => openRequestTarget(id, 'info')}
         />
       </DetailSection>
 

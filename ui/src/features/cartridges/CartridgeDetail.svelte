@@ -37,6 +37,7 @@
   import type { AttachmentHistoryEventDto } from '../../bindings';
   import { apiCall } from '$lib/api/client';
   import { push } from 'svelte-spa-router';
+  import { openRequestTarget } from '../requests/requestTarget';
   import type { AuditEntryDto, CartridgeDto, MovementEntryDto } from '../../bindings';
 
   interface Props {
@@ -300,6 +301,7 @@
           onNavigateToPlace={(id) => push(`#/places?id=${id}`)}
           onNavigateToAct={(id) => push(`#/acts?id=${id}`)}
           onNavigateToGroup={(id) => push(`#/groups?id=${id}`)}
+          onNavigateToRequest={(id) => openRequestTarget(id, 'info')}
         />
       </DetailSection>
     {/if}

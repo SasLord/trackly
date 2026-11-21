@@ -32,6 +32,8 @@
       batch_id: null,
       group_id: null,
       group_label: null,
+      // quick 261121-hed (NEW-3): id ремонтной заявки, Some только у source 'repair'.
+      request_id: null,
       created_at_utc: now,
       ...overrides,
     };
@@ -41,6 +43,13 @@
   // — server already returns newest-first, this demo array is pre-sorted the
   // same way (component does not re-sort).
   const populatedEntries: MovementEntryDto[] = [
+    entry({
+      id: 4,
+      source: 'repair',
+      request_id: 17,
+      actor_display: 'Петров П.П.',
+      created_at_utc: now,
+    }),
     entry({
       id: 3,
       source: 'act',
@@ -76,13 +85,19 @@
   function handleNavigateToAct(actId: number) {
     console.log('[showcase] navigate to act', actId);
   }
+
+  function handleNavigateToRequest(requestId: number) {
+    console.log('[showcase] navigate to request', requestId);
+  }
 </script>
 
 <section class="movement-timeline-section">
   <h2>MovementTimeline</h2>
 
   <div class="variant-block">
-    <h3 class="variant-label">Заполнено (3 записи — акт / вручную с примечанием / вручную)</h3>
+    <h3 class="variant-label">
+      Заполнено (4 записи — ремонтная заявка / акт / вручную с примечанием / вручную)
+    </h3>
     <div class="demo-anchor">
       <MovementTimeline
         entries={populatedEntries}
@@ -90,6 +105,7 @@
         loadError={false}
         onNavigateToPlace={handleNavigateToPlace}
         onNavigateToAct={handleNavigateToAct}
+        onNavigateToRequest={handleNavigateToRequest}
       />
     </div>
   </div>

@@ -23,6 +23,7 @@
   // title "Редактирование принтера" once `target.type_id === 2`, so nothing
   // extra is needed to get that right.
   import { push } from 'svelte-spa-router';
+  import { openRequestTarget } from '../requests/requestTarget';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
@@ -330,6 +331,10 @@
         }}
         onNavigateToGroup={async (id) => {
           await push(`#/groups?id=${id}`);
+          onClose();
+        }}
+        onNavigateToRequest={(id) => {
+          openRequestTarget(id, 'info');
           onClose();
         }}
       />

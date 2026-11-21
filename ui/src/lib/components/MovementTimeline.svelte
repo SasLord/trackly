@@ -17,6 +17,7 @@
   // own spinner — the parent's single fetch already resolves loading/error
   // before mounting rows, so `loading=true` renders nothing here.
   import type { MovementEntryDto } from '../../bindings';
+  import { reasonText } from '../movementReason';
 
   interface Props {
     entries: MovementEntryDto[];
@@ -28,6 +29,9 @@
      *  группы «…»» — ровно как `onNavigateToAct` для «актом №…». Необязательный:
      *  без него имя группы показывается обычным текстом. */
     onNavigateToGroup?: (groupId: number) => Promise<void> | void;
+    /** quick 261121-hed (NEW-3): переход к ремонтной заявке из основания
+     *  «по ремонтной заявке №N». Необязательный: без него номер — обычный текст. */
+    onNavigateToRequest?: (requestId: number) => Promise<void> | void;
     /** Plan 41-23: сноска под списком «Первичное размещение при поступлении в
      *  историю не попадает…» написана про устройства; панель ГРУППЫ скрывает её
      *  (у группы нет «поступления»). По умолчанию показывается — прочие
@@ -42,6 +46,7 @@
     onNavigateToPlace,
     onNavigateToAct,
     onNavigateToGroup,
+    onNavigateToRequest,
     showInitialPlacementNote = true,
   }: Props = $props();
 
@@ -59,36 +64,11 @@
     return `${day}.${month}.${year}`;
   }
 
-  // Reason composition per UI-SPEC's "Timeline row anatomy" table, exactly.
-  // `source == 'act'` renders a clickable act-number segment separately (see
-  // markup below) — this helper only returns the LEADING literal text
-  // ("актом №" ...) is still assembled inline in the template so the number
-  // itself can be a real <button>. For non-act sources this returns the full
-  // plain-text reason string.
-  function reasonText(entry: MovementEntryDto): string {
-    if (entry.source === 'manual') {
-      return entry.note && entry.note.trim().length > 0 ? `вручную · ${entry.note}` : 'вручную';
-    }
-    if (entry.source === 'act') {
-      // Rendered as literal + button in the template, this fallback only
-      // covers the defensive case where act_number is missing despite
-      // source === 'act' (Pitfall 6 — never let an unexpected shape throw).
-      return entry.act_number ? `актом №${entry.act_number}` : 'актом';
-    }
-    if (entry.source === 'group') {
-      // Plan 41-24 (D-28): строка самой группы (entity_type = 'group') — перенос
-      // группы целиком; строка устройства/принтера/картриджа — основание
-      // «в составе группы «имя»» (имя-ссылка рисуется в шаблоне; здесь —
-      // простой текст для случая, когда ссылки нет: нет group_id, нет
-      // обработчика или нет снимка имени).
-      if (entry.entity_type === 'group') return 'перенос группы';
-      const label = entry.group_label?.trim() ?? '';
-      return label.length > 0 ? `в составе группы «${label}»` : 'в составе группы';
-    }
-    // Unrecognized/future source values (`map`, `workstation`, or any other
-    // token) — safe fallback label, never a crash (T-40-30, Pitfall 6/IN-01).
-    return 'причина не определена';
-  }
+  // Подписи источников (INT-09) — единый словарь $lib/movementReason, паритет с
+  // Rust-enum MovementSource держит scripts/check-movement-source-labels.mjs.
+  // `source == 'act'`, состав группы и ремонт с id заявки рисуются в шаблоне со
+  // ссылкой-кнопкой; для прочего — текст reasonText. Нераспознанный (будущий)
+  // токен — «причина не определена», никогда не исключение (T-40-30, IN-01).
 
   // Plan 41.2-15 (D-14, UI-SPEC §10.1, R-13): строки пакета, вызванного актом,
   // тоже несут source = 'act', поэтому ветка «актом №N» стёрла бы групповой
@@ -114,6 +94,10 @@
 
   function handleNavigateToGroup(groupId: number) {
     void onNavigateToGroup?.(groupId);
+  }
+
+  function handleNavigateToRequest(requestId: number) {
+    void onNavigateToRequest?.(requestId);
   }
 </script>
 
@@ -197,6 +181,22 @@
               {entry.group_label?.trim()}
             </button>»
           </span>
+        {:else if entry.source === 'repair' && entry.request_id !== null && onNavigateToRequest}
+          <!-- NEW-3: номер заявки — кнопка-ссылка; id — number, примечание — текст
+               (без разметки из строки, T-hed-05). -->
+          <span class="timeline-reason">
+            по ремонтной заявке №<button
+              type="button"
+              class="timeline-link"
+              onclick={() => handleNavigateToRequest(entry.request_id as number)}
+            >
+              {entry.request_id}
+            </button>
+          </span>
+          {#if entry.note && entry.note.trim().length > 0}
+            <span class="timeline-sep">·</span>
+            <span class="timeline-reason">{entry.note}</span>
+          {/if}
         {:else}
           <span class="timeline-reason">{reasonText(entry)}</span>
         {/if}
