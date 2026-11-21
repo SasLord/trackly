@@ -27,6 +27,9 @@
   let saving = $state(false);
   let serverErr = $state<string | null>(null);
 
+  // Отказ сервера на удалении группы: текст причины остаётся, футер — «Закрыть».
+  const refusedGroup = $derived(kind === 'group' && serverErr !== null);
+
   const title = $derived(kind === 'group' ? 'Удалить группу?' : 'Удалить тип группы?');
   const devicesWord = $derived(
     pluralizeRu(directDeviceCount, ['устройство', 'устройства', 'устройств']),
@@ -70,8 +73,13 @@
   {/if}
 
   {#snippet footer()}
-    <Button variant="secondary" onclick={onClose} disabled={saving}>Отмена</Button>
-    <Button variant="destructive" loading={saving} onclick={confirmDelete}>Удалить</Button>
+    {#if refusedGroup}
+      <!-- D-13: отказ сервера (разбор с деталями/призраками) — повтор бессмыслен. -->
+      <Button variant="secondary" onclick={onClose}>Закрыть</Button>
+    {:else}
+      <Button variant="secondary" onclick={onClose} disabled={saving}>Отмена</Button>
+      <Button variant="destructive" loading={saving} onclick={confirmDelete}>Удалить</Button>
+    {/if}
   {/snippet}
 </Modal>
 

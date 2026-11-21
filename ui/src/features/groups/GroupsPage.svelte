@@ -36,6 +36,8 @@
   import GroupTypeFormModal from './GroupTypeFormModal.svelte';
   import GroupDeleteModal from './GroupDeleteModal.svelte';
   import GroupMoveModal from './GroupMoveModal.svelte';
+  import AddToGroupModal from './AddToGroupModal.svelte';
+  import WriteOffGroupModal from './WriteOffGroupModal.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { GroupDto, GroupTypeDto } from '../../bindings';
 
@@ -133,6 +135,7 @@
   // Данные дерева, нужные обработчикам (имя/версия типа для переименования и
   // удаления). Только читаются в обработчиках, шаблон их не рисует — не $state.
   let loadedTypes: GroupTypeDto[] = [];
+  let loadedGroups: GroupDto[] = [];
 
   type TypeModal = { mode: 'create' } | { mode: 'rename'; type: GroupTypeDto };
   type GroupModal =
@@ -148,6 +151,12 @@
   let typeModal = $state<TypeModal | null>(null);
   let groupModal = $state<GroupModal | null>(null);
   let moveGroup = $state<GroupDto | null>(null);
+  // D-07: перенос вложенной группы в другую группу и списание группы из меню узла.
+  let moveToGroupTarget = $state<{
+    group: GroupDto;
+    parent: { id: number; name: string } | null;
+  } | null>(null);
+  let writeOffTarget = $state<GroupDto | null>(null);
   let deleteTarget = $state<DeleteTarget | null>(null);
 
   function errMessage(e: unknown, fallback: string): string {
@@ -213,8 +222,9 @@
     persistTab(key);
   }
 
-  function handleTreeLoaded(types: GroupTypeDto[]): void {
+  function handleTreeLoaded(types: GroupTypeDto[], groupRows: GroupDto[]): void {
     loadedTypes = types;
+    loadedGroups = groupRows;
   }
 
   // --- Создание / переименование -------------------------------------------------
@@ -249,15 +259,51 @@
   async function removeFromParent(groupId: number): Promise<void> {
     try {
       const g = await groupsApi.get(groupId);
+      const parentName = loadedGroups.find((x) => x.id === g.parent_group_id)?.name ?? '';
       const result = await groupsApi.setParent({
         id: g.id,
         version: g.version,
         parent_group_id: null,
       });
       notifyPlaceContentChanged(result.changed_place_ids);
+      pushToast(
+        'success',
+        parentName
+          ? `Группа «${g.name}» выведена из «${parentName}»`
+          : `Группа «${g.name}» выведена из группы`,
+      );
       refreshAll();
     } catch (e) {
-      pushToast('error', errMessage(e, 'Не удалось вывести группу из состава.'));
+      pushToast(
+        'error',
+        errMessage(e, 'Не удалось вывести из группы. Проверьте подключение и повторите.'),
+      );
+    }
+  }
+
+  // D-07: «Переместить в группу» — AddToGroupModal mode=move для переносимой группы.
+  async function openMoveToGroup(groupId: number): Promise<void> {
+    try {
+      const g = await groupsApi.get(groupId);
+      let parent: { id: number; name: string } | null = null;
+      if (g.parent_group_id !== null) {
+        const name =
+          loadedGroups.find((x) => x.id === g.parent_group_id)?.name ??
+          (await groupsApi.get(g.parent_group_id)).name;
+        parent = { id: g.parent_group_id, name };
+      }
+      moveToGroupTarget = { group: g, parent };
+    } catch (e) {
+      pushToast('error', errMessage(e, 'Не удалось загрузить группу.'));
+    }
+  }
+
+  // D-21: «Списать» из меню узла (только у группы с якорем «на списание»).
+  async function openWriteOff(groupId: number): Promise<void> {
+    try {
+      writeOffTarget = await groupsApi.get(groupId);
+    } catch (e) {
+      pushToast('error', errMessage(e, 'Не удалось загрузить группу.'));
     }
   }
 
@@ -329,6 +375,8 @@
           onRename={renameNode}
           onMove={openMove}
           onRemoveFromParent={removeFromParent}
+          onMoveToGroup={openMoveToGroup}
+          onWriteOff={openWriteOff}
           onDelete={requestDelete}
           onLoaded={handleTreeLoaded}
         />
@@ -405,6 +453,30 @@
     onClose={() => (moveGroup = null)}
     onMoved={() => {
       moveGroup = null;
+      refreshAll();
+    }}
+  />
+{/if}
+
+{#if moveToGroupTarget}
+  <AddToGroupModal
+    mode="move"
+    subjectGroup={moveToGroupTarget.group}
+    currentGroup={moveToGroupTarget.parent}
+    onClose={() => (moveToGroupTarget = null)}
+    onAdded={() => {
+      moveToGroupTarget = null;
+      refreshAll();
+    }}
+  />
+{/if}
+
+{#if writeOffTarget}
+  <WriteOffGroupModal
+    group={writeOffTarget}
+    onClose={() => (writeOffTarget = null)}
+    onDone={() => {
+      writeOffTarget = null;
       refreshAll();
     }}
   />
