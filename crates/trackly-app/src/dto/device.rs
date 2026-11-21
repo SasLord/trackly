@@ -513,6 +513,36 @@ pub struct CsvImportPreviewResponse {
     /// True if encoding_rs encountered replacement characters during decode —
     /// surface a warning to the user (RESEARCH §Pitfall 7).
     pub had_replacements: bool,
+    /// INT-21/N4: по каждой колонке файла — сколько непустых значений сервер
+    /// не распознал бы как тип и как статус. Распознавание — серверное (то же,
+    /// что в `import_csv_commit`); UI только показывает результат на шаге
+    /// сопоставления колонок. Включены все колонки, в том числе с нулями.
+    pub label_checks: Vec<ColumnLabelCheck>,
+}
+
+/// INT-21/N4: проверка значений одной колонки CSV по справочникам типов и статусов.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ColumnLabelCheck {
+    /// Заголовок колонки (как в `headers`).
+    pub header: String,
+    /// Полное число непустых значений, не распознанных как тип устройства.
+    #[specta(type = u32)]
+    pub unknown_type_count: u64,
+    /// Не больше 20 образцов нераспознанных значений типа.
+    pub unknown_type_samples: Vec<LabelSample>,
+    /// Полное число непустых значений, не распознанных как статус.
+    #[specta(type = u32)]
+    pub unknown_status_count: u64,
+    /// Не больше 20 образцов нераспознанных значений статуса.
+    pub unknown_status_samples: Vec<LabelSample>,
+}
+
+/// Образец значения ячейки с номером строки (1-based, как в `RowError`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct LabelSample {
+    #[specta(type = u32)]
+    pub row_index: u64,
+    pub value: String,
 }
 
 /// Result of a successful (or partial) `import_csv_commit` call.
@@ -529,6 +559,26 @@ pub struct CsvImportReport {
     /// full screen refresh. Never includes a row that failed validation.
     #[specta(type = Vec<i32>)]
     pub affected_place_ids: Vec<i64>,
+    /// INT-21/N4: приведения нераспознанного типа/статуса к значению по
+    /// умолчанию — только у ВСТАВЛЕННЫХ строк. Импорт не блокируется.
+    pub warnings: Vec<RowWarning>,
+    /// Число вставленных строк, у которых было хотя бы одно приведение.
+    #[specta(type = u32)]
+    pub coerced_rows: u64,
+}
+
+/// INT-21/N4: предупреждение о приведении значения ячейки при импорте.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct RowWarning {
+    /// 1-based номер строки данных (как в `RowError`).
+    #[specta(type = u32)]
+    pub row_index: u64,
+    /// Поле: `"type"` или `"status"`.
+    pub field: String,
+    /// Исходное значение ячейки (после trim).
+    pub value: String,
+    /// Подпись применённого значения из справочника.
+    pub applied: String,
 }
 
 /// A per-row import error.

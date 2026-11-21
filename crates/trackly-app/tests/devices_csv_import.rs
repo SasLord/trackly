@@ -996,3 +996,168 @@ async fn import_follows_dictionary_rename() {
     .await
     .expect("timeout");
 }
+
+// ---------------------------------------------------------------------------
+// quick-261121-hef (INT-21, N4): нераспознанные тип/статус импортируются со
+// значением по умолчанию, но приведение видно — в предпросмотре (по колонке)
+// и в итоге (по строке, со счётчиком строк).
+// ---------------------------------------------------------------------------
+
+/// Предпросмотр + commit с авто-маппингом модалки для CSV-текста (UTF-8, `;`).
+async fn import_text(svc: &DeviceService, text: &str) -> trackly_app::dto::device::CsvImportReport {
+    let preview = svc
+        .import_csv_preview(text.as_bytes().to_vec())
+        .await
+        .expect("preview");
+    let mapping = auto_map(&preview.headers);
+    svc.import_csv_commit(preview.token, mapping)
+        .await
+        .expect("commit")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_import_unknown_type_warns_and_inserts_as_device() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let report = import_text(&svc, "Наименование;Тип\nСтенд опечатка;Пинтер\n").await;
+        assert_eq!(report.inserted, 1, "failed: {:?}", report.failed);
+        assert!(report.failed.is_empty());
+        assert_eq!(report.coerced_rows, 1);
+        assert_eq!(
+            report.warnings,
+            vec![trackly_app::dto::device::RowWarning {
+                row_index: 1,
+                field: "type".to_string(),
+                value: "Пинтер".to_string(),
+                applied: "Устройство".to_string(),
+            }]
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_import_unknown_status_warns_with_default_status_name() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let report = import_text(
+            &svc,
+            "Наименование;Статус\nНоутбук верный;В работе\nНоутбук опечатка;На сскладе\n",
+        )
+        .await;
+        assert_eq!(report.inserted, 2, "failed: {:?}", report.failed);
+        assert_eq!(report.coerced_rows, 1);
+        assert_eq!(
+            report.warnings,
+            vec![trackly_app::dto::device::RowWarning {
+                row_index: 2,
+                field: "status".to_string(),
+                value: "На сскладе".to_string(),
+                applied: "На складе".to_string(),
+            }]
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_import_both_unknown_gives_two_warnings_one_coerced_row() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let report = import_text(
+            &svc,
+            "Наименование;Тип;Статус\nДвойная опечатка;Пинтер;Нв складе\n",
+        )
+        .await;
+        assert_eq!(report.inserted, 1, "failed: {:?}", report.failed);
+        assert_eq!(report.warnings.len(), 2, "{:?}", report.warnings);
+        assert_eq!(report.coerced_rows, 1, "строка считается один раз");
+        let fields: Vec<&str> = report.warnings.iter().map(|w| w.field.as_str()).collect();
+        assert_eq!(fields, vec!["type", "status"]);
+        assert!(report.warnings.iter().all(|w| w.row_index == 1));
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_import_empty_and_aliases_give_no_warnings() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let report = import_text(
+            &svc,
+            "Наименование;Тип;Статус\n\
+             Пустые ячейки;;\n\
+             Старый принтер;Расходник;На ремонте\n\
+             Обычный;Принтер;в работе\n",
+        )
+        .await;
+        assert_eq!(report.inserted, 3, "failed: {:?}", report.failed);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(report.coerced_rows, 0);
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_import_rejected_rows_produce_no_warnings() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        seed_place(&svc, "Кабинет 1").await;
+        let report = import_text(
+            &svc,
+            "Наименование;Тип;Место\n\
+             ;Пинтер;Кабинет 1\n\
+             Без места;Пинтер;Кабинет несуществующий\n\
+             Вставлен;Пинтер;Кабинет 1\n",
+        )
+        .await;
+        assert_eq!(report.inserted, 1, "failed: {:?}", report.failed);
+        assert_eq!(report.failed.len(), 2);
+        assert_eq!(report.coerced_rows, 1);
+        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(report.warnings[0].row_index, 3);
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hef_preview_label_checks_count_unknown_per_column() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let mut text = String::from("Наименование;Тип\n");
+        text.push_str("А;Принтер\nБ;Пинтер\nВ;\n");
+        // 25 одинаковых опечаток сверху: счётчик полный, образцов не больше 20.
+        for i in 0..25 {
+            text.push_str(&format!("Г{i};Пинтер\n"));
+        }
+        let preview = svc
+            .import_csv_preview(text.into_bytes())
+            .await
+            .expect("preview");
+        assert_eq!(preview.label_checks.len(), 2, "все колонки включены");
+        let type_col = preview
+            .label_checks
+            .iter()
+            .find(|c| c.header == "Тип")
+            .expect("колонка Тип");
+        assert_eq!(type_col.unknown_type_count, 26);
+        assert_eq!(type_col.unknown_type_samples.len(), 20);
+        assert_eq!(
+            type_col.unknown_type_samples[0],
+            trackly_app::dto::device::LabelSample {
+                row_index: 2,
+                value: "Пинтер".to_string(),
+            }
+        );
+        // «Принтер» — тип, но не статус: как статус не распознаны все 27 непустых.
+        assert_eq!(type_col.unknown_status_count, 27);
+        assert!(type_col.unknown_status_samples.len() <= 20);
+    })
+    .await
+    .expect("timeout");
+}

@@ -28,6 +28,43 @@
   let report = $state<CsvImportReport | null>(null);
   let loading = $state(false);
   let errorsExpanded = $state(false);
+  let warningsExpanded = $state(false);
+
+  // ---------------------------------------------------------------------------
+  // INT-21/N4: нераспознанные значения колонок, сопоставленных с «Тип» и
+  // «Статус». Распознаёт СЕРВЕР (preview.label_checks) — здесь только выбор
+  // колонки по текущему сопоставлению, логики сопоставления подписей нет.
+  // ---------------------------------------------------------------------------
+  interface LabelWarning {
+    header: string;
+    kind: 'type' | 'status';
+    count: number;
+    samples: { row_index: number; value: string }[];
+  }
+
+  const labelWarnings = $derived.by((): LabelWarning[] => {
+    if (!preview) return [];
+    const out: LabelWarning[] = [];
+    for (const header of preview.headers) {
+      const field = mapping[header];
+      if (field !== 'type' && field !== 'status') continue;
+      const check = preview.label_checks.find((c) => c.header === header);
+      if (!check) continue;
+      const count = field === 'type' ? check.unknown_type_count : check.unknown_status_count;
+      if (count === 0) continue;
+      out.push({
+        header,
+        kind: field,
+        count,
+        samples: field === 'type' ? check.unknown_type_samples : check.unknown_status_samples,
+      });
+    }
+    return out;
+  });
+
+  function warningFieldLabel(field: string): string {
+    return field === 'type' ? 'Тип' : 'Статус';
+  }
 
   // ---------------------------------------------------------------------------
   // Device field options (for mapping select)
@@ -199,6 +236,7 @@
     report = null;
     loading = false;
     errorsExpanded = false;
+    warningsExpanded = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -317,6 +355,24 @@
           {/each}
         </tbody>
       </table>
+      {#each labelWarnings as w (w.header + w.kind)}
+        <div class="warning-banner label-warning" role="alert">
+          <p>
+            Колонка «{w.header}»: {w.count} значений {w.kind === 'type' ? 'типа' : 'статуса'} не распознано
+            — такие строки будут импортированы {w.kind === 'type'
+              ? 'как «Устройство»'
+              : 'как статус по умолчанию'}.
+          </p>
+          <ul class="label-samples">
+            {#each w.samples as sample (sample.row_index)}
+              <li>строка {sample.row_index}: «{sample.value}»</li>
+            {/each}
+            {#if w.count > w.samples.length}
+              <li>… и ещё {w.count - w.samples.length}</li>
+            {/if}
+          </ul>
+        </div>
+      {/each}
     </div>
 
     <!-- -------------------------------------------------------------------------
@@ -326,8 +382,28 @@
     <div class="step-body">
       <p class="result-summary">
         Импортировано: <strong>{report.inserted}</strong>. Пропущено с ошибками:
-        <strong>{report.failed.length}</strong>.
+        <strong>{report.failed.length}</strong>. С заменой типа/статуса:
+        <strong>{report.coerced_rows}</strong>.
       </p>
+      {#if report.warnings.length > 0}
+        <button
+          class="errors-toggle"
+          type="button"
+          onclick={() => (warningsExpanded = !warningsExpanded)}
+        >
+          {warningsExpanded ? 'Скрыть замены' : `Показать замены (${report.warnings.length})`}
+        </button>
+        {#if warningsExpanded}
+          <ul class="error-list warning-list">
+            {#each report.warnings as w (w.row_index + w.field)}
+              <li>
+                <span class="error-row-num">Строка {w.row_index}:</span>
+                {warningFieldLabel(w.field)} «{w.value}» не распознан — записан «{w.applied}»
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      {/if}
       {#if report.failed.length > 0}
         <button
           class="errors-toggle"
@@ -455,6 +531,19 @@
     font-size: var(--tr-font-size-body);
   }
 
+  .label-warning {
+    margin-top: var(--tr-space-md, 12px);
+
+    p {
+      margin: 0 0 var(--tr-space-2xs, 4px);
+    }
+  }
+
+  .label-samples {
+    margin: 0;
+    padding-left: var(--tr-space-md, 12px);
+  }
+
   .preview-table-wrap {
     overflow-x: auto;
     overflow-y: auto;
@@ -561,6 +650,10 @@
       &:last-child {
         border-bottom: none;
       }
+    }
+
+    &.warning-list li {
+      color: var(--tr-warning-text);
     }
 
     .error-row-num {

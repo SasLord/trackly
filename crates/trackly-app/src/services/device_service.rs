@@ -45,9 +45,10 @@ use std::collections::HashMap;
 use crate::csv::session_store::ImportSessionStore;
 use crate::csv::{decode_to_string, detect, parse_rows, ImportSession};
 use crate::dto::device::{
-    ContainerListResponse, ContainerRowDto, CsvImportPreviewResponse, CsvImportReport, DeviceDto,
-    DeviceEntriesResponse, DeviceEntryDto, DeviceFilter, DeviceGroup, DeviceListResponse,
-    DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, RowError, StatusCount, STATE_HINTS,
+    ColumnLabelCheck, ContainerListResponse, ContainerRowDto, CsvImportPreviewResponse,
+    CsvImportReport, DeviceDto, DeviceEntriesResponse, DeviceEntryDto, DeviceFilter, DeviceGroup,
+    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, LabelSample, Pagination,
+    RowError, RowWarning, StatusCount, STATE_HINTS,
 };
 use crate::dto::device_status::DeviceStatusDto;
 use crate::dto::device_type::DeviceTypeDto;
@@ -80,6 +81,34 @@ const LEGACY_REPAIR_LABEL_LOWER: &str = "на ремонте";
 /// это единственное разрешённое вхождение слова в crates/*/src, оно освобождено
 /// в гейте device_type_label_gate.
 const LEGACY_EXPORT_PRINTER_LABEL_LOWER: &str = "расходник";
+
+/// Исход сопоставления подписи из ячейки CSV со справочником (INT-21).
+/// Во всех вариантах — id, который будет записан.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelMatch {
+    /// Ячейка пуста — значение по умолчанию, предупреждения нет.
+    Empty(i64),
+    /// Подпись найдена в справочнике (или это разрешённый псевдоним).
+    Matched(i64),
+    /// Подпись не распознана — значение по умолчанию, нужно предупреждение.
+    Unknown(i64),
+}
+
+impl LabelMatch {
+    fn id(self) -> i64 {
+        match self {
+            LabelMatch::Empty(id) | LabelMatch::Matched(id) | LabelMatch::Unknown(id) => id,
+        }
+    }
+
+    fn is_unknown(self) -> bool {
+        matches!(self, LabelMatch::Unknown(_))
+    }
+}
+
+/// Не больше стольких образцов нераспознанных значений на колонку и вид
+/// в предпросмотре импорта (T-hef-03).
+const LABEL_SAMPLES_MAX: usize = 20;
 
 /// Снимок справочника `device_statuses` на время одной операции CSV.
 ///
@@ -126,11 +155,13 @@ impl StatusLookup {
         Self::from_rows(rows)
     }
 
-    /// id статуса по подписи из CSV. Пустая или неизвестная подпись даёт статус
-    /// по умолчанию (прежнее поведение). Прежняя подпись «На ремонте» — псевдоним.
-    fn id_for_label(&self, label: Option<&str>) -> i64 {
+    /// Исход сопоставления подписи статуса из CSV (INT-21): пусто, найдено или
+    /// не распознано. Пустая и нераспознанная подписи дают статус по умолчанию
+    /// (прежнее поведение), но «неизвестно» теперь отличимо от «пусто».
+    /// Прежняя подпись «На ремонте» — псевдоним.
+    fn resolve(&self, label: Option<&str>) -> LabelMatch {
         let Some(label) = label.map(str::trim).filter(|l| !l.is_empty()) else {
-            return self.default_id;
+            return LabelMatch::Empty(self.default_id);
         };
         let wanted = label.to_lowercase();
         if let Some((id, _, _)) = self
@@ -138,7 +169,7 @@ impl StatusLookup {
             .iter()
             .find(|(_, name, _)| name.to_lowercase() == wanted)
         {
-            return *id;
+            return LabelMatch::Matched(*id);
         }
         if wanted == LEGACY_REPAIR_LABEL_LOWER {
             if let Some((id, _, _)) = self
@@ -146,10 +177,10 @@ impl StatusLookup {
                 .iter()
                 .find(|(_, _, code)| code == STATUS_CODE_LEGACY_REPAIR)
             {
-                return *id;
+                return LabelMatch::Matched(*id);
             }
         }
-        self.default_id
+        LabelMatch::Unknown(self.default_id)
     }
 
     /// Имя статуса из справочника; для неизвестного id (FK этого не допускает)
@@ -205,11 +236,13 @@ impl TypeLookup {
         Self::from_rows(rows)
     }
 
-    /// id типа по подписи из CSV. Пустая или неизвестная подпись даёт «Устройство»
-    /// без ошибки строки (D-02); прежняя подпись «Расходник» — псевдоним принтера (D-01).
-    fn id_for_label(&self, label: Option<&str>) -> i64 {
+    /// Исход сопоставления подписи типа из CSV (INT-21). Пустая или
+    /// нераспознанная подпись даёт «Устройство» без ошибки строки (D-02), но
+    /// нераспознанная отличима от пустой; прежняя подпись «Расходник» —
+    /// псевдоним принтера (D-01).
+    fn resolve(&self, label: Option<&str>) -> LabelMatch {
         let Some(label) = label.map(str::trim).filter(|l| !l.is_empty()) else {
-            return DeviceService::DEVICE_TYPE_ID;
+            return LabelMatch::Empty(DeviceService::DEVICE_TYPE_ID);
         };
         let wanted = label.to_lowercase();
         if let Some((id, _)) = self
@@ -217,7 +250,7 @@ impl TypeLookup {
             .iter()
             .find(|(_, name)| name.to_lowercase() == wanted)
         {
-            return *id;
+            return LabelMatch::Matched(*id);
         }
         if wanted == LEGACY_EXPORT_PRINTER_LABEL_LOWER {
             if let Some((id, _)) = self
@@ -225,10 +258,10 @@ impl TypeLookup {
                 .iter()
                 .find(|(id, _)| *id == DeviceService::PRINTER_TYPE_ID)
             {
-                return *id;
+                return LabelMatch::Matched(*id);
             }
         }
-        DeviceService::DEVICE_TYPE_ID
+        LabelMatch::Unknown(DeviceService::DEVICE_TYPE_ID)
     }
 
     /// Имя типа из справочника; для неизвестного id (FK этого не допускает)
@@ -1989,6 +2022,13 @@ impl DeviceService {
         let total_rows = all_rows.len() as u64;
         let preview_rows = all_rows.iter().take(5).cloned().collect();
 
+        // INT-21/N4: справочники — один раз; каждая ячейка сопоставляется в Rust
+        // (тем же `resolve`, что и в commit), текст в SQL не попадает (T-hef-02).
+        // O(строки × колонки) сравнений в памяти, без запросов в цикле (T-hef-03).
+        let statuses = StatusLookup::load(self.readers.clone()).await?;
+        let types = TypeLookup::load(self.readers.clone()).await?;
+        let label_checks = Self::label_checks(&headers, &all_rows, &types, &statuses);
+
         // Store session for commit step.
         let session = ImportSession {
             encoding: profile.encoding,
@@ -2007,7 +2047,58 @@ impl DeviceService {
             preview_rows,
             total_rows,
             had_replacements,
+            label_checks,
         })
+    }
+
+    /// INT-21/N4: по каждой колонке — число непустых значений, которые сервер
+    /// не распознал бы как тип и как статус, плюс до `LABEL_SAMPLES_MAX`
+    /// образцов. Колонки с нулями тоже включаются (UI ищет по заголовку).
+    fn label_checks(
+        headers: &[String],
+        rows: &[Vec<String>],
+        types: &TypeLookup,
+        statuses: &StatusLookup,
+    ) -> Vec<ColumnLabelCheck> {
+        headers
+            .iter()
+            .enumerate()
+            .map(|(col, header)| {
+                let mut check = ColumnLabelCheck {
+                    header: header.clone(),
+                    unknown_type_count: 0,
+                    unknown_type_samples: Vec::new(),
+                    unknown_status_count: 0,
+                    unknown_status_samples: Vec::new(),
+                };
+                for (offset, row) in rows.iter().enumerate() {
+                    let Some(value) = row.get(col).map(|v| v.trim()).filter(|v| !v.is_empty())
+                    else {
+                        continue;
+                    };
+                    let row_index = (offset + 1) as u64;
+                    if types.resolve(Some(value)).is_unknown() {
+                        check.unknown_type_count += 1;
+                        if check.unknown_type_samples.len() < LABEL_SAMPLES_MAX {
+                            check.unknown_type_samples.push(LabelSample {
+                                row_index,
+                                value: value.to_string(),
+                            });
+                        }
+                    }
+                    if statuses.resolve(Some(value)).is_unknown() {
+                        check.unknown_status_count += 1;
+                        if check.unknown_status_samples.len() < LABEL_SAMPLES_MAX {
+                            check.unknown_status_samples.push(LabelSample {
+                                row_index,
+                                value: value.to_string(),
+                            });
+                        }
+                    }
+                }
+                check
+            })
+            .collect()
     }
 
     /// Phase 2 of CSV import: retrieve session, validate + insert rows, return report.
@@ -2071,6 +2162,8 @@ impl DeviceService {
             inserted: 0,
             failed: Vec::new(),
             affected_place_ids: Vec::new(),
+            warnings: Vec::new(),
+            coerced_rows: 0,
         };
 
         // Phase 40.2 Plan 08 (NUM-16, RESEARCH Pitfall 5): tracks inventory
@@ -2108,9 +2201,15 @@ impl DeviceService {
             let row_index = (row_offset + 1) as u64; // 1-based for user display
 
             // Build DeviceNew from mapping.
-            let build_result =
-                Self::build_device_new_from_row(row, &header_idx, &mapping, &statuses, &types);
-            let (mut new_device, place_text) = match build_result {
+            let build_result = Self::build_device_new_from_row(
+                row_index,
+                row,
+                &header_idx,
+                &mapping,
+                &statuses,
+                &types,
+            );
+            let (mut new_device, place_text, row_warnings) = match build_result {
                 Ok(d) => d,
                 Err(e) => {
                     report.failed.push(RowError {
@@ -2194,6 +2293,12 @@ impl DeviceService {
                 Ok(DeviceSaveOutcome::Created(dto)) => {
                     report.inserted += 1;
                     created_ids.push(dto.id);
+                    // INT-21/N4: приведения — только у вставленной строки,
+                    // строка считается один раз, даже при двух приведениях.
+                    if !row_warnings.is_empty() {
+                        report.coerced_rows += 1;
+                        report.warnings.extend(row_warnings);
+                    }
                     if let Some(key) = pending_number_key {
                         seen_numbers.insert(key, row_index);
                     }
@@ -2261,13 +2366,18 @@ impl DeviceService {
     /// the CSV cell (if the "place" column was mapped), resolved against
     /// the place tree by the caller (`import_csv_commit`), never here — this
     /// function has no DB access.
+    ///
+    /// Третий элемент (INT-21/N4) — приведения нераспознанных типа/статуса к
+    /// значению по умолчанию для этой строки (`row_index` — 1-based номер).
+    /// Вызывающий учитывает их только для успешно вставленной строки.
     fn build_device_new_from_row(
+        row_index: u64,
         row: &[String],
         header_idx: &HashMap<String, usize>,
         mapping: &HashMap<String, String>,
         statuses: &StatusLookup,
         types: &TypeLookup,
-    ) -> Result<(DeviceNew, Option<String>), String> {
+    ) -> Result<(DeviceNew, Option<String>, Vec<RowWarning>), String> {
         let get_field = |csv_col: &str| -> Option<String> {
             header_idx
                 .get(csv_col)
@@ -2307,13 +2417,35 @@ impl DeviceService {
 
         // Тип — из справочника device_types; пустая/неизвестная подпись даёт
         // «Устройство» (D-02).
-        let type_id = types.id_for_label(type_label.as_deref());
+        let type_match = types.resolve(type_label.as_deref());
+        let type_id = type_match.id();
         // Статус по подписи из справочника device_statuses (пустая/неизвестная
         // подпись — статус по умолчанию «на складе», найденный по code).
-        let status_id = statuses.id_for_label(status_label.as_deref());
+        let status_match = statuses.resolve(status_label.as_deref());
+        let status_id = status_match.id();
 
         // name is required.
         let name = name.ok_or_else(|| "Наименование обязательно для заполнения".to_string())?;
+
+        // INT-21/N4: нераспознанная подпись приводится молча только в данных —
+        // пользователю она сообщается предупреждением.
+        let mut warnings = Vec::new();
+        if type_match.is_unknown() {
+            warnings.push(RowWarning {
+                row_index,
+                field: "type".to_string(),
+                value: type_label.clone().unwrap_or_default(),
+                applied: types.name_for_id(type_id),
+            });
+        }
+        if status_match.is_unknown() {
+            warnings.push(RowWarning {
+                row_index,
+                field: "status".to_string(),
+                value: status_label.clone().unwrap_or_default(),
+                applied: statuses.name_for_id(status_id),
+            });
+        }
 
         Ok((
             DeviceNew {
@@ -2329,6 +2461,7 @@ impl DeviceService {
                 status_id,
             },
             place_text,
+            warnings,
         ))
     }
 
