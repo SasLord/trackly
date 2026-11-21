@@ -3,7 +3,7 @@
 
   /** Узел дерева «Группы»: корни — типы, внутри — группы (вложенная — только под родителем). */
   export interface TreeItem {
-    /** `type-{id}` | `group-{id}` — стабильный ключ узла (раскрытие, фокус, DOM id). */
+    /** `type-{id}` | `group-{id}` | `in-type-{id}` (двойник) | `in-type-{корень}-group-{id}` — ключ узла. */
     key: string;
     kind: 'type' | 'group';
     id: number;
@@ -11,6 +11,8 @@
     type: GroupTypeDto | null;
     group: GroupDto | null;
     children: TreeItem[];
+    /** D-25: имя родителя у двойника вложенной группы (корень своего типа); иначе null. */
+    aliasOf: string | null;
   }
 
   export interface TreeNodeActions {
@@ -21,6 +23,8 @@
     onRename: (_item: TreeItem) => void;
     onMove: (_groupId: number) => void;
     onRemoveFromParent: (_groupId: number) => void;
+    onMoveToGroup: (_groupId: number) => void;
+    onWriteOff: (_groupId: number) => void;
     onDelete: (_item: TreeItem) => void;
   }
 
@@ -42,6 +46,9 @@
   import GroupTreeNode from './GroupTreeNode.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Badge from '$lib/components/Badge.svelte';
+
+  let groupMenu = $state<ReturnType<typeof ActionMenu> | null>(null);
+  let typeMenu = $state<ReturnType<typeof ActionMenu> | null>(null);
 
   interface Props {
     item: TreeItem;
@@ -120,6 +127,45 @@
   const isRootGroup = $derived(item.kind === 'group' && item.group?.parent_group_id === null);
   const isNestedGroup = $derived(item.kind === 'group' && item.group?.parent_group_id !== null);
 
+  // D-21: «Списать» — только у группы с якорем «на списание» (у АРМ якоря нет).
+  const canWriteOff = $derived(
+    item.kind === 'group' && item.group?.anchor_status_code === 'на_списание',
+  );
+  // D-09: «Разбор» вложением не переносится.
+  const canMoveToGroup = $derived(isNestedGroup && item.group?.type_behavior !== 'teardown');
+  const showNestedSection = $derived(isNestedGroup);
+  const showWriteOffSection = $derived(canWriteOff);
+
+  const ariaName = $derived(item.aliasOf ? `${item.name}, в ${item.aliasOf}` : item.name);
+  const aliasTitle = $derived(
+    item.aliasOf
+      ? `Вложена в «${item.aliasOf}» · ${item.group?.place_path ?? 'место не задано'}`
+      : rowTitle,
+  );
+
+  function activeMenu() {
+    if (showTypeMenu) return typeMenu;
+    if (showGroupMenu) return groupMenu;
+    return null;
+  }
+
+  // D-06: правый клик открывает то же меню, что кебаб. Меню пусто (нет прав) —
+  // родное меню не подавляем; узел при правом клике не выбирается.
+  function handleContextMenu(e: MouseEvent): void {
+    const menu = activeMenu();
+    if (!menu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    menu.openAt(e.clientX, e.clientY);
+  }
+
+  function openMenuAtRow(row: HTMLElement): void {
+    const menu = activeMenu();
+    if (!menu) return;
+    const r = row.getBoundingClientRect();
+    menu.openAt(r.left + 24 + depth * 16, r.bottom);
+  }
+
   function handleChevronClick(e: MouseEvent): void {
     e.preventDefault();
     e.stopPropagation();
@@ -132,6 +178,12 @@
     // Только своё событие: Enter/Space из ActionMenu внутри строки не должны
     // выбирать узел и гасить открытие меню (preventDefault).
     if (e.target !== e.currentTarget) return;
+    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      if (!activeMenu()) return;
+      e.preventDefault();
+      openMenuAtRow(e.currentTarget as HTMLElement);
+      return;
+    }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       actions.onSelect(item);
@@ -149,9 +201,11 @@
   aria-level={depth + 1}
   aria-selected={isSelected}
   aria-expanded={hasChildren ? expanded : undefined}
-  title={rowTitle}
+  aria-label={item.aliasOf ? ariaName : undefined}
+  title={aliasTitle}
   style={`padding-left: calc(var(--tr-space-xs) + ${depth} * var(--tr-space-md))`}
   onclick={() => actions.onSelect(item)}
+  oncontextmenu={handleContextMenu}
   onkeydown={handleRowKeydown}
   onfocus={() => actions.onFocusRow(item.key)}
 >
@@ -184,6 +238,10 @@
       >{nameParts.after}{:else}{item.name}{/if}
   </span>
 
+  {#if item.aliasOf}
+    <span class="alias-note">в {item.aliasOf}</span>
+  {/if}
+
   {#if noPlace}
     <Badge variant="default" appearance="soft" size="sm">Без места</Badge>
   {/if}
@@ -196,7 +254,7 @@
 
   {#if showTypeMenu && item.type}
     <span class="row-actions">
-      <ActionMenu variant="ghost-sm" label={`Действия: ${item.name}`}>
+      <ActionMenu bind:this={typeMenu} variant="ghost-sm" label={`Действия: ${item.name}`}>
         <button type="button" role="menuitem" onclick={() => actions.onCreateGroup(item.id)}>
           Создать группу этого типа
         </button>
@@ -217,7 +275,7 @@
     </span>
   {:else if showGroupMenu && item.group}
     <span class="row-actions">
-      <ActionMenu variant="ghost-sm" label={`Действия: ${item.name}`}>
+      <ActionMenu bind:this={groupMenu} variant="ghost-sm" label={`Действия: ${item.name}`}>
         <button type="button" role="menuitem" onclick={() => actions.onRename(item)}>
           Переименовать
         </button>
@@ -226,11 +284,24 @@
             Перенести…
           </button>
         {/if}
-        {#if isNestedGroup}
+        {#if showNestedSection}
+          <hr role="separator" />
           <button type="button" role="menuitem" onclick={() => actions.onRemoveFromParent(item.id)}>
-            Вывести из состава
+            Вывести из группы
+          </button>
+          {#if canMoveToGroup}
+            <button type="button" role="menuitem" onclick={() => actions.onMoveToGroup(item.id)}>
+              Переместить в группу
+            </button>
+          {/if}
+        {/if}
+        {#if showWriteOffSection}
+          <hr role="separator" />
+          <button type="button" role="menuitem" onclick={() => actions.onWriteOff(item.id)}>
+            Списать
           </button>
         {/if}
+        <hr role="separator" />
         <button
           type="button"
           role="menuitem"
@@ -357,8 +428,17 @@
     }
   }
 
+  .alias-note {
+    flex: none;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tr-font-size-caption);
+    color: var(--tr-text-tertiary);
+  }
+
   .menu-danger {
-    border-top: 1px solid var(--tr-border);
     color: var(--tr-danger-text);
   }
 </style>
