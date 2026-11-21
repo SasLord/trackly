@@ -316,6 +316,38 @@ async fn scenario_remove_devices() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scenario_move_devices() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Кабинет A").await;
+        let b = seed_place(&ctx, "Кабинет B").await;
+        let (_t, from) = seed_group_type_and_group(&ctx, "АРМ #3", 1, Some(a)).await;
+        let (_t2, to) = seed_group_type_and_group(&ctx, "АРМ #5", 2, Some(b)).await;
+        let d = seed_device(&ctx, 1, "Монитор #2", "INV-1", Some(a), Some(from)).await;
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+
+        let out = ctx
+            .groups
+            .move_devices(&admin(), to, vec![d])
+            .await
+            .expect("move_devices");
+        assert_eq!((out.added, out.moved), (1, 1));
+        // Ровно одно событие на весь перенос (D-04, D-22).
+        let (places, devices, groups) = assert_one_entities(&mut rx, "move_devices");
+        assert_eq!(
+            sorted(places),
+            sorted(vec![a, b]),
+            "place_ids: прежнее и новое"
+        );
+        assert_eq!(sorted(devices), vec![d], "device_ids");
+        assert_eq!(sorted(groups), sorted(vec![from, to]), "обе группы");
+    })
+    .await
+    .expect("scenario_move_devices вышел за бюджет");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn scenario_set_parent() {
     tokio::time::timeout(BUDGET, async {
         let (ctx, _dir) = make_test_ctx().await;

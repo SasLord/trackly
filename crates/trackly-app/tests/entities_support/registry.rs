@@ -235,6 +235,7 @@ pub const REGISTRY: &[Entry] = &[
     b(GROUP, "move_group"),
     b(GROUP, "add_devices"),
     b(GROUP, "remove_devices"),
+    b(GROUP, "move_devices"),
     b(GROUP, "set_parent"),
     ro(GROUP, "user_options"),
     ro(GROUP, "card"),
