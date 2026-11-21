@@ -24,6 +24,8 @@ import type {
   GroupMoveDevicesResultDto,
   GroupMoveDto,
   GroupMoveResultDto,
+  GroupMoveStatusPreviewDto,
+  GroupMoveStatusPreviewQueryDto,
   GroupRefDto,
   GroupRemoveDevicesDto,
   GroupSearchHitDto,
@@ -121,6 +123,10 @@ export const groups = {
   removeDevices: (dto: GroupRemoveDevicesDto) => apiCall<number>('groups_remove_devices', { dto }),
 
   move: (dto: GroupMoveDto) => apiCall<GroupMoveResultDto>('groups_move', { dto }),
+
+  // Предпросмотр D-34: у скольких устройств сменится статус при переносе. Только чтение.
+  moveStatusPreview: (dto: GroupMoveStatusPreviewQueryDto) =>
+    apiCall<GroupMoveStatusPreviewDto>('groups_move_status_preview', { dto }),
 
   // Сервер сверяет `version` ДО проверки значений: устаревшая версия всегда
   // даёт OptimisticLockMismatch. Нормализация ip/mac/number/text — серверная,
