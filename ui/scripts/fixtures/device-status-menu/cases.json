@@ -1,0 +1,726 @@
+[
+  {
+    "name": "обычное устройство: все активны",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 1,
+      "isAnchor": false,
+      "anchorGroupName": null
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": true,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      }
+    ]
+  },
+  {
+    "name": "текущий статус отмечен (другой id)",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 2,
+      "isAnchor": false,
+      "anchorGroupName": null
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": true,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      }
+    ]
+  },
+  {
+    "name": "текущий статус неизвестен: никто не отмечен",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": null,
+      "isAnchor": false,
+      "anchorGroupName": null
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      }
+    ]
+  },
+  {
+    "name": "якорь: «списано» неактивно с причиной",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 1,
+      "isAnchor": true,
+      "anchorGroupName": "АРМ #3"
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": true,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Устройство — якорь группы «АРМ #3»; спишите его через группу."
+      }
+    ]
+  },
+  {
+    "name": "якорь, текущий «списано»: отмечен и неактивен",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 4,
+      "isAnchor": true,
+      "anchorGroupName": "АРМ #3"
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": true,
+        "disabled": true,
+        "disabledReason": "Устройство — якорь группы «АРМ #3»; спишите его через группу."
+      }
+    ]
+  },
+  {
+    "name": "якорь с пустым справочником",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [],
+      "currentStatusId": 1,
+      "isAnchor": true,
+      "anchorGroupName": "АРМ #3"
+    },
+    "expected": []
+  },
+  {
+    "name": "пустой справочник",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [],
+      "currentStatusId": 1,
+      "isAnchor": false,
+      "anchorGroupName": null
+    },
+    "expected": []
+  },
+  {
+    "name": "порядок справочника сохраняется",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        }
+      ],
+      "currentStatusId": 1,
+      "isAnchor": false,
+      "anchorGroupName": null
+    },
+    "expected": [
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": true,
+        "disabled": false,
+        "disabledReason": null
+      }
+    ]
+  },
+  {
+    "name": "открытая заявка: все неактивны, текущий отмечен",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 1,
+      "isAnchor": false,
+      "anchorGroupName": null,
+      "openRepairRequestId": 77
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": true,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      }
+    ]
+  },
+  {
+    "name": "заявка и якорь: причина заявки",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 1,
+      "isAnchor": true,
+      "anchorGroupName": "АРМ #3",
+      "openRepairRequestId": 77
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": true,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Статус меняется заявкой на ремонт."
+      }
+    ]
+  },
+  {
+    "name": "openRepairRequestId = null не мешает",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 1,
+      "isAnchor": false,
+      "anchorGroupName": null,
+      "openRepairRequestId": null
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": true,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      }
+    ]
+  },
+  {
+    "name": "якорь с null в имени группы",
+    "fn": "statusMenuOptions",
+    "input": {
+      "statuses": [
+        {
+          "id": 1,
+          "code": "в_работе",
+          "name": "В работе"
+        },
+        {
+          "id": 2,
+          "code": "на_складе",
+          "name": "На складе"
+        },
+        {
+          "id": 3,
+          "code": "в_ремонте",
+          "name": "В ремонте"
+        },
+        {
+          "id": 4,
+          "code": "списано",
+          "name": "Списано"
+        }
+      ],
+      "currentStatusId": 1,
+      "isAnchor": true,
+      "anchorGroupName": null,
+      "openRepairRequestId": null
+    },
+    "expected": [
+      {
+        "id": 1,
+        "code": "в_работе",
+        "label": "В работе",
+        "current": true,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 2,
+        "code": "на_складе",
+        "label": "На складе",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 3,
+        "code": "в_ремонте",
+        "label": "В ремонте",
+        "current": false,
+        "disabled": false,
+        "disabledReason": null
+      },
+      {
+        "id": 4,
+        "code": "списано",
+        "label": "Списано",
+        "current": false,
+        "disabled": true,
+        "disabledReason": "Устройство — якорь группы «»; спишите его через группу."
+      }
+    ]
+  },
+  {
+    "name": "canChangeStatus: admin",
+    "fn": "canChangeStatus",
+    "input": {
+      "role": "admin"
+    },
+    "expected": true
+  },
+  {
+    "name": "canChangeStatus: manager",
+    "fn": "canChangeStatus",
+    "input": {
+      "role": "manager"
+    },
+    "expected": true
+  },
+  {
+    "name": "canChangeStatus: employee",
+    "fn": "canChangeStatus",
+    "input": {
+      "role": "employee"
+    },
+    "expected": false
+  },
+  {
+    "name": "canChangeStatus: null",
+    "fn": "canChangeStatus",
+    "input": {
+      "role": null
+    },
+    "expected": false
+  },
+  {
+    "name": "canChangeStatus: пустая строка",
+    "fn": "canChangeStatus",
+    "input": {
+      "role": ""
+    },
+    "expected": false
+  },
+  {
+    "name": "canChangeStatus: неизвестная роль",
+    "fn": "canChangeStatus",
+    "input": {
+      "role": "viewer"
+    },
+    "expected": false
+  }
+]

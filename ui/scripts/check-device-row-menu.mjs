@@ -1181,6 +1181,16 @@ const SOURCE_MUTANTS = [
     to: 'true',
   },
   {
+    name: 'buildMenuSections: «Статус» без флага status',
+    from: 'input.status === true',
+    to: 'true',
+  },
+  {
+    name: 'buildMenuSections: «Статус» перед печатью',
+    from: "  if (input.hasPrint) main.push({ kind: 'print', label: LABEL_PRINT });\n  if (input.status === true) main.push({ kind: 'status', label: LABEL_STATUS });\n",
+    to: "  if (input.status === true) main.push({ kind: 'status', label: LABEL_STATUS });\n  if (input.hasPrint) main.push({ kind: 'print', label: LABEL_PRINT });\n",
+  },
+  {
     name: 'buildMenuSections: «Списать» без флага writeOff',
     from: 'input.writeOff === true',
     to: 'true',

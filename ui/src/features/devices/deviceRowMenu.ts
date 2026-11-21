@@ -20,6 +20,7 @@ export type MenuItemKind =
   | 'view'
   | 'edit'
   | 'print'
+  | 'status'
   | 'addToGroup'
   | 'quick'
   | 'removeFromGroup'
@@ -60,6 +61,8 @@ export interface MenuInput {
   moveToGroup?: boolean;
   /** Показать «Списать» (результат canWriteOff); без поля — не показывать. */
   writeOff?: boolean;
+  /** Показать «Статус» (результат canChangeStatus и непустой справочник); без поля — не показывать. */
+  status?: boolean;
 }
 
 export interface GroupActionInput {
@@ -78,6 +81,7 @@ const LABEL_POLL = 'Опросить сейчас';
 const LABEL_VIEW = 'Просмотр';
 const LABEL_EDIT = 'Редактировать';
 const LABEL_PRINT = 'Печать документа приёма';
+const LABEL_STATUS = 'Статус';
 const LABEL_ADD_TO_GROUP = 'Добавить в группу';
 const LABEL_REMOVE_FROM_GROUP = 'Вывести из группы';
 const LABEL_MOVE_TO_GROUP = 'Переместить в группу';
@@ -95,7 +99,7 @@ const MUTATE_ROLES = ['admin', 'manager'];
 const WRITE_OFF_ROLES = ['admin', 'manager'];
 
 /**
- * Секции меню сверху вниз (D-03): [опрос] → [просмотр, правка, печать] →
+ * Секции меню сверху вниз (D-03): [опрос] → [просмотр, правка, печать, статус (D-35)] →
  * [вывести из группы, переместить в группу] → [в группу, быстрые действия] →
  * [списать, удалить]. «Списать» не danger, danger только у «Удалить». Пустая
  * секция не возвращается, а значит и граница-разделитель перед ней рисоваться
@@ -109,6 +113,7 @@ export function buildMenuSections(input: MenuInput): MenuItemSpec[][] {
     { kind: 'edit', label: LABEL_EDIT },
   ];
   if (input.hasPrint) main.push({ kind: 'print', label: LABEL_PRINT });
+  if (input.status === true) main.push({ kind: 'status', label: LABEL_STATUS });
   const membership: MenuItemSpec[] = [];
   if (input.removeFromGroup === true) {
     membership.push({ kind: 'removeFromGroup', label: LABEL_REMOVE_FROM_GROUP });

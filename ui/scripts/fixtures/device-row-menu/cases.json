@@ -1816,5 +1816,287 @@
       "statusCode": "списано"
     },
     "expected": []
+  },
+  {
+    "name": "buildMenuSections: D-35: статус после печати",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "status": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        },
+        {
+          "kind": "status",
+          "label": "Статус"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: D-35: статус без печати идёт после «Редактировать»",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": false,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "status": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "status",
+          "label": "Статус"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: D-35: status false: пункта нет",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "status": false
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: D-35: принтер: опрос, затем статус последним в главной секции",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": true,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "status": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "poll",
+          "label": "Опросить сейчас"
+        }
+      ],
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        },
+        {
+          "kind": "status",
+          "label": "Статус"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: D-35: участник: секция членства после «Статус»",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "status": true,
+      "removeFromGroup": true,
+      "moveToGroup": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        },
+        {
+          "kind": "status",
+          "label": "Статус"
+        }
+      ],
+      [
+        {
+          "kind": "removeFromGroup",
+          "label": "Вывести из группы"
+        },
+        {
+          "kind": "moveToGroup",
+          "label": "Переместить в группу"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: D-35: якорь: статус есть, групповых пунктов нет",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": false,
+      "quickActions": [],
+      "status": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        },
+        {
+          "kind": "status",
+          "label": "Статус"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
+  },
+  {
+    "name": "buildMenuSections: D-35: свободное устройство: статус перед «Добавить в группу»",
+    "fn": "buildMenuSections",
+    "input": {
+      "hasPoll": false,
+      "hasPrint": true,
+      "groupActionsVisible": true,
+      "quickActions": [],
+      "status": true
+    },
+    "expected": [
+      [
+        {
+          "kind": "view",
+          "label": "Просмотр"
+        },
+        {
+          "kind": "edit",
+          "label": "Редактировать"
+        },
+        {
+          "kind": "print",
+          "label": "Печать документа приёма"
+        },
+        {
+          "kind": "status",
+          "label": "Статус"
+        }
+      ],
+      [
+        {
+          "kind": "addToGroup",
+          "label": "Добавить в группу"
+        }
+      ],
+      [
+        {
+          "kind": "delete",
+          "label": "Удалить",
+          "danger": true
+        }
+      ]
+    ]
   }
 ]
