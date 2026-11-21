@@ -187,7 +187,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-21 -- gsd-fast: reset_password NotFound, пустой логотип отклоняется
+Last activity: 2026-11-21 -- закрыт долг аудита v1.4 шестью quick-пакетами (hef, hed, heh, heg, hei, hjw) + учёт (VERIFICATION 41.13, SECURITY 41.3/39.2, REQUIREMENTS/ROADMAP)
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1612,6 +1612,12 @@ Nyquist-покрытия; тройное дублирование предика
 
 | Date | Slug | Summary | Status |
 |------|------|---------|--------|
+| 2026-11-21 | hjw-residual-41-7-privacy | WR-07 вердикт exw, WR-05 IP в аудите bootstrap, WR-08, WR-04 отмена таймера WS (W6), WR-09 (INV-11), INT-02→PAG-01; гейт приватности: межстрочный проход, cp1251/UTF-16/PNG, бинарные форматы; 41.3-SECURITY набл. 4/5/8 закрыты (vcpkg закреплён, гонка скана, симлинки), 7 — принятый риск R-07 (PDF iframe без sandbox). | complete ✓ |
+| 2026-11-21 | hei-dead-api-reports | INT-04 маршрут reports_get_report_counts + тост вместо немого catch; INT-11/24 удалены 6 HTTP-маршрутов без потребителя + гейт dead_commands_have_no_ui_consumer; INT-12 снято 66 мёртвых фильтров groups.deleted_at_utc; TLS-сертификат сохраняется рядом с exe. | complete ✓ |
+| 2026-11-21 | heg-ui-gates-cleanup | N2 printers_get_readings (Tauri+HTTP, Case 89); INT-36 а–г, INT-10 кнопка папки только в Tauri, NEW-6, IN-01; INT-35 HTML_COMMANDS + гейт; INT-20 caption, INT-19 порог 4.6; WR-13 мета-гейт selftest-проводки + selftest корневых гейтов в ci-fast. | complete ✓ |
+| 2026-11-21 | heh-printer-identity | INT-31/NEW-5: единый PRINTER_TYPE_ID (trackly-core) вместо 6 кодировок, 16 мест; Rust-гейт printer_identity_gate (P1–P5) и JS-гейт check-printer-identity; фикс 2 тестов app_groups после hef. | complete ✓ |
+| 2026-11-21 | hed-history-journal | NEW-3 MovementSource::Repair + V056 request_id, ссылка на заявку в таймлайне; INT-09 подписи всех источников + гейт check-movement-source-labels; INT-30 аудит custom:printer_connection (без значения community); NEW-7, NEW-4 WS-события. | complete ✓ |
+| 2026-11-21 | hef-csv-import-export | INT-21/N4 предупреждения о нераспознанных типе/статусе при импорте; INT-32/17 экспорт +4 колонки (группа, роль, происхождение, USB-хост); INT-13 номер по шаблону при SNMP-приёмке; INT-06/F18 колонка «Пакет», «показано K из N». | complete ✓ |
 | 2026-11-21 | reset-password-and-empty-logo | gsd-fast (a3dbe430): наблюдения 261121-fdw — reset_password для несуществующего/удалённого пользователя → NotFound (было 200); save_logo отклоняет пустой файл, authorize перенесён до проверок содержимого. app_auth 138/0, app_attachments 76/0. | complete ✓ |
 | 2026-11-21 | role-matrix-debt-routes | 261121-fdw: группа ДОЛГ и непроверенные чтения ROUTE_MATRIX_EXEMPT разобраны — 23 мутации и 13 чтений в роль-матрице, EXEMPT без «ДОЛГ»/«любой вошедший». БЕЗОПАСНОСТЬ: без сессии отвечали server_status (200), organization_get (200, реквизиты), templates_get_active (200, тело шаблона), templates_render_preview — закрыты authorize в общих build_* (ManageSettings/ReadData); settings_get_* и templates_list_for_editor → ManageSettings, devices_import_csv_preview → MutateDevices; build_backup_run_manual получил гейт (был только в HTTP). UI-потребителей у getActive/renderPreview/organization.get нет (проверено оркестратором). app_auth 137, app_devices 239, app_server 48. Наблюдения: users_reset_password 200 для несуществующего id; пустой логотип принимается. Живьём «Настройки»/импорт CSV/Employee не проверены. | complete ✓ |
 | 2026-11-21 | remove-http-fs-helpers | gsd-fast (9a62908d): удалены HTTP-маршруты read_file_bytes/write_file_bytes — без сессии и роли любой в LAN читал/писал .csv на сервере (найдено инвентарём 261121-57x); Tauri-команды остались; регрессионный тест fs_helpers_not_exposed_over_http (404). app_auth 134/0. | complete ✓ |
@@ -1619,7 +1625,7 @@ Nyquist-покрытия; тройное дублирование предика
 | 2026-11-21 | close-audit-new-1-n1 | 261121-4nz: аудит v1.4 раунд 6 — NEW-1: «Переместить БД» копирует attachments/ при пустом attachments_path ДО смены db_path (сбой копии — конфиг прежний), текст диалога; N1: удалён мёртвый printers_create (Tauri+HTTP+specta+DTO+create_from_device, тест n13) — R-05 снят. Точечно: app_attachments 75, devices_printer_network 14, app_gates 244, role_endpoint_matrix 28; живьём диалог не проверен. | complete ✓ |
 | 2026-11-17 | desktop-system-admin | 261117-w2q: системный пользователь «Администратор» (V053 `users.is_system`, ensure при старте) — десктоп действует от него; убран `unwrap_or(1)` (FK на пустой БД); повтор D-19 в ремонтном create только при UNIQUE-гонке; Gap 1: мастер первого запуска закрыт. Живая UAT 7/7. | complete ✓ |
 | 2026-11-17 | test-speed-merge | Вне GSD: смёржена ветка `claude/test-speed-e3b0b1` (87ff8c60) — 20 suite-бинарников вместо 228, `[profile.test]`, гейт `suite_wiring`; новые tests/*.rs подключать в tests/suites/*.rs (docs/TESTING.md). | complete ✓ |
-| 2026-11-17 | traceability-deferred-reqs | REQUIREMENTS.md Traceability: 11 отложенных REQ-ID (MAPX-01..04, GRPX-02..04, QA-05, INT-02, DOC-12, PRIV-03) внесены как TBD — ни одно не назначено фазе; GRPX-04 расходится с ROADMAP Фазы 43. | complete ✓ |
+| 2026-11-17 | traceability-deferred-reqs | REQUIREMENTS.md Traceability: 11 отложенных REQ-ID (MAPX-01..04, GRPX-02..04, QA-05, INT-02→PAG-01, DOC-12, PRIV-03) внесены как TBD — ни одно не назначено фазе; GRPX-04 расходится с ROADMAP Фазы 43. | complete ✓ |
 | 2026-11-17 | repair-act-number-unique | W-1 ф.41.4: V052 делает номер акта ремонта UNIQUE (trim + кириллический регистр), дубли старых БД → `ДУБЛЬ-NNNNNN (…)` с аудитом; тест отказа БД. Попутно `trackly-infra/build.rs`: новый `.sql` не пересобирал крейт (сплошной прогон шёл без V052). Сплошной прогон 2602/0. | complete ✓ |
 | 2026-11-17 | macos-date-align | Дата в `<input type="date">` на macOS (WKWebView) стояла по центру из-за UA-шного `align-items: center` WebKit в flex-колонке; явный `align-items: stretch` в DatePicker, гейт check-date-picker-layout требует его. Проверено снимком системного WKWebView; в `cargo tauri dev` подтверждено пользователем. | complete ✓ |
 | 2026-11-09 | ci-ubuntu-disk-space | ubuntu-джобы ci-fast/ci-full падали по месту при линковке тестов; шаг очистки раннера + `CARGO_PROFILE_DEV_DEBUG=0`, оба workflow зелёные на 7231a4a8. | complete ✓ |
@@ -1802,4 +1808,4 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
   43 Карта (просмотр) → 44 Карта (редактор) → 45 Живые статусы.
 
 - Долг v1.3.3, не входящий в v1.4 (остаётся кандидатами): `/gsd-validate-phase 36` (Nyquist),
-  INT-02 (общий источник Paged.js `RepeatTableHeadHandler`), DOC-12/DOC-13, PRIV-03, 999.1.
+  PAG-01 (бывш. INT-02; общий источник Paged.js `RepeatTableHeadHandler`), DOC-12/DOC-13, PRIV-03, 999.1.
