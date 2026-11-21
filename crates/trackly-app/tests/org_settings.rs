@@ -211,6 +211,26 @@ async fn org_logo_invalid_mime_rejected() {
     .expect("org_logo_invalid_mime_rejected budget")
 }
 
+/// Пустой файл логотипа отклоняется (наблюдение quick 261121-fdw: принимался с 200).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn org_logo_empty_rejected() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_org_service();
+        let caller = admin_caller();
+        match svc
+            .save_logo(&caller, Vec::new(), "image/png".to_string())
+            .await
+        {
+            Err(trackly_core::error::AppError::Validation { field, .. }) => {
+                assert_eq!(field, "logo");
+            }
+            other => panic!("ожидали Validation, получили: {other:?}"),
+        }
+    })
+    .await
+    .expect("org_logo_empty_rejected budget")
+}
+
 /// IN-03: `full_name` feeds the header of every printed document and goes
 /// through a per-character `HtmlEscape` pass on every render, so it must be
 /// length-bounded. Bound is counted in CHARACTERS, not bytes — a byte bound

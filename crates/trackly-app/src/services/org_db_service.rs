@@ -152,6 +152,14 @@ impl OrgDbService {
         logo_bytes: Vec<u8>,
         logo_mime: String,
     ) -> Result<(), AppError> {
+        // Гейт до любых проверок содержимого: не-админ получает 403, а не подсказки валидации.
+        authorize(caller, &Action::ManageSettings)?;
+        if logo_bytes.is_empty() {
+            return Err(AppError::Validation {
+                field: "logo".to_string(),
+                message: "Файл логотипа пуст".to_string(),
+            });
+        }
         if logo_bytes.len() > LOGO_MAX_BYTES {
             return Err(AppError::Validation {
                 field: "logo".to_string(),
@@ -175,7 +183,6 @@ impl OrgDbService {
                 ),
             });
         }
-        authorize(caller, &Action::ManageSettings)?;
         let now = self.clock.unix_seconds();
         self.writer
             .execute(move |conn| {

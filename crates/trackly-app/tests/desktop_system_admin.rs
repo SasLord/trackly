@@ -351,3 +351,26 @@ async fn fk_failure_is_not_masked_as_race() {
         other => panic!("{other:?}"),
     }
 }
+
+/// Сброс пароля несуществующему пользователю — NotFound, а не молчаливый «успех»
+/// (наблюдение quick 261121-fdw: HTTP отдавал 200 для userId 999999).
+#[tokio::test]
+async fn reset_password_unknown_user_is_not_found() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let caller = ctx.auth.system_admin_identity().await.unwrap();
+    let err = ctx
+        .auth
+        .reset_password(999_999, "another-pass-2".into(), &caller)
+        .await
+        .expect_err("unknown user");
+    assert!(
+        matches!(
+            err,
+            AppError::NotFound {
+                entity: "user",
+                id: 999_999
+            }
+        ),
+        "{err:?}"
+    );
+}

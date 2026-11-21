@@ -2152,8 +2152,18 @@ impl AuthService {
                      WHERE id = ?3 AND deleted_at_utc IS NULL",
                     rusqlite::params![new_hash, now, user_id],
                 )
-                .map(|_| ())
                 .map_err(map_rusqlite)
+                .and_then(|n| {
+                    // Несуществующий или удалённый пользователь — не «успех».
+                    if n == 0 {
+                        Err(AppError::NotFound {
+                            entity: "user",
+                            id: user_id,
+                        })
+                    } else {
+                        Ok(())
+                    }
+                })
             })
             .await
     }
