@@ -275,6 +275,9 @@
   let expandedKeys = $state<string[]>(readPersistedExpanded());
   let selectedKey = $state<string | null>(null);
   let activeKey = $state<string | null>(null);
+  // id группы выбранного узла (в т.ч. двойника): при пропаже ключа двойника выбор
+  // возвращается к основному узлу той же группы (D-25, WR-02).
+  let selectedGroupId: number | null = null;
 
   $effect(() => {
     if (typeof window === 'undefined') return;
@@ -339,6 +342,7 @@
 
   function handleSelectItem(item: TreeItem): void {
     selectedKey = item.key;
+    selectedGroupId = item.kind === 'group' ? item.id : null;
     activeKey = item.key;
     onSelect({ kind: item.kind, id: item.id });
   }
@@ -372,6 +376,7 @@
     liveMessage = '';
     expandPathTo(key);
     selectedKey = key;
+    selectedGroupId = item.kind === 'group' ? item.id : null;
     focusRow(key, true);
     onSelect({ kind: item.kind, id: item.id });
   }
@@ -413,15 +418,26 @@
         if (treeData.itemByKey.has(key)) {
           expandPathTo(key);
           selectedKey = key;
+          selectedGroupId = initialSelected.kind === 'group' ? initialSelected.id : null;
           activeKey = key;
         } else {
           onSelect(null); // сохранённый узел больше не существует
         }
       }
     } else if (selectedKey !== null && !treeData.itemByKey.has(selectedKey)) {
-      selectedKey = null;
-      activeKey = null;
-      onSelect(null);
+      const fallback = selectedGroupId !== null ? groupKey(selectedGroupId) : null;
+      if (fallback !== null && treeData.itemByKey.has(fallback)) {
+        // Двойник пропал (группу вывели из родителя / перенесли), группа жива.
+        expandPathTo(fallback);
+        selectedKey = fallback;
+        activeKey = fallback;
+        onSelect({ kind: 'group', id: selectedGroupId as number });
+      } else {
+        selectedKey = null;
+        activeKey = null;
+        selectedGroupId = null;
+        onSelect(null);
+      }
     }
 
     applyPendingFocus();
