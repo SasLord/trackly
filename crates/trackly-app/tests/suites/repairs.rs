@@ -35,6 +35,8 @@ mod repair_group_exception;
 mod repair_group_move;
 #[path = "../repair_merge.rs"]
 mod repair_merge;
+#[path = "../repair_movement_source.rs"]
+mod repair_movement_source;
 #[path = "../repair_participants.rs"]
 mod repair_participants;
 #[path = "../repair_send_receive.rs"]

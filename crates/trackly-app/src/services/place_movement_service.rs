@@ -126,6 +126,7 @@ impl PlaceMovementService {
                     batch_id: row.batch_id,
                     group_id: row.group_id,
                     group_label: row.entity_label,
+                    request_id: row.request_id,
                     created_at_utc: row.created_at_utc,
                 });
             }

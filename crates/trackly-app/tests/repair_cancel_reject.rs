@@ -566,15 +566,16 @@ async fn cancel_repair_member_returns_to_current_group_place() {
     );
     assert_eq!(status_code(&ctx, dev).await, "в_работе");
 
-    // Журнал «по заявке №N» с корректными «откуда/куда»; аудит с фактическим местом.
-    let note = format!("по заявке №{req}");
+    // Журнал «по ремонтной заявке №N» (source='repair' + request_id, NEW-3) с
+    // корректными «откуда/куда»; аудит с фактическим местом.
     let rows: i64 = ctx
         .writer
         .execute(move |conn| {
             conn.query_row(
                 "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'device' \
-                 AND entity_id = ?1 AND note = ?2 AND from_place_id = ?3 AND to_place_id = ?4",
-                params![dev, note, hold, new_room],
+                 AND entity_id = ?1 AND source = 'repair' AND request_id = ?2 \
+                 AND from_place_id = ?3 AND to_place_id = ?4",
+                params![dev, req, hold, new_room],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)

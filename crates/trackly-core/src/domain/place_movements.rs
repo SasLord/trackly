@@ -11,10 +11,15 @@
 //! soft-degradation entry point every history read site must call: an unrecognized token
 //! degrades to `None` (safe fallback label), it never panics or errors.
 
-/// The four movement-source tokens (D-07). `Map` and `Workstation` are not written by any
-/// write-site that exists yet in this phase — they are reserved for later plans (map
-/// drag-and-drop moves, workstation assignment moves) so the column never needs a schema
-/// change when those land.
+/// The movement-source tokens (D-07; `MovementSource::ALL` lists every variant). `Map`
+/// and `Workstation` were reserved for later plans (map drag-and-drop moves, workstation
+/// assignment moves) so the column never needs a schema change when those land. `Repair`
+/// (quick 261121-hed, NEW-3) marks a move made by a repair request; the request id lives
+/// in `place_movements.request_id` (V056).
+///
+/// Every variant must have a Russian label both in `report_service::movement_reason`
+/// (exhaustive match) and in `ui/src/lib/movementReason.ts` (parity gate
+/// `ui/scripts/check-movement-source-labels.mjs`, INT-09).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MovementSource {
     /// Ручное перемещение (форма "Переместить").
@@ -27,9 +32,21 @@ pub enum MovementSource {
     Workstation,
     /// Перемещение как часть операции над группой (Phase 41: состав, место группы).
     Group,
+    /// Перемещение по ремонтной заявке (Phase 41.4); id заявки — `place_movements.request_id`.
+    Repair,
 }
 
 impl MovementSource {
+    /// Every variant, in declaration order (INT-09: drives the label-coverage tests).
+    pub const ALL: [MovementSource; 6] = [
+        Self::Manual,
+        Self::Act,
+        Self::Map,
+        Self::Workstation,
+        Self::Group,
+        Self::Repair,
+    ];
+
     /// Returns the DB token corresponding to this source (inverse of `from_str_lenient`).
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -38,6 +55,7 @@ impl MovementSource {
             Self::Map => "map",
             Self::Workstation => "workstation",
             Self::Group => "group",
+            Self::Repair => "repair",
         }
     }
 
@@ -52,6 +70,7 @@ impl MovementSource {
             "map" => Some(Self::Map),
             "workstation" => Some(Self::Workstation),
             "group" => Some(Self::Group),
+            "repair" => Some(Self::Repair),
             _ => None,
         }
     }
@@ -140,6 +159,27 @@ mod tests {
             MovementSource::from_str_lenient("workstation"),
             Some(MovementSource::Workstation)
         );
+    }
+
+    #[test]
+    fn movement_source_repair_token_round_trips() {
+        assert_eq!(MovementSource::Repair.as_str(), "repair");
+        assert_eq!(
+            MovementSource::from_str_lenient("repair"),
+            Some(MovementSource::Repair)
+        );
+    }
+
+    #[test]
+    fn movement_source_all_lists_every_variant_and_round_trips() {
+        assert_eq!(MovementSource::ALL.len(), 6);
+        for v in MovementSource::ALL {
+            assert_eq!(MovementSource::from_str_lenient(v.as_str()), Some(v));
+        }
+        let mut tokens: Vec<&str> = MovementSource::ALL.iter().map(|v| v.as_str()).collect();
+        tokens.sort_unstable();
+        tokens.dedup();
+        assert_eq!(tokens.len(), 6, "токены источников должны быть уникальны");
     }
 
     #[test]

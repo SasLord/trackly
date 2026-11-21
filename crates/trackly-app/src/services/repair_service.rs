@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trackly_core::auth::{authorize, Action, Identity, Role};
-use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
+use trackly_core::domain::place_movements::MovementEntityKind;
 use trackly_core::domain::printers::RequestTransitionOp;
 use trackly_core::domain::repairs::{
     format_kopecks, parse_cost_kopecks, RepairVisitNew, DEVICE_STATUS_CODE_AWAITING_REPAIR,
@@ -2233,15 +2233,16 @@ fn apply_device_state_in_tx(
         .update_status_and_place_in_tx(tx, device_id, status_id, final_place, now)?;
 
     if mid_place != final_place {
-        deps.movements.record_movement_if_applicable(
+        // NEW-3 (quick 261121-hed): источник «по ремонтной заявке» + id заявки
+        // в place_movements.request_id; примечания у строки устройства нет.
+        deps.movements.record_repair_movement_if_applicable(
             tx,
             &deps.places,
             MovementEntityKind::Device,
             device_id,
             mid_place,
             final_place,
-            MovementSource::Manual,
-            Some(&format!("по заявке №{request_id}")),
+            request_id,
             None,
             user_id,
             now,
@@ -2250,11 +2251,11 @@ fn apply_device_state_in_tx(
             for p in attached_cartridge_places(tx, &[device_id])? {
                 push_unique(&mut out.places, p);
             }
-            deps.cartridges.cascade_place_for_printer_in_tx(
+            deps.cartridges.cascade_place_for_printer_repair_in_tx(
                 tx,
                 device_id,
                 final_place,
-                MovementSource::Manual,
+                request_id,
                 "вместе с принтером",
                 user_id,
                 now,

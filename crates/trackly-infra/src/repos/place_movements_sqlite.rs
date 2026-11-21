@@ -53,6 +53,8 @@ pub struct NewMovement<'a> {
     pub entity_label: Option<&'a str>,
     /// Id группы без FK (V046, D-28); пишется в каждую строку групповой записи.
     pub group_id: Option<i64>,
+    /// Id ремонтной заявки (V056, NEW-3); `Some` только у `source = "repair"`.
+    pub request_id: Option<i64>,
     pub created_at_utc: i64,
 }
 
@@ -74,6 +76,8 @@ pub struct MovementRow {
     pub batch_id: Option<String>,
     pub entity_label: Option<String>,
     pub group_id: Option<i64>,
+    /// Id ремонтной заявки (V056, NEW-3); `Some` только у `source = "repair"`.
+    pub request_id: Option<i64>,
     pub created_at_utc: i64,
 }
 
@@ -91,8 +95,8 @@ impl SqlitePlaceMovementsRepository {
             "INSERT INTO place_movements \
              (entity_type, entity_id, from_place_id, from_place_path, to_place_id, to_place_path, \
               source, note, act_id, user_id, actor_name_snapshot, \
-              batch_id, entity_label, group_id, created_at_utc) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+              batch_id, entity_label, group_id, request_id, created_at_utc) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 movement.entity_type,
                 movement.entity_id,
@@ -108,6 +112,7 @@ impl SqlitePlaceMovementsRepository {
                 movement.batch_id,
                 movement.entity_label,
                 movement.group_id,
+                movement.request_id,
                 movement.created_at_utc,
             ],
         )
@@ -158,6 +163,7 @@ impl SqlitePlaceMovementsRepository {
             None,
             None,
             None,
+            None,
         )
     }
 
@@ -204,11 +210,49 @@ impl SqlitePlaceMovementsRepository {
             batch_id,
             entity_label,
             group_id,
+            None,
+        )
+    }
+
+    /// Запись перемещения по ремонтной заявке (quick 261121-hed, NEW-3): источник
+    /// жёстко [`MovementSource::Repair`], `request_id` — id заявки (клиент их не
+    /// передаёт, T-hed-04). Те же правила D-04/D-06 и снимки, что у
+    /// [`Self::record_movement_if_applicable`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_repair_movement_if_applicable(
+        &self,
+        tx: &Transaction<'_>,
+        places_repo: &dyn PlaceRepository<Conn = Connection>,
+        entity_type: MovementEntityKind,
+        entity_id: i64,
+        before_place_id: Option<i64>,
+        after_place_id: Option<i64>,
+        request_id: i64,
+        note: Option<&str>,
+        user_id: Option<i64>,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        self.record_inner(
+            tx,
+            places_repo,
+            entity_type,
+            entity_id,
+            before_place_id,
+            after_place_id,
+            MovementSource::Repair,
+            note,
+            None,
+            user_id,
+            now_utc,
+            None,
+            None,
+            None,
+            Some(request_id),
         )
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn record_inner(
+    pub(crate) fn record_inner(
         &self,
         tx: &Transaction<'_>,
         places_repo: &dyn PlaceRepository<Conn = Connection>,
@@ -224,6 +268,7 @@ impl SqlitePlaceMovementsRepository {
         batch_id: Option<&str>,
         entity_label: Option<&str>,
         group_id: Option<i64>,
+        request_id: Option<i64>,
     ) -> Result<(), AppError> {
         if !is_reportable_place_change(before_place_id, after_place_id) {
             return Ok(());
@@ -264,6 +309,7 @@ impl SqlitePlaceMovementsRepository {
                 batch_id,
                 entity_label,
                 group_id,
+                request_id,
                 created_at_utc: now_utc,
             },
         )
@@ -360,7 +406,7 @@ impl SqlitePlaceMovementsRepository {
             .prepare(
                 "SELECT id, entity_type, entity_id, from_place_id, from_place_path, to_place_id, \
                         to_place_path, source, note, act_id, user_id, actor_name_snapshot, \
-                        batch_id, entity_label, group_id, created_at_utc \
+                        batch_id, entity_label, group_id, request_id, created_at_utc \
                    FROM place_movements \
                   WHERE entity_type = ?1 AND entity_id = ?2 \
                   ORDER BY created_at_utc DESC, id DESC",
@@ -385,7 +431,8 @@ impl SqlitePlaceMovementsRepository {
                     batch_id: r.get(12)?,
                     entity_label: r.get(13)?,
                     group_id: r.get(14)?,
-                    created_at_utc: r.get(15)?,
+                    request_id: r.get(15)?,
+                    created_at_utc: r.get(16)?,
                 })
             })
             .map_err(map_rusqlite)?;

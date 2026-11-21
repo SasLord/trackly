@@ -1238,6 +1238,76 @@ impl SqliteCartridgeRepository {
         group_id: Option<i64>,
         act_id: Option<i64>,
     ) -> Result<(), AppError> {
+        self.cascade_inner(
+            tx,
+            printer_device_id,
+            new_place_id,
+            source,
+            note,
+            user_id,
+            now_utc,
+            batch_id,
+            entity_label,
+            group_id,
+            act_id,
+            None,
+        )
+    }
+
+    /// Каскад места принтера на картриджи при ремонтном переносе (quick 261121-hed,
+    /// NEW-3): строки журнала картриджей несут источник [`MovementSource::Repair`] и
+    /// `request_id` заявки. Те же правила, что у [`Self::cascade_place_for_printer_in_tx`]:
+    /// вызывать только при `new_place_id: Some(..)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cascade_place_for_printer_repair_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        printer_device_id: i64,
+        new_place_id: Option<i64>,
+        request_id: i64,
+        note: &str,
+        user_id: Option<i64>,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        debug_assert!(
+            new_place_id.is_some(),
+            "cascade_place_for_printer_repair_in_tx must not be called with new_place_id: None \
+             — Phase 40 CR-03: an unconditional Some -> None cascade silently wipes every \
+             attached cartridge's place with no movement/audit row; caller must gate on \
+             after.place_id.is_some() first"
+        );
+        self.cascade_inner(
+            tx,
+            printer_device_id,
+            new_place_id,
+            MovementSource::Repair,
+            note,
+            user_id,
+            now_utc,
+            None,
+            None,
+            None,
+            None,
+            Some(request_id),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn cascade_inner(
+        &self,
+        tx: &Transaction<'_>,
+        printer_device_id: i64,
+        new_place_id: Option<i64>,
+        source: MovementSource,
+        note: &str,
+        user_id: Option<i64>,
+        now_utc: i64,
+        batch_id: Option<&str>,
+        entity_label: Option<&str>,
+        group_id: Option<i64>,
+        act_id: Option<i64>,
+        request_id: Option<i64>,
+    ) -> Result<(), AppError> {
         let attached: Vec<(i64, Option<i64>)> = {
             let mut stmt = tx
                 .prepare(
@@ -1266,7 +1336,7 @@ impl SqliteCartridgeRepository {
             )
             .map_err(map_rusqlite)?;
 
-            place_movements_repo.record_batch_movement_if_applicable(
+            place_movements_repo.record_inner(
                 tx,
                 &SqlitePlaceRepository,
                 MovementEntityKind::Cartridge,
@@ -1281,6 +1351,7 @@ impl SqliteCartridgeRepository {
                 batch_id,
                 entity_label,
                 group_id,
+                request_id,
             )?;
         }
 

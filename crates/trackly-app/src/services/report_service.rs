@@ -1731,6 +1731,11 @@ fn query_acts_inner(
 /// raw `source` token for anything `from_str_lenient` doesn't recognize yet,
 /// so an unrecognized future token never crashes this report, it just shows
 /// its raw value (mirrors `translate_request_status`'s unknown fallback).
+///
+/// The match over `MovementSource` is exhaustive (no `_` arm) on purpose: a new
+/// enum variant breaks compilation here until it gets a label (INT-09); the UI
+/// mirror `ui/src/lib/movementReason.ts` is held by
+/// `ui/scripts/check-movement-source-labels.mjs`.
 fn movement_reason(
     source: &str,
     note: Option<&str>,
@@ -1738,6 +1743,7 @@ fn movement_reason(
     act_number: Option<&str>,
     entity_type: &str,
     entity_label: Option<&str>,
+    request_id: Option<i64>,
 ) -> String {
     if act_id.is_some() {
         if let Some(number) = act_number {
@@ -1767,6 +1773,19 @@ fn movement_reason(
                     Some(l) if !l.is_empty() => format!("в составе группы «{l}»"),
                     _ => "в составе группы".to_string(),
                 }
+            }
+        }
+        // NEW-3 (quick 261121-hed): перенос по ремонтной заявке; id заявки —
+        // `place_movements.request_id` (V056). Примечание (каскад картриджей —
+        // «вместе с принтером») дописывается через « · ».
+        Some(MovementSource::Repair) => {
+            let base = match request_id {
+                Some(id) => format!("по ремонтной заявке №{id}"),
+                None => "по ремонтной заявке".to_string(),
+            };
+            match note {
+                Some(n) if !n.is_empty() => format!("{base} · {n}"),
+                _ => base,
             }
         }
         None => source.to_string(),
@@ -1885,7 +1904,8 @@ fn query_movements_inner(
                CASE WHEN pm.batch_id IS NULL THEN NULL ELSE \
                     (SELECT COUNT(*) FROM place_movements pm2 \
                       WHERE pm2.batch_id = pm.batch_id AND pm2.entity_type = 'device') \
-               END AS batch_size \
+               END AS batch_size, \
+               pm.request_id \
          FROM place_movements pm \
          LEFT JOIN devices d ON pm.entity_type = 'device' AND pm.entity_id = d.id \
          LEFT JOIN cartridges c ON pm.entity_type = 'cartridge' AND pm.entity_id = c.id \
@@ -1913,6 +1933,7 @@ fn query_movements_inner(
             let entity_type: String = r.get(15)?;
             let entity_label: Option<String> = r.get(16)?;
             let batch_size: Option<i64> = r.get(17)?;
+            let request_id: Option<i64> = r.get(18)?;
 
             Ok((
                 r.get::<_, i64>(0)?,
@@ -1933,6 +1954,7 @@ fn query_movements_inner(
                 entity_type,
                 entity_label,
                 batch_size,
+                request_id,
             ))
         })
         .map_err(map_rusqlite)?;
@@ -1960,6 +1982,7 @@ fn query_movements_inner(
             entity_type,
             entity_label,
             batch_size,
+            request_id,
         ) = row.map_err(map_rusqlite)?;
 
         // D-18/D-20 (Plan 40-02): shorten by the CURRENT effective variant,
@@ -1982,6 +2005,7 @@ fn query_movements_inner(
             act_number.as_deref(),
             &entity_type,
             entity_label.as_deref(),
+            request_id,
         );
         // D-25/D-26: роль строки в пакете группового переноса. Заголовок — строка
         // самой группы; всё остальное в пакете — состав. Имя группы в каждой
@@ -3124,6 +3148,54 @@ fn month_key_to_russian(month_key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// INT-09: у каждого известного источника — явная русская подпись, ни один не
+    /// падает в сырой токен (сырой токен — только для нераспознанного значения).
+    #[test]
+    fn movement_reason_labels_every_movement_source() {
+        for v in MovementSource::ALL {
+            let r = movement_reason(v.as_str(), None, None, None, "device", None, None);
+            assert_ne!(r, v.as_str(), "источник {v:?} без подписи");
+            assert!(!r.is_empty(), "источник {v:?}: пустая подпись");
+        }
+        assert_eq!(
+            movement_reason("map", None, None, None, "device", None, None),
+            "по карте"
+        );
+        assert_eq!(
+            movement_reason("workstation", None, None, None, "device", None, None),
+            "назначение АРМ"
+        );
+        assert_eq!(
+            movement_reason("garbage", None, None, None, "device", None, None),
+            "garbage"
+        );
+    }
+
+    /// NEW-3: «по ремонтной заявке №N», примечание каскада через « · ».
+    #[test]
+    fn movement_reason_repair_with_request_id_and_note() {
+        assert_eq!(
+            movement_reason("repair", None, None, None, "device", None, Some(7)),
+            "по ремонтной заявке №7"
+        );
+        assert_eq!(
+            movement_reason(
+                "repair",
+                Some("вместе с принтером"),
+                None,
+                None,
+                "cartridge",
+                None,
+                Some(7)
+            ),
+            "по ремонтной заявке №7 · вместе с принтером"
+        );
+        assert_eq!(
+            movement_reason("repair", None, None, None, "device", None, None),
+            "по ремонтной заявке"
+        );
+    }
 
     fn moscow() -> UtcOffset {
         UtcOffset::from_hms(3, 0, 0).unwrap()

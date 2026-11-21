@@ -54,8 +54,8 @@ pub struct MovementEntryDto {
     pub to_place_path_short: Option<String>,
     /// ФИО snapshot → login fallback → "система" (`user_id IS NULL`) — D-11.
     pub actor_display: String,
-    /// Raw DB token (`"manual"` | `"act"` | `"map"` | `"workstation"` | any future/
-    /// unrecognized value) — the UI composes the final Russian phrase per UI-SPEC's
+    /// Raw DB token (`"manual"` | `"act"` | `"map"` | `"workstation"` | `"group"` |
+    /// `"repair"` | any future/unrecognized value) — the UI composes the final Russian phrase per UI-SPEC's
     /// Copywriting Contract. `MovementSource::from_str_lenient` is available to any
     /// Rust-side caller needing a typed match with a safe fallback.
     pub source: String,
@@ -78,6 +78,10 @@ pub struct MovementEntryDto {
     /// Снимок имени группы на момент записи (D-26) — строка читается «в составе группы
     /// «АРМ #3»» и после переименования или удаления группы.
     pub group_label: Option<String>,
+    /// Id ремонтной заявки (V056, NEW-3): `Some` только у `source = "repair"` — UI
+    /// рисует «по ремонтной заявке №N» со ссылкой на заявку.
+    #[specta(type = Option<i32>)]
+    pub request_id: Option<i64>,
     #[specta(type = i32)]
     pub created_at_utc: i64,
 }
@@ -106,6 +110,7 @@ mod tests {
             batch_id: None,
             group_id: None,
             group_label: None,
+            request_id: None,
             created_at_utc: 1_700_000_000,
         }
     }

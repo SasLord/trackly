@@ -149,14 +149,23 @@ async fn move_to_storage_records_origin_journal_and_last_place() {
     assert_eq!(dev_place(&ctx, dev).await, Some(store));
     assert_eq!(status_code(&ctx, dev).await, "на_ремонте");
     assert_eq!(fields(&ctx, req).await, (Some(room), 1));
+    // NEW-3: источник «по ремонтной заявке» + id заявки, примечания нет.
     let logged = sql_i64(
         &ctx,
         "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'device' AND entity_id = ?1 \
-         AND source = 'manual' AND note LIKE 'по заявке №%'",
+         AND source = 'repair' AND note IS NULL",
         dev,
     )
     .await;
     assert_eq!(logged, Some(1));
+    let logged_req = sql_i64(
+        &ctx,
+        "SELECT request_id FROM place_movements WHERE entity_type = 'device' AND entity_id = ?1 \
+         AND source = 'repair'",
+        dev,
+    )
+    .await;
+    assert_eq!(logged_req, Some(req));
     let last = ctx.repairs.last_places(&admin()).await.expect("last");
     assert_eq!(last.move_place_id, Some(store));
     assert_eq!(last.service_place_id, None, "ключ службы ремонта отдельный");
@@ -544,11 +553,19 @@ async fn printer_move_cascades_attached_cartridges() {
         let logged = sql_i64(
             &ctx,
             "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'cartridge' \
-             AND entity_id = ?1 AND note = 'вместе с принтером' AND source = 'manual'",
+             AND entity_id = ?1 AND note = 'вместе с принтером' AND source = 'repair'",
             c,
         )
         .await;
         assert_eq!(logged, Some(1));
+        let logged_req = sql_i64(
+            &ctx,
+            "SELECT request_id FROM place_movements WHERE entity_type = 'cartridge' \
+             AND entity_id = ?1 AND note = 'вместе с принтером' AND source = 'repair'",
+            c,
+        )
+        .await;
+        assert_eq!(logged_req, Some(req));
     }
     let (places, devices, _g) =
         entities_support::fixture::assert_one_entities(&mut rx, "move_to_storage");
