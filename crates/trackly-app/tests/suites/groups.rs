@@ -23,6 +23,8 @@ mod groups_membership;
 mod groups_move;
 #[path = "../groups_move_status.rs"]
 mod groups_move_status;
+#[path = "../groups_move_status_transport.rs"]
+mod groups_move_status_transport;
 #[path = "../groups_property_removal_parity.rs"]
 mod groups_property_removal_parity;
 #[path = "../groups_service.rs"]
