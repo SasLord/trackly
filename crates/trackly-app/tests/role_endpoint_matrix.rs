@@ -4416,6 +4416,21 @@ fn group_cases() -> Vec<(&'static str, GroupGate, serde_json::Value)> {
             json!({ "dto": { "group_id": 999999, "device_ids": [] } }),
         ),
         (
+            "groups_move_devices",
+            GroupGate::Mut,
+            json!({ "dto": { "group_id": 999999, "device_ids": [] } }),
+        ),
+        (
+            "groups_write_off_device",
+            GroupGate::Mut,
+            json!({ "dto": { "device_id": 999999, "version": 1, "release_from_group": false } }),
+        ),
+        (
+            "groups_write_off_group",
+            GroupGate::Mut,
+            json!({ "dto": { "id": 999999, "version": 1 } }),
+        ),
+        (
             "groups_remove_devices",
             GroupGate::Mut,
             json!({ "dto": { "group_id": 999999, "device_ids": [] } }),
@@ -4437,8 +4452,9 @@ fn group_cases() -> Vec<(&'static str, GroupGate, serde_json::Value)> {
 /// `group_cases()`. Возвращает только исход гейта.
 async fn groups_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Result<(), AppError> {
     use trackly_app::dto::groups::{
-        GroupAddDevicesDto, GroupCreateDto, GroupMoveDto, GroupRemoveDevicesDto, GroupSetParentDto,
-        GroupSetValuesDto,
+        GroupAddDevicesDto, GroupCreateDto, GroupMoveDevicesDto, GroupMoveDto,
+        GroupRemoveDevicesDto, GroupSetParentDto, GroupSetValuesDto, GroupWriteOffDeviceDto,
+        GroupWriteOffGroupDto,
     };
     use trackly_app::tauri_cmds::groups as g;
     match name {
@@ -4496,6 +4512,37 @@ async fn groups_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Resul
             GroupAddDevicesDto {
                 group_id: 999999,
                 device_ids: vec![],
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_move_devices" => g::build_groups_move_devices(
+            ctx,
+            caller,
+            GroupMoveDevicesDto {
+                group_id: 999999,
+                device_ids: vec![],
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_write_off_device" => g::build_groups_write_off_device(
+            ctx,
+            caller,
+            GroupWriteOffDeviceDto {
+                device_id: 999999,
+                version: 1,
+                release_from_group: false,
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_write_off_group" => g::build_groups_write_off_group(
+            ctx,
+            caller,
+            GroupWriteOffGroupDto {
+                id: 999999,
+                version: 1,
             },
         )
         .await
@@ -4966,7 +5013,7 @@ async fn groups_http_membership_and_nesting_rules() {
     )
     .await;
 
-    // Устройство из другой группы → 400, текст называет группу, состав не менялся.
+    // Устройство из другой группы → 409 ALREADY_IN_GROUP (с плана 03), текст называет группу, состав не менялся.
     let (status, body) = gt_post(
         &env,
         &env.admin_cookie,
@@ -4974,10 +5021,11 @@ async fn groups_http_membership_and_nesting_rules() {
         json!({ "dto": { "group_id": root, "device_ids": [d_busy] } }),
     )
     .await;
+    assert_eq!(status, StatusCode::CONFLICT, "занятое устройство: {body}");
     assert_eq!(
-        status,
-        StatusCode::BAD_REQUEST,
-        "занятое устройство: {body}"
+        body["code"].as_str(),
+        Some("ALREADY_IN_GROUP"),
+        "код отказа: {body}"
     );
     assert!(
         body.to_string().contains("АРМ чужая"),
@@ -5145,7 +5193,7 @@ fn groups_http_route_completeness() {
         Vec::<&String>::new(),
         "команда есть в таблице, но нет маршрута в http/groups.rs"
     );
-    assert_eq!(in_source.len(), 16);
+    assert_eq!(in_source.len(), 19);
 }
 
 /// Разворот группы в единицы акта (Phase 41.2 plan 06): `Action::ReadGroups`.
