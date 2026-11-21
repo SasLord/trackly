@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use trackly_core::auth::{Identity, Role};
-use trackly_core::domain::printers::PrinterRow;
+use trackly_core::domain::printers::{PrinterReadingRow, PrinterRow};
 
 /// Public printer DTO — what the UI receives.
 ///
@@ -89,6 +89,39 @@ impl From<PrinterRow> for PrinterDto {
             // current_cartridge_id populated by service (current_cartridge_for_printer).
             current_cartridge_id: None,
             version: r.version,
+        }
+    }
+}
+
+/// Одна строка истории опросов принтера (quick 261121-heg, N2) — лента
+/// «История статусов» в карточке. Форма совпадает с ручным типом
+/// `PrinterReadingDto` в `ui/src/bindings-phase6.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterReadingDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    #[specta(type = i32)]
+    pub printer_id: i64,
+    #[specta(type = i32)]
+    pub ts_utc: i64,
+    /// Сырой JSON уровней тонера; неудачный опрос — `"{}"`.
+    pub toner_levels_json: String,
+    #[specta(type = Option<i32>)]
+    pub page_count: Option<i64>,
+    /// "ok" | "warning" | "error" | "offline" | "unknown"
+    pub status: String,
+}
+
+impl From<PrinterReadingRow> for PrinterReadingDto {
+    fn from(r: PrinterReadingRow) -> Self {
+        Self {
+            id: r.id,
+            printer_id: r.printer_id,
+            ts_utc: r.ts_utc,
+            toner_levels_json: r.toner_levels_json,
+            page_count: r.page_count,
+            status: r.status,
         }
     }
 }

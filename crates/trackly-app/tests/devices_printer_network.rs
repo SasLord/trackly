@@ -900,3 +900,120 @@ async fn n12_network_write_bumps_printer_version_exactly_once() {
     .await
     .expect("n12 exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// quick 261121-heg (N2): история опросов принтера `printers_get_readings`.
+// UI («История статусов» в карточке принтера) звал команду с Фазы 6, её не
+// было — ошибка глушилась, лента всегда пустая.
+// ---------------------------------------------------------------------------
+
+async fn make_app_ctx() -> (trackly_app::context::AppCtx, tempfile::TempDir) {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let paths = trackly_infra::Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("paths");
+    let config = trackly_infra::AppConfig::default();
+    let log_guard = trackly_app::logging::init(&paths, &config)
+        .or_else(|_| {
+            let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
+            Ok::<_, anyhow::Error>(guard)
+        })
+        .expect("log guard");
+    let ctx = trackly_app::context::AppCtx::build(paths, config, log_guard)
+        .await
+        .expect("ctx");
+    (ctx, dir)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn printers_get_readings_newest_first_camel_case_and_not_found() {
+    use trackly_app::tauri_cmds::printers::build_printers_get_readings;
+
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (ctx, _dir) = make_app_ctx().await;
+        let printer =
+            create_printer(&ctx.devices, "Принтер А", Some("192.0.2.80"), None, None).await;
+        let device_id = printer.id;
+        let printer_id: i64 = {
+            let readers = ctx.readers.clone();
+            tokio::task::spawn_blocking(move || {
+                readers
+                    .acquire()
+                    .query_row(
+                        "SELECT id FROM printers WHERE device_id = ?1",
+                        params![device_id],
+                        |r| r.get(0),
+                    )
+                    .expect("printers.id")
+            })
+            .await
+            .expect("spawn_blocking")
+        };
+
+        let base = 1_700_000_000_i64;
+        ctx.writer
+            .execute(move |conn| {
+                // Порядок вставки нарочно не совпадает с порядком ts_utc.
+                for (ts, pages, status) in [
+                    (base + 200, Some(300_i64), "ok"),
+                    (base + 100, Some(200_i64), "warning"),
+                    (base + 300, None, "offline"),
+                ] {
+                    conn.execute(
+                        "INSERT INTO printer_readings \
+                         (printer_id, ts_utc, toner_levels, page_count, status) \
+                         VALUES (?1, ?2, '{\"black\":{\"pct\":40}}', ?3, ?4)",
+                        params![printer_id, ts, pages, status],
+                    )
+                    .expect("seed reading");
+                }
+                Ok(())
+            })
+            .await
+            .expect("seed readings");
+
+        let admin = admin_caller();
+        let rows = build_printers_get_readings(&ctx, &admin, printer_id)
+            .await
+            .expect("readings");
+        let ts: Vec<i64> = rows.iter().map(|r| r.ts_utc).collect();
+        assert_eq!(
+            ts,
+            vec![base + 300, base + 200, base + 100],
+            "новейшие сверху"
+        );
+        assert_eq!(rows[0].page_count, None);
+        assert_eq!(rows[0].status, "offline");
+
+        // Форма JSON ровно как ui/src/bindings-phase6.ts PrinterReadingDto.
+        let json = serde_json::to_value(&rows[1]).expect("json");
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .expect("object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "id",
+                "pageCount",
+                "printerId",
+                "status",
+                "tonerLevelsJson",
+                "tsUtc"
+            ]
+        );
+        assert_eq!(json["printerId"], printer_id);
+        assert_eq!(json["pageCount"], 300);
+        assert_eq!(json["tonerLevelsJson"], "{\"black\":{\"pct\":40}}");
+
+        // Несуществующий printers.id -> NotFound (как у printers_get).
+        let missing = build_printers_get_readings(&ctx, &admin, printer_id + 10_000).await;
+        assert!(
+            matches!(missing, Err(AppError::NotFound { .. })),
+            "чужой id -> NotFound, получено {missing:?}"
+        );
+    })
+    .await
+    .expect("printers_get_readings exceeded 30 s budget");
+}

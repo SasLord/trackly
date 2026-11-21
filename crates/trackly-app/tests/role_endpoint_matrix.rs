@@ -60,6 +60,10 @@
 //! printer_ip_address); допустимый IP записан в БД (проверка состояния), null его
 //! стирает; принтеру с заданным хостом IP записывается, хост остаётся (D-15).
 //!
+//! Quick 261121-heg (N2) adds Case 89: история опросов принтера.
+//! 89. Employee session → POST /api/v1/printers_get_readings → 403 Forbidden
+//!     (Action::ReadData, Admin|Manager only — тот же гейт, что printers_get).
+//!
 //! Plan 12-02 (T-12-01) adds Cases 31-32: closes a test-coverage gap on two
 //! transition endpoints that were already RBAC-gated in the service layer
 //! but never exercised by this matrix.
@@ -1627,6 +1631,26 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 41: Employee → printers_get_compatible_aggregates → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 89 (quick 261121-heg, N2): Employee → printers_get_readings →
+        // 403 Forbidden. authorize(&Action::ReadData) срабатывает до чтения БД,
+        // поэтому id: 1 существовать не обязан — тот же класс, что printers_get.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/printers_get_readings",
+                json!({ "id": 1 }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 89: Employee → printers_get_readings → expected 403, got {status}"
             );
         }
 

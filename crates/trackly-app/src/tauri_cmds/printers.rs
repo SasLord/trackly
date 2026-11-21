@@ -10,7 +10,7 @@ use crate::dto::device::DeviceNew;
 use crate::dto::number_template::TemplateContextDto;
 use crate::dto::printer::{
     CompatibleModelAggregateDto, DiscoveredPrinterDto, Pagination, PrinterCompatibleAggregatesDto,
-    PrinterCreateBlockDto, PrinterDto, PrinterFilter, PrinterListResponse,
+    PrinterCreateBlockDto, PrinterDto, PrinterFilter, PrinterListResponse, PrinterReadingDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -83,6 +83,18 @@ pub async fn build_printers_get_by_device_id(
 ) -> Result<PrinterDto, AppError> {
     authorize(caller, &Action::ReadData)?;
     ctx.printers.get_by_device_id(device_id).await
+}
+
+/// История опросов принтера по `printers.id` (quick 261121-heg, N2): лента
+/// «История статусов» в карточке звала эту команду с Фазы 6, а её не было.
+/// Тот же гейт, что у `build_printers_get` (ReadData, Admin|Manager).
+pub async fn build_printers_get_readings(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+) -> Result<Vec<PrinterReadingDto>, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.printers.list_readings(id).await
 }
 
 /// Discovery: сканирует диапазон IP через SNMP, требует admin.
@@ -340,6 +352,16 @@ pub async fn printers_get_compatible_aggregates(
 ) -> Result<PrinterCompatibleAggregatesDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_printers_get_compatible_aggregates(state.inner(), &caller, device_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn printers_get_readings(
+    state: tauri::State<'_, AppCtx>,
+    id: i32,
+) -> Result<Vec<PrinterReadingDto>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_printers_get_readings(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]

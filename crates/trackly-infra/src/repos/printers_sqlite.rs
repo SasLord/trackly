@@ -78,6 +78,25 @@ fn map_row_printer(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRow> {
     })
 }
 
+/// SELECT показаний принтера в порядке колонок `map_row_reading`.
+/// `COALESCE(toner_levels, '{}')`: неудачный опрос пишет NULL, наружу — пустой
+/// JSON-объект.
+const SELECT_READINGS: &str = "SELECT id, printer_id, ts_utc, COALESCE(toner_levels, '{}'), \
+                                      page_count, status \
+                                 FROM printer_readings";
+
+/// Maps a `SELECT_READINGS` row into `PrinterReadingRow`.
+fn map_row_reading(r: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterReadingRow> {
+    Ok(PrinterReadingRow {
+        id: r.get(0)?,
+        printer_id: r.get(1)?,
+        ts_utc: r.get(2)?,
+        toner_levels_json: r.get(3)?,
+        page_count: r.get(4)?,
+        status: r.get(5)?,
+    })
+}
+
 impl SqlitePrinterRepository {
     // -----------------------------------------------------------------------
     // Tx-helpers (NOT in trait — orchestrated by PrinterService)
@@ -515,25 +534,41 @@ impl PrinterRepository for SqlitePrinterRepository {
         printer_id: i64,
     ) -> Result<Option<PrinterReadingRow>, AppError> {
         conn.query_row(
-            "SELECT id, printer_id, ts_utc, COALESCE(toner_levels, '{}'), page_count, status \
-               FROM printer_readings \
-              WHERE printer_id = ?1 \
-              ORDER BY ts_utc DESC \
-              LIMIT 1",
+            &format!(
+                "{SELECT_READINGS} \
+                  WHERE printer_id = ?1 \
+                  ORDER BY ts_utc DESC \
+                  LIMIT 1"
+            ),
             params![printer_id],
-            |r| {
-                Ok(PrinterReadingRow {
-                    id: r.get(0)?,
-                    printer_id: r.get(1)?,
-                    ts_utc: r.get(2)?,
-                    toner_levels_json: r.get(3)?,
-                    page_count: r.get(4)?,
-                    status: r.get(5)?,
-                })
-            },
+            map_row_reading,
         )
         .optional()
         .map_err(map_rusqlite)
+    }
+
+    fn list_readings(
+        &self,
+        conn: &Self::Conn,
+        printer_id: i64,
+        limit: u32,
+    ) -> Result<Vec<PrinterReadingRow>, AppError> {
+        let mut stmt = conn
+            .prepare(&format!(
+                "{SELECT_READINGS} \
+                  WHERE printer_id = ?1 \
+                  ORDER BY ts_utc DESC, id DESC \
+                  LIMIT ?2"
+            ))
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![printer_id, i64::from(limit)], map_row_reading)
+            .map_err(map_rusqlite)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
     }
 
     fn list_active_alerts(&self, conn: &Self::Conn) -> Result<Vec<PrinterAlertRow>, AppError> {
@@ -1306,5 +1341,72 @@ mod tests {
             assert!(result.is_ok(), "repeated delete must not error");
             tx.commit().expect("commit");
         }
+    }
+
+    /// quick 261121-heg (N2): история опросов — новейшие первыми, LIMIT
+    /// соблюдается, NULL toner_levels приходит как "{}", принтер без
+    /// показаний — пустой Vec.
+    #[test]
+    fn list_readings_newest_first_with_limit() {
+        let (mut conn, _g) = fresh_conn();
+        let device_id = seed_device(&mut conn);
+        let other_device_id = seed_device(&mut conn);
+        let repo = SqlitePrinterRepository;
+        let now = 1_700_000_000_i64;
+        let new_printer = |device_id: i64| PrinterNew {
+            device_id,
+            ip_address: Some("192.0.2.10".to_string()),
+            community_raw: "public".to_string(),
+            snmp_version: "v2c".to_string(),
+            oid_profile_id: None,
+            usb_host_device_id: None,
+        };
+        let (printer_id, empty_printer_id) = {
+            let tx = conn.transaction().expect("tx");
+            let a = repo
+                .create_in_tx(&tx, &new_printer(device_id), now)
+                .expect("create");
+            let b = repo
+                .create_in_tx(&tx, &new_printer(other_device_id), now)
+                .expect("create");
+            // Порядок вставки нарочно не совпадает с порядком ts_utc.
+            repo.upsert_reading_in_tx(
+                &tx,
+                a,
+                now + 200,
+                "{\"black\":{\"pct\":40}}",
+                Some(300),
+                "ok",
+            )
+            .expect("reading 2");
+            repo.upsert_reading_in_tx(&tx, a, now + 100, "{}", Some(200), "warning")
+                .expect("reading 1");
+            repo.upsert_reading_in_tx(&tx, a, now + 300, "{}", None, "offline")
+                .expect("reading 3");
+            tx.commit().expect("commit");
+            (a, b)
+        };
+        conn.execute(
+            "UPDATE printer_readings SET toner_levels = NULL WHERE ts_utc = ?1",
+            params![now + 300],
+        )
+        .expect("null toner");
+
+        let all = repo.list_readings(&conn, printer_id, 50).expect("list");
+        let ts: Vec<i64> = all.iter().map(|r| r.ts_utc).collect();
+        assert_eq!(ts, vec![now + 300, now + 200, now + 100], "newest first");
+        assert_eq!(all[0].toner_levels_json, "{}", "NULL toner_levels -> {{}}");
+        assert_eq!(all[0].page_count, None);
+        assert_eq!(all[0].status, "offline");
+        assert!(all.iter().all(|r| r.printer_id == printer_id));
+
+        let two = repo.list_readings(&conn, printer_id, 2).expect("list 2");
+        let ts2: Vec<i64> = two.iter().map(|r| r.ts_utc).collect();
+        assert_eq!(ts2, vec![now + 300, now + 200], "limit keeps the newest");
+
+        let none = repo
+            .list_readings(&conn, empty_printer_id, 50)
+            .expect("list empty");
+        assert!(none.is_empty(), "printer without readings -> empty Vec");
     }
 }

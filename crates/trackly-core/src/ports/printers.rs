@@ -56,6 +56,16 @@ pub trait PrinterRepository {
         printer_id: i64,
     ) -> Result<Option<PrinterReadingRow>, AppError>;
 
+    /// История опросов принтера, новейшие первыми (`ts_utc DESC, id DESC`),
+    /// не более `limit` строк. Принтер без показаний — пустой `Vec`
+    /// (quick 261121-heg, N2: лента «История статусов» в карточке принтера).
+    fn list_readings(
+        &self,
+        conn: &Self::Conn,
+        printer_id: i64,
+        limit: u32,
+    ) -> Result<Vec<PrinterReadingRow>, AppError>;
+
     /// List all currently active (non-acknowledged) printer alerts.
     fn list_active_alerts(&self, conn: &Self::Conn) -> Result<Vec<PrinterAlertRow>, AppError>;
 

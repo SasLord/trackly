@@ -29,7 +29,9 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::printers_sqlite::SqlitePrinterRepository;
 
-use crate::dto::printer::{DiscoveredPrinterDto, PrinterDto, PrinterListResponse, WsEvent};
+use crate::dto::printer::{
+    DiscoveredPrinterDto, PrinterDto, PrinterListResponse, PrinterReadingDto, WsEvent,
+};
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -95,6 +97,11 @@ pub fn identify_vendor(sys_object_id: &str) -> Option<&'static str> {
 // ---------------------------------------------------------------------------
 // PrinterService
 // ---------------------------------------------------------------------------
+
+/// Сколько строк истории опросов отдаёт `list_readings` (quick 261121-heg, N2).
+/// Блок «История статусов» — лента последних опросов; ретеншн 90 дней
+/// (D-Retention-01) даёт тысячи строк на принтер, лента их не листает.
+pub const READINGS_HISTORY_LIMIT: u32 = 50;
 
 /// Application service for printer SNMP monitoring and management.
 /// `Arc`-fields keep `Clone` O(1).
@@ -192,6 +199,24 @@ impl PrinterService {
             dto.current_cartridge_id = repo.current_cartridge_for_printer(&conn, dto.device_id)?;
 
             Ok(dto)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// История опросов принтера по `printers.id`, новейшие первыми, не более
+    /// `READINGS_HISTORY_LIMIT` строк (quick 261121-heg, N2). Несуществующий
+    /// принтер — `AppError::NotFound`, как у `get`.
+    pub async fn list_readings(&self, id: i64) -> Result<Vec<PrinterReadingDto>, AppError> {
+        let readers = self.readers.clone();
+        let repo = self.printer_repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.get(&conn, id)?;
+            let rows = repo.list_readings(&conn, id, READINGS_HISTORY_LIMIT)?;
+            Ok(rows.into_iter().map(PrinterReadingDto::from).collect())
         })
         .await
         .map_err(|e| AppError::Internal {
