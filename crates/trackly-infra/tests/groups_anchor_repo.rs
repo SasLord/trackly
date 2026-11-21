@@ -313,3 +313,22 @@ fn member_counters_ignore_ghosts() {
     assert_eq!(members.len(), 1, "D-11: в составе только живой член 203");
     assert_eq!(members[0].device_id, 203);
 }
+
+/// Страж архитектуры (Phase 41.8, D-09): запрет вложения «Разбора» живёт в сервисе;
+/// репозиторный `set_parent_in_tx` им пользуется откат акта и обязан вкладывать как раньше.
+#[test]
+fn repo_set_parent_still_nests_teardown_group() {
+    let (mut conn, _g) = test_db();
+    let repo = SqliteGroupRepository;
+    let t = insert_type(&conn, "workstation", "АРМ", "container");
+    let td_t = insert_type(&conn, "teardown", "Разбор", "teardown");
+    let parent = make_group(&mut conn, &repo, t, "АРМ #3");
+    let td = make_group(&mut conn, &repo, td_t, "Разбор #7");
+    let tx = conn.transaction().unwrap();
+    repo.set_parent_in_tx(&tx, td.id, td.version, Some(parent.id), NOW)
+        .expect("репозиторий не знает про запрет D-09");
+    assert_eq!(
+        repo.get_group_in_tx(&tx, td.id).unwrap().parent_group_id,
+        Some(parent.id)
+    );
+}

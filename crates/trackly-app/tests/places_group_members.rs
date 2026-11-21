@@ -150,7 +150,7 @@ async fn members_flat_device_and_printer_rows_ordered_with_path_and_status() {
         .unwrap()
         .version;
     ctx.groups
-        .set_parent(&admin(), inner.id, v, Some(root.id))
+        .set_parent(&admin(), inner.id, v, Some(root.id), false)
         .await
         .unwrap();
 

@@ -774,7 +774,7 @@ async fn membership_nesting_cycle_and_teardown_are_rejected() {
     let v = group_version(&ctx, root).await;
     let msg = validation_message(
         ctx.groups
-            .set_parent(&admin(), root, v, Some(child))
+            .set_parent(&admin(), root, v, Some(child), false)
             .await
             .expect_err("цикл"),
     );
@@ -793,7 +793,7 @@ async fn membership_nesting_cycle_and_teardown_are_rejected() {
     let v = group_version(&ctx, loose).await;
     let err = ctx
         .groups
-        .set_parent(&admin(), loose, v, Some(loose))
+        .set_parent(&admin(), loose, v, Some(loose), false)
         .await
         .expect_err("сама в себя");
     assert!(matches!(err, AppError::Validation { .. }), "{err:?}");
@@ -802,7 +802,7 @@ async fn membership_nesting_cycle_and_teardown_are_rejected() {
     // в группу типа «Разбор»
     let msg = validation_message(
         ctx.groups
-            .set_parent(&admin(), loose, v, Some(teardown))
+            .set_parent(&admin(), loose, v, Some(teardown), false)
             .await
             .expect_err("teardown"),
     );
@@ -841,7 +841,7 @@ async fn membership_nesting_under_parent_with_place_propagates_with_journal_batc
 
     let out = ctx
         .groups
-        .set_parent(&admin(), child, v, Some(parent))
+        .set_parent(&admin(), child, v, Some(parent), false)
         .await
         .expect("вложение");
 
@@ -928,7 +928,7 @@ async fn membership_nesting_under_parent_without_place_clears_group_place_only()
 
     let out = ctx
         .groups
-        .set_parent(&admin(), child, v, Some(parent))
+        .set_parent(&admin(), child, v, Some(parent), false)
         .await
         .expect("вложение");
 
@@ -971,7 +971,7 @@ async fn membership_nesting_exit_from_parent_keeps_places() {
 
     let out = ctx
         .groups
-        .set_parent(&admin(), child, v, None)
+        .set_parent(&admin(), child, v, None, false)
         .await
         .expect("выход");
 
@@ -998,7 +998,7 @@ async fn membership_nesting_rights_and_stale_version() {
 
     let err = ctx
         .groups
-        .set_parent(&employee, child, v, Some(parent))
+        .set_parent(&employee, child, v, Some(parent), false)
         .await
         .expect_err("employee");
     assert!(matches!(err, AppError::Forbidden));
@@ -1006,7 +1006,7 @@ async fn membership_nesting_rights_and_stale_version() {
 
     let err = ctx
         .groups
-        .set_parent(&manager, child, v - 1, Some(parent))
+        .set_parent(&manager, child, v - 1, Some(parent), false)
         .await
         .expect_err("устаревшая версия");
     assert!(
@@ -1017,7 +1017,7 @@ async fn membership_nesting_rights_and_stale_version() {
     assert_eq!(group_place(&ctx, child).await, None);
 
     ctx.groups
-        .set_parent(&manager, child, v, Some(parent))
+        .set_parent(&manager, child, v, Some(parent), false)
         .await
         .expect("manager");
     assert_eq!(group_parent(&ctx, child).await, Some(parent));
@@ -1050,7 +1050,7 @@ async fn membership_place_invariant_walk() {
     // 1. вложение под родителя с местом
     let v = group_version(&ctx, a).await;
     ctx.groups
-        .set_parent(&admin(), a, v, Some(parent))
+        .set_parent(&admin(), a, v, Some(parent), false)
         .await
         .expect("вложение");
     assert_eq!(assert_place_invariant(&ctx, "вложение").await, 2);
@@ -1068,7 +1068,7 @@ async fn membership_place_invariant_walk() {
     // 3. вложение под родителя без места
     let v = group_version(&ctx, a).await;
     ctx.groups
-        .set_parent(&admin(), a, v, Some(placeless))
+        .set_parent(&admin(), a, v, Some(placeless), true)
         .await
         .expect("под без места");
     assert_eq!(assert_place_invariant(&ctx, "родитель без места").await, 2);
@@ -1077,7 +1077,7 @@ async fn membership_place_invariant_walk() {
     // 4. выход из родителя
     let v = group_version(&ctx, a).await;
     ctx.groups
-        .set_parent(&admin(), a, v, None)
+        .set_parent(&admin(), a, v, None, false)
         .await
         .expect("выход");
     assert_eq!(assert_place_invariant(&ctx, "выход").await, 1);
@@ -1085,7 +1085,7 @@ async fn membership_place_invariant_walk() {
     // 5. снова под родителя с местом и удаление родителя
     let v = group_version(&ctx, a).await;
     ctx.groups
-        .set_parent(&admin(), a, v, Some(parent))
+        .set_parent(&admin(), a, v, Some(parent), false)
         .await
         .expect("вложение");
     assert_eq!(assert_place_invariant(&ctx, "повторное вложение").await, 2);
@@ -1455,4 +1455,76 @@ async fn membership_move_devices_same_group_and_rights() {
         .expect_err("employee");
     assert!(matches!(err, AppError::Forbidden), "{err:?}");
     assert_eq!(member_group(&ctx, d).await, Some(g));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 41.8 Plan 04: D-09 (запрет вложения «Разбора»), D-16 (смена родителя)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nesting_teardown_group_under_another_is_rejected_by_service_only() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let td = group_of_behavior(&ctx, "teardown", "Разбор #7", 7).await;
+    let parent = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let v = group_version(&ctx, td).await;
+    let msg = validation_message(
+        ctx.groups
+            .set_parent(&admin(), td, v, Some(parent), false)
+            .await
+            .expect_err("разбор нельзя вложить"),
+    );
+    assert_eq!(msg, "Группу типа «Разбор» нельзя вложить в другую группу.");
+    // и с подтверждением смены родителя правило не снимается
+    let msg = validation_message(
+        ctx.groups
+            .set_parent(&admin(), td, v, Some(parent), true)
+            .await
+            .expect_err("replace не снимает запрет"),
+    );
+    assert!(msg.contains("нельзя вложить"), "{msg}");
+    assert_eq!(group_parent(&ctx, td).await, None);
+    // вывод в корень разрешён
+    ctx.groups
+        .set_parent(&admin(), td, v, None, false)
+        .await
+        .expect("в корень");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn set_parent_of_nested_group_needs_replace_flag() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let a = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let b = group_of_behavior(&ctx, "container", "АРМ #4", 4).await;
+    let child = group_of_behavior(&ctx, "container", "АРМ #5", 5).await;
+    let v = group_version(&ctx, child).await;
+    ctx.groups
+        .set_parent(&admin(), child, v, Some(a), false)
+        .await
+        .expect("первое вложение без родителя не требует флага");
+
+    let v = group_version(&ctx, child).await;
+    let err = ctx
+        .groups
+        .set_parent(&admin(), child, v, Some(b), false)
+        .await
+        .expect_err("уже в группе");
+    match err {
+        AppError::AlreadyInGroup { items } => {
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].kind, "group");
+            assert_eq!(items[0].id, child);
+            assert_eq!(items[0].group_id, a);
+            assert_eq!(items[0].group_name, "АРМ #3");
+        }
+        other => panic!("ожидали AlreadyInGroup, получили {other:?}"),
+    }
+    assert_eq!(group_parent(&ctx, child).await, Some(a), "не забрана");
+    assert_eq!(group_version(&ctx, child).await, v);
+
+    // тот же родитель — не смена; с флагом — успех
+    ctx.groups
+        .set_parent(&admin(), child, v, Some(b), true)
+        .await
+        .expect("с replace_parent");
+    assert_eq!(group_parent(&ctx, child).await, Some(b));
 }

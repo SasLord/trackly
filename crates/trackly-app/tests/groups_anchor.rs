@@ -434,7 +434,7 @@ async fn anchor_teardown_group_with_live_parts_cannot_be_deleted() {
         .await
         .expect_err("с деталями удалять нельзя");
     let msg = validation(err, "id");
-    assert!(msg.contains("в ней 3 детали"), "{msg}");
+    assert!(msg.contains("связаны 3 детали"), "{msg}");
     assert!(msg.contains("Разбор #1"), "{msg}");
     assert!(group_alive(&ctx, g).await, "группа цела");
     assert_eq!(member_rows(&ctx, parts[0]).await, 1);
@@ -459,13 +459,38 @@ async fn anchor_teardown_group_with_live_parts_cannot_be_deleted() {
             .expect_err("две детали"),
         "id",
     );
-    assert!(msg.contains("в ней 2 детали"), "{msg}");
+    assert!(msg.contains("связаны 2 детали"), "{msg}");
 
-    // Детали выведены -> группа с одним якорем удаляется.
+    // D-13: выведенные детали хранят происхождение — удаление по-прежнему отказывает.
     ctx.groups
         .remove_devices(&admin(), g, vec![parts[0], parts[1], parts[2]])
         .await
         .expect("вывод деталей");
+    let msg = validation(
+        ctx.groups
+            .delete_group(&admin(), g)
+            .await
+            .expect_err("призраки держат запись"),
+        "id",
+    );
+    assert!(msg.contains("связаны 3 детали, из них 3 выведены"), "{msg}");
+    assert!(group_alive(&ctx, g).await, "группа цела");
+
+    // Происхождение снято -> группа с одним якорем удаляется.
+    for p in &parts {
+        let p = *p;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET origin_group_id = NULL WHERE id = ?1",
+                    params![p],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("снять origin");
+    }
     ctx.groups
         .delete_group(&admin(), g)
         .await
@@ -1123,4 +1148,177 @@ async fn anchor_origin_is_never_written_by_add_and_teardown_accepts_only_own() {
         "device_ids",
     );
     assert_eq!(origin_of(&ctx, own).await, Some(a));
+}
+
+// ===========================================================================
+// Phase 41.8 Plan 04: призраки в составе, отказ удаления разбора (D-10..D-14)
+// ===========================================================================
+
+/// Убрать деталь из состава без вывода через сервис (как при списании/удалении).
+async fn drop_membership(ctx: &AppCtx, device: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "DELETE FROM group_devices WHERE device_id = ?1",
+                params![device],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("drop membership");
+}
+
+async fn soft_delete(ctx: &AppCtx, device: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET deleted_at_utc = 1700000900 WHERE id = ?1",
+                params![device],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("soft delete");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn composition_ghosts_cover_removed_written_off_and_deleted_parts() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let (g, anchor) = make_anchor_group(
+        &ctx,
+        "teardown",
+        "Разбор #7",
+        "Системный блок #4",
+        "INV-GH-0",
+        None,
+    )
+    .await;
+    let other = plain_group(&ctx, "teardown", "Разбор #8").await;
+
+    // Различающиеся фикстуры: выведенная, списанная, удалённая, чужой origin, живой член.
+    let removed = seed_device(&ctx, "Планка памяти", "INV-GH-1", None).await;
+    let written_off = seed_device(&ctx, "Блок питания", "INV-GH-2", None).await;
+    let deleted = seed_device(&ctx, "Кулер", "INV-GH-3", None).await;
+    let foreign = seed_device(&ctx, "Мышь", "INV-GH-4", None).await;
+    let member = seed_device(&ctx, "Монитор", "INV-GH-5", None).await;
+    for d in [removed, written_off, deleted, member] {
+        set_origin(&ctx, d, g).await;
+    }
+    set_origin(&ctx, foreign, other).await;
+    ctx.groups
+        .add_devices(&admin(), g, vec![member])
+        .await
+        .expect("член с тем же origin");
+    set_status_by_code(&ctx, written_off, "списано").await;
+    soft_delete(&ctx, deleted).await;
+
+    let before = ctx
+        .groups
+        .composition(&admin(), g)
+        .await
+        .expect("composition");
+    let card_before = ctx.groups.get_group(&admin(), g).await.expect("card");
+
+    let ids: Vec<i64> = before.ghosts.iter().map(|x| x.device_id).collect();
+    // живые раньше удалённых, внутри — по имени: «Блок питания», «Планка памяти», «Кулер»
+    assert_eq!(ids, vec![written_off, removed, deleted], "{ids:?}");
+    assert!(!before.ghosts[0].is_deleted && before.ghosts[2].is_deleted);
+    assert_eq!(before.ghosts[0].status_code.as_deref(), Some("списано"));
+    assert!(!ids.contains(&member) && !ids.contains(&foreign) && !ids.contains(&anchor));
+    let dev_ids: Vec<i64> = before.devices.iter().map(|x| x.device_id).collect();
+    assert!(dev_ids.contains(&member), "живой член остался в devices");
+
+    // D-11: призрак не меняет счётчики.
+    let ghost_extra = seed_device(&ctx, "Корпус", "INV-GH-6", None).await;
+    set_origin(&ctx, ghost_extra, g).await;
+    let card_after = ctx.groups.get_group(&admin(), g).await.expect("card");
+    assert_eq!(card_after.device_count, card_before.device_count);
+    assert_eq!(
+        card_after.direct_device_count,
+        card_before.direct_device_count
+    );
+
+    // D-14: удалённая и списанная остаются; выведение в другую группу даёт current_group.
+    let moved_to = plain_group(&ctx, "container", "АРМ #9").await;
+    ctx.groups
+        .add_devices(&admin(), moved_to, vec![removed])
+        .await
+        .expect("деталь ушла в АРМ");
+    let after = ctx
+        .groups
+        .composition(&admin(), g)
+        .await
+        .expect("composition");
+    let ghost = after
+        .ghosts
+        .iter()
+        .find(|x| x.device_id == removed)
+        .expect("призрак остался");
+    assert_eq!(ghost.current_group_id, Some(moved_to));
+    assert_eq!(ghost.current_group_name.as_deref(), Some("АРМ #9"));
+
+    // Не-teardown: ghosts пуст, даже если у деталей есть origin.
+    let arm = plain_group(&ctx, "container", "АРМ #10").await;
+    let c = ctx.groups.composition(&admin(), arm).await.expect("c");
+    assert!(c.ghosts.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn teardown_delete_refuses_with_removed_or_deleted_part_and_names_reason() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let (g, _anchor) = make_anchor_group(
+        &ctx,
+        "teardown",
+        "Разбор #7",
+        "Системный блок #4",
+        "INV-GD-0",
+        None,
+    )
+    .await;
+    let part = seed_device(&ctx, "Планка памяти", "INV-GD-1", None).await;
+    set_origin(&ctx, part, g).await;
+    ctx.groups
+        .add_devices(&admin(), g, vec![part])
+        .await
+        .expect("add");
+
+    // Деталь выведена, затем мягко удалена: живых деталей нет, остался только след.
+    drop_membership(&ctx, part).await;
+    soft_delete(&ctx, part).await;
+    let msg = validation(
+        ctx.groups
+            .delete_group(&admin(), g)
+            .await
+            .expect_err("удалённая деталь держит запись"),
+        "id",
+    );
+    assert!(
+        msg.contains(
+            "Группу «Разбор #7» нельзя удалить: с ней связаны 1 деталь, из них 1 выведены."
+        ),
+        "{msg}"
+    );
+    assert!(
+        msg.contains("Запись разбора хранит происхождение деталей."),
+        "{msg}"
+    );
+    assert!(group_alive(&ctx, g).await);
+
+    // Пустой разбор (без деталей и призраков) удаляется.
+    let (empty, _a) = make_anchor_group(
+        &ctx,
+        "teardown",
+        "Разбор #8",
+        "Системный блок #5",
+        "INV-GD-2",
+        None,
+    )
+    .await;
+    ctx.groups
+        .delete_group(&admin(), empty)
+        .await
+        .expect("пустой разбор удаляется");
+    assert!(!group_alive(&ctx, empty).await);
 }

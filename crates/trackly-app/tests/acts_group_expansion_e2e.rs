@@ -145,7 +145,7 @@ async fn make_anchor_group(
 async fn nest(ctx: &AppCtx, child: i64, parent: i64) {
     let dto = ctx.groups.get_group(&admin(), child).await.expect("child");
     ctx.groups
-        .set_parent(&admin(), child, dto.version, Some(parent))
+        .set_parent(&admin(), child, dto.version, Some(parent), false)
         .await
         .expect("set_parent");
 }

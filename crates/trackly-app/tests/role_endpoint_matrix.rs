@@ -4485,6 +4485,7 @@ async fn groups_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Resul
                 id: 999999,
                 version: 1,
                 parent_group_id: None,
+                replace_parent: false,
             },
         )
         .await

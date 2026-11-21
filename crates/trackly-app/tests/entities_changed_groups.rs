@@ -361,7 +361,7 @@ async fn scenario_set_parent() {
 
         let result = ctx
             .groups
-            .set_parent(&admin(), child, 1, Some(parent))
+            .set_parent(&admin(), child, 1, Some(parent), false)
             .await
             .expect("set_parent");
         assert_eq!(result.moved_devices, 1);
