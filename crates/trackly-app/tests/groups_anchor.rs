@@ -1322,3 +1322,291 @@ async fn teardown_delete_refuses_with_removed_or_deleted_part_and_names_reason()
         .expect("пустой разбор удаляется");
     assert!(!group_alive(&ctx, empty).await);
 }
+
+// ===========================================================================
+// Phase 41.8 Plan 05: списание устройства и группы (D-19..D-22, D-24, D-05)
+// ===========================================================================
+
+use trackly_app::dto::groups::{GroupWriteOffDeviceDto, GroupWriteOffGroupDto};
+
+async fn write_off_audit_rows(ctx: &AppCtx, entity_id: i64) -> i64 {
+    scalar_i64(
+        ctx,
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'write_off' AND entity_id = ?1",
+        entity_id,
+    )
+    .await
+}
+
+async fn wo_device(
+    ctx: &AppCtx,
+    device: i64,
+    release: bool,
+) -> Result<trackly_app::dto::groups::GroupWriteOffResultDto, AppError> {
+    let version = device_version(ctx, device).await;
+    ctx.groups
+        .write_off_device(
+            &admin(),
+            GroupWriteOffDeviceDto {
+                device_id: device,
+                version,
+                release_from_group: release,
+            },
+        )
+        .await
+}
+
+async fn wo_group(
+    ctx: &AppCtx,
+    group: i64,
+) -> Result<trackly_app::dto::groups::GroupWriteOffResultDto, AppError> {
+    let version = scalar_i64(ctx, "SELECT version FROM groups WHERE id = ?1", group).await;
+    ctx.groups
+        .write_off_group(&admin(), GroupWriteOffGroupDto { id: group, version })
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn write_off_device_status_version_and_rights() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let free = seed_device(&ctx, "Монитор #2", "INV-W-1", None).await;
+    let working = seed_device(&ctx, "Монитор #3", "INV-W-2", None).await;
+    set_status_by_code(&ctx, free, "на_списание").await;
+
+    // Не «На списание» — отказ по коду статуса.
+    let msg = validation(
+        wo_device(&ctx, working, false).await.expect_err("в работе"),
+        "id",
+    );
+    assert!(msg.contains("Списать можно только"), "{msg}");
+    assert_ne!(status_code_of(&ctx, working).await, "списано");
+
+    // Устаревшая версия.
+    let version = device_version(&ctx, free).await;
+    let err = ctx
+        .groups
+        .write_off_device(
+            &admin(),
+            GroupWriteOffDeviceDto {
+                device_id: free,
+                version: version - 1,
+                release_from_group: false,
+            },
+        )
+        .await
+        .expect_err("stale");
+    assert!(
+        matches!(err, AppError::OptimisticLockMismatch { .. }),
+        "{err:?}"
+    );
+
+    // Employee.
+    let employee = Identity {
+        user_id: None,
+        role: trackly_core::auth::Role::Employee,
+    };
+    let err = ctx
+        .groups
+        .write_off_device(
+            &employee,
+            GroupWriteOffDeviceDto {
+                device_id: free,
+                version,
+                release_from_group: false,
+            },
+        )
+        .await
+        .expect_err("employee");
+    assert!(matches!(err, AppError::Forbidden));
+    assert_eq!(status_code_of(&ctx, free).await, "на_списание");
+
+    wo_device(&ctx, free, false).await.expect("списано");
+    assert_eq!(status_code_of(&ctx, free).await, "списано");
+    assert_eq!(write_off_audit_rows(&ctx, free).await, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn write_off_member_stays_or_leaves_and_ghost_keeps_origin() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let (sub, _anchor) = make_anchor_group(
+        &ctx,
+        "substitute",
+        "Замена #1",
+        "Системный блок #4",
+        "INV-W-10",
+        None,
+    )
+    .await;
+    let stay = seed_device(&ctx, "Монитор #2", "INV-W-11", None).await;
+    let leave = seed_device(&ctx, "Монитор #5", "INV-W-12", None).await;
+    for d in [stay, leave] {
+        ctx.groups
+            .add_devices(&admin(), sub, vec![d])
+            .await
+            .expect("add");
+        set_status_by_code(&ctx, d, "на_списание").await;
+    }
+
+    // D-24: остаётся прямым членом.
+    wo_device(&ctx, stay, false).await.expect("stay");
+    assert_eq!(status_code_of(&ctx, stay).await, "списано");
+    assert_eq!(member_rows(&ctx, stay).await, 1, "остался в группе");
+
+    // D-20: с выводом.
+    wo_device(&ctx, leave, true).await.expect("leave");
+    assert_eq!(status_code_of(&ctx, leave).await, "списано");
+    assert_eq!(member_rows(&ctx, leave).await, 0);
+    assert_eq!(write_off_audit_rows(&ctx, leave).await, 1);
+
+    // Деталь разбора: вывод делает её призраком, origin цел.
+    let (td, _a) = make_anchor_group(
+        &ctx,
+        "teardown",
+        "Разбор #7",
+        "Системный блок #6",
+        "INV-W-13",
+        None,
+    )
+    .await;
+    let part = seed_device(&ctx, "Память 8 ГБ", "INV-W-14", None).await;
+    set_origin(&ctx, part, td).await;
+    ctx.groups
+        .add_devices(&admin(), td, vec![part])
+        .await
+        .expect("add part");
+    set_status_by_code(&ctx, part, "на_списание").await;
+    wo_device(&ctx, part, true).await.expect("part off");
+    assert_eq!(member_rows(&ctx, part).await, 0);
+    assert_eq!(origin_of(&ctx, part).await, Some(td), "origin цел");
+    let comp = ctx.groups.composition(&admin(), td).await.expect("comp");
+    assert!(
+        comp.ghosts.iter().any(|x| x.device_id == part),
+        "деталь — призрак"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn write_off_device_refuses_anchor() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let (_g, anchor) = make_anchor_group(
+        &ctx,
+        "substitute",
+        "Замена #2",
+        "Системный блок #7",
+        "INV-W-20",
+        None,
+    )
+    .await;
+    set_status_by_code(&ctx, anchor, "на_списание").await;
+    let msg = validation(
+        wo_device(&ctx, anchor, false).await.expect_err("якорь"),
+        "device_id",
+    );
+    assert!(msg.contains("спишите его через группу"), "{msg}");
+    assert_eq!(status_code_of(&ctx, anchor).await, "на_списание");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn write_off_group_substitute_disbands_and_frees_members() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let place = seed_place(&ctx, "Склад #1").await;
+    let (g, anchor) = make_anchor_group(
+        &ctx,
+        "substitute",
+        "Замена #3",
+        "Системный блок #8",
+        "INV-W-30",
+        Some(place),
+    )
+    .await;
+    let member = seed_device(&ctx, "Монитор #6", "INV-W-31", Some(place)).await;
+    ctx.groups
+        .add_devices(&admin(), g, vec![member])
+        .await
+        .expect("add");
+
+    // Якорь не «На списание» — отказ.
+    validation(wo_group(&ctx, g).await.expect_err("не на списание"), "id");
+    assert!(group_alive(&ctx, g).await);
+
+    set_status_by_code(&ctx, anchor, "на_списание").await;
+    let status_before = status_code_of(&ctx, member).await;
+    let res = wo_group(&ctx, g).await.expect("write off group");
+    assert!(res.disbanded);
+    assert_eq!(status_code_of(&ctx, anchor).await, "списано");
+    assert!(!group_alive(&ctx, g).await);
+    assert_eq!(member_rows(&ctx, member).await, 0);
+    assert_eq!(status_code_of(&ctx, member).await, status_before);
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT place_id FROM devices WHERE id = ?1", member).await,
+        place
+    );
+    assert_eq!(write_off_audit_rows(&ctx, anchor).await, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn write_off_group_teardown_keeps_record_and_parts() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let (g, anchor) = make_anchor_group(
+        &ctx,
+        "teardown",
+        "Разбор #9",
+        "Системный блок #9",
+        "INV-W-40",
+        None,
+    )
+    .await;
+    let part = seed_device(&ctx, "SSD 256 ГБ", "INV-W-41", None).await;
+    set_origin(&ctx, part, g).await;
+    ctx.groups
+        .add_devices(&admin(), g, vec![part])
+        .await
+        .expect("add part");
+    set_status_by_code(&ctx, anchor, "на_списание").await;
+
+    let res = wo_group(&ctx, g).await.expect("write off donor");
+    assert!(!res.disbanded);
+    assert_eq!(status_code_of(&ctx, anchor).await, "списано");
+    assert!(group_alive(&ctx, g).await);
+    assert_eq!(member_rows(&ctx, part).await, 1, "деталь на месте");
+    assert_eq!(origin_of(&ctx, part).await, Some(g));
+    // D-13: удаление записи разбора по-прежнему отказывает.
+    validation(
+        ctx.groups
+            .delete_group(&admin(), g)
+            .await
+            .expect_err("нельзя удалить"),
+        "id",
+    );
+    assert_eq!(write_off_audit_rows(&ctx, anchor).await, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn write_off_group_container_and_stale_version_rejected() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let c = plain_group(&ctx, "container", "АРМ #1").await;
+    let msg = validation(wo_group(&ctx, c).await.expect_err("container"), "id");
+    assert!(msg.contains("нет якоря"), "{msg}");
+
+    let (g, anchor) = make_anchor_group(
+        &ctx,
+        "substitute",
+        "Замена #4",
+        "Системный блок #10",
+        "INV-W-50",
+        None,
+    )
+    .await;
+    set_status_by_code(&ctx, anchor, "на_списание").await;
+    let err = ctx
+        .groups
+        .write_off_group(&admin(), GroupWriteOffGroupDto { id: g, version: 0 })
+        .await
+        .expect_err("stale");
+    assert!(
+        matches!(err, AppError::OptimisticLockMismatch { .. }),
+        "{err:?}"
+    );
+    assert!(group_alive(&ctx, g).await);
+    assert_eq!(status_code_of(&ctx, anchor).await, "на_списание");
+}
