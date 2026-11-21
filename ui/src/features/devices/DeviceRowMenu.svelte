@@ -66,11 +66,13 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
-  import { ensureLoaded, statusLabel } from '$lib/stores/deviceStatuses.svelte';
+  import ActionSubmenu from '$lib/components/ActionSubmenu.svelte';
+  import { ensureLoaded, orderedStatuses, statusLabel } from '$lib/stores/deviceStatuses.svelte';
   import { devices } from './api';
   import PlaceEntityViewModal from '../places/PlaceEntityViewModal.svelte';
   import AddToGroupModal from '../groups/AddToGroupModal.svelte';
   import GroupFormModal from '../groups/GroupFormModal.svelte';
+  import WriteOffChoiceModal from '../groups/WriteOffChoiceModal.svelte';
   import WriteOffDeviceModal from '../groups/WriteOffDeviceModal.svelte';
   import WriteOffGroupModal from '../groups/WriteOffGroupModal.svelte';
   import {
@@ -82,7 +84,17 @@
     quickActionsForDevice,
     type MenuItemSpec,
   } from './deviceRowMenu';
-  import type { DeviceDto, GroupDto, PlaceContentDto } from '../../bindings';
+  import { canChangeStatus, statusMenuOptions, type StatusOptionSpec } from './deviceStatusMenu';
+  import { writeOffChoiceNeeded } from './writeOffChoice';
+  import { WRITE_OFF_GROUP_FALLBACK_NAME, anchorWriteOffRefusal } from '../groups/writeOffTexts';
+  import { loadOpenRepairs } from '../requests/repairLocks';
+  import type {
+    DeviceDto,
+    DevicePatch,
+    DeviceSaveOutcome,
+    GroupDto,
+    PlaceContentDto,
+  } from '../../bindings';
 
   interface Props {
     /** Устройство строки; null — взять по `deviceId` перед каждым открытием (принтеры). */
@@ -128,6 +140,29 @@
   let confirmOpen = $state(false);
   let deleting = $state(false);
   let removing = false;
+  let changing = false;
+  // Номер открытой ремонтной заявки по устройству строки (D-21 фазы 41.4); null —
+  // заявки нет либо права на ремонты нет (запрет тогда держит сервер).
+  let openRepairRequestId = $state<number | null>(null);
+  // Выбор «оставить / вывести» при списании участника группы (D-26); resolve(null) — отмена.
+  let writeOffPrompt = $state<{
+    deviceName: string;
+    groupName: string;
+    isTeardownMember: boolean;
+    resolve: (release: boolean | null) => void;
+  } | null>(null);
+
+  const statusOptions = $derived<StatusOptionSpec[]>(
+    dev === null
+      ? []
+      : statusMenuOptions({
+          statuses: orderedStatuses(),
+          currentStatusId: dev.status_id,
+          isAnchor: dev.anchor_group_id != null,
+          anchorGroupName: dev.anchor_group_name ?? null,
+          openRepairRequestId,
+        }),
+  );
 
   const sections = $derived(
     buildMenuSections({
@@ -159,6 +194,10 @@
       writeOff:
         dev !== null &&
         canWriteOff({ role: authStore.user?.role ?? null, statusCode: dev.status_code }),
+      status:
+        dev !== null &&
+        canChangeStatus({ role: authStore.user?.role ?? null }) &&
+        statusOptions.length > 0,
     }),
   );
 
@@ -171,8 +210,17 @@
     if (trigger === 'button') {
       void ensureLoaded();
       if (typesCache.items === null) void refreshTypes();
+      void refreshOpenRepair();
     }
   });
+
+  // Запись только из async-продолжения; устаревший ответ (устройство сменилось) отбрасывается.
+  async function refreshOpenRepair(): Promise<void> {
+    const id = device?.id ?? deviceId;
+    if (id === undefined) return;
+    const map = await loadOpenRepairs([id]);
+    if ((device?.id ?? deviceId) === id) openRepairRequestId = map.get(id) ?? null;
+  }
 
   function errorMessage(e: unknown, fallback: string): string {
     const msg =
@@ -201,6 +249,7 @@
         return false;
       }
     }
+    jobs.push(refreshOpenRepair());
     await Promise.all(jobs);
     return true;
   }
@@ -280,6 +329,9 @@
       case 'writeOff':
         void startWriteOff();
         break;
+      case 'status':
+        // Пункт рисуется ActionSubmenu; выбор варианта идёт через changeStatus.
+        break;
       case 'delete':
         // Якорь не скрывается и не блокируется: ведёт в модалку отказа (D-14).
         if (dev?.anchor_group_id != null) refuseOpen = true;
@@ -354,6 +406,90 @@
     }
   }
 
+  function askWriteOffChoice(target: DeviceDto): Promise<boolean | null> {
+    return new Promise((resolve) => {
+      writeOffPrompt = {
+        deviceName: target.name,
+        groupName: target.group_name ?? WRITE_OFF_GROUP_FALLBACK_NAME,
+        isTeardownMember:
+          target.origin_group_id != null && target.origin_group_id === target.group_id,
+        resolve: (v) => {
+          writeOffPrompt = null;
+          resolve(v);
+        },
+      };
+    });
+  }
+
+  // D-35: смена статуса из меню строки по правилам формы (D-26). Устройство
+  // захватывается ДО await. Патч несёт только status_id и (из выбора пользователя)
+  // group_write_off; обязательные ключи DevicePatch — null (не менять).
+  async function changeStatus(option: StatusOptionSpec) {
+    const target = dev;
+    if (!target || changing || option.disabled || option.current) return;
+    const verdict = writeOffChoiceNeeded({
+      statusCodeBefore: target.status_code,
+      statusCodeAfter: option.code,
+      groupId: target.group_id,
+      anchorGroupId: target.anchor_group_id,
+    });
+    if (verdict === 'anchor_refuse') {
+      pushToast('error', anchorWriteOffRefusal(target.anchor_group_name));
+      return;
+    }
+    const patch: DevicePatch = {
+      type_id: null,
+      name: null,
+      number_input: null,
+      status_id: option.id,
+    };
+    changing = true;
+    try {
+      if (verdict === 'choose') {
+        const release = await askWriteOffChoice(target);
+        if (release === null) return;
+        patch.group_write_off = release ? 'release' : 'keep';
+      }
+      let outcome: DeviceSaveOutcome;
+      let retried = false;
+      for (;;) {
+        try {
+          outcome = await devices.update(target.id, target.version, patch);
+          break;
+        } catch (e) {
+          const verr = e as { code?: string; details?: { field?: string } } | null;
+          if (
+            !retried &&
+            verr?.code === 'VALIDATION' &&
+            verr.details?.field === 'group_write_off'
+          ) {
+            // Членство устарело: сервер просит выбор. Один повтор.
+            retried = true;
+            const release = await askWriteOffChoice(target);
+            if (release === null) return;
+            patch.group_write_off = release ? 'release' : 'keep';
+            continue;
+          }
+          pushToast('error', errorMessage(e, 'Не удалось сменить статус'));
+          return;
+        }
+      }
+      if (outcome.outcome !== 'created') {
+        pushToast('error', 'Не удалось сменить статус');
+        return;
+      }
+      // Место могло смениться (возврат из исключённого статуса переносит на место группы, D-17).
+      const placeIds = [target.place_id, outcome.place_id].filter(
+        (id, i, a): id is number => id != null && a.indexOf(id) === i,
+      );
+      if (placeIds.length > 0) notifyPlaceContentChanged(placeIds);
+      pushToast('success', `Статус изменён: ${statusLabel(option.id)}`);
+      onChanged();
+    } finally {
+      changing = false;
+    }
+  }
+
   async function handleDelete() {
     if (!dev) return;
     // Место берём ДО await: после удаления счётчики именно этого места устарели.
@@ -380,7 +516,10 @@
   variant="ghost-sm"
   label={menuLabel}
   onOpenChange={(isOpen) => {
-    if (isOpen) void refreshTypes();
+    if (isOpen) {
+      void refreshTypes();
+      void refreshOpenRepair();
+    }
   }}
 >
   {#each sections as section, si (si)}
@@ -389,14 +528,31 @@
       <hr role="separator" />
     {/if}
     {#each section as item (item.kind + ':' + (item.typeId ?? '') + ':' + item.label)}
-      <button
-        type="button"
-        role="menuitem"
-        class:menu-danger={item.danger}
-        onclick={() => activate(item)}
-      >
-        {item.label}
-      </button>
+      {#if item.kind === 'status'}
+        <ActionSubmenu label={item.label}>
+          {#each statusOptions as opt (opt.id)}
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={opt.current}
+              aria-disabled={opt.disabled}
+              title={opt.disabledReason ?? undefined}
+              onclick={() => void changeStatus(opt)}
+            >
+              {opt.label}
+            </button>
+          {/each}
+        </ActionSubmenu>
+      {:else}
+        <button
+          type="button"
+          role="menuitem"
+          class:menu-danger={item.danger}
+          onclick={() => activate(item)}
+        >
+          {item.label}
+        </button>
+      {/if}
     {/each}
   {/each}
 </ActionMenu>
@@ -434,6 +590,17 @@
       writeOffDevice.origin_group_id === writeOffDevice.group_id}
     onClose={() => (writeOffDevice = null)}
     onDone={handleWrittenOff}
+  />
+{/if}
+
+{#if writeOffPrompt}
+  {@const prompt = writeOffPrompt}
+  <WriteOffChoiceModal
+    deviceName={prompt.deviceName}
+    groupName={prompt.groupName}
+    isTeardownMember={prompt.isTeardownMember}
+    onChoose={(release) => prompt.resolve(release)}
+    onClose={() => prompt.resolve(null)}
   />
 {/if}
 
