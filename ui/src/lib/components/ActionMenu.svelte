@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { untrack, type Snippet } from 'svelte';
+  import { setContext, untrack, type Snippet } from 'svelte';
   import { portal } from '$lib/utils/portal';
+  import { ACTION_MENU_CONTEXT, type ActionMenuContext } from './actionMenuContext';
 
   /* Меню действий. Панель ВСЕГДА выводится в `<body>` через `use:portal`
    * (единственный режим, пропа `portal` нет): правый край выровнен по
@@ -120,6 +121,9 @@
     };
   });
 
+  // D-35: вложенные попапы (ActionSubmenu) закрывают меню через контекст.
+  setContext<ActionMenuContext>(ACTION_MENU_CONTEXT, { close });
+
   $effect(() => {
     const isOpen = open;
     untrack(() => onOpenChange?.(isOpen));
@@ -148,7 +152,9 @@
       // D-36: mousedown по подложке не закрывает меню — иначе подложка исчезнет до click
       // и click уйдёт на строку под ней; подложка закрывает меню своим click.
       const insideBackdrop = backdropEl?.contains(target) ?? false;
-      if (open && !insideRoot && !insidePanel && !insideBackdrop) open = false;
+      // D-35: подменю (портал в <body>) — тоже «внутри» меню.
+      const insideSubmenu = !!(target as HTMLElement | null)?.closest?.('[data-action-submenu]');
+      if (open && !insideRoot && !insidePanel && !insideBackdrop && !insideSubmenu) open = false;
     }
     function onKey(e: KeyboardEvent) {
       // FE-WR-11: react only while THIS menu is open — otherwise every
@@ -159,6 +165,13 @@
       // must not close too. `preventDefault()` is the signal Modal honours
       // (`defaultPrevented`), `stopPropagation()` keeps it off window-level
       // listeners regardless of listener order.
+      // D-35: Escape внутри подменю закрывает только подменю. Слушатель висит на document,
+      // stopPropagation подменю до него не защищает, поэтому защита здесь.
+      if (
+        e.defaultPrevented ||
+        (e.target as HTMLElement | null)?.closest?.('[data-action-submenu]')
+      )
+        return;
       if (e.key !== 'Escape' || !open) return;
       e.preventDefault();
       e.stopPropagation();
