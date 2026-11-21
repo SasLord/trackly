@@ -214,6 +214,9 @@ function checkTokens(content, stats = {}) {
   stats.borderCells = 0;
   stats.minBorder = Infinity;
   stats.minBorderWhere = '';
+  stats.inactiveCells = 0;
+  stats.minInactive = Infinity;
+  stats.minInactiveWhere = '';
   const themeBlocks = {
     light: extractThemeBlock(content, "[data-theme='light']"),
     dark: extractThemeBlock(content, "[data-theme='dark']"),
@@ -288,6 +291,46 @@ function checkTokens(content, stats = {}) {
       }
     }
 
+    // R4 (D-23): неактивная строка — композит --tr-text-primary с альфой --tr-row-inactive-opacity
+    // поверх каждого из шести фонов. Токен лежит в :root вне тем, поэтому читается из всего файла;
+    // отсутствие токена — нарушение, не пропуск.
+    {
+      const opM = /--tr-row-inactive-opacity:\s*([0-9.]+)\s*;/.exec(content);
+      const textHex = map.get('--tr-text-primary');
+      if (!opM) {
+        violations.push(
+          `${theme} R4 inactive row: токен --tr-row-inactive-opacity отсутствует в _tokens.scss`,
+        );
+      } else if (textHex == null || !HEX6_RE.test(textHex)) {
+        violations.push(`${theme} R4 inactive row: token --tr-text-primary not found or not hex`);
+      } else {
+        const alpha = Number.parseFloat(opM[1]);
+        const fg = hexToRgb(textHex);
+        for (const bgTok of BG_6) {
+          const bgHex = map.get(bgTok);
+          if (bgHex == null || !HEX6_RE.test(bgHex)) {
+            violations.push(
+              `${theme} R4 inactive row over ${bgTok}: background token not found or not hex`,
+            );
+            continue;
+          }
+          const comp = rgbToHex(alphaComposite(fg, alpha, bgHex));
+          // Текст на фоне: композит текста — это «передний план», фон остаётся тем же.
+          const ratio = contrastRatio(comp, bgHex);
+          stats.inactiveCells++;
+          if (ratio < stats.minInactive) {
+            stats.minInactive = ratio;
+            stats.minInactiveWhere = `${theme} over ${bgTok}`;
+          }
+          if (ratio < COMPOSITE_MIN) {
+            violations.push(
+              `${theme} R4 inactive row over ${bgTok} (--tr-text-primary at opacity ${alpha}): ratio ${ratio.toFixed(2)} < ${COMPOSITE_MIN}`,
+            );
+          }
+        }
+      }
+    }
+
     // R2: альфа приглушённой подложки не больше MAX_ALPHA_RATIO от активной.
     for (const t of MUTED_TONES) {
       const mutedSoft = RGBA_RE.exec(map.get(t.mutedSoft) ?? '');
@@ -352,7 +395,7 @@ function report(violations, stats) {
     return 1;
   }
   console.error(
-    `[check-contrast] PASS — 0 нарушений: 102 проверки таблицы + ${stats.compositeCells} композитных, минимум композита ${minC} (${stats.minWhere}); R3 рамка: ${stats.borderCells} ячеек, минимум ${stats.minBorder.toFixed(2)} (${stats.minBorderWhere}) >= ${BORDER_MIN}`,
+    `[check-contrast] PASS — 0 нарушений: 102 проверки таблицы + ${stats.compositeCells} композитных, минимум композита ${minC} (${stats.minWhere}); R3 рамка: ${stats.borderCells} ячеек, минимум ${stats.minBorder.toFixed(2)} (${stats.minBorderWhere}) >= ${BORDER_MIN}; R4 неактивная строка: ${stats.inactiveCells} ячеек, минимум ${stats.minInactive.toFixed(2)} (${stats.minInactiveWhere}) >= ${COMPOSITE_MIN}`,
   );
   return 0;
 }
@@ -481,6 +524,11 @@ function selftest(content, dumpDir) {
           '--tr-info-soft: rgba(43, 95, 217, 0.4);',
         ),
       expect: 'light R1 composite info active over',
+    },
+    {
+      name: '(R4) прозрачность неактивной строки 0.6 — композит текста падает под 4.6',
+      make: (c) => mutate(c, '--tr-row-inactive-opacity: 0.65;', '--tr-row-inactive-opacity: 0.6;'),
+      expect: 'R4 inactive row over',
     },
   ];
   let failed = 0;

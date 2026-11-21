@@ -213,6 +213,8 @@
   --touch-target-min: 36px;
   --row-height: 40px;
   --row-height-dense: 32px;
+  // Неактивная строка таблицы (TableRow.inactive, D-23): гейт check-contrast.mjs, правило R4.
+  --tr-row-inactive-opacity: 0.65;
 
   // Border radius (5 levels)
   --tr-radius-xs: 4px;

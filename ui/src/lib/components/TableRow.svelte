@@ -14,6 +14,9 @@
     depth?: number;
     /** Removes border-bottom from every <td> — literal last row of a table. */
     last?: boolean;
+    /** Неактивная строка (призрак, списанный участник; D-23): ячейки гаснут по
+     *  --tr-row-inactive-opacity, кроме помеченных классом tr-cell-solid. */
+    inactive?: boolean;
     /** Switches to group-row rendering mode. */
     group?: boolean;
     /** Group-row-mode only: controls chevron rotation. */
@@ -46,6 +49,7 @@
     indent = false,
     depth = 0,
     last = false,
+    inactive = false,
     group = false,
     groupExpanded = false,
     groupName,
@@ -83,6 +87,7 @@
     class:depth2={depth === 2}
     class:depth3={depth >= 3}
     class:last
+    class:inactive
     {oncontextmenu}
     {ondblclick}
   >
@@ -170,6 +175,13 @@
   // which still let the border shift text by a subpixel).
   .tr-row.selected :global(> td:first-child) {
     box-shadow: inset 3px 0 0 var(--tr-accent);
+  }
+
+  // Неактивная строка (D-23): opacity на td, НЕ на tr — ячейки статуса/причины/действий
+  // с классом tr-cell-solid не гаснут, причина читается не только цветом. Контраст — гейт R4.
+  .tr-row.inactive :global(> td:not(.tr-cell-solid)) {
+    opacity: var(--tr-row-inactive-opacity);
+    color: var(--tr-text-primary);
   }
 
   .tr-row.last :global(> td) {
