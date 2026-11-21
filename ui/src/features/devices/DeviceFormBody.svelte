@@ -132,6 +132,9 @@
     repairOpenLabel,
   } from '../requests/repairLocks';
   import { groups } from '$lib/api/groups';
+  import WriteOffChoiceModal from '../groups/WriteOffChoiceModal.svelte';
+  import { writeOffChoiceNeeded } from './writeOffChoice';
+  import { WRITE_OFF_GROUP_FALLBACK_NAME, anchorWriteOffRefusal } from '../groups/writeOffTexts';
   import { printers } from '../printers/api';
   import {
     HOST_FIELD_HINT,
@@ -1088,6 +1091,32 @@
     pushToast('error', 'Не удалось сохранить');
   }
 
+  // Фаза 41.8, план 22 (D-26): подтверждение «оставить / вывести» при списании
+  // участника группы. resolve(null) — «Отменить»: сохранение прерывается.
+  let writeOffPrompt = $state<{
+    deviceName: string;
+    groupName: string;
+    isTeardownMember: boolean;
+    resolve: (release: boolean | null) => void;
+  } | null>(null);
+
+  function askWriteOffChoice(currentTarget: DeviceDto): Promise<boolean | null> {
+    return new Promise((resolve) => {
+      writeOffPrompt = {
+        deviceName: name.trim() || currentTarget.name,
+        groupName:
+          currentTarget.group_name ?? membership?.group_name ?? WRITE_OFF_GROUP_FALLBACK_NAME,
+        isTeardownMember:
+          currentTarget.origin_group_id != null &&
+          currentTarget.origin_group_id === (currentTarget.group_id ?? membership?.group_id),
+        resolve: (v) => {
+          writeOffPrompt = null;
+          resolve(v);
+        },
+      };
+    });
+  }
+
   async function submitEdit(currentTarget: DeviceDto) {
     const patch: DevicePatch = {
       type_id: typeId,
@@ -1124,18 +1153,50 @@
       }
     }
 
-    let outcome: DeviceSaveOutcome;
-    try {
-      outcome = await devices.update(currentTarget.id, currentVersion, patch);
-    } catch (e) {
-      const record = await occupyingRecordOrRethrow(
-        e,
-        numberContext,
-        inventoryNo,
-        currentTarget.id,
-      );
-      showTakenPopup(record, false);
+    const verdict = writeOffChoiceNeeded({
+      statusCodeBefore: currentTarget.status_code,
+      statusCodeAfter: statusById(Number(statusId))?.code ?? null,
+      groupId: currentTarget.group_id ?? membership?.group_id ?? null,
+      anchorGroupId: currentTarget.anchor_group_id ?? null,
+    });
+    if (verdict === 'anchor_refuse') {
+      // D-26: якорь списывается через группу; запрос не уходит.
+      const text = anchorWriteOffRefusal(currentTarget.anchor_group_name);
+      fieldErrors = { ...fieldErrors, status_id: text };
+      pushToast('error', text);
       return;
+    }
+    if (verdict === 'choose') {
+      const release = await askWriteOffChoice(currentTarget);
+      if (release === null) return;
+      patch.group_write_off = release ? 'release' : 'keep';
+    }
+
+    let outcome: DeviceSaveOutcome;
+    let retried = false;
+    for (;;) {
+      try {
+        outcome = await devices.update(currentTarget.id, currentVersion, patch);
+        break;
+      } catch (e) {
+        const verr = e as { code?: string; details?: { field?: string } } | null;
+        if (!retried && verr?.code === 'VALIDATION' && verr.details?.field === 'group_write_off') {
+          // Членство в форме устарело: сервер просит выбор. Один повтор (T-41.8-60).
+          retried = true;
+          const release = await askWriteOffChoice(currentTarget);
+          if (release === null) return;
+          patch.group_write_off = release ? 'release' : 'keep';
+          continue;
+        }
+        const record = await occupyingRecordOrRethrow(
+          e,
+          numberContext,
+          inventoryNo,
+          currentTarget.id,
+        );
+        showTakenPopup(record, false);
+        return;
+      }
     }
 
     if (outcome.outcome === 'created') {
@@ -1636,6 +1697,17 @@
     <p class="return-warning" role="status">{returnToGroupWarning}</p>
   {/if}
 </form>
+
+{#if writeOffPrompt}
+  {@const prompt = writeOffPrompt}
+  <WriteOffChoiceModal
+    deviceName={prompt.deviceName}
+    groupName={prompt.groupName}
+    isTeardownMember={prompt.isTeardownMember}
+    onChoose={(release) => prompt.resolve(release)}
+    onClose={() => prompt.resolve(null)}
+  />
+{/if}
 
 <style lang="scss">
   .device-form {
