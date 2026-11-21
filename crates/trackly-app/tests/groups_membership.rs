@@ -1528,3 +1528,60 @@ async fn set_parent_of_nested_group_needs_replace_flag() {
         .expect("с replace_parent");
     assert_eq!(group_parent(&ctx, child).await, Some(b));
 }
+
+async fn set_status_code(ctx: &AppCtx, device: i64, code: &'static str) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE devices SET status_id = (SELECT id FROM device_statuses WHERE code = ?2) \
+                 WHERE id = ?1",
+                params![device, code],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set status");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn d30_written_off_member_into_other_group_refuses_by_status_not_occupied() {
+    // D-30: отказ по статусу раньше классификации «занято другой группой».
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm3 = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let arm5 = group_of_behavior(&ctx, "container", "АРМ #5", 5).await;
+    for (n, code, needle) in [
+        (1, "списано", "«Списано»"),
+        (2, "на_списание", "«На списание»"),
+    ] {
+        let dev = plain_device(&ctx, &format!("Клавиатура #{n}"), n, Some(arm3)).await;
+        set_status_code(&ctx, dev, code).await;
+        let err = ctx
+            .groups
+            .add_devices(&admin(), arm5, vec![dev])
+            .await
+            .expect_err("отказ по статусу");
+        let msg = validation_message(err);
+        assert!(msg.contains(needle), "{msg}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn d30_written_off_member_into_same_group_is_skipped_and_live_still_occupied() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm3 = group_of_behavior(&ctx, "container", "АРМ #3", 3).await;
+    let arm5 = group_of_behavior(&ctx, "container", "АРМ #5", 5).await;
+    let dead = plain_device(&ctx, "Клавиатура #1", 1, Some(arm3)).await;
+    set_status_code(&ctx, dead, "списано").await;
+    ctx.groups
+        .add_devices(&admin(), arm3, vec![dead])
+        .await
+        .expect("повторный ввод в ту же группу — Skipped");
+    let live = plain_device(&ctx, "Мышь #2", 2, Some(arm3)).await;
+    let err = ctx
+        .groups
+        .add_devices(&admin(), arm5, vec![live])
+        .await
+        .expect_err("живое занято");
+    assert!(matches!(err, AppError::AlreadyInGroup { .. }), "{err:?}");
+}

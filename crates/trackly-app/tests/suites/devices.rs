@@ -25,6 +25,8 @@ mod devices_container_hide;
 mod devices_container_printers;
 #[path = "../devices_container_rows.rs"]
 mod devices_container_rows;
+#[path = "../devices_create_origin_join.rs"]
+mod devices_create_origin_join;
 #[path = "../devices_crud.rs"]
 mod devices_crud;
 #[path = "../devices_csv_export.rs"]
