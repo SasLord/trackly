@@ -31,15 +31,6 @@
   const isTeardown = $derived(group.type_behavior === 'teardown');
   const anchorName = $derived(group.anchor_device_name ?? group.name);
 
-  // Двоеточие, если ниже будет список (или он ещё грузится); иначе точка.
-  const tail = $derived(
-    loading ||
-      loadErr ||
-      (comp?.devices.length ?? 0) + (isTeardown ? (comp?.ghosts.length ?? 0) : 0) > 0
-      ? ':'
-      : '.',
-  );
-
   interface Row {
     key: string;
     name: string;
@@ -49,7 +40,11 @@
 
   const rows = $derived.by<Row[]>(() => {
     if (comp === null) return [];
-    const live = comp.devices.map(
+    // Якорь списывается, а не освобождается: в список состава не входит (D-21).
+    const members = isTeardown
+      ? comp.devices
+      : comp.devices.filter((d) => d.device_id !== group.anchor_device_id);
+    const live = members.map(
       (d): Row => ({
         key: 'd' + d.device_id,
         name: d.name,
@@ -57,7 +52,17 @@
         gone: false,
       }),
     );
-    if (!isTeardown) return live;
+    if (!isTeardown) {
+      const children = comp.child_groups.map(
+        (c): Row => ({
+          key: 'c' + c.id,
+          name: `группа «${c.name}» станет самостоятельной`,
+          inv: null,
+          gone: false,
+        }),
+      );
+      return [...live, ...children];
+    }
     const ghosts = comp.ghosts.map(
       (g): Row => ({
         key: 'g' + g.device_id,
@@ -68,6 +73,9 @@
     );
     return [...live, ...ghosts];
   });
+
+  // Двоеточие, если ниже будет список (или он ещё грузится); иначе точка.
+  const tail = $derived(loading || loadErr || rows.length > 0 ? ':' : '.');
 
   async function load() {
     loading = true;
