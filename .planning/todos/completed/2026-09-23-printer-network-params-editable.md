@@ -2,7 +2,19 @@
 created: 2026-09-23T00:00:00.000Z
 title: Редактирование сетевых параметров принтера (IP / SNMP community)
 area: feature
-resolves_phase: null
+resolves_phase: "41.13"
+resolved: 2026-11-05
+resolution: >
+  Закрыт Фазой 41.13 (printers-usb-host), доработка F-1: планы 41.13-09…12, решения
+  D-13 и D-15. Блок «SNMP / Сеть» доступен и при правке принтера; IP и community
+  пишутся на сервере отдельной операцией мимо exists-гарда (DevicePatch.printer_ip_address /
+  printer_community, normalize_printer_ip, set_network_in_tx), явный null стирает IP;
+  адрес вида «адрес:порт» отклоняется; IP и USB-хост независимы. Тесты
+  devices_printer_network, role_endpoint_matrix (Case 88), гейт check-printer-usb-host-field.
+  Живая проверка 20/20 пройдена (41.13-HUMAN-UAT.md, 2026-11-05). Перенесено при сверке
+  учёта по аудиту вехи v1.4 (2026-11-21). Не вошло и ведётся в аудите: INT-30 (смена
+  IP/community/USB-хоста не фиксируется в истории), SSRF на унаследованных «адрес:порт»
+  (принятый риск), протухший комментарий DeviceFormBody.svelte:1628.
 milestone: v1.4
 source: UAT чекпоинта плана 40.3-07 (живая проверка пользователем 2026-09-23)
 files:
