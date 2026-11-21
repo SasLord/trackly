@@ -1165,14 +1165,21 @@
       }
     } catch (e: unknown) {
       if (e && typeof e === 'object') {
-        const err = e as { code?: string; message?: string; details?: { field?: string } };
+        const err = e as {
+          code?: string;
+          message?: string;
+          details?: { field?: string; message?: string };
+        };
         if (err.code === 'VALIDATION' && err.details?.field === 'usb_host_device_id') {
           // Серверный текст не показываем: клиент подставляет фиксированный копирайт (T-41.13-23).
           fieldErrors = { ...fieldErrors, usb_host_device_id: HOST_REJECTED_ERROR };
           pushToast('error', HOST_REJECTED_ERROR);
         } else if (err.code === 'VALIDATION' && err.details?.field) {
-          fieldErrors = { ...fieldErrors, [err.details.field]: err.message ?? 'Ошибка' };
-          pushToast('error', err.message ?? 'Ошибка валидации');
+          // details.message — текст для человека; err.message — Display AppError
+          // с техническим префиксом «validation [поле]: …».
+          const text = err.details.message ?? err.message ?? 'Ошибка валидации';
+          fieldErrors = { ...fieldErrors, [err.details.field]: text };
+          pushToast('error', text);
         } else if (isRepairConflict(e)) {
           pushToast('error', REPAIR_CONFLICT_TOAST);
         } else if (err.code === 'OPTIMISTIC_LOCK_MISMATCH') {
