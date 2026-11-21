@@ -5,12 +5,17 @@
 //! Примитивы `pub(crate)`: их переиспользуют добавление в состав (план 11) и
 //! массовый перенос места (план 15, D-23).
 
-use rusqlite::Transaction;
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use trackly_core::domain::group_move_status::{
+    status_after_move, storage_transition, StorageTransition,
+};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::repairs::is_repair_exempt_status_code;
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
+use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
+use trackly_infra::repos::repairs_sqlite::SqliteRepairRepository;
 use trackly_infra::repos::{
     SqliteCartridgeRepository, SqliteDeviceRepository, SqliteGroupRepository,
     SqlitePlaceMovementsRepository, SqlitePlaceRepository,
@@ -75,6 +80,15 @@ pub(crate) struct GroupMoveOutcome {
     /// Старые и новые места без дублей; пусто, если ничего не менялось.
     pub changed_place_ids: Vec<i64>,
     pub batch_id: Option<String>,
+    /// D-34: устройства, у которых вместе с местом сменился статус.
+    #[allow(dead_code)]
+    pub status_changed_device_ids: Vec<i64>,
+}
+
+/// D-34: сдвиг статуса при переносе через границу «склад <-> не склад».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StatusShift {
+    pub transition: StorageTransition,
 }
 
 /// Итог применения места группы к одному устройству.
@@ -84,6 +98,58 @@ pub(crate) struct DevicePlaceChange {
     pub changed: bool,
     /// Прежнее место (имеет смысл только при `changed`).
     pub previous_place: Option<i64>,
+    /// D-34: вместе с местом сменился и статус.
+    pub status_changed: bool,
+}
+
+/// Единый признак «склад» (D-09, D-34): место или любой его предок с `is_storage`;
+/// удалённое складское место не считается, несуществующее место - не склад.
+pub(crate) fn place_is_storage_in_tx(conn: &Connection, place_id: i64) -> Result<bool, AppError> {
+    let n: i64 = conn
+        .query_row(
+            "WITH RECURSIVE anc(id) AS ( \
+                 SELECT id FROM places WHERE id = ?1 \
+                 UNION ALL \
+                 SELECT p.parent_id FROM places p JOIN anc a ON p.id = a.id \
+                 WHERE p.parent_id IS NOT NULL \
+             ) \
+             SELECT COUNT(*) FROM places p2 JOIN anc ON p2.id = anc.id \
+             WHERE p2.is_storage = 1 AND p2.deleted_at_utc IS NULL",
+            params![place_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)?;
+    Ok(n > 0)
+}
+
+/// Поедет ли устройство с таким статусом и местом (общее правило примитива и
+/// перечисления для предпросмотра): исключённый по ремонту статус едет только вместе с
+/// группой, и место обязано действительно поменяться.
+fn device_will_move(
+    before_status_code: &str,
+    before_place: Option<i64>,
+    target_place: i64,
+    group_old_place: Option<i64>,
+) -> bool {
+    let rides = group_old_place.is_some() && before_place == group_old_place;
+    if is_repair_exempt_status_code(before_status_code) && !rides {
+        return false;
+    }
+    before_place != Some(target_place)
+}
+
+fn status_id_by_code_in_tx(tx: &Transaction<'_>, code: &str) -> Result<i64, AppError> {
+    tx.query_row(
+        "SELECT id FROM device_statuses WHERE code = ?1",
+        params![code],
+        |r| r.get(0),
+    )
+    .optional()
+    .map_err(map_rusqlite)?
+    .ok_or_else(|| AppError::Validation {
+        field: "status".to_string(),
+        message: format!("Статус «{code}» не найден в справочнике."),
+    })
 }
 
 /// Поставить устройству место группы.
@@ -116,6 +182,7 @@ pub(crate) fn apply_group_place_to_device_in_tx(
         now,
         cause,
         None,
+        None,
     )
 }
 
@@ -136,6 +203,7 @@ fn apply_group_place_inner(
     now: i64,
     cause: GroupMoveCause,
     group_old_place: Option<i64>,
+    status_shift: Option<StatusShift>,
 ) -> Result<DevicePlaceChange, AppError> {
     let before = deps.devices.get_in_tx(tx, device_id)?;
     let rides_with_group = group_old_place.is_some() && before.place_id == group_old_place;
@@ -146,19 +214,44 @@ fn apply_group_place_inner(
         return Ok(DevicePlaceChange {
             changed: false,
             previous_place: before.place_id,
+            status_changed: false,
         });
     }
     if before.place_id == Some(target_place) {
         return Ok(DevicePlaceChange {
             changed: false,
             previous_place: before.place_id,
+            status_changed: false,
         });
+    }
+
+    debug_assert!(device_will_move(
+        &before.status_code,
+        before.place_id,
+        target_place,
+        group_old_place
+    ));
+
+    // D-34: новый статус решает чистое правило; устройство с открытой ремонтной заявкой
+    // статус не меняет (его ведёт ремонт).
+    let mut new_status_id = before.status_id;
+    let mut status_to: Option<&'static str> = None;
+    if let Some(shift) = status_shift {
+        if let Some(code) = status_after_move(Some(shift.transition), &before.status_code) {
+            if SqliteRepairRepository
+                .open_repair_request_id(tx, device_id)?
+                .is_none()
+            {
+                new_status_id = status_id_by_code_in_tx(tx, code)?;
+                status_to = Some(code);
+            }
+        }
     }
 
     deps.devices.update_status_and_place_in_tx(
         tx,
         device_id,
-        before.status_id,
+        new_status_id,
         Some(target_place),
         now,
     )?;
@@ -212,9 +305,32 @@ fn apply_group_place_inner(
         cause.act_id,
     )?;
 
+    if let Some(to) = status_to {
+        let payload = serde_json::json!({
+            "group_id": group_id,
+            "batch_id": batch_id,
+            "status_from": before.status_code,
+            "status_to": to,
+        });
+        deps.audit.insert(
+            tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: device_id,
+                action: "custom:group_move_status_changed",
+                user_id,
+                before_json: None,
+                after_json: None,
+                payload_json: Some(payload.to_string()),
+                created_at_utc: now,
+            },
+        )?;
+    }
+
     Ok(DevicePlaceChange {
         changed: true,
         previous_place: before.place_id,
+        status_changed: status_to.is_some(),
     })
 }
 
@@ -257,6 +373,31 @@ pub(crate) fn move_group_in_tx(
     user_id: Option<i64>,
     now: i64,
 ) -> Result<GroupMoveOutcome, AppError> {
+    move_group_with_status_in_tx(
+        tx,
+        deps,
+        group_id,
+        expected_version,
+        target_place_id,
+        user_id,
+        now,
+        false,
+    )
+}
+
+/// То же, что [`move_group_in_tx`], но при `change_status` и переходе «склад <-> не склад»
+/// устройства с «обычным» статусом получают новый (D-34); решение и перечень - на сервере.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn move_group_with_status_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group_id: i64,
+    expected_version: Option<i64>,
+    target_place_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+    change_status: bool,
+) -> Result<GroupMoveOutcome, AppError> {
     let group = deps.groups.get_group_in_tx(tx, group_id)?;
 
     if let Some(expected) = expected_version {
@@ -284,8 +425,21 @@ pub(crate) fn move_group_in_tx(
 
     check_target_place(tx, deps, target_place_id)?;
 
+    let status_shift = if change_status {
+        match group.place_id {
+            Some(from) => storage_transition(
+                place_is_storage_in_tx(tx, from)?,
+                place_is_storage_in_tx(tx, target_place_id)?,
+            )
+            .map(|transition| StatusShift { transition }),
+            None => None,
+        }
+    } else {
+        None
+    };
+
     let batch_id = uuid::Uuid::new_v4().to_string();
-    let outcome = propagate_group_place_in_tx(
+    let outcome = propagate_group_place_with_shift_in_tx(
         tx,
         deps,
         group_id,
@@ -295,6 +449,7 @@ pub(crate) fn move_group_in_tx(
         user_id,
         now,
         GroupMoveCause::GROUP,
+        status_shift,
     )?;
     if outcome.batch_id.is_none() {
         return Ok(outcome);
@@ -407,11 +562,29 @@ pub(crate) fn propagate_group_place_in_tx(
     now: i64,
     cause: GroupMoveCause,
 ) -> Result<GroupMoveOutcome, AppError> {
-    let group = deps.groups.get_group_in_tx(tx, group_id)?;
+    propagate_group_place_with_shift_in_tx(
+        tx,
+        deps,
+        group_id,
+        target_place,
+        old_place,
+        batch_id,
+        user_id,
+        now,
+        cause,
+        None,
+    )
+}
+
+/// Группы и устройства поддерева за вычетом блоков «в отъезде» (D-15/D-32).
+fn group_move_sets(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group_id: i64,
+    old_place: Option<i64>,
+) -> Result<(Vec<i64>, Vec<i64>), AppError> {
     let mut group_ids = deps.groups.subtree_group_ids_in_tx(tx, group_id)?;
     let mut device_ids = deps.groups.subtree_device_ids_in_tx(tx, group_id)?;
-    let group_moves = old_place != Some(target_place);
-
     // Phase 41.4 (D-15/D-32): вложенный блок «в отъезде» (его место отличается от
     // места переносимой группы) остаётся на месте вместе со всем поддеревом.
     if old_place.is_some() {
@@ -425,6 +598,63 @@ pub(crate) fn propagate_group_place_in_tx(
             device_ids.retain(|id| !away_devices.contains(id));
         }
     }
+    Ok((group_ids, device_ids))
+}
+
+/// D-34: устройства, статус которых примитив поменяет при тех же аргументах (без записи).
+/// Основа числа в подписи предпросмотра: то же множество, что у фактического переноса.
+#[allow(dead_code)]
+pub(crate) fn status_shift_candidates_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group_id: i64,
+    old_place: Option<i64>,
+    target_place: i64,
+    transition: StorageTransition,
+) -> Result<Vec<i64>, AppError> {
+    let (_, device_ids) = group_move_sets(tx, deps, group_id, old_place)?;
+    let mut out = Vec::new();
+    for device_id in device_ids {
+        let before = deps.devices.get_in_tx(tx, device_id)?;
+        if !device_will_move(
+            &before.status_code,
+            before.place_id,
+            target_place,
+            old_place,
+        ) {
+            continue;
+        }
+        if status_after_move(Some(transition), &before.status_code).is_none() {
+            continue;
+        }
+        if SqliteRepairRepository
+            .open_repair_request_id(tx, device_id)?
+            .is_some()
+        {
+            continue;
+        }
+        out.push(device_id);
+    }
+    Ok(out)
+}
+
+/// [`propagate_group_place_in_tx`] со сдвигом статуса (D-34); `None` - прежнее поведение.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn propagate_group_place_with_shift_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group_id: i64,
+    target_place: i64,
+    old_place: Option<i64>,
+    batch_id: &str,
+    user_id: Option<i64>,
+    now: i64,
+    cause: GroupMoveCause,
+    status_shift: Option<StatusShift>,
+) -> Result<GroupMoveOutcome, AppError> {
+    let group = deps.groups.get_group_in_tx(tx, group_id)?;
+    let (group_ids, device_ids) = group_move_sets(tx, deps, group_id, old_place)?;
+    let group_moves = old_place != Some(target_place);
 
     let mut changed_places: Vec<i64> = Vec::new();
 
@@ -453,6 +683,7 @@ pub(crate) fn propagate_group_place_in_tx(
     }
 
     let mut moved_devices = 0;
+    let mut status_changed_device_ids: Vec<i64> = Vec::new();
     for device_id in &device_ids {
         let change = apply_group_place_inner(
             tx,
@@ -466,9 +697,13 @@ pub(crate) fn propagate_group_place_in_tx(
             now,
             cause,
             old_place,
+            status_shift,
         )?;
         if change.changed {
             moved_devices += 1;
+            if change.status_changed {
+                status_changed_device_ids.push(*device_id);
+            }
             if let Some(p) = change.previous_place {
                 push_unique(&mut changed_places, p);
             }
@@ -489,6 +724,7 @@ pub(crate) fn propagate_group_place_in_tx(
         },
         changed_place_ids: changed_places,
         batch_id: Some(batch_id.to_string()),
+        status_changed_device_ids,
     })
 }
 
@@ -653,5 +889,368 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+    // ---------------------------------------------------------------- D-34
+
+    const SHELF: i64 = 4;
+    const WORKSHOP: i64 = 5;
+    const ALL_CODES: [&str; 6] = [
+        "на_складе",
+        "в_работе",
+        "на_ремонте",
+        "в_ремонте",
+        "на_списание",
+        "списано",
+    ];
+
+    /// `seed` + склад «Склад А» (STORE) с дочерним местом «Полка 3» и «Мастерская»
+    /// (WORKSHOP); группы и три исходных устройства переставлены на `base`.
+    fn seed_d34(conn: &Connection, base: i64) {
+        seed(conn);
+        conn.execute(
+            "UPDATE places SET is_storage = 1 WHERE id = ?1",
+            params![STORE],
+        )
+        .unwrap();
+        for (id, parent, name) in [
+            (SHELF, Some(STORE), "Полка 3"),
+            (WORKSHOP, None, "Мастерская"),
+        ] {
+            conn.execute(
+                "INSERT INTO places (id, parent_id, kind, name, is_storage, created_at_utc, \
+                 updated_at_utc) VALUES (?1, ?2, 'room', ?3, 0, ?4, ?4)",
+                params![id, parent, name, NOW],
+            )
+            .unwrap();
+        }
+        conn.execute("UPDATE groups SET place_id = ?1", params![base])
+            .unwrap();
+        conn.execute("UPDATE devices SET place_id = ?1", params![base])
+            .unwrap();
+    }
+
+    fn add_device(conn: &Connection, id: i64, group: i64, place: i64, code: &str) {
+        conn.execute(
+            "INSERT INTO devices (id, type_id, name, inventory_number, place_id, status_id, \
+             created_at_utc, updated_at_utc, version) VALUES (?1, 1, ?2, ?3, ?4, \
+             (SELECT id FROM device_statuses WHERE code = ?5), ?6, ?6, 1)",
+            params![
+                id,
+                format!("ПК-{id:05}"),
+                format!("ИНВ-{id:05}"),
+                place,
+                code,
+                NOW
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO group_devices (device_id, group_id, added_at_utc) VALUES (?1, ?2, ?3)",
+            params![id, group, NOW],
+        )
+        .unwrap();
+    }
+
+    fn dev_code(conn: &Connection, id: i64) -> String {
+        conn.query_row(
+            "SELECT s.code FROM devices d JOIN device_statuses s ON s.id = d.status_id \
+             WHERE d.id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn snapshot(conn: &Connection) -> Vec<(i64, Option<i64>, String)> {
+        let ids: Vec<i64> = conn
+            .prepare("SELECT id FROM devices ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        ids.into_iter()
+            .map(|id| (id, dev_place(conn, id), dev_code(conn, id)))
+            .collect()
+    }
+
+    /// Устройства 10..21: по одному на каждую пару (код, «на месте группы»/«в мастерской»);
+    /// чётные в корневой группе, нечётные во вложенной. Возвращает (id, код, у места группы).
+    fn add_matrix(conn: &Connection, base: i64) -> Vec<(i64, &'static str, bool)> {
+        let mut out = Vec::new();
+        let mut id = 10;
+        for code in ALL_CODES {
+            for at_group in [true, false] {
+                let group = if id % 2 == 0 { ROOT } else { NESTED };
+                add_device(
+                    conn,
+                    id,
+                    group,
+                    if at_group { base } else { WORKSHOP },
+                    code,
+                );
+                out.push((id, code, at_group));
+                id += 1;
+            }
+        }
+        out
+    }
+
+    fn expected_status(t: StorageTransition, code: &str) -> String {
+        status_after_move(Some(t), code).unwrap_or(code).to_string()
+    }
+
+    fn run_matrix(from: i64, to: i64, t: StorageTransition) {
+        let (mut conn, _g) = fresh_db();
+        seed_d34(&conn, from);
+        let matrix = add_matrix(&conn, from);
+        let before = snapshot(&conn);
+        let deps = GroupMoveDeps::new();
+
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let predicted = status_shift_candidates_in_tx(&tx, &deps, ROOT, Some(from), to, t).unwrap();
+        let out = move_group_with_status_in_tx(&tx, &deps, ROOT, None, to, None, NOW, true)
+            .expect("move");
+        tx.commit().unwrap();
+
+        let after = snapshot(&conn);
+        let mut actual_changed: Vec<i64> = before
+            .iter()
+            .zip(after.iter())
+            .filter(|(b, a)| b.2 != a.2)
+            .map(|(b, _)| b.0)
+            .collect();
+        actual_changed.sort();
+        let mut p = predicted.clone();
+        p.sort();
+        let mut o = out.status_changed_device_ids.clone();
+        o.sort();
+        assert_eq!(p, actual_changed, "перечисление == фактическое");
+        assert_eq!(o, actual_changed, "outcome == фактическое");
+
+        for (id, code, at_group) in matrix {
+            let exempt = is_repair_exempt_status_code(code);
+            let moves = !exempt || at_group;
+            let (_, place, new_code) = after.iter().find(|r| r.0 == id).unwrap();
+            let (_, old_place, _) = before.iter().find(|r| r.0 == id).unwrap();
+            if moves {
+                assert_eq!(*place, Some(to), "{code} at_group={at_group}: место");
+                assert_eq!(*new_code, expected_status(t, code), "{code}: статус");
+            } else {
+                assert_eq!(place, old_place, "{code}: остаётся на месте");
+                assert_eq!(new_code, code, "{code}: статус не меняется");
+            }
+        }
+        let audits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'custom:group_move_status_changed'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(audits as usize, actual_changed.len());
+    }
+
+    #[test]
+    fn shift_to_work_table() {
+        run_matrix(STORE, OFFICE, StorageTransition::ToWork);
+    }
+
+    #[test]
+    fn shift_to_work_from_child_of_storage() {
+        run_matrix(SHELF, OFFICE, StorageTransition::ToWork);
+    }
+
+    #[test]
+    fn shift_to_storage_table() {
+        run_matrix(OFFICE, STORE, StorageTransition::ToStorage);
+    }
+
+    #[test]
+    fn shift_to_storage_child_place() {
+        run_matrix(OFFICE, SHELF, StorageTransition::ToStorage);
+    }
+
+    #[test]
+    fn exempt_status_at_foreign_place_stays_incl_write_off() {
+        let (mut conn, _g) = fresh_db();
+        seed_d34(&conn, STORE);
+        add_device(&conn, 30, ROOT, WORKSHOP, "на_списание");
+        add_device(&conn, 31, ROOT, STORE, "на_списание");
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        move_group_with_status_in_tx(
+            &tx,
+            &GroupMoveDeps::new(),
+            ROOT,
+            None,
+            OFFICE,
+            None,
+            NOW,
+            true,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        assert_eq!(dev_place(&conn, 30), Some(WORKSHOP));
+        assert_eq!(dev_code(&conn, 30), "на_списание");
+        assert_eq!(dev_place(&conn, 31), Some(OFFICE));
+        assert_eq!(dev_code(&conn, 31), "на_списание");
+    }
+
+    #[test]
+    fn open_repair_request_keeps_status_but_moves_place() {
+        let (mut conn, _g) = fresh_db();
+        seed_d34(&conn, STORE);
+        add_device(&conn, 40, ROOT, STORE, "на_складе");
+        add_device(&conn, 41, ROOT, STORE, "на_складе");
+        conn.execute(
+            "INSERT INTO users (login, full_name, role, created_at_utc, updated_at_utc) \
+             VALUES ('ivanov', 'Иванов И.И.', 'employee', ?1, ?1)",
+            params![NOW],
+        )
+        .unwrap();
+        let user = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO requests (request_type, status, requested_by_user_id, \
+             printer_device_id, created_at_utc, updated_at_utc) \
+             VALUES ('repair', 'open', ?1, 40, ?2, ?2)",
+            params![user, NOW],
+        )
+        .unwrap();
+        let deps = GroupMoveDeps::new();
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let cands = status_shift_candidates_in_tx(
+            &tx,
+            &deps,
+            ROOT,
+            Some(STORE),
+            OFFICE,
+            StorageTransition::ToWork,
+        )
+        .unwrap();
+        assert!(!cands.contains(&40) && cands.contains(&41), "{cands:?}");
+        let out =
+            move_group_with_status_in_tx(&tx, &deps, ROOT, None, OFFICE, None, NOW, true).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(dev_place(&conn, 40), Some(OFFICE));
+        assert_eq!(dev_code(&conn, 40), "на_складе");
+        assert_eq!(dev_code(&conn, 41), "в_работе");
+        assert!(!out.status_changed_device_ids.contains(&40));
+        assert!(out.status_changed_device_ids.contains(&41));
+    }
+
+    #[test]
+    fn no_storage_transition_or_flag_off_changes_no_status() {
+        // Оба места не склад / оба склад / флаг выключен.
+        for (from, to, flag) in [
+            (OFFICE, WORKSHOP, true),
+            (STORE, SHELF, true),
+            (STORE, OFFICE, false),
+            (OFFICE, STORE, false),
+        ] {
+            let (mut conn, _g) = fresh_db();
+            seed_d34(&conn, from);
+            add_matrix(&conn, from);
+            let before: Vec<String> = snapshot(&conn).into_iter().map(|r| r.2).collect();
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            let out = move_group_with_status_in_tx(
+                &tx,
+                &GroupMoveDeps::new(),
+                ROOT,
+                None,
+                to,
+                None,
+                NOW,
+                flag,
+            )
+            .unwrap();
+            tx.commit().unwrap();
+            let after: Vec<String> = snapshot(&conn).into_iter().map(|r| r.2).collect();
+            assert_eq!(before, after, "{from}->{to} flag={flag}");
+            assert!(out.status_changed_device_ids.is_empty());
+        }
+    }
+
+    #[test]
+    fn legacy_wrappers_never_shift_status() {
+        let (mut conn, _g) = fresh_db();
+        seed_d34(&conn, STORE);
+        add_device(&conn, 50, ROOT, STORE, "на_складе");
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let out =
+            move_group_in_tx(&tx, &GroupMoveDeps::new(), ROOT, None, OFFICE, None, NOW).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(dev_place(&conn, 50), Some(OFFICE));
+        assert_eq!(dev_code(&conn, 50), "на_складе");
+        assert!(out.status_changed_device_ids.is_empty());
+    }
+
+    #[test]
+    fn missing_target_status_rolls_everything_back() {
+        let (mut conn, _g) = fresh_db();
+        seed_d34(&conn, STORE);
+        add_device(&conn, 60, ROOT, STORE, "на_складе");
+        add_device(&conn, 61, NESTED, STORE, "на_складе");
+        conn.execute(
+            "UPDATE device_statuses SET code = 'нет_такого' WHERE code = 'в_работе'",
+            [],
+        )
+        .unwrap();
+        let before = snapshot(&conn);
+        let groups_before = (grp_place(&conn, ROOT), grp_place(&conn, NESTED));
+        {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            let err = move_group_with_status_in_tx(
+                &tx,
+                &GroupMoveDeps::new(),
+                ROOT,
+                None,
+                OFFICE,
+                None,
+                NOW,
+                true,
+            )
+            .expect_err("нет статуса");
+            assert!(matches!(err, AppError::Validation { .. }), "{err:?}");
+            // tx сбрасывается без commit: откат
+        }
+        assert_eq!(before, snapshot(&conn));
+        assert_eq!(
+            groups_before,
+            (grp_place(&conn, ROOT), grp_place(&conn, NESTED))
+        );
+    }
+
+    #[test]
+    fn place_is_storage_table() {
+        let (conn, _g) = fresh_db();
+        seed_d34(&conn, OFFICE);
+        assert!(place_is_storage_in_tx(&conn, STORE).unwrap());
+        assert!(
+            place_is_storage_in_tx(&conn, SHELF).unwrap(),
+            "через предка"
+        );
+        assert!(!place_is_storage_in_tx(&conn, OFFICE).unwrap());
+        assert!(!place_is_storage_in_tx(&conn, 9999).unwrap());
+        conn.execute(
+            "UPDATE places SET deleted_at_utc = ?1 WHERE id = ?2",
+            params![NOW, STORE],
+        )
+        .unwrap();
+        assert!(
+            !place_is_storage_in_tx(&conn, SHELF).unwrap(),
+            "удалённый склад не считается"
+        );
     }
 }

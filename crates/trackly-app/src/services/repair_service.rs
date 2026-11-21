@@ -40,7 +40,9 @@ use crate::dto::repair::{
     RepairStateDto, RepairTransitionResultDto, RepairVisitDto,
 };
 use crate::dto::request::RequestDto;
-use crate::services::group_place::{move_group_in_tx, move_nested_block_in_tx, GroupMoveDeps};
+use crate::services::group_place::{
+    move_group_in_tx, move_nested_block_in_tx, place_is_storage_in_tx, GroupMoveDeps,
+};
 use crate::services::number_template_service::issue_repair_act_number_in_tx;
 
 /// Ключи `app_settings` для последних выбранных мест (D-25).
@@ -2416,21 +2418,8 @@ fn release_device_in_tx(
 /// место (оно само или любой предок с `is_storage`) даёт «На складе», остальное
 /// «В работе».
 fn status_code_for_place(conn: &Connection, place_id: i64) -> Result<&'static str, AppError> {
-    let n: i64 = conn
-        .query_row(
-            "WITH RECURSIVE anc(id) AS ( \
-                 SELECT id FROM places WHERE id = ?1 \
-                 UNION ALL \
-                 SELECT p.parent_id FROM places p JOIN anc a ON p.id = a.id \
-                 WHERE p.parent_id IS NOT NULL \
-             ) \
-             SELECT COUNT(*) FROM places p2 JOIN anc ON p2.id = anc.id \
-             WHERE p2.is_storage = 1 AND p2.deleted_at_utc IS NULL",
-            params![place_id],
-            |r| r.get(0),
-        )
-        .map_err(map_rusqlite)?;
-    Ok(if n > 0 {
+    let storage = place_is_storage_in_tx(conn, place_id)?;
+    Ok(if storage {
         DEVICE_STATUS_CODE_IN_STORAGE
     } else {
         DEVICE_STATUS_CODE_IN_USE
