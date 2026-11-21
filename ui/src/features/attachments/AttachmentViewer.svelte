@@ -258,6 +258,10 @@
             />
           </button>
         {:else if isPdf}
+          <!-- PDF-IFRAME-NO-SANDBOX: принятый риск 41.3-SECURITY.md (набл. 7). sandbox не
+               ставится: замер 2026-11-21 — Chrome и Edge (движок WebView2) не рендерят
+               PDF в iframe ни с одним вариантом sandbox. Защита — тип строго
+               application/pdf + nosniff на сервере. Гейт check-attachments-block G15. -->
           <iframe class="pdf" src={fileUrl} title={current.originalName}></iframe>
         {/if}
       {/if}

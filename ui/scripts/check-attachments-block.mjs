@@ -32,6 +32,12 @@
 //        действие из приложения, а не удалённая учётная запись), литерал
 //        «Пользователь удалён» в плитке и просмотрщике не встречается;
 //   [G14] (41.5 D-16) плитка показывает значок «Из чата» по item.fromMessage.
+//   [G15] (41.3-SECURITY набл. 7, quick 261121-hjw) iframe предпросмотра PDF в
+//        AttachmentViewer либо несёт атрибут sandbox, либо рядом с ним (в
+//        пределах 6 строк выше) стоит маркер принятого риска
+//        `PDF-IFRAME-NO-SANDBOX: принятый риск 41.3-SECURITY.md` — одно из
+//        двух. Замер 2026-11-21: Chrome и Edge (движок WebView2) не рендерят
+//        PDF в iframe ни с одним вариантом sandbox, поэтому сейчас стоит маркер.
 //
 // Счёт имён слеп к порядку, поэтому G4/G5 сравнивают ПОЗИЦИИ в теле функции,
 // а самопроверка (--selftest) включает мутации-перестановки, не только удаление.
@@ -281,7 +287,35 @@ export function check(files) {
   if (!/\{#if item\.fromMessage\}/.test(tile) || !tile.includes('Из чата')) {
     v.push({ code: 'G14', msg: 'AttachmentTile: нет значка «Из чата» по item.fromMessage (D-16)' });
   }
+  v.push(...checkPdfIframe(files['AttachmentViewer.svelte'], src['AttachmentViewer.svelte']));
   return v;
+}
+
+/** Маркер принятого риска «iframe PDF без sandbox» (41.3-SECURITY.md, набл. 7). */
+export const PDF_IFRAME_RISK_MARKER = 'PDF-IFRAME-NO-SANDBOX: принятый риск 41.3-SECURITY.md';
+
+/** G15: iframe PDF — sandbox ИЛИ маркер принятого риска рядом (raw-текст: маркер — комментарий). */
+function checkPdfIframe(raw, stripped) {
+  const tagRe = /<iframe\b[^>]*>/g;
+  const tags = [...stripped.matchAll(tagRe)];
+  if (tags.length === 0) {
+    return [{ code: 'G15', msg: 'AttachmentViewer: iframe предпросмотра PDF не найден' }];
+  }
+  const out = [];
+  for (const m of tags) {
+    if (/\ssandbox\b/.test(m[0])) continue;
+    // stripComments сохраняет длину и переводы строк: индекс тот же, что в raw.
+    const lineNo = raw.slice(0, m.index).split('\n').length;
+    const lines = raw.split('\n');
+    const window = lines.slice(Math.max(0, lineNo - 7), lineNo).join('\n');
+    if (!window.includes(PDF_IFRAME_RISK_MARKER)) {
+      out.push({
+        code: 'G15',
+        msg: 'AttachmentViewer: iframe PDF без sandbox и без маркера принятого риска (41.3-SECURITY.md, набл. 7)',
+      });
+    }
+  }
+  return out;
 }
 
 function readFiles(dir) {
@@ -539,6 +573,35 @@ function selftest(files) {
         ),
     },
     {
+      name: 'iframe PDF: убраны и sandbox, и маркер принятого риска',
+      expect: 'G15',
+      make: () =>
+        mutate(
+          files,
+          'AttachmentViewer.svelte',
+          PDF_IFRAME_RISK_MARKER,
+          'просто комментарий',
+          'viewer pdf risk marker',
+        ),
+    },
+    {
+      name: 'iframe PDF: маркер уехал далеко от iframe',
+      expect: 'G15',
+      make: () => {
+        const moved = mutate(
+          files,
+          'AttachmentViewer.svelte',
+          PDF_IFRAME_RISK_MARKER,
+          'просто комментарий',
+          'viewer pdf risk marker (move)',
+        );
+        return {
+          ...moved,
+          'AttachmentViewer.svelte': `<!-- ${PDF_IFRAME_RISK_MARKER} -->\n${moved['AttachmentViewer.svelte']}`,
+        };
+      },
+    },
+    {
       name: 'пропал файл карточки (не «пропуск», а красный)',
       expect: 'G0',
       make: () => {
@@ -558,6 +621,28 @@ function selftest(files) {
     },
   ];
   let bad = 0;
+  // G15, вторая ветка «одно из двух»: sandbox без маркера — зелёный.
+  {
+    const noMarker = mutate(
+      files,
+      'AttachmentViewer.svelte',
+      PDF_IFRAME_RISK_MARKER,
+      'просто комментарий',
+      'viewer pdf risk marker (sandbox branch)',
+    );
+    const withSandbox = mutate(
+      noMarker,
+      'AttachmentViewer.svelte',
+      '<iframe class="pdf"',
+      '<iframe sandbox="" class="pdf"',
+      'viewer pdf iframe tag',
+    );
+    const g15 = check(withSandbox).filter((x) => x.code === 'G15');
+    console.log(
+      `${TAG} контроль «sandbox без маркера»: ${g15.length === 0 ? 'зелёный' : 'КРАСНЫЙ (ошибка гейта)'}`,
+    );
+    if (g15.length !== 0) bad++;
+  }
   for (const m of mutants) {
     const codes = check(m.make()).map((x) => x.code);
     const ok = codes.includes(m.expect);
