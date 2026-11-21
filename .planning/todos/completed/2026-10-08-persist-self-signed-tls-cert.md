@@ -89,3 +89,28 @@ macOS-стенде и был зафиксирован как отложенна�
   `DEVELOPER_DIR=/Library/Developer/CommandLineTools`.
 - `cargo fmt --all -- --check` имеет дрейф ДО задачи — сверять только свои файлы.
 - Перед коммитом — `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256`.
+
+## Решено quick 261121-hei (2026-11-21)
+
+`tls::load_or_generate_self_signed(dir, host)` подключена на всех трёх путях
+(старт в `main.rs`, HTTP `server_toggle` в `http/settings.rs`, Tauri
+`server_toggle` в `tauri_cmds/auth.rs`); мёртвый блок `let _ = std::fs::write(...)`
+в `main.rs` удалён. Решения:
+
+- **Имена и каталог:** `server.crt`, `server.key` и sidecar `server.sans` в
+  `ctx.paths.exe_dir()` — портативно, без `%APPDATA%`.
+- **Смена host:** `server.sans` хранит набор SAN из `collect_subject_alt_names(host)`;
+  переиспользуем, только если сохранённый набор как множество равен текущему.
+  Это покрывает смену host в Настройках и смену LAN-IP/имени машины при
+  host = `0.0.0.0`.
+- **Истечение:** rcgen 0.14.8 `generate_simple_self_signed` ставит
+  `not_after = 4096-01-01` (`CertificateParams::default`), отдельной проверки нет.
+- **Ключи конфига:** `cert_path`/`key_path` не трогаются и дефолтом не
+  доопределяются; собственный сертификат задаётся как раньше.
+- **Права ключа:** unix — `0o600` (и для уже существующего файла); Windows —
+  наследуются ACL портативного каталога, отдельного кода нет (принятый остаток).
+- **Сбои:** испорченный/неполный набор файлов → новая генерация; ошибки записи
+  → `tracing::warn!` с путём, сервер всё равно стартует. Sidecar удаляется
+  первым и пишется последним, чтобы частичная запись не дала ложного совпадения.
+- Живая проверка на Windows (сертификат стабилен между перезапусками сервера,
+  тост WS гаснет при возврате сервера) — не выполнялась.

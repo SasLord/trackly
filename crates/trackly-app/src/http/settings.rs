@@ -272,8 +272,11 @@ pub async fn build_server_toggle(
     // Построить TLS bundle.
     let tls_bundle = if net.cert_path.is_empty() {
         let host = net.host.clone();
-        tls::generate_self_signed(&host).map_err(|e| AppError::Internal {
-            source_chain: format!("generate_self_signed: {e}"),
+        // Сохранённый в exe_dir сертификат переиспользуется (todo 2026-10-08).
+        tls::load_or_generate_self_signed(ctx.paths.exe_dir(), &host).map_err(|e| {
+            AppError::Internal {
+                source_chain: format!("load_or_generate_self_signed: {e}"),
+            }
         })?
     } else {
         // WR-01: explicit/validated key-path resolution (no brittle .replace heuristic).

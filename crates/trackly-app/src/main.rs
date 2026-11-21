@@ -193,18 +193,17 @@ fn main() -> anyhow::Result<()> {
             // `Path::with_extension` (correct for .crt/.pem/.cer/.cert) or taken from an
             // explicit `server.key_path` — not a brittle string `.replace()` that would
             // silently keep the cert path for unusual extensions and read the wrong file.
+            // Empty cert_path: reuse the self-signed cert saved next to the exe
+            // (server.crt/server.key/server.sans), regenerate only when missing,
+            // corrupt or the SAN set changed (todo 2026-10-08, quick 261121-hei).
             let tls_bundle = if cert_path.is_empty() {
-                trackly_app::server::tls::generate_self_signed(&host)?
+                trackly_app::server::tls::load_or_generate_self_signed(
+                    ctx.paths.exe_dir(),
+                    &host,
+                )?
             } else {
                 trackly_app::server::tls::load_from_files(&cert_path, &key_path)?
             };
-
-            // Save generated cert/key to exe_dir for reuse.
-            if cert_path.is_empty() {
-                let exe_dir = ctx.paths.exe_dir();
-                let _ = std::fs::write(exe_dir.join("server.crt"), &tls_bundle.cert_pem);
-                let _ = std::fs::write(exe_dir.join("server.key"), &tls_bundle.key_pem);
-            }
 
             // Build session store and router.
             let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());

@@ -245,6 +245,161 @@ pub fn generate_self_signed(host: &str) -> anyhow::Result<TlsBundle> {
     })
 }
 
+/// Имя файла сохранённого самоподписанного сертификата в каталоге exe.
+pub const SELF_SIGNED_CERT_FILE: &str = "server.crt";
+/// Имя файла его приватного ключа.
+pub const SELF_SIGNED_KEY_FILE: &str = "server.key";
+/// Sidecar: набор SAN, под который выпущен сохранённый сертификат (строка на SAN).
+pub const SELF_SIGNED_SANS_FILE: &str = "server.sans";
+
+/// Загрузить сохранённый самоподписанный сертификат из `dir` или выпустить
+/// новый и сохранить его туда (todo 2026-10-08, quick 261121-hei).
+///
+/// Вызывается при ПУСТОМ `[server].cert_path` на всех трёх путях старта
+/// сервера (старт приложения, HTTP `server_toggle`, Tauri `server_toggle`) —
+/// чтобы перезапуск сервера отдавал LAN-браузерам тот же сертификат, и ранее
+/// принятое пользователями исключение (а с ним `wss://`) продолжало работать.
+///
+/// Принятые решения:
+/// - **Каталог и имена.** `dir` = каталог исполняемого файла (portable, без
+///   `%APPDATA%`): `server.crt`, `server.key` и sidecar `server.sans`. Ключи
+///   конфига `cert_path`/`key_path` не трогаются и дефолтом не доопределяются —
+///   собственный сертификат по-прежнему задаётся через `cert_path`.
+/// - **Смена host / LAN-IP.** В `server.sans` лежит набор SAN из
+///   [`collect_subject_alt_names`]. Переиспользуем, только если сохранённый
+///   набор как МНОЖЕСТВО равен текущему: это ловит и смену host в Настройках,
+///   и смену LAN-IP/имени машины при host = `0.0.0.0` (туда входят реальные адреса).
+/// - **Срок.** `rcgen::generate_simple_self_signed` (rcgen 0.14) ставит
+///   `not_after = 4096-01-01` (проверено по исходнику `CertificateParams::default`),
+///   поэтому отдельной проверки истечения нет.
+/// - **Права ключа.** Unix — файл ключа `0o600`. Windows — наследуются ACL
+///   портативного каталога; отдельного кода нет (принятый остаток).
+/// - **Порча/отсутствие файлов** — молча не падаем: любой сбой загрузки ведёт к
+///   новой генерации. Ошибки ЗАПИСИ уходят в `tracing::warn!` с путём, но bundle
+///   всё равно возвращается — сервер должен стартовать. Ключ не логируется.
+pub fn load_or_generate_self_signed(
+    dir: &std::path::Path,
+    host: &str,
+) -> anyhow::Result<TlsBundle> {
+    let cert_path = dir.join(SELF_SIGNED_CERT_FILE);
+    let key_path = dir.join(SELF_SIGNED_KEY_FILE);
+    let sans_path = dir.join(SELF_SIGNED_SANS_FILE);
+    let wanted = collect_subject_alt_names(host);
+
+    if let Some(bundle) = try_load_saved(&cert_path, &key_path, &sans_path, &wanted) {
+        tracing::info!(
+            path = %cert_path.display(),
+            "TLS: переиспользован сохранённый самоподписанный сертификат"
+        );
+        return Ok(bundle);
+    }
+
+    let bundle = generate_self_signed(host)?;
+    save_self_signed(&cert_path, &key_path, &sans_path, &bundle, &wanted);
+    tracing::info!(
+        path = %cert_path.display(),
+        "TLS: выпущен новый самоподписанный сертификат"
+    );
+    Ok(bundle)
+}
+
+fn san_set(sans: &[String]) -> std::collections::BTreeSet<&str> {
+    sans.iter().map(String::as_str).collect()
+}
+
+fn try_load_saved(
+    cert_path: &std::path::Path,
+    key_path: &std::path::Path,
+    sans_path: &std::path::Path,
+    wanted: &[String],
+) -> Option<TlsBundle> {
+    if !(cert_path.is_file() && key_path.is_file() && sans_path.is_file()) {
+        return None;
+    }
+    let saved_raw = match std::fs::read_to_string(sans_path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %sans_path.display(), "TLS: не читается sidecar SAN: {e}");
+            return None;
+        }
+    };
+    let saved: Vec<String> = saved_raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    if san_set(&saved) != san_set(wanted) {
+        tracing::info!(
+            "TLS: набор SAN изменился (host или адреса машины) — сертификат будет выпущен заново"
+        );
+        return None;
+    }
+    match load_from_files(&cert_path.to_string_lossy(), &key_path.to_string_lossy()) {
+        Ok(b) => Some(b),
+        Err(e) => {
+            tracing::warn!(
+                path = %cert_path.display(),
+                "TLS: сохранённый сертификат не загружается, будет выпущен заново: {e}"
+            );
+            None
+        }
+    }
+}
+
+/// Записать файл приватного ключа с ограниченными правами (unix 0o600).
+fn write_private_key(path: &std::path::Path, data: &str) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        // `mode` действует только при создании — у существующего файла права чиним явно.
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        f.write_all(data.as_bytes())?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, data)
+    }
+}
+
+fn save_self_signed(
+    cert_path: &std::path::Path,
+    key_path: &std::path::Path,
+    sans_path: &std::path::Path,
+    bundle: &TlsBundle,
+    sans: &[String],
+) {
+    // Sidecar убирается первым и пишется последним: частичная запись не даёт
+    // ложного «совпадения» на следующем старте.
+    if sans_path.exists() {
+        if let Err(e) = std::fs::remove_file(sans_path) {
+            tracing::warn!(path = %sans_path.display(), "TLS: не удаляется старый sidecar SAN: {e}");
+            return;
+        }
+    }
+    if let Err(e) = std::fs::write(cert_path, &bundle.cert_pem) {
+        tracing::warn!(path = %cert_path.display(), "TLS: сертификат не сохранён, при следующем старте будет выпущен новый: {e}");
+        return;
+    }
+    if let Err(e) = write_private_key(key_path, &bundle.key_pem) {
+        tracing::warn!(path = %key_path.display(), "TLS: ключ не сохранён, при следующем старте будет выпущен новый: {e}");
+        return;
+    }
+    let mut body = sans.join("\n");
+    body.push('\n');
+    if let Err(e) = std::fs::write(sans_path, body) {
+        tracing::warn!(path = %sans_path.display(), "TLS: sidecar SAN не сохранён, при следующем старте будет выпущен новый: {e}");
+    }
+}
+
 /// Определить путь к приватному ключу для заданного `cert_path` (WR-01).
 ///
 /// - Если `key_path` непустой — используется как есть.
@@ -337,6 +492,94 @@ mod tests {
         let bundle = generate_self_signed("127.0.0.1").expect("tls bundle");
         assert_eq!(bundle.fingerprint_hex.len(), 95);
         assert!(bundle.cert_pem.contains("BEGIN CERTIFICATE"));
+    }
+
+    fn saved_files(dir: &std::path::Path) -> [std::path::PathBuf; 3] {
+        [
+            dir.join(SELF_SIGNED_CERT_FILE),
+            dir.join(SELF_SIGNED_KEY_FILE),
+            dir.join(SELF_SIGNED_SANS_FILE),
+        ]
+    }
+
+    #[test]
+    fn load_or_generate_first_call_writes_three_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let b = load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("bundle");
+        for f in saved_files(dir.path()) {
+            assert!(f.is_file(), "{} не создан", f.display());
+        }
+        let sans = std::fs::read_to_string(dir.path().join(SELF_SIGNED_SANS_FILE)).unwrap();
+        assert_eq!(
+            sans.lines().collect::<Vec<_>>(),
+            vec!["127.0.0.1", "localhost"]
+        );
+        let cert = std::fs::read_to_string(dir.path().join(SELF_SIGNED_CERT_FILE)).unwrap();
+        assert_eq!(cert, b.cert_pem);
+    }
+
+    #[test]
+    fn load_or_generate_reuses_saved_cert_for_same_host() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let first = load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("first");
+        let second = load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("second");
+        assert_eq!(first.fingerprint_hex, second.fingerprint_hex);
+        // Контроль: свежая генерация даёт другой отпечаток — иначе проверка вакуумна.
+        let fresh = generate_self_signed("127.0.0.1").expect("fresh");
+        assert_ne!(first.fingerprint_hex, fresh.fingerprint_hex);
+    }
+
+    #[test]
+    fn load_or_generate_regenerates_when_host_changes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let first = load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("first");
+        let second = load_or_generate_self_signed(dir.path(), "192.168.1.10").expect("second");
+        assert_ne!(first.fingerprint_hex, second.fingerprint_hex);
+        let sans = std::fs::read_to_string(dir.path().join(SELF_SIGNED_SANS_FILE)).unwrap();
+        assert_eq!(
+            sans.lines().collect::<Vec<_>>(),
+            vec!["192.168.1.10", "localhost"]
+        );
+        // И новый сертификат дальше переиспользуется.
+        let third = load_or_generate_self_signed(dir.path(), "192.168.1.10").expect("third");
+        assert_eq!(second.fingerprint_hex, third.fingerprint_hex);
+    }
+
+    #[test]
+    fn load_or_generate_recovers_from_corrupt_cert() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let first = load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("first");
+        std::fs::write(dir.path().join(SELF_SIGNED_CERT_FILE), "мусор, не PEM").unwrap();
+        let second = load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("second");
+        assert_ne!(first.fingerprint_hex, second.fingerprint_hex);
+        let cert = std::fs::read_to_string(dir.path().join(SELF_SIGNED_CERT_FILE)).unwrap();
+        assert!(cert.contains("BEGIN CERTIFICATE"), "файл перезаписан");
+        let third = load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("third");
+        assert_eq!(second.fingerprint_hex, third.fingerprint_hex);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_or_generate_key_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Существующий файл с широкими правами тоже должен быть сужен.
+        let key = dir.path().join(SELF_SIGNED_KEY_FILE);
+        std::fs::write(&key, "old").unwrap();
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o644)).unwrap();
+        load_or_generate_self_signed(dir.path(), "127.0.0.1").expect("bundle");
+        let mode = std::fs::metadata(&key).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn load_or_generate_survives_unwritable_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Каталога нет — любая запись падает; bundle всё равно рабочий.
+        let missing = dir.path().join("нет-такого-каталога");
+        let b = load_or_generate_self_signed(&missing, "127.0.0.1").expect("bundle");
+        assert_eq!(b.fingerprint_hex.len(), 95);
+        assert!(!missing.exists());
     }
 
     #[test]
