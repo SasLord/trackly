@@ -285,7 +285,7 @@
           </button>
         {/if}
         {#if showNestedSection}
-          <hr role="separator" />
+          <hr />
           <button type="button" role="menuitem" onclick={() => actions.onRemoveFromParent(item.id)}>
             Вывести из группы
           </button>
@@ -296,12 +296,12 @@
           {/if}
         {/if}
         {#if showWriteOffSection}
-          <hr role="separator" />
+          <hr />
           <button type="button" role="menuitem" onclick={() => actions.onWriteOff(item.id)}>
             Списать
           </button>
         {/if}
-        <hr role="separator" />
+        <hr />
         <button
           type="button"
           role="menuitem"

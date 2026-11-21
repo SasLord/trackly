@@ -52,6 +52,12 @@ const TAG = '[check-group-vocabulary]';
 const DENY_RE =
   /[СсГг]?[гГ]руп\p{L}*(?:\s+\p{L}+){0,2}\s+(?:похож\p{L}*|одинаков\p{L}*|идентичн\p{L}*|дубл\p{L}*)|(?:похож\p{L}*|одинаков\p{L}*|идентичн\p{L}*|дубл\p{L}*)(?:\s+\p{L}+){0,2}\s+[СсГг]?[гГ]руп\p{L}*/gu;
 
+// 41.8 (D-02): подпись «Вывести из состава» заменена на «Вывести из группы» и запрещена
+// ВЕЗДЕ, включая каталог features/groups и файлы с `markers: null`. Единственная живая
+// фраза с этим началом — заголовок попапа 41.2 «Вывести из состава и передать?»
+// (GroupReleaseConfirmPopup): её не накрывает отрицательный просмотр вперёд.
+const FORBIDDEN_LABEL_RE = /[Вв]ывести из состава(?! и передать\?)/g;
+
 // Корни слова «группа» в пользовательских литералах.
 const ROOT_RE = /[Гг]руп|[Сс]груп/g;
 
@@ -305,6 +311,10 @@ export function scanSource(relPath, rawSrc, violations) {
   DENY_RE.lastIndex = 0;
   let deny;
   while ((deny = DENY_RE.exec(text)) !== null) report(deny.index, text);
+
+  FORBIDDEN_LABEL_RE.lastIndex = 0;
+  let forb;
+  while ((forb = FORBIDDEN_LABEL_RE.exec(text)) !== null) report(forb.index, text);
 
   if (entry && entry.markers === null) {
     for (const v of found) violations.push(v);
@@ -714,6 +724,24 @@ function runSelfTest() {
         '<!-- группа -->',
         '<div>{g?.count}</div>',
       ].join('\n'),
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив (41.8 D-02): «Вывести из состава» в меню строки запрещено',
+      file: 'src/features/devices/DeviceRowMenu.svelte',
+      src: "const label = 'Вывести из состава';",
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (41.8 D-02): запрет действует и внутри features/groups (markers: null)',
+      file: 'src/features/groups/GroupContentsTable.svelte',
+      src: '<button>Вывести из состава</button>',
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (41.8 D-02): заголовок попапа 41.2 «Вывести из состава и передать?»',
+      file: 'src/features/acts/GroupReleaseConfirmPopup.svelte',
+      src: 'title="Вывести из состава и передать?"',
       expectViolations: 0,
     },
     {

@@ -55,9 +55,10 @@ const TAG = '[check-action-menu-portal]';
 
 const MENU_FILE = 'src/lib/components/ActionMenu.svelte';
 // Сколько вызовов <ActionMenu есть в src/**/*.svelte (инвентарь плана 41.1-16):
-// 15 = сумма `grep -rc '<ActionMenu' src --include='*.svelte'` по файлам
-// (в плане 41-27 было 13; добавились DeviceRowMenu и витринный вызов плана 41.1-02).
-const MIN_CALL_SITES = 15;
+// 21 = сумма `grep -rc '<ActionMenu' src --include='*.svelte'` по файлам
+// (в плане 41-27 было 13; 41.1-16/41.1-02: 15; 41.8-13 пересчитан от репозитория: 21 —
+// строки состава ушли на DeviceRowMenu, добавились меню призрака и вложенной группы).
+const MIN_CALL_SITES = 21;
 const SELFTEST_MIN_CALL_SITES = 2;
 
 /** Пробелы вместо всех символов, кроме переводов строк (длина сохраняется). */

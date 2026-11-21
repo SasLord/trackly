@@ -22,7 +22,12 @@
 //       и сумма N+M равна K (комментарий читается из СЫРОГО текста, остальное —
 //       из текста без комментариев);
 //   (D) в routes.ts '/groups' есть в `routes` (значение GroupsPage) и
-//       отсутствует в `employeeRoutes`.
+//       отсутствует в `employeeRoutes`;
+//   (E) 41.8 (D-25), двойники вложенных групп в дереве: GroupTree.svelte строит ключи
+//       `in-type-{id}` и `in-type-{корень}-group-{id}` (иначе двойник делит ключ/DOM id
+//       с оригиналом); GroupTreeNode.svelte берёт DOM id и ключ each из `item.key`,
+//       а не из id группы, и рисует подпись `item.aliasOf`; счёт совпадений поиска
+//       идёт по множеству `kind:id` (`hits.size`), а не по числу узлов.
 //
 // Self-test (`--selftest`): 6 фикстур в памяти — 1 корректная (должна пройти)
 // и 5 негативных, каждая получена из корректной мутацией с ПРОВЕРКОЙ, что
@@ -223,6 +228,50 @@ function scanSources(sidebarRaw, routesRaw, violations) {
   }
 }
 
+const TREE_FILE = 'src/features/groups/GroupTree.svelte';
+const NODE_FILE = 'src/features/groups/GroupTreeNode.svelte';
+
+/** (E) инварианты двойников D-25 (структурные, по тексту без комментариев). */
+function scanTree(treeRaw, nodeRaw, violations) {
+  const tree = stripComments(treeRaw);
+  const node = stripComments(nodeRaw);
+  const need = (code, file, re, msg) => {
+    if (!re.test(code)) violations.push(`${file}: ${msg}`);
+  };
+  need(
+    tree,
+    TREE_FILE,
+    /`in-type-\$\{id\}`/,
+    'нет ключа двойника `in-type-${id}` — двойник делил бы ключ и DOM id с оригиналом (D-25).',
+  );
+  need(
+    tree,
+    TREE_FILE,
+    /`in-type-\$\{aliasRootId\}-group-\$\{g\.id\}`/,
+    'нет ключа потомка двойника `in-type-${aliasRootId}-group-${g.id}` — вложенные двойники столкнулись бы ключами (D-25).',
+  );
+  need(
+    tree,
+    TREE_FILE,
+    /hits\.add\(`\$\{it\.kind\}:\$\{it\.id\}`\)/,
+    'счёт поиска не по множеству `kind:id` — двойник считался бы вторым результатом (D-25).',
+  );
+  need(tree, TREE_FILE, /count:\s*hits\.size/, 'счёт поиска не равен `hits.size` (D-25).');
+  need(
+    node,
+    NODE_FILE,
+    /id=\{rowDomId\(item\.key\)\}/,
+    'DOM id строки не из `item.key` — у двойника совпал бы id с оригиналом (D-25).',
+  );
+  need(
+    node,
+    NODE_FILE,
+    /\{#each item\.children as child \(child\.key\)\}/,
+    'each потомков без ключа `child.key` (D-25).',
+  );
+  need(node, NODE_FILE, /\{#if item\.aliasOf\}/, 'нет подписи двойника `item.aliasOf` (D-25).');
+}
+
 function checkRepo(srcRoot, violations) {
   const read = (rel) => {
     const abs = path.join(srcRoot, rel);
@@ -236,6 +285,9 @@ function checkRepo(srcRoot, violations) {
   const routes = read(ROUTES_FILE);
   if (sidebar === null || routes === null) return;
   scanSources(sidebar, routes, violations);
+  const tree = read(TREE_FILE);
+  const node = read(NODE_FILE);
+  if (tree !== null && node !== null) scanTree(tree, node, violations);
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +444,67 @@ function runSelfTest() {
       for (const line of v) console.error(`${TAG} [selftest]   ${line}`);
     }
   }
+
+  // (E) двойники: мутации по РЕАЛЬНЫМ исходникам дерева (якорь обязан встречаться ровно раз).
+  const treeSrc = fs.readFileSync(path.join(UI_ROOT, TREE_FILE), 'utf8');
+  const nodeSrc = fs.readFileSync(path.join(UI_ROOT, NODE_FILE), 'utf8');
+  const treeCases = [];
+  try {
+    treeCases.push({
+      name: '(ж) двойники: реальные исходники (позитив)',
+      t: treeSrc,
+      n: nodeSrc,
+      mention: null,
+    });
+    treeCases.push({
+      name: '(з) двойники: убран ключ in-type-${id}',
+      t: mutate(
+        treeSrc,
+        'const inTypeKey = (id: number) => `in-type-${id}`;',
+        'const inTypeKey = (id: number) => `type-${id}`;',
+      ),
+      n: nodeSrc,
+      mention: /ключа двойника/,
+    });
+    treeCases.push({
+      name: '(и) двойники: потомок двойника с ключом оригинала',
+      t: mutate(treeSrc, '`in-type-${aliasRootId}-group-${g.id}`', '`group-${g.id}`'),
+      n: nodeSrc,
+      mention: /ключа потомка двойника/,
+    });
+    treeCases.push({
+      name: '(к) двойники: счёт поиска по узлам, а не по группам',
+      t: mutate(treeSrc, 'count: hits.size', 'count: roots.length'),
+      n: nodeSrc,
+      mention: /hits\.size/,
+    });
+    treeCases.push({
+      name: '(л) двойники: DOM id строки не из item.key',
+      t: treeSrc,
+      n: mutate(nodeSrc, 'id={rowDomId(item.key)}', 'id={rowDomId(String(item.id))}'),
+      mention: /DOM id/,
+    });
+    treeCases.push({
+      name: '(м) двойники: убрана подпись aliasOf',
+      t: treeSrc,
+      n: mutate(nodeSrc, '{#if item.aliasOf}', '{#if false}'),
+      mention: /aliasOf/,
+    });
+  } catch (e) {
+    console.error(`${TAG} [selftest] FAIL — ${e.message}`);
+    return false;
+  }
+  for (const c of treeCases) {
+    const v = [];
+    scanTree(c.t, c.n, v);
+    const ok = c.mention === null ? v.length === 0 : v.some((line) => c.mention.test(line));
+    console.error(`${TAG} [selftest] ${ok ? 'PASS' : 'FAIL'} — ${c.name} (got ${v.length})`);
+    if (!ok) {
+      failed++;
+      for (const line of v) console.error(`${TAG} [selftest]   ${line}`);
+    }
+  }
+  fixtures.push(...treeCases);
 
   if (failed > 0) {
     console.error(`${TAG} [selftest] FAIL — ${failed} из ${fixtures.length} фикстур не совпали.`);
