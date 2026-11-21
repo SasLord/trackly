@@ -43,14 +43,16 @@ use crate::dto::groups::{
     DeviceMembershipDto, GroupActExpansionDto, GroupActUnitDto, GroupAddDevicesResultDto,
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
     GroupGhostDeviceDto, GroupMemberDeviceDto, GroupMoveDevicesResultDto, GroupMoveResultDto,
-    GroupPrinterDto, GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto,
+    GroupMoveStatusPreviewDto, GroupMoveStatusTransitionDto, GroupPrinterDto,
+    GroupPropertyValueDto, GroupSearchHitDto, GroupUserDto, GroupValueInputDto,
     GroupWriteOffDeviceDto, GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
 };
 use crate::dto::printer::WsEvent;
 use crate::services::group_act_plan;
 use crate::services::group_membership::release_device_in_tx;
 use crate::services::group_place::{
-    apply_group_place_to_device_in_tx, move_group_in_tx, propagate_group_place_in_tx,
+    apply_group_place_to_device_in_tx, ensure_group_movable_in_tx, group_move_transition_in_tx,
+    move_group_with_status_in_tx, propagate_group_place_in_tx, status_shift_candidates_in_tx,
     GroupMoveCause, GroupMoveDeps, GroupMoveOutcome,
 };
 use crate::services::place_path_display::compute_place_path_short_with_conn;
@@ -1187,6 +1189,20 @@ impl GroupService {
         version: i64,
         target_place_id: i64,
     ) -> Result<GroupMoveResultDto, AppError> {
+        self.move_group_with_status(caller, id, version, target_place_id, false)
+            .await
+    }
+
+    /// Перенос группы со сменой статуса (D-34): при `change_status` и переходе
+    /// «склад <-> не склад» статусы сдвигает серверное правило, одной транзакцией.
+    pub async fn move_group_with_status(
+        &self,
+        caller: &Identity,
+        id: i64,
+        version: i64,
+        target_place_id: i64,
+        change_status: bool,
+    ) -> Result<GroupMoveResultDto, AppError> {
         authorize(caller, &Action::MutateGroups)?;
 
         let now = self.clock.unix_seconds();
@@ -1196,7 +1212,7 @@ impl GroupService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
-                let outcome = move_group_in_tx(
+                let outcome = move_group_with_status_in_tx(
                     &tx,
                     &GroupMoveDeps::new(),
                     id,
@@ -1204,6 +1220,7 @@ impl GroupService {
                     target_place_id,
                     user_id,
                     now,
+                    change_status,
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(outcome)
@@ -1211,14 +1228,15 @@ impl GroupService {
             .await?;
 
         // D-03: список мест клонируется один раз и уходит и в событие, и в ответ.
-        // Q4: GroupMoveOutcome хранит только счётчик устройств, device_ids пуст.
-        // Событие безусловно (даже при пустом итоге): group_ids = [id] не пуст.
+        // D-34: device_ids = устройства со сменой статуса. Событие безусловно
+        // (group_ids = [id] не пуст).
         let place_ids = outcome.changed_place_ids.clone();
-        let device_ids: Vec<i64> = Vec::new();
+        let device_ids: Vec<i64> = outcome.status_changed_device_ids.clone();
         let group_ids = vec![id];
-        self.broadcast_entities("move_group", place_ids, device_ids, group_ids);
+        self.broadcast_entities("move_group_with_status", place_ids, device_ids, group_ids);
 
-        let summary = move_summary(outcome.moved_devices);
+        let status_changed_devices = outcome.status_changed_device_ids.len() as i32;
+        let summary = move_summary_with_status(outcome.moved_devices, status_changed_devices);
 
         Ok(GroupMoveResultDto {
             moved_devices: outcome.moved_devices,
@@ -1226,7 +1244,71 @@ impl GroupService {
             changed_place_ids: outcome.changed_place_ids,
             summary,
             batch_id: outcome.batch_id,
+            status_changed_devices,
         })
+    }
+
+    /// Предпросмотр D-34: сколько устройств сменит статус при переносе (то же
+    /// перечисление, что у переноса). Ничего не пишет и не рассылает.
+    pub async fn move_group_status_preview(
+        &self,
+        caller: &Identity,
+        id: i64,
+        target_place_id: i64,
+    ) -> Result<GroupMoveStatusPreviewDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let tx = conn.unchecked_transaction().map_err(map_rusqlite)?;
+            let deps = GroupMoveDeps::new();
+            let group = deps.groups.get_group_in_tx(&tx, id)?;
+            ensure_group_movable_in_tx(&tx, &deps, &group, target_place_id)?;
+            let Some(transition) =
+                group_move_transition_in_tx(&tx, group.place_id, target_place_id)?
+            else {
+                return Ok(GroupMoveStatusPreviewDto {
+                    transition: None,
+                    devices_affected: 0,
+                    target_status_code: None,
+                    target_status_name: None,
+                });
+            };
+            let affected = status_shift_candidates_in_tx(
+                &tx,
+                &deps,
+                id,
+                group.place_id,
+                target_place_id,
+                transition,
+            )?;
+            let code = transition.target_status_code();
+            let name: Option<String> = {
+                use rusqlite::OptionalExtension;
+                tx.query_row(
+                    "SELECT name FROM device_statuses WHERE code = ?1",
+                    [code],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(map_rusqlite)?
+            };
+            Ok(GroupMoveStatusPreviewDto {
+                transition: Some(match transition {
+                    trackly_core::domain::group_move_status::StorageTransition::ToWork => {
+                        GroupMoveStatusTransitionDto::ToWork
+                    }
+                    trackly_core::domain::group_move_status::StorageTransition::ToStorage => {
+                        GroupMoveStatusTransitionDto::ToStorage
+                    }
+                }),
+                devices_affected: affected.len() as i32,
+                target_status_code: Some(code.to_string()),
+                target_status_name: name,
+            })
+        })
+        .await
+        .map_err(join_err)?
     }
 }
 
@@ -1868,6 +1950,7 @@ impl GroupService {
             changed_place_ids: outcome.changed_place_ids,
             summary: move_summary(outcome.moved_devices),
             batch_id: outcome.batch_id,
+            status_changed_devices: 0,
         })
     }
 }
@@ -1883,6 +1966,24 @@ fn move_summary(moved_devices: i32) -> String {
                 i64::from(moved_devices),
                 "устройство",
                 "устройства",
+                "устройств"
+            )
+        ));
+    }
+    summary
+}
+
+/// D-34: к итогу добавляется «, статус сменён у N устройств»; при 0 текст прежний.
+fn move_summary_with_status(moved_devices: i32, status_changed: i32) -> String {
+    let mut summary = move_summary(moved_devices);
+    if status_changed > 0 {
+        summary.push_str(&format!(
+            ", статус сменён у {} {}",
+            status_changed,
+            ru_plural(
+                i64::from(status_changed),
+                "устройства",
+                "устройств",
                 "устройств"
             )
         ));

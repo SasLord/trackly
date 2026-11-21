@@ -4441,6 +4441,11 @@ fn group_cases() -> Vec<(&'static str, GroupGate, serde_json::Value)> {
             json!({ "dto": { "id": 999999, "version": 1, "target_place_id": 999999 } }),
         ),
         (
+            "groups_move_status_preview",
+            GroupGate::Mut,
+            json!({ "dto": { "id": 999999, "target_place_id": 999999 } }),
+        ),
+        (
             "groups_set_values",
             GroupGate::Mut,
             json!({ "dto": { "id": 999999, "version": 1, "values": [] } }),
@@ -4563,6 +4568,17 @@ async fn groups_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Resul
             GroupMoveDto {
                 id: 999999,
                 version: 1,
+                target_place_id: 999999,
+                change_status: None,
+            },
+        )
+        .await
+        .map(|_| ()),
+        "groups_move_status_preview" => g::build_groups_move_status_preview(
+            ctx,
+            caller,
+            trackly_app::dto::groups::GroupMoveStatusPreviewQueryDto {
+                id: 999999,
                 target_place_id: 999999,
             },
         )

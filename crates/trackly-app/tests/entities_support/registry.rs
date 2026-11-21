@@ -232,7 +232,13 @@ pub const REGISTRY: &[Entry] = &[
     b(GROUP, "create_group"),
     b(GROUP, "update_group"),
     b(GROUP, "delete_group"),
-    b(GROUP, "move_group"),
+    exw(
+        GROUP,
+        "move_group",
+        "обёртка прежней арности: делегирует move_group_with_status с change_status = false, рассылка там",
+    ),
+    b(GROUP, "move_group_with_status"),
+    ro(GROUP, "move_group_status_preview"),
     b(GROUP, "add_devices"),
     b(GROUP, "remove_devices"),
     b(GROUP, "move_devices"),
@@ -256,6 +262,8 @@ pub const REGISTRY: &[Entry] = &[
     ex(GPLACE, "propagate_group_place_with_shift_in_tx", TX_PRIMITIVE_REASON),
     ex(GPLACE, "move_group_with_status_in_tx", TX_PRIMITIVE_REASON),
     ro(GPLACE, "place_is_storage_in_tx"),
+    ro(GPLACE, "ensure_group_movable_in_tx"),
+    ro(GPLACE, "group_move_transition_in_tx"),
     ro(GPLACE, "status_shift_candidates_in_tx"),
     // ---- group_membership (примитивы внутри транзакции) --------------------
     ro(GMEMB, "anchor_write_off_error"),

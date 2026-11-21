@@ -201,7 +201,7 @@ async fn scenario_delete_group() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn scenario_move_group() {
+async fn scenario_move_group_with_status() {
     tokio::time::timeout(BUDGET, async {
         let (ctx, _dir) = make_test_ctx().await;
         let a = seed_place(&ctx, "Кабинет A").await;
@@ -224,7 +224,7 @@ async fn scenario_move_group() {
             result.moved_devices, 2,
             "перенесены оба участника ({d1}, {d2})"
         );
-        let (places, devices, groups) = assert_one_entities(&mut rx, "move_group");
+        let (places, devices, groups) = assert_one_entities(&mut rx, "move_group_with_status");
         // D-03: место события берётся из ответа, а не пересчитывается.
         assert_eq!(
             sorted(places.clone()),
@@ -233,11 +233,63 @@ async fn scenario_move_group() {
         );
         assert!(places.contains(&b), "целевое место B в событии");
         assert!(places.contains(&c), "прежнее место участника C в событии");
-        assert!(devices.is_empty(), "Q4: device_ids у move_group пуст");
+        assert!(devices.is_empty(), "без смены статуса device_ids пуст");
         assert_eq!(sorted(groups), vec![g]);
+
+        // D-34: перенос со склада со сменой статуса - device_ids = устройства со
+        // сменой статуса, group_ids = [id].
+        let store = seed_place(&ctx, "Склад Н").await;
+        let work = seed_place(&ctx, "Кабинет Р").await;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE places SET is_storage = 1 WHERE id = ?1",
+                    rusqlite::params![store],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("storage flag");
+        let (_t2, g2) = seed_group_type_and_group(&ctx, "АРМ Петрова П.П.", 2, Some(store)).await;
+        let s1 = seed_device(&ctx, 1, "Монитор", "INV-S1", Some(store), Some(g2)).await;
+        let s2 = seed_device(&ctx, 1, "Мышь", "INV-S2", Some(store), Some(g2)).await;
+        let s3 = seed_device(&ctx, 1, "Клавиатура", "INV-S3", Some(store), Some(g2)).await;
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET status_id = (SELECT id FROM device_statuses \
+                     WHERE code = 'на_складе') WHERE id IN (?1, ?2)",
+                    rusqlite::params![s1, s2],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                conn.execute(
+                    "UPDATE devices SET status_id = (SELECT id FROM device_statuses \
+                     WHERE code = 'списано') WHERE id = ?1",
+                    rusqlite::params![s3],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("statuses");
+        drain(&mut rx);
+        let result2 = ctx
+            .groups
+            .move_group_with_status(&admin(), g2, 1, work, true)
+            .await
+            .expect("move_group_with_status");
+        assert_eq!(result2.status_changed_devices, 2);
+        let (_places2, devices2, groups2) = assert_one_entities(&mut rx, "move_group_with_status");
+        assert_eq!(
+            sorted(devices2),
+            sorted(vec![s1, s2]),
+            "device_ids = устройства со сменой статуса"
+        );
+        assert_eq!(sorted(groups2), vec![g2]);
     })
     .await
-    .expect("scenario_move_group вышел за бюджет");
+    .expect("scenario_move_group_with_status вышел за бюджет");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

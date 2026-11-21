@@ -81,7 +81,6 @@ pub(crate) struct GroupMoveOutcome {
     pub changed_place_ids: Vec<i64>,
     pub batch_id: Option<String>,
     /// D-34: устройства, у которых вместе с местом сменился статус.
-    #[allow(dead_code)]
     pub status_changed_device_ids: Vec<i64>,
 }
 
@@ -385,6 +384,44 @@ pub(crate) fn move_group_in_tx(
     )
 }
 
+/// Проверки переноса группы, общие для переноса и предпросмотра: группа корневая,
+/// целевое место существует и не в архиве.
+pub(crate) fn ensure_group_movable_in_tx(
+    tx: &Transaction<'_>,
+    deps: &GroupMoveDeps,
+    group: &trackly_core::domain::groups::GroupRow,
+    target_place_id: i64,
+) -> Result<(), AppError> {
+    if group.parent_group_id.is_some() {
+        let root_id = deps.groups.root_group_id_in_tx(tx, group.id)?;
+        let root = deps.groups.get_group_in_tx(tx, root_id)?;
+        return Err(AppError::Validation {
+            field: "place_id".to_string(),
+            message: format!(
+                "Место вложенной группы задаётся корневой группой «{}».",
+                root.name
+            ),
+        });
+    }
+    check_target_place(tx, deps, target_place_id)
+}
+
+/// D-34: переход «склад <-> не склад» по месту группы и целевому месту; у группы без
+/// места «старого места» нет, перехода нет.
+pub(crate) fn group_move_transition_in_tx(
+    tx: &Transaction<'_>,
+    group_place: Option<i64>,
+    target_place_id: i64,
+) -> Result<Option<StorageTransition>, AppError> {
+    match group_place {
+        Some(from) => Ok(storage_transition(
+            place_is_storage_in_tx(tx, from)?,
+            place_is_storage_in_tx(tx, target_place_id)?,
+        )),
+        None => Ok(None),
+    }
+}
+
 /// То же, что [`move_group_in_tx`], но при `change_status` и переходе «склад <-> не склад»
 /// устройства с «обычным» статусом получают новый (D-34); решение и перечень - на сервере.
 #[allow(clippy::too_many_arguments)]
@@ -411,29 +448,11 @@ pub(crate) fn move_group_with_status_in_tx(
         }
     }
 
-    if group.parent_group_id.is_some() {
-        let root_id = deps.groups.root_group_id_in_tx(tx, group_id)?;
-        let root = deps.groups.get_group_in_tx(tx, root_id)?;
-        return Err(AppError::Validation {
-            field: "place_id".to_string(),
-            message: format!(
-                "Место вложенной группы задаётся корневой группой «{}».",
-                root.name
-            ),
-        });
-    }
-
-    check_target_place(tx, deps, target_place_id)?;
+    ensure_group_movable_in_tx(tx, deps, &group, target_place_id)?;
 
     let status_shift = if change_status {
-        match group.place_id {
-            Some(from) => storage_transition(
-                place_is_storage_in_tx(tx, from)?,
-                place_is_storage_in_tx(tx, target_place_id)?,
-            )
-            .map(|transition| StatusShift { transition }),
-            None => None,
-        }
+        group_move_transition_in_tx(tx, group.place_id, target_place_id)?
+            .map(|transition| StatusShift { transition })
     } else {
         None
     };
@@ -458,6 +477,7 @@ pub(crate) fn move_group_with_status_in_tx(
     let payload = serde_json::json!({
         "batch_id": batch_id,
         "moved_devices": outcome.moved_devices,
+        "status_changed": outcome.status_changed_device_ids.len(),
         "from": group.place_id,
         "to": target_place_id,
     });
@@ -603,7 +623,6 @@ fn group_move_sets(
 
 /// D-34: устройства, статус которых примитив поменяет при тех же аргументах (без записи).
 /// Основа числа в подписи предпросмотра: то же множество, что у фактического переноса.
-#[allow(dead_code)]
 pub(crate) fn status_shift_candidates_in_tx(
     tx: &Transaction<'_>,
     deps: &GroupMoveDeps,

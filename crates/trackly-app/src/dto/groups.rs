@@ -189,6 +189,10 @@ pub struct GroupMoveDto {
     pub version: i64,
     #[specta(type = i32)]
     pub target_place_id: i64,
+    /// D-34: сдвинуть статусы устройств при переходе «склад <-> не склад»;
+    /// отсутствие поля = false.
+    #[serde(default)]
+    pub change_status: Option<bool>,
 }
 
 /// Итог переноса группы (D-24): данные для тоста и инвалидации счётчиков (D-08).
@@ -202,6 +206,38 @@ pub struct GroupMoveResultDto {
     /// «группа и 6 устройств».
     pub summary: String,
     pub batch_id: Option<String>,
+    /// D-34: у скольких устройств вместе с местом сменился статус.
+    pub status_changed_devices: i32,
+}
+
+/// D-34: направление перехода через границу «склад <-> не склад».
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupMoveStatusTransitionDto {
+    /// Со склада на не-склад.
+    ToWork,
+    /// С не-склада на склад.
+    ToStorage,
+}
+
+/// D-34: запрос предпросмотра смены статусов при переносе.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupMoveStatusPreviewQueryDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    #[specta(type = i32)]
+    pub target_place_id: i64,
+}
+
+/// D-34: предпросмотр смены статусов при переносе (считает сервер тем же кодом,
+/// что и перенос).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GroupMoveStatusPreviewDto {
+    pub transition: Option<GroupMoveStatusTransitionDto>,
+    pub devices_affected: i32,
+    /// Код и текущая подпись целевого статуса из справочника; без перехода - None.
+    pub target_status_code: Option<String>,
+    pub target_status_name: Option<String>,
 }
 
 /// Добавление устройств в группу (D-01): один обработчик для строки-поиска и модалки.

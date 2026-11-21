@@ -21,8 +21,9 @@ use crate::dto::groups::{
     DeviceMembershipDto, GroupActExpansionDto, GroupAddDevicesDto, GroupAddDevicesResultDto,
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
     GroupMoveDevicesDto, GroupMoveDevicesResultDto, GroupMoveDto, GroupMoveResultDto,
-    GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto, GroupSetValuesDto,
-    GroupWriteOffDeviceDto, GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
+    GroupMoveStatusPreviewDto, GroupMoveStatusPreviewQueryDto, GroupRemoveDevicesDto,
+    GroupSearchHitDto, GroupSetParentDto, GroupSetValuesDto, GroupWriteOffDeviceDto,
+    GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -223,7 +224,25 @@ pub async fn build_groups_move(
 ) -> Result<GroupMoveResultDto, AppError> {
     authorize(caller, &Action::MutateGroups)?;
     ctx.groups
-        .move_group(caller, dto.id, dto.version, dto.target_place_id)
+        .move_group_with_status(
+            caller,
+            dto.id,
+            dto.version,
+            dto.target_place_id,
+            dto.change_status.unwrap_or(false),
+        )
+        .await
+}
+
+/// Чтение: предпросмотр D-34 (право как у переноса); ничего не пишет.
+pub async fn build_groups_move_status_preview(
+    ctx: &AppCtx,
+    caller: &Identity,
+    dto: GroupMoveStatusPreviewQueryDto,
+) -> Result<GroupMoveStatusPreviewDto, AppError> {
+    authorize(caller, &Action::MutateGroups)?;
+    ctx.groups
+        .move_group_status_preview(caller, dto.id, dto.target_place_id)
         .await
 }
 
@@ -419,6 +438,16 @@ pub async fn groups_remove_devices(
 ) -> Result<i32, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_groups_remove_devices(state.inner(), &caller, dto).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn groups_move_status_preview(
+    state: tauri::State<'_, AppCtx>,
+    dto: GroupMoveStatusPreviewQueryDto,
+) -> Result<GroupMoveStatusPreviewDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_groups_move_status_preview(state.inner(), &caller, dto).await
 }
 
 #[tauri::command]

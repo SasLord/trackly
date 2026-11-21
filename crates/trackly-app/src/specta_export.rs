@@ -264,6 +264,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::groups::groups_write_off_group,
         crate::tauri_cmds::groups::groups_remove_devices,
         crate::tauri_cmds::groups::groups_move,
+        crate::tauri_cmds::groups::groups_move_status_preview,
         crate::tauri_cmds::groups::groups_set_values,
         // Phase 40 — Movement history timeline (Plan 10)
         crate::tauri_cmds::place_movements::place_movements_get_timeline,

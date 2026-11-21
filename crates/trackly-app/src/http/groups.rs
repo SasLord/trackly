@@ -14,8 +14,9 @@ use crate::dto::groups::{
     DeviceMembershipDto, GroupActExpansionDto, GroupAddDevicesDto, GroupAddDevicesResultDto,
     GroupCardDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
     GroupMoveDevicesDto, GroupMoveDevicesResultDto, GroupMoveDto, GroupMoveResultDto,
-    GroupRemoveDevicesDto, GroupSearchHitDto, GroupSetParentDto, GroupSetValuesDto,
-    GroupWriteOffDeviceDto, GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
+    GroupMoveStatusPreviewDto, GroupMoveStatusPreviewQueryDto, GroupRemoveDevicesDto,
+    GroupSearchHitDto, GroupSetParentDto, GroupSetValuesDto, GroupWriteOffDeviceDto,
+    GroupWriteOffGroupDto, GroupWriteOffResultDto, UserOptionDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -23,9 +24,9 @@ use crate::tauri_cmds::groups::{
     build_groups_act_expansion, build_groups_add_devices, build_groups_card,
     build_groups_composition, build_groups_create, build_groups_delete, build_groups_for_devices,
     build_groups_get, build_groups_list, build_groups_move, build_groups_move_devices,
-    build_groups_remove_devices, build_groups_search, build_groups_set_parent,
-    build_groups_set_values, build_groups_update, build_groups_user_options,
-    build_groups_write_off_device, build_groups_write_off_group,
+    build_groups_move_status_preview, build_groups_remove_devices, build_groups_search,
+    build_groups_set_parent, build_groups_set_values, build_groups_update,
+    build_groups_user_options, build_groups_write_off_device, build_groups_write_off_group,
 };
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,27 @@ pub struct WriteOffGroupPayload {
 #[serde(rename_all = "camelCase")]
 pub struct RemoveDevicesPayload {
     pub dto: GroupRemoveDevicesDto,
+}
+
+pub async fn handler_move_status_preview(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<MoveStatusPreviewPayload>,
+) -> Result<Json<GroupMoveStatusPreviewDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_groups_move_status_preview(&ctx, &identity, payload.dto)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveStatusPreviewPayload {
+    pub dto: GroupMoveStatusPreviewQueryDto,
 }
 
 #[derive(serde::Deserialize)]
@@ -442,5 +464,9 @@ pub fn router() -> Router<AppCtx> {
             post(handler_remove_devices),
         )
         .route("/api/v1/groups_move", post(handler_move))
+        .route(
+            "/api/v1/groups_move_status_preview",
+            post(handler_move_status_preview),
+        )
         .route("/api/v1/groups_set_values", post(handler_set_values))
 }
