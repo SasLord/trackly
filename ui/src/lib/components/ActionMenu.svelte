@@ -70,6 +70,10 @@
   let pointAnchor = $state<PointAnchor | null>(null);
   /** Элемент, державший фокус до `openAt` — туда возвращается фокус при закрытии. */
   let returnEl: HTMLElement | null = null;
+  /** Невидимая подложка (портал в `<body>`): гасит ховер строк под ней, клик закрывает меню (D-36). */
+  let backdropEl = $state<HTMLElement | null>(null);
+  /** Строка таблицы, у которой открыто контекстное меню (определяется по точке ОДИН раз при openAt). */
+  let ownerRow: HTMLElement | null = null;
 
   /** Открыть панель у точки (clientX/clientY): левый край у курсора, 4px ниже;
    *  у правого края окна панель прижимается правым краем к курсору, снизу —
@@ -77,6 +81,11 @@
   export function openAt(x: number, y: number) {
     if (disabled) return;
     returnEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // D-36: строку-владельца определяем ДО появления подложки (иначе elementFromPoint вернёт её).
+    ownerRow =
+      document.elementFromPoint(x, y)?.closest<HTMLElement>('tr') ??
+      returnEl?.closest<HTMLElement>('tr') ??
+      null;
     pointAnchor = { x, y };
     open = true;
   }
@@ -96,7 +105,20 @@
     }
     pointAnchor = null;
     returnEl = null;
+    ownerRow = null;
   }
+
+  // D-36: пока меню открыто, строка-владелец помечена `data-menu-open` (атрибутом, не
+  // классом: `class=` у <tr> ведёт Svelte). Стиль — в TableRow/global.scss в :global-форме.
+  $effect(() => {
+    if (!open) return;
+    const row = ownerRow ?? rootEl?.closest('tr') ?? null;
+    if (!row) return;
+    row.setAttribute('data-menu-open', 'true');
+    return () => {
+      row.removeAttribute('data-menu-open');
+    };
+  });
 
   $effect(() => {
     const isOpen = open;
@@ -123,7 +145,10 @@
       // The panel is always portaled into <body> (outside rootEl), so the
       // click-outside check must also cover the portaled panel.
       const insidePanel = panelEl?.contains(target) ?? false;
-      if (open && !insideRoot && !insidePanel) open = false;
+      // D-36: mousedown по подложке не закрывает меню — иначе подложка исчезнет до click
+      // и click уйдёт на строку под ней; подложка закрывает меню своим click.
+      const insideBackdrop = backdropEl?.contains(target) ?? false;
+      if (open && !insideRoot && !insidePanel && !insideBackdrop) open = false;
     }
     function onKey(e: KeyboardEvent) {
       // FE-WR-11: react only while THIS menu is open — otherwise every
@@ -295,6 +320,18 @@
   {/if}
   {#if open}
     <div
+      class="action-menu-backdrop"
+      role="presentation"
+      aria-hidden="true"
+      bind:this={backdropEl}
+      use:portal
+      onclick={() => close(false)}
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        close(false);
+      }}
+    ></div>
+    <div
       class="action-menu-panel"
       role="menu"
       tabindex="-1"
@@ -373,6 +410,15 @@
   // б) is meant to prevent. Geometry/color for ghost-md therefore comes
   // ENTIRELY from `.tr-btn-ghost-icon` (global.scss) — no styles duplicated
   // here.
+
+  // D-36: невидимая подложка на единицу ниже панели (1000) — перехватывает указатель,
+  // ховер строк под ней не срабатывает; клик закрывает меню.
+  .action-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: transparent;
+  }
 
   // Always portaled into <body> (`use:portal`); inline top/bottom/right are
   // set by `actionMenuPortalPosition`, so only `position: fixed` lives here.

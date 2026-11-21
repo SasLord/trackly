@@ -141,6 +141,17 @@
     cursor: pointer;
   }
 
+  // D-36: строка-владелец открытого меню остаётся выделенной. Атрибут data-menu-open ставит
+  // ActionMenu снаружи, поэтому :global (Svelte вырежет scoped-селектор, которого не видит
+  // в своей разметке). Порядок: после .selected (выбранная строка сохраняет свой фон) и
+  // после .tr-row-group (равная специфичность — побеждает последнее правило).
+  :global(.tr-row[data-menu-open]:not(.selected)) {
+    background: var(--tr-row-hover);
+  }
+  :global(.tr-row.tr-row-group[data-menu-open]) {
+    background: var(--tr-row-hover);
+  }
+
   // Base <td> metrics — TableRow is the SOLE owner of these values (D-10, TableRows.dc
   // tdBase). Caller-rendered <td> children come from the `children` snippet (a DIFFERENT
   // Svelte scope-hash than this file), so every rule targeting them needs the :global()

@@ -150,3 +150,15 @@ body {
     background: var(--tr-text-tertiary);
   }
 }
+
+// ── D-36: строка при открытом меню действий ────────────────────────────────
+// ActionMenu ставит data-menu-open на <tr>-владельца. Основное правило — в
+// TableRow (:global); здесь запасное для <tr> вне TableRow, а также удержание
+// видимым кебаба строки (подложка снимает :hover, правый клик не даёт aria-expanded).
+tr[data-menu-open]:not(.tr-row) > td {
+  background: var(--tr-row-hover);
+}
+.tr-row[data-menu-open] .row-actions {
+  opacity: 1;
+  visibility: visible;
+}
