@@ -21,6 +21,8 @@ mod groups_anchor;
 mod groups_membership;
 #[path = "../groups_move.rs"]
 mod groups_move;
+#[path = "../groups_move_status.rs"]
+mod groups_move_status;
 #[path = "../groups_property_removal_parity.rs"]
 mod groups_property_removal_parity;
 #[path = "../groups_service.rs"]

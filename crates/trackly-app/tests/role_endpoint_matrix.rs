@@ -5209,7 +5209,7 @@ fn groups_http_route_completeness() {
         Vec::<&String>::new(),
         "команда есть в таблице, но нет маршрута в http/groups.rs"
     );
-    assert_eq!(in_source.len(), 19);
+    assert_eq!(in_source.len(), 20);
 }
 
 /// Разворот группы в единицы акта (Phase 41.2 plan 06): `Action::ReadGroups`.
