@@ -33,7 +33,13 @@
   import DeviceRowMenu from '../devices/DeviceRowMenu.svelte';
   import AddToGroupModal from './AddToGroupModal.svelte';
   import WriteOffGroupModal from './WriteOffGroupModal.svelte';
-  import { canWriteOff, isOwnKeyEvent, isRowOverlayEvent } from '../devices/deviceRowMenu';
+  import AlreadyInGroupPopup from './AlreadyInGroupPopup.svelte';
+  import {
+    canReturnToTeardown,
+    canWriteOff,
+    isOwnKeyEvent,
+    isRowOverlayEvent,
+  } from '../devices/deviceRowMenu';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
   import { pluralizeRu } from '$lib/utils/pluralize';
@@ -41,13 +47,14 @@
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { ensureLoaded, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { parseAppError, type AppError } from '$lib/api/errors';
+  import { isAlreadyInGroup, parseAppError, type AppError } from '$lib/api/errors';
   import type {
     GroupAddDevicesResultDto,
     DeviceDto,
     DeviceGroup,
     GroupCompositionDto,
     GroupDto,
+    GroupGhostDeviceDto,
     GroupMemberDeviceDto,
     GroupSearchHitDto,
   } from '../../bindings';
@@ -162,8 +169,15 @@
     }
   }
 
+  const isTeardown = $derived(group.type_behavior === 'teardown');
+  // Призраки (D-10): выведенные детали разбора; в счётчики не входят (D-11).
+  const ghosts = $derived(isTeardown ? (comp?.ghosts ?? []) : []);
+
   const isEmpty = $derived(
-    comp !== null && comp.devices.length === 0 && comp.child_groups.length === 0,
+    comp !== null &&
+      comp.devices.length === 0 &&
+      comp.child_groups.length === 0 &&
+      ghosts.length === 0,
   );
 
   function deviceCountLabel(g: GroupDto): string {
@@ -218,6 +232,105 @@
   async function afterChange(): Promise<void> {
     await loadComposition();
     onChanged?.();
+  }
+
+  // ---- Призраки разбора --------------------------------------------------------
+  const ghostMenus: Record<number, ReturnType<typeof ActionMenu> | null> = {};
+  const ghostCellEls: Record<number, HTMLElement | null> = {};
+
+  function ghostCanReturn(g: GroupGhostDeviceDto): boolean {
+    return (
+      canEdit &&
+      canReturnToTeardown({ role, isDeleted: g.is_deleted, statusCode: g.status_code ?? '' })
+    );
+  }
+
+  /** Пометка причины в ячейке места (UI-SPEC §12.2). */
+  function ghostPlaceNote(g: GroupGhostDeviceDto): string {
+    if (g.is_deleted) return 'удалено';
+    if (g.current_group_id !== null) return `выведено → ${g.current_group_name ?? ''}`;
+    return g.place_path_short ? `выведено · ${g.place_path_short}` : 'выведено';
+  }
+
+  function openGhostMenu(e: MouseEvent, id: number): void {
+    const cell = ghostCellEls[id];
+    if (e.clientX === 0 && e.clientY === 0 && cell) {
+      const rect = cell.getBoundingClientRect();
+      ghostMenus[id]?.openAt(rect.left, rect.bottom);
+    } else {
+      ghostMenus[id]?.openAt(e.clientX, e.clientY);
+    }
+  }
+
+  // ---- Попап «уже в группе» (D-16) ---------------------------------------------
+  // Один попап на состав: «Переместить» выполняет run() (moveDevices / setParent
+  // с replace_parent), ошибки run уходят в сам попап.
+  interface OccupiedPopup {
+    kind: 'device' | 'group' | 'detail';
+    subjectName: string;
+    currentGroupName: string;
+    run: () => Promise<void>;
+  }
+  let occupiedPopup = $state<OccupiedPopup | null>(null);
+
+  // Возврат выведенной детали (D-15): свободная — сразу, занятая — через попап.
+  async function returnGhost(g: GroupGhostDeviceDto): Promise<void> {
+    const moveHere = async (): Promise<void> => {
+      const res = await groups.moveDevices({ group_id: group.id, device_ids: [g.device_id] });
+      notifyPlaceContentChanged(res.changed_place_ids);
+      pushToast('success', `Деталь возвращена в «${group.name}»`);
+      occupiedPopup = null;
+      query = '';
+      await afterChange();
+    };
+    if (g.current_group_id !== null) {
+      occupiedPopup = {
+        kind: 'detail',
+        subjectName: g.name,
+        currentGroupName: g.current_group_name ?? '',
+        run: moveHere,
+      };
+      return;
+    }
+    try {
+      const res = await groups.addDevices({ group_id: group.id, device_ids: [g.device_id] });
+      notifyPlaceContentChanged(res.changed_place_ids);
+      pushToast('success', `Деталь возвращена в «${group.name}»`);
+      query = '';
+      await afterChange();
+    } catch (e) {
+      if (isAlreadyInGroup(e)) {
+        occupiedPopup = {
+          kind: 'detail',
+          subjectName: g.name,
+          currentGroupName: e.details.items[0]?.group_name ?? '',
+          run: moveHere,
+        };
+        return;
+      }
+      pushToast(
+        'error',
+        errMessage(e, 'Не удалось вернуть деталь в разбор. Проверьте подключение и повторите.'),
+      );
+    }
+  }
+
+  /** Поиск возврата (D-15): только призраки этого разбора, без запросов к серверу. */
+  const returnable = $derived(ghosts.filter((g) => ghostCanReturn(g)));
+  const returnHits = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (q === '') return returnable;
+    return returnable.filter((g) =>
+      [g.name, g.inventory_number, g.serial_number].some((v) => v?.toLowerCase().includes(q)),
+    );
+  });
+
+  function ghostHitMeta(g: GroupGhostDeviceDto): string | undefined {
+    const where =
+      g.current_group_id !== null
+        ? `сейчас в группе «${g.current_group_name ?? ''}»`
+        : g.place_path_short;
+    return joinMeta(joinSnInv(g.serial_number, g.inventory_number), where);
   }
 
   // ---- Строка вложенной группы -------------------------------------------------
@@ -500,13 +613,13 @@
       if (created.length === 1) {
         pushToast(
           'error',
-          `Устройство «${created[0].name}» создано, но не добавлено в запись разбора: ${reason}. Добавьте его вручную через поиск в составе.`,
+          `Деталь «${created[0].name}» создана, но не добавлена в запись разбора: ${reason}. Верните её поиском в составе.`,
         );
       } else {
         const noun = pluralizeRu(created.length, ['устройство', 'устройства', 'устройств']);
         pushToast(
           'error',
-          `Создано ${created.length} ${noun}, но они не добавлены в запись разбора: ${reason}. Найдите их поиском в составе.`,
+          `Создано ${created.length} ${noun}, но они не добавлены в запись разбора: ${reason}. Верните их поиском в составе.`,
         );
       }
     }
@@ -685,38 +798,163 @@
   {/each}
 {/snippet}
 
+{#snippet ghostRows(rows: GroupGhostDeviceDto[])}
+  <tr class="ghost-divider">
+    <td colspan={COLUMNS}>Выведенные детали · {rows.length}</td>
+  </tr>
+  {#each rows as g (g.device_id)}
+    {@const id = g.device_id}
+    <TableRow
+      inactive
+      oncontextmenu={(e) => {
+        if (isRowOverlayEvent(e.target)) return;
+        if (!ghostCanReturn(g)) return;
+        e.preventDefault();
+        openGhostMenu(e, id);
+      }}
+      ondblclick={(e) => {
+        if (isRowOverlayEvent(e.target)) return;
+        if (g.is_deleted) return;
+        if ((e.target as HTMLElement | null)?.closest?.('button, a')) return;
+        window.getSelection()?.removeAllRanges();
+        void deviceMenus[id]?.openView();
+      }}
+    >
+      <td
+        class="cell cell-kind"
+        role="button"
+        tabindex="0"
+        title={g.is_deleted ? 'Устройство удалено — вернуть нельзя' : undefined}
+        bind:this={ghostCellEls[id]}
+        onkeydown={(e) => {
+          if (!isOwnKeyEvent(e.target, e.currentTarget)) return;
+          if (e.key === 'Enter') {
+            if (g.is_deleted) return;
+            e.preventDefault();
+            void deviceMenus[id]?.openView();
+          } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+            if (!ghostCanReturn(g)) return;
+            e.preventDefault();
+            const cell = ghostCellEls[id];
+            if (cell) {
+              const rect = cell.getBoundingClientRect();
+              ghostMenus[id]?.openAt(rect.left, rect.bottom);
+            }
+          }
+        }}
+      >
+        {g.type_name}
+      </td>
+      <td class="cell" title={g.is_deleted ? 'Устройство удалено — вернуть нельзя' : g.name}>
+        {g.name}
+      </td>
+      <td class="cell">
+        {#if g.inventory_number || g.serial_number}
+          {#if g.inventory_number}<span class="tr-mono line">{g.inventory_number}</span>{/if}
+          {#if g.serial_number}<span class="tr-mono line">{g.serial_number}</span>{/if}
+        {:else}
+          —
+        {/if}
+      </td>
+      <td class="cell cell-note tr-cell-solid" title={g.place_path ?? undefined}>
+        {ghostPlaceNote(g)}
+      </td>
+      <td class="cell tr-cell-solid">
+        {#if !g.is_deleted && g.status_name}
+          <Badge
+            variant={statusTone(g.status_code).variant}
+            appearance={statusTone(g.status_code).appearance}
+            muted={statusTone(g.status_code).muted}>{g.status_name}</Badge
+          >
+        {:else}
+          —
+        {/if}
+      </td>
+      <td class="col-menu tr-cell-solid">
+        {#if !g.is_deleted}
+          <DeviceRowMenu
+            bind:this={deviceMenus[id]}
+            device={null}
+            deviceId={id}
+            trigger="none"
+            onEdit={(dev) => (editTarget = dev)}
+            onChanged={() => void afterChange()}
+          />
+        {/if}
+        {#if ghostCanReturn(g)}
+          <ActionMenu bind:this={ghostMenus[id]} variant="ghost-sm" label={`Действия: ${g.name}`}>
+            <button type="button" role="menuitem" onclick={() => void returnGhost(g)}>
+              Вернуть в разбор
+            </button>
+          </ActionMenu>
+        {/if}
+      </td>
+    </TableRow>
+  {/each}
+{/snippet}
+
 {#snippet addRow()}
   <div class="add-row">
     <div class="add-field">
-      <Dropdown
-        variant="combobox"
-        value={query}
-        placeholder="Добавить устройство или группу — название, инвентарный или серийный номер"
-        loading={searching}
-        groups={suggestions}
-        getGroupId={(g: SearchItem) => g.key}
-        getGroupName={itemName}
-        getGroupMeta={itemMeta}
-        getGroupSection={(g: SearchItem) =>
-          g.kind === 'device' ? SECTION_DEVICES : SECTION_GROUPS}
-        getGroupSub={itemSub}
-        getGroupCount={(g: SearchItem) =>
-          g.kind === 'device' ? g.group.count : g.hit.device_count}
-        isGroupExpandable={(g: SearchItem) =>
-          g.kind === 'device' && isDeviceGroupExpandable(g.group)}
-        onExpandGroup={expandItem}
-        getMemberId={(m: MemberRow) => m.key}
-        getMemberName={memberName}
-        getMemberMeta={memberMeta}
-        getMemberSub={memberSub}
-        onSearch={(q) => void fetchSuggestions(q)}
-        onQueryInput={(v) => (query = v)}
-        onPickGroup={pickItem}
-        onPickMember={pickMember}
-      />
+      {#if isTeardown}
+        <!-- D-15: в разборе ищутся только выведенные детали этого разбора. -->
+        <Dropdown
+          variant="combobox"
+          value={query}
+          placeholder="Вернуть выведенную деталь — название, инвентарный или серийный номер"
+          loading={false}
+          groups={returnHits}
+          getGroupId={(g: GroupGhostDeviceDto) => g.device_id}
+          getGroupName={(g: GroupGhostDeviceDto) => g.name}
+          getGroupMeta={ghostHitMeta}
+          getGroupCount={() => 1}
+          isGroupExpandable={() => false}
+          onExpandGroup={(): MemberRow[] => []}
+          getMemberId={(m: MemberRow) => m.key}
+          getMemberName={memberName}
+          onSearch={() => {}}
+          onQueryInput={(v) => (query = v)}
+          onPickGroup={(g: GroupGhostDeviceDto) => void returnGhost(g)}
+          onPickMember={() => {}}
+        />
+        {#if query.trim() !== '' && returnHits.length === 0}
+          <p class="add-hint">
+            Выведенных деталей нет. Новые детали добавляются кнопкой «Создать деталь».
+          </p>
+        {/if}
+      {:else}
+        <Dropdown
+          variant="combobox"
+          value={query}
+          placeholder="Добавить устройство или группу — название, инвентарный или серийный номер"
+          loading={searching}
+          groups={suggestions}
+          getGroupId={(g: SearchItem) => g.key}
+          getGroupName={itemName}
+          getGroupMeta={itemMeta}
+          getGroupSection={(g: SearchItem) =>
+            g.kind === 'device' ? SECTION_DEVICES : SECTION_GROUPS}
+          getGroupSub={itemSub}
+          getGroupCount={(g: SearchItem) =>
+            g.kind === 'device' ? g.group.count : g.hit.device_count}
+          isGroupExpandable={(g: SearchItem) =>
+            g.kind === 'device' && isDeviceGroupExpandable(g.group)}
+          onExpandGroup={expandItem}
+          getMemberId={(m: MemberRow) => m.key}
+          getMemberName={memberName}
+          getMemberMeta={memberMeta}
+          getMemberSub={memberSub}
+          onSearch={(q) => void fetchSuggestions(q)}
+          onQueryInput={(v) => (query = v)}
+          onPickGroup={pickItem}
+          onPickMember={pickMember}
+        />
+      {/if}
     </div>
-    <Button variant="secondary" onclick={() => (addModalOpen = true)}>Добавить несколько…</Button>
-    {#if group.type_behavior === 'teardown'}
+    {#if !isTeardown}
+      <Button variant="secondary" onclick={() => (addModalOpen = true)}>Добавить несколько…</Button>
+    {/if}
+    {#if isTeardown}
       <Button variant="secondary" onclick={() => (detailModalOpen = true)}>Создать деталь</Button>
     {/if}
   </div>
@@ -730,8 +968,10 @@
       framed={false}
       loading={loading && comp === null}
       empty={isEmpty}
-      emptyTitle="Состав пуст"
-      emptyBody="Добавьте устройства поиском ниже."
+      emptyTitle={isTeardown ? 'Деталей пока нет' : 'Состав пуст'}
+      emptyBody={isTeardown
+        ? 'Создайте первую деталь кнопкой «Создать деталь» ниже.'
+        : 'Добавьте устройства поиском ниже.'}
       footer={canEdit ? addRow : undefined}
     >
       {#snippet head()}
@@ -745,6 +985,9 @@
       {#if comp}
         {@render groupRows(comp.child_groups, 0)}
         {@render deviceRows(comp.devices, false)}
+        {#if ghosts.length > 0}
+          {@render ghostRows(ghosts)}
+        {/if}
       {/if}
     </Table>
   </div>
@@ -763,6 +1006,18 @@
     originGroup={{ id: group.id, name: group.name }}
     onClose={() => (detailModalOpen = false)}
     onSaved={handleDetailSaved}
+  />
+{/if}
+
+{#if occupiedPopup}
+  <AlreadyInGroupPopup
+    kind={occupiedPopup.kind}
+    subjectName={occupiedPopup.subjectName}
+    currentGroupName={occupiedPopup.currentGroupName}
+    targetName={group.name}
+    targetPlaceLabel={group.place_path}
+    onConfirm={occupiedPopup.run}
+    onCancel={() => (occupiedPopup = null)}
   />
 {/if}
 
@@ -847,6 +1102,24 @@
       outline: none;
       box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
+  }
+
+  .cell-note {
+    font-size: var(--tr-font-size-caption);
+    color: var(--tr-text-secondary);
+  }
+
+  .ghost-divider td {
+    padding: var(--tr-space-xs) var(--tr-space-md);
+    border-top: 1px solid var(--tr-border-strong);
+    font-size: var(--tr-font-size-caption);
+    color: var(--tr-text-secondary);
+  }
+
+  .add-hint {
+    margin: var(--tr-space-xs) 0 0;
+    font-size: var(--tr-font-size-caption);
+    color: var(--tr-text-secondary);
   }
 
   .gc-loading-row td {

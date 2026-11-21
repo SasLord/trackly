@@ -983,6 +983,8 @@
       state: stateField.trim() || null,
       place_id: placeId,
       status_id: parseInt(statusId, 10),
+      // D-08: происхождение задаётся только при создании в разборе.
+      origin_group_id: originGroup?.id ?? null,
     };
     const numberInput: NumberFieldInput = {
       value: inventoryNo,
@@ -1157,6 +1159,8 @@
             state: stateField.trim() || null,
             place_id: placeId,
             status_id: parseInt(statusId, 10),
+            // D-08: происхождение задаётся только при создании в разборе.
+            origin_group_id: originGroup?.id ?? null,
           };
           const createdList = await devices.bulkCreate(newDevice, qty);
           pushToast('success', `Создано ${qty} устройств`);
