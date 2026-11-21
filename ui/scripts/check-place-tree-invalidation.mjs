@@ -99,6 +99,17 @@
 //           имя команды, собранное из частей строки. Имя команды в ЛЮБОМ файле src ловит
 //           `checkServerCommands`, поэтому прямой вызов обходом не является.
 //
+//   INV-11 (WR-09 ревью 41.7, quick 261121-hjw) — эффект ЗАГРУЗКИ дерева
+//           держит реактивную зависимость от `reloadSeq` стора через функцию
+//           `reloadSeqNow()` (имя стора в нём запрещено INV-1: ровно один
+//           эффект с `placeContentEventsStore`). INV-1/INV-4 этот эффект не
+//           видели вовсе: удаление `void reloadSeqNow();` или подмена поля в
+//           теле функции молча убивали перезагрузку дерева по событию другого
+//           клиента (D-17). Теперь: ровно один `$effect` PlaceTree содержит
+//           вызов `reloadSeqNow(` ВНЕ `untrack` и в нём же `loadTree(`; тело
+//           `reloadSeqNow` в сторе возвращает `placeContentEventsStore.reloadSeq`.
+//           (В плане quick — «INV-10»; номер занят инвентарём 41.12, отсюда 11.)
+//
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
 // доказывает отсутствие цикла в рантайме — это по-прежнему проверяется живым
@@ -590,6 +601,29 @@ function checkTree(treeSrc, violations) {
     });
   }
 
+  // INV-11 — эффект загрузки дерева реактивно зависит от reloadSeqNow().
+  const reloadEffects = effects.filter((e) => {
+    const ur = untrackRanges(e);
+    return indicesOf(e, 'reloadSeqNow(').some((i) => !inRanges(ur, i));
+  });
+  if (reloadEffects.length !== 1) {
+    violations.push({
+      file: TREE,
+      inv: 'INV-11',
+      message: `ожидался ровно один $effect с вызовом reloadSeqNow() вне untrack, найдено ${reloadEffects.length}`,
+      hint:
+        'Без реактивного чтения reloadSeq дерево мест не перезагружается по событию другого клиента (D-17, WR-09 ' +
+        'ревью 41.7); untrack вокруг вызова снимает зависимость так же молча, как удаление.',
+    });
+  } else if (!reloadEffects[0].includes('loadTree(')) {
+    violations.push({
+      file: TREE,
+      inv: 'INV-11',
+      message: '$effect с reloadSeqNow() не вызывает loadTree()',
+      hint: 'Подписка на reloadSeq обязана жить в эффекте, который перезагружает дерево.',
+    });
+  }
+
   // INV-5 — соседний ленивый эффект сохраняет свой сходящийся гейт.
   const lazy = effects.filter((e) => e.includes('places_subtree_stats'));
   if (lazy.length !== 1) {
@@ -614,6 +648,25 @@ function checkTree(treeSrc, violations) {
 
 function checkStore(storeSrc, violations) {
   const code = stripComments(storeSrc);
+  // INV-11 — reloadSeqNow читает именно reloadSeq стора.
+  const reloadBody = functionBody(code, 'reloadSeqNow');
+  if (reloadBody === null) {
+    violations.push({
+      file: STORE,
+      inv: 'INV-11',
+      message: 'функция reloadSeqNow не найдена',
+      hint: 'Эффект загрузки PlaceTree подписан на reloadSeq через неё — переименование обнови в гейте осознанно.',
+    });
+  } else if (!/^\s*return\s+placeContentEventsStore\.reloadSeq\s*;?\s*$/.test(reloadBody)) {
+    violations.push({
+      file: STORE,
+      inv: 'INV-11',
+      message: 'reloadSeqNow возвращает не placeContentEventsStore.reloadSeq',
+      hint:
+        'Подмена поля (например .seq) переводит эффект загрузки дерева на чужой счётчик: перезагрузка по ' +
+        'событию другого клиента (D-17) молча умирает или срабатывает на каждое локальное notify.',
+    });
+  }
   const body = functionBody(code, 'notifyPlaceContentChanged');
   if (body === null) {
     violations.push({
@@ -2101,6 +2154,40 @@ function selftest() {
           ),
         ),
       expectInv: ['INV-6'],
+    },
+    {
+      name: 'INV-11: PlaceTree — вызов reloadSeqNow() удалён',
+      run: () => run(swap(TREE, 'void reloadSeqNow();', 'void 0;', 'вызов reloadSeqNow снят')),
+      expectInv: ['INV-11'],
+      exact: 1,
+    },
+    {
+      name: 'INV-11: PlaceTree — вызов reloadSeqNow() завёрнут в untrack',
+      run: () =>
+        run(
+          swap(
+            TREE,
+            'void reloadSeqNow();',
+            'void untrack(() => reloadSeqNow());',
+            'reloadSeqNow в untrack',
+          ),
+        ),
+      expectInv: ['INV-11'],
+      exact: 1,
+    },
+    {
+      name: 'INV-11: store — reloadSeqNow возвращает .seq вместо .reloadSeq',
+      run: () =>
+        run(
+          swap(
+            STORE,
+            'return placeContentEventsStore.reloadSeq;',
+            'return placeContentEventsStore.seq;',
+            'поле подменено',
+          ),
+        ),
+      expectInv: ['INV-11'],
+      exact: 1,
     },
     {
       name: 'INV-7: RequestDetail — обработчик не зовёт notifyPlaceContentChanged',

@@ -43,6 +43,12 @@ let reconnecting = false;
 let refCount = 0;
 let activeCleanup: (() => void) | null = null;
 
+// WR-04 ревью 41.7: висящий таймер переподключения. Без хранения его нельзя было
+// отменить: release()/disconnectWs() в окне backoff закрывали только `ws`, а
+// таймер позже открывал сокет, который уже никто не держит; следующий первый
+// потребитель открывал второй — события дублировались (класс GAP-12-10).
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function onWsEvent(handler: WsEventHandler): () => void {
   handlers.push(handler);
   return () => {
@@ -141,7 +147,11 @@ function connectBrowser(): void {
     }
     const delay = reconnectDelay;
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-    setTimeout(() => {
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (refCount <= 0) {
+        return;
+      }
       connectBrowser();
     }, delay);
   };
@@ -183,6 +193,10 @@ export async function connectWs(): Promise<() => void> {
       // Browser path.
       connectBrowser();
       activeCleanup = () => {
+        if (reconnectTimer !== null) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
         if (ws) {
           ws.onclose = null; // Prevent reconnect loop on intentional close.
           ws.close();

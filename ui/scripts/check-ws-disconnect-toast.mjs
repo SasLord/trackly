@@ -31,7 +31,7 @@
 //     флаг эпизода `reconnecting` уже не давал показать его снова. Дедуп (E2)
 //     от этого не защищал: он про стопку одинаковых, а не про вытеснение
 //     единственного.
-//  2. Структурные правила W1-W5 для `src/lib/api/ws.ts` (текст без
+//  2. Структурные правила W1-W6 для `src/lib/api/ws.ts` (текст без
 //     комментариев, пробелы схлопнуты):
 //       W1 — тост обрыва ставится залипающим (`sticky: true`);
 //       W2 — вызов придушен флагом эпизода (`if (!reconnecting)` +
@@ -42,16 +42,26 @@
 //            «не меньше одного»;
 //       W5 — каждая цепочка `import('$lib/stores/toast.svelte')` логирует
 //            сбой в `.catch`. Пустой `.catch(() => {})` однажды уже скрыл
-//            причину и стоил сессии лишних витков.
+//            причину и стоил сессии лишних витков;
+//       W6 — таймер переподключения отменяем (WR-04 ревью 41.7): результат
+//            `setTimeout` хранится в модульной `reconnectTimer`, колбэк
+//            обнуляет её и НЕ зовёт `connectBrowser()` при `refCount <= 0`,
+//            browser-cleanup (`activeCleanup`, через него же `disconnectWs`)
+//            зовёт `clearTimeout(reconnectTimer)` и обнуляет переменную. Иначе
+//            release() в окне backoff оставлял таймер, который открывал сокет
+//            без потребителя, а следующий первый потребитель — второй
+//            (дубли событий, класс GAP-12-10).
 //
 // `--selftest` прогоняет те же проверки на встроенных эталонах: эталон обязан
-// пройти, мутанты M1-M12 — провалиться.
+// пройти, мутанты M1-M15 — провалиться. `--file-ws=<path>` подменяет путь
+// ws.ts (мутационная проверка гейта на дореформенном исходнике из git).
 //
 // Реальных данных организации и людей гейт не содержит.
 //
 // Usage:
 //   node scripts/check-ws-disconnect-toast.mjs             # проверить репозиторий
 //   node scripts/check-ws-disconnect-toast.mjs --selftest  # встроенный self-test
+//   node scripts/check-ws-disconnect-toast.mjs --file-ws=/tmp/ws.ts  # другой ws.ts
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -271,7 +281,54 @@ function runStructural(wsSrc) {
       );
     }
   });
+
+  // W6 — висящий таймер переподключения отменяем (WR-04 ревью 41.7).
+  if (!/\blet\s+reconnectTimer\b/.test(text)) {
+    failures.push(
+      'W6: нет модульной переменной reconnectTimer — таймер переподключения нечем отменить',
+    );
+  }
+  if (!/reconnectTimer\s*=\s*setTimeout\(/.test(text)) {
+    failures.push(
+      'W6: результат setTimeout переподключения не сохраняется в reconnectTimer — release()/disconnectWs() не отменят висящий таймер, и он откроет сокет без потребителя',
+    );
+  }
+  if (
+    !/reconnectTimer\s*=\s*setTimeout\(\s*\(\s*\)\s*=>\s*\{\s*reconnectTimer\s*=\s*null\s*;\s*if\s*\(\s*refCount\s*<=\s*0\s*\)\s*\{?\s*return\s*;?\s*\}?\s*connectBrowser\(\s*\)/.test(
+      text,
+    )
+  ) {
+    failures.push(
+      'W6: колбэк таймера переподключения не обнуляет reconnectTimer и/или зовёт connectBrowser() без гарда refCount <= 0 — таймер воскресит сокет, который никто не держит',
+    );
+  }
+  const cleanupBody = arrowBody(text, 'activeCleanup = () => {');
+  if (
+    cleanupBody === null ||
+    !/clearTimeout\(\s*reconnectTimer\s*\)/.test(cleanupBody) ||
+    !/reconnectTimer\s*=\s*null/.test(cleanupBody)
+  ) {
+    failures.push(
+      'W6: browser-cleanup (activeCleanup) не зовёт clearTimeout(reconnectTimer) с обнулением — release() в окне backoff оставит живой таймер',
+    );
+  }
   return failures;
+}
+
+/** Тело стрелочной функции после `anchor` (оканчивается на `{`) по балансу скобок. */
+function arrowBody(text, anchor) {
+  const at = text.indexOf(anchor);
+  if (at === -1) return null;
+  const open = at + anchor.length - 1;
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '{') depth += 1;
+    else if (text[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(open + 1, i);
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +379,8 @@ let reconnecting = false;
 let refCount = 0;
 let reconnectDelay = 1000;
 let reconnectToastId = null;
+let reconnectTimer = null;
+let activeCleanup = null;
 
 function showReconnectingToast() {
   import('$lib/stores/toast.svelte')
@@ -366,6 +425,29 @@ function connectBrowser() {
       reconnecting = true;
       showReconnectingToast();
     }
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (refCount <= 0) {
+        return;
+      }
+      connectBrowser();
+    }, 1000);
+  };
+}
+
+function openFirst() {
+  connectBrowser();
+  activeCleanup = () => {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (ws) {
+      ws.onclose = null;
+      ws.close();
+      ws = null;
+    }
+    reconnecting = false;
   };
 }
 `;
@@ -478,6 +560,24 @@ const WS_MUTANTS = [
       "  import('$lib/stores/toast.svelte').then(() => {}).catch(() => {});\n" +
       '  /* настоящий блочный комментарий */',
   },
+  {
+    id: 'M13',
+    name: 'таймер переподключения не сохраняется (возврат WR-04)',
+    from: '    reconnectTimer = setTimeout(() => {',
+    to: '    setTimeout(() => {',
+  },
+  {
+    id: 'M14',
+    name: 'clearTimeout убран из browser-cleanup — release() в окне backoff не отменяет таймер',
+    from: '      clearTimeout(reconnectTimer);\n',
+    to: '',
+  },
+  {
+    id: 'M15',
+    name: 'снят гард refCount в колбэке таймера — сокет без потребителя',
+    from: '      if (refCount <= 0) {\n        return;\n      }\n      connectBrowser();',
+    to: '      connectBrowser();',
+  },
 ];
 
 function assertUniqueAnchor(source, m) {
@@ -503,7 +603,7 @@ async function selftest() {
   const goodWs = runStructural(GOOD_WS);
   if (goodWs.length) {
     console.error(
-      `${TAG} SELFTEST FAIL — эталонный ws.ts не прошёл W1-W5:\n  - ${goodWs.join('\n  - ')}`,
+      `${TAG} SELFTEST FAIL — эталонный ws.ts не прошёл W1-W6:\n  - ${goodWs.join('\n  - ')}`,
     );
     process.exit(1);
   }
@@ -524,7 +624,7 @@ async function selftest() {
     const failures = runStructural(GOOD_WS.split(m.from).join(m.to));
     if (!failures.length) {
       console.error(
-        `${TAG} SELFTEST FAIL — мутант ${m.id} «${m.name}» прошёл W1-W5: гейт его не ловит`,
+        `${TAG} SELFTEST FAIL — мутант ${m.id} «${m.name}» прошёл W1-W6: гейт его не ловит`,
       );
       process.exit(1);
     }
@@ -536,7 +636,10 @@ async function selftest() {
 }
 
 async function main() {
-  if (process.argv.slice(2).includes('--selftest')) return selftest();
+  const argv = process.argv.slice(2);
+  if (argv.includes('--selftest')) return selftest();
+  const wsArg = argv.find((a) => a.startsWith('--file-ws='));
+  const wsPath = wsArg ? path.resolve(wsArg.slice('--file-ws='.length)) : WS;
 
   const failures = [];
   let storeSrc;
@@ -548,9 +651,9 @@ async function main() {
     process.exit(1);
   }
   try {
-    wsSrc = fs.readFileSync(WS, 'utf8');
+    wsSrc = fs.readFileSync(wsPath, 'utf8');
   } catch {
-    console.error(`${TAG} FAIL — не удалось прочитать ${WS}`);
+    console.error(`${TAG} FAIL — не удалось прочитать ${wsPath}`);
     process.exit(1);
   }
   failures.push(...(await runStoreCases(storeSrc, path.basename(STORE))));
@@ -560,7 +663,7 @@ async function main() {
     console.error(`${TAG} FAIL —\n  - ${failures.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log(`${TAG} OK — исполняемые E1-E5 по стору тостов, структурные W1-W5 по ws.ts`);
+  console.log(`${TAG} OK — исполняемые E1-E5 по стору тостов, структурные W1-W6 по ws.ts`);
 }
 
 main();
