@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: "2026-11-21T14:31:23.087Z"
-last_activity: 2026-11-21 -- Phase 41.8 UI-SPEC approved (ui-phase, 6/6 после 1 ревизии)
+status: executing
+last_updated: "2026-11-21T14:59:43.707Z"
+last_activity: 2026-11-21 -- Phase 41.8 planning complete
 progress:
   total_phases: 27
-  completed_phases: 20
-  total_plans: 389
+  completed_phases: 21
+  total_plans: 403
   completed_plans: 389
-  percent: 74
-stopped_at: Phase 41.8 UI-SPEC approved (2026-11-21) — next /gsd-plan-phase 41.8
+  percent: 78
 ---
 
 # Project State
@@ -27,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 41.8 (41.7 закрыта ранее; SDK phase.complete ошибочно назвал её следующей)
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
 показаны так, как остальные группы (нет строки с шевроном и раскрытием состава), — это сбивает с
@@ -187,7 +186,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-21 -- закрыт долг аудита v1.4 шестью quick-пакетами (hef, hed, heh, heg, hei, hjw) + учёт (VERIFICATION 41.13, SECURITY 41.3/39.2, REQUIREMENTS/ROADMAP)
+Last activity: 2026-11-21 -- Phase 41.8 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
