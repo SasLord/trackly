@@ -101,8 +101,10 @@
 
   const hasMore = $derived(offset < serverTotal);
 
-  /** device_id -> имя группы, где устройство уже состоит. */
+  /** device_id -> имя ДРУГОЙ группы, где устройство уже состоит (D-31: выбирается). */
   let occupied = $state<Record<number, string>>({});
+  /** device_id устройств, уже входящих в ЭТУ группу (D-31: единственные заблокированные). */
+  let inThisGroup = $state<Record<number, true>>({});
 
   function clientFilterActive(): boolean {
     return placeId !== null || (search.trim() !== '' && (typeId !== null || statusId !== null));
@@ -126,12 +128,22 @@
     try {
       const memberships = await groups.forDevices(ids);
       const next = { ...occupied };
-      for (const id of ids) delete next[id];
-      for (const m of memberships) next[m.device_id] = m.group_name;
+      const here = { ...inThisGroup };
+      for (const id of ids) {
+        delete next[id];
+        delete here[id];
+      }
+      for (const m of memberships) {
+        if (m.group_id === group.id) here[m.device_id] = true;
+        else next[m.device_id] = m.group_name;
+      }
       occupied = next;
-      // Устройство, которое оказалось занятым, выбранным оставаться не может.
-      if ([...selected].some((id) => next[id] !== undefined)) {
-        selected = new Set([...selected].filter((id) => next[id] === undefined));
+      inThisGroup = here;
+      // D-31 / D-18: устройство из ДРУГОЙ группы выбирается (пакет уйдёт на шаг
+      // подтверждения переноса). Выбранным оставаться не может только устройство,
+      // уже входящее в ЭТУ группу.
+      if ([...selected].some((id) => here[id] === true)) {
+        selected = new Set([...selected].filter((id) => here[id] !== true));
       }
     } catch {
       // Подсказка необязательна: отказ придёт с сервера при добавлении.
@@ -446,21 +458,26 @@
           {/snippet}
           {#each rows as d (d.id)}
             {@const busyIn = occupied[d.id]}
-            {@const note = busyIn === undefined ? undefined : `Уже в группе «${busyIn}»`}
-            <TableRow class={busyIn === undefined ? '' : 'row-occupied'}>
+            {@const here = inThisGroup[d.id] === true}
+            {@const note = here
+              ? 'Уже в этой группе'
+              : busyIn === undefined
+                ? undefined
+                : `Уже в группе «${busyIn}»`}
+            <TableRow class={busyIn === undefined && !here ? '' : 'row-occupied'}>
               <td class="col-check" title={note}>
                 <Checkbox
                   checked={selected.has(d.id)}
-                  disabled={busyIn !== undefined || busy}
+                  disabled={here || busy}
                   onchange={(v) => toggle(d.id, v)}
                 >
                   <span class="visually-hidden">Выбрать: {d.name}</span>
                 </Checkbox>
               </td>
-              <td class="cell" class:occupied={busyIn !== undefined} title={note ?? d.name}>
+              <td class="cell" class:occupied={busyIn !== undefined || here} title={note ?? d.name}>
                 {d.name}
               </td>
-              <td class="cell" class:occupied={busyIn !== undefined}>
+              <td class="cell" class:occupied={busyIn !== undefined || here}>
                 {#if d.inventory_no || d.serial_no}
                   {#if d.inventory_no}<span class="tr-mono line">{d.inventory_no}</span>{/if}
                   {#if d.serial_no}<span class="tr-mono line">{d.serial_no}</span>{/if}
@@ -470,7 +487,7 @@
               </td>
               <td
                 class="cell"
-                class:occupied={busyIn !== undefined}
+                class:occupied={busyIn !== undefined || here}
                 title={d.full_path ?? undefined}
               >
                 {d.place_path_short ?? '—'}
