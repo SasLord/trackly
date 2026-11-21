@@ -140,7 +140,11 @@ async fn d28_create_with_origin_joins_group_and_audits() {
         .create(part("Блок питания", st, Some(td)))
         .await
         .expect("create");
-    assert_eq!(members_of(&ctx, td).await, 1, "деталь должна быть в составе");
+    assert_eq!(
+        members_of(&ctx, td).await,
+        1,
+        "деталь должна быть в составе"
+    );
     let after = scalar(
         &ctx,
         "SELECT COUNT(*) FROM audit_log WHERE action = 'add_devices'",

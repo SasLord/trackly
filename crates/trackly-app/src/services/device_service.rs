@@ -895,6 +895,17 @@ impl DeviceService {
                     now,
                     printer.as_ref(),
                 )?;
+                // D-28: деталь разбора входит в состав той же транзакцией.
+                if let Some(g) = domain_new.origin_group_id {
+                    crate::services::group_service::join_origin_group_in_tx(
+                        &tx,
+                        g,
+                        id,
+                        user_id_opt,
+                        now,
+                        &mut Vec::new(),
+                    )?;
+                }
                 let after = repo.get_in_tx(&tx, id)?;
                 let after_dto = DeviceDto::from(after);
                 let after_json =
@@ -967,7 +978,7 @@ impl DeviceService {
                 "create_with_printer_block",
                 place_ids,
                 device_ids,
-                Vec::new(),
+                dto.origin_group_id.into_iter().collect(),
             );
             if dto.inventory_no.is_some() {
                 self.broadcast_number_space_changed();
@@ -1141,7 +1152,7 @@ impl DeviceService {
             "create_single_with_number_check_with_printer",
             place_ids,
             device_ids,
-            Vec::new(),
+            dto.origin_group_id.into_iter().collect(),
         );
 
         Ok(DeviceSaveOutcome::Created(Box::new(dto)))
@@ -2850,7 +2861,8 @@ impl DeviceService {
         let domain_new: trackly_core::domain::devices::DeviceNew = new.into();
         let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
 
-        let ids: Vec<i64> = self
+        let origin_group = domain_new.origin_group_id;
+        let (ids, group_places): (Vec<i64>, Vec<i64>) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -2862,9 +2874,21 @@ impl DeviceService {
                 }
                 Self::validate_origin_group_in_tx(&tx, domain_new.origin_group_id)?;
                 let mut created_ids = Vec::with_capacity(count as usize);
+                let mut group_places: Vec<i64> = Vec::new();
                 for _ in 0..count {
                     let id = repo.create_in_tx(&tx, &domain_new, now)?;
                     Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now, None)?;
+                    // D-28: деталь разбора входит в состав той же транзакцией.
+                    if let Some(g) = domain_new.origin_group_id {
+                        crate::services::group_service::join_origin_group_in_tx(
+                            &tx,
+                            g,
+                            id,
+                            user_id_opt,
+                            now,
+                            &mut group_places,
+                        )?;
+                    }
 
                     // audit_log row for each inserted device.
                     let after = repo.get_in_tx(&tx, id)?;
@@ -2886,18 +2910,24 @@ impl DeviceService {
                 }
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(created_ids)
+                Ok((created_ids, group_places))
             })
             .await?;
 
         // ONE event for the whole batch (D-01), unconditional (trap P4).
-        let place_ids: Vec<i64> = bulk_place_id.into_iter().collect();
+        let mut place_ids: Vec<i64> = bulk_place_id.into_iter().collect();
+        for p in group_places {
+            if !place_ids.contains(&p) {
+                place_ids.push(p);
+            }
+        }
         let device_ids = ids.clone();
+        // D-22: событие несёт группу разбора, чтобы «Группы» и «Места» обновились.
         self.broadcast_entities(
             "bulk_create_with_printer",
             place_ids,
             device_ids,
-            Vec::new(),
+            origin_group.into_iter().collect(),
         );
 
         if trimmed_nonempty.is_some() {

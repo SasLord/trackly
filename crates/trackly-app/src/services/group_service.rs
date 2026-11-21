@@ -1345,18 +1345,12 @@ fn add_one_in_tx(
             device.name
         )));
     }
-    if let Some(existing) = deps.groups.group_of_device_in_tx(tx, device_id)? {
-        if existing.id == group_id {
-            return Ok(AddOne::Skipped);
-        }
-        if mode == AddMode::Plain {
-            return Ok(AddOne::Occupied(OccupiedItem::device(
-                device_id,
-                device.name,
-                existing.id,
-                existing.name,
-            )));
-        }
+    // D-30: порядок — «уже в этой группе» (Skipped) → отказы по статусу → «занято
+    // другой группой». Иначе списанное устройство, оставшееся в АРМ, получало бы
+    // заведомо неисполнимое предложение переноса.
+    let existing = deps.groups.group_of_device_in_tx(tx, device_id)?;
+    if existing.as_ref().is_some_and(|e| e.id == group_id) {
+        return Ok(AddOne::Skipped);
     }
     // Серверные отказы бессмысленных действий (D-05): скрытые пункты UI — только UX.
     if device.status_code == STATUS_CODE_WRITTEN_OFF {
@@ -1374,6 +1368,16 @@ fn add_one_in_tx(
             "Устройство «{}» со статусом «На списание» в группу не добавляется.",
             device.name
         )));
+    }
+    if let Some(existing) = existing {
+        if mode == AddMode::Plain {
+            return Ok(AddOne::Occupied(OccupiedItem::device(
+                device_id,
+                device.name,
+                existing.id,
+                existing.name,
+            )));
+        }
     }
     deps.groups.add_device_in_tx(tx, group_id, device_id, now)?;
     added.push(device_id);
@@ -1404,6 +1408,57 @@ fn add_one_in_tx(
         }
     }
     Ok(AddOne::Added)
+}
+
+/// D-28: ввод только что созданной детали в её группу разбора той же транзакцией
+/// писателя (правила ввода D-08 через `add_one_in_tx`). Отказ откатывает и создание.
+/// Возвращает места, изменённые присвоением места группы.
+pub(crate) fn join_origin_group_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    group_id: i64,
+    device_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+    changed_places: &mut Vec<i64>,
+) -> Result<(), AppError> {
+    let deps = GroupMoveDeps::new();
+    let group = deps.groups.get_group_in_tx(tx, group_id)?;
+    let mut added: Vec<i64> = Vec::new();
+    match add_one_in_tx(
+        tx,
+        &deps,
+        &group,
+        Some(GroupBehavior::Teardown),
+        device_id,
+        AddMode::Plain,
+        user_id,
+        now,
+        &mut added,
+        changed_places,
+    )? {
+        AddOne::Added | AddOne::Skipped => {}
+        AddOne::Occupied(_) => {
+            return Err(AppError::Internal {
+                source_chain: "новая деталь не может быть занята другой группой".to_string(),
+            })
+        }
+    }
+    if !added.is_empty() {
+        deps.audit.insert(
+            tx,
+            AuditEntry {
+                entity_type: "group",
+                entity_id: group_id,
+                action: "add_devices",
+                user_id,
+                before_json: None,
+                after_json: None,
+                payload_json: Some(to_json(&serde_json::json!({ "device_ids": added }))?),
+                created_at_utc: now,
+            },
+        )?;
+    }
+    Ok(())
 }
 
 impl GroupService {

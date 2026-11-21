@@ -239,6 +239,9 @@ pub const REGISTRY: &[Entry] = &[
     b(GROUP, "write_off_device"),
     b(GROUP, "write_off_group"),
     b(GROUP, "set_parent"),
+    // D-28: примитив внутри писательской транзакции создания детали; событие шлёт
+    // вызывающий device_service (create/bulk_create_with_printer, group_ids = группа разбора).
+    ex(GROUP, "join_origin_group_in_tx", TX_PRIMITIVE_REASON),
     ro(GROUP, "user_options"),
     ro(GROUP, "card"),
     b(GROUP, "set_values"),

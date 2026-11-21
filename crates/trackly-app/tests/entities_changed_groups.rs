@@ -672,6 +672,67 @@ async fn mass_add_devices_sends_exactly_one_event() {
     .expect("mass_add_devices вышел за бюджет");
 }
 
+/// Phase 41.8 plan 20 (D-22, D-28): создание детали с происхождением вводит её в
+/// состав той же транзакцией, а событие несёт id группы разбора. Реестр сценарием
+/// не считает (префикс не `scenario_`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn d28_create_with_origin_event_carries_teardown_group() {
+    tokio::time::timeout(BUDGET, async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let td = ctx
+            .writer
+            .execute(|conn| {
+                let t: i64 = conn
+                    .query_row(
+                        "SELECT id FROM group_types WHERE behavior = 'teardown' LIMIT 1",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                conn.execute(
+                    "INSERT INTO groups (type_id, name, seq, created_at_utc, updated_at_utc, \
+                     version) VALUES (?1, 'Разбор #7', 7, 1700000000, 1700000000, 1)",
+                    rusqlite::params![t],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("seed teardown");
+        let mut rx = ctx.ws_broadcast.subscribe();
+        drain(&mut rx);
+        let made = ctx
+            .devices
+            .bulk_create(
+                trackly_app::dto::device::DeviceNew {
+                    type_id: 1,
+                    name: "Блок питания".to_string(),
+                    inventory_no: None,
+                    serial_no: None,
+                    model: None,
+                    specs: None,
+                    kit: None,
+                    state: None,
+                    place_id: None,
+                    status_id: 1,
+                    origin_group_id: Some(td),
+                },
+                2,
+            )
+            .await
+            .expect("bulk_create с происхождением");
+        let (_places, devices, groups) = assert_one_entities(&mut rx, "bulk_create с origin");
+        assert_eq!(sorted(groups), vec![td], "group_ids == [группа разбора]");
+        assert_eq!(
+            sorted(devices),
+            sorted(made.iter().map(|d| d.id).collect()),
+            "device_ids == созданные"
+        );
+    })
+    .await
+    .expect("d28 вышел за бюджет");
+}
+
 // ---------------------------------------------------------------------------
 // Покрытие: привязка сценариев к реестру по исходнику этого файла
 // ---------------------------------------------------------------------------
