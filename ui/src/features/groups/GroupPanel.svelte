@@ -43,7 +43,6 @@
     /** Вторая точка входа D-18: тот же обработчик страницы, что у меню узла. */
     onMoveRequest: (_groupId: number) => void;
     onRenameRequest: (_groupId: number) => void;
-    onOpenDevice?: (_deviceId: number) => void;
     /** Карточка/состав/свойства изменились — страница обновляет дерево. */
     onChanged?: () => void;
     /** Группа исчезла (NOT_FOUND при перечитывании) — страница сбрасывает выбор. */
@@ -60,7 +59,6 @@
     onOpenType,
     onMoveRequest,
     onRenameRequest,
-    onOpenDevice,
     onChanged,
     onGone,
   }: Props = $props();
@@ -258,7 +256,6 @@
           onChanged={handleContentsChanged}
           onOpenGroup={onNavigateToGroup}
           onRenameGroup={onRenameRequest}
-          {onOpenDevice}
         />
       {/if}
     </div>

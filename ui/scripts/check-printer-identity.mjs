@@ -52,7 +52,8 @@ const SRC_DIR = 'src';
 const MODULE = 'src/lib/deviceTypeIds.ts';
 const MODULE_IMPORT = /from\s+['"]\$lib\/deviceTypeIds['"]/;
 const RUST_CANON_REL = '../crates/trackly-core/src/domain/devices.rs';
-const MIN_IMPORTERS = 7;
+// 41.8-10: GroupsPage перестал импортировать модуль (переход из состава в «Устройства» снят, R-01).
+const MIN_IMPORTERS = 6;
 
 // Сгенерированные specta-файлы: имена типов Rust, не UI-копии признака.
 const GENERATED = /^src\/bindings[\w-]*\.ts$/;

@@ -28,7 +28,7 @@
     /** Group-row-mode only: контент между шевроном и именем (маркер принтера, 41.9). */
     groupLead?: Snippet;
     /** Group-row-mode only: fires on click of the row OR the chevron button. */
-    onToggleGroup?: () => void;
+    onToggleGroup?: (_e?: MouseEvent) => void;
     /** Форвард на <tr> в обоих режимах. preventDefault здесь НЕ вызывается:
      *  родное контекстное меню гасит строка-потребитель там, где открывает
      *  меню приложения (одинаково в Tauri и в LAN-браузере). */
@@ -66,7 +66,7 @@
   // onclick — one toggle per click, not two (see DeviceGroupRow precedent).
   function handleChevronClick(e: MouseEvent) {
     e.stopPropagation();
-    onToggleGroup?.();
+    onToggleGroup?.(e);
   }
 </script>
 

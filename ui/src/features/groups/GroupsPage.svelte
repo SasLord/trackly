@@ -17,10 +17,7 @@
   // Все права здесь — UX-слой (граница безопасности — сервер): admin правит типы,
   // admin|manager — группы; employee раздел не видит (маршрут не в employeeRoutes).
 
-  // PRINTER_TYPE_ID: у принтера собственный раздел (`#/printers?id=…`).
-  import { PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import { untrack } from 'svelte';
-  import { push } from 'svelte-spa-router';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import {
@@ -28,7 +25,6 @@
     placeContentEventsStore,
   } from '$lib/stores/placeContentEvents.svelte';
   import { groups as groupsApi } from '$lib/api/groups';
-  import { devices } from '$lib/api/devices';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Button from '$lib/components/Button.svelte';
   import DetailPanel from '$lib/components/DetailPanel.svelte';
@@ -303,19 +299,6 @@
     }
     refreshAll();
   }
-
-  // --- Переходы ------------------------------------------------------------------
-  // Из карточки состава клик по устройству ведёт в его раздел: принтер — в
-  // «Принтеры», остальное — в «Устройства».
-  async function openDevice(deviceId: number): Promise<void> {
-    try {
-      const d = await devices.get(deviceId);
-      const section = d.type_id === PRINTER_TYPE_ID ? '#/printers' : '#/devices';
-      await push(`${section}?id=${deviceId}`);
-    } catch (e) {
-      pushToast('error', errMessage(e, 'Не удалось открыть устройство.'));
-    }
-  }
 </script>
 
 <div class="groups-page">
@@ -373,7 +356,6 @@
               onOpenType={(typeId) => focusNode({ kind: 'type', id: typeId })}
               onMoveRequest={openMove}
               onRenameRequest={renameGroup}
-              onOpenDevice={openDevice}
               onChanged={refreshTree}
               onGone={handleGroupGone}
             />

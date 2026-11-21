@@ -12,6 +12,10 @@
   // Dropdown (getGroupSection). Перетаскивания нет: HTML5 DnD не работает в
   // WKWebView.
   //
+  // Строки устройств повторяют «Устройства» (Phase 41.8, D-05): кебаб, правый
+  // клик и клавиатура открывают ОДНО меню DeviceRowMenu, двойной клик/Enter —
+  // просмотр. Одиночный клик по первой ячейке только фокусирует строку.
+  //
   // Источник истины — сервер: «устройство уже в группе», цикл, teardown,
   // потолок пакета — отказ приходит с сервера и показывается Toast. Пометка
   // «уже в группе «…»» — подсказка (одним запросом groups.forDevices на
@@ -26,12 +30,17 @@
   import Button from '$lib/components/Button.svelte';
   import GroupAddDevicesModal from './GroupAddDevicesModal.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
+  import DeviceRowMenu from '../devices/DeviceRowMenu.svelte';
+  import AddToGroupModal from './AddToGroupModal.svelte';
+  import WriteOffGroupModal from './WriteOffGroupModal.svelte';
+  import { canWriteOff, isOwnKeyEvent, isRowOverlayEvent } from '../devices/deviceRowMenu';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { ensureLoaded, statusTone } from '$lib/stores/deviceStatuses.svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
   import { parseAppError, type AppError } from '$lib/api/errors';
   import type {
     GroupAddDevicesResultDto,
@@ -45,7 +54,7 @@
 
   interface Props {
     group: GroupDto;
-    /** admin | manager: строка добавления, «Вывести из состава», «Переименовать». */
+    /** admin | manager: строка добавления, вывод/перенос из группы, «Переименовать». */
     canEdit: boolean;
     /** Страница увеличивает счётчик, чтобы заставить состав перечитаться. */
     refreshToken?: number;
@@ -54,8 +63,6 @@
     /** «Открыть группу»: страница фокусирует её узел в дереве. */
     onOpenGroup: (_groupId: number) => void;
     onRenameGroup: (_groupId: number) => void;
-    /** Необязательно: клик/Enter по первой ячейке строки устройства. */
-    onOpenDevice?: (_deviceId: number) => void;
   }
 
   const {
@@ -65,10 +72,10 @@
     onChanged,
     onOpenGroup,
     onRenameGroup,
-    onOpenDevice,
   }: Props = $props();
 
   const COLUMNS = 6;
+  const role = $derived(authStore.user?.role ?? null);
 
   function errMessage(e: unknown, fallback: string): string {
     const err = e as Partial<AppError> | undefined;
@@ -172,26 +179,50 @@
     void ensureLoaded();
   });
 
-  function activateDevice(e: KeyboardEvent, d: GroupMemberDeviceDto): void {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onOpenDevice?.(d.device_id);
+  // ---- Меню и жесты строк ----------------------------------------------------
+  // Экземпляры меню и ячеек — по id устройства. Намеренно не $state: ссылки
+  // нужны только обработчикам, перерисовку они не вызывают.
+  const deviceMenus: Record<number, ReturnType<typeof DeviceRowMenu> | null> = {};
+  const cellEls: Record<number, HTMLElement | null> = {};
+  const groupMenus: Record<number, ReturnType<typeof ActionMenu> | null> = {};
+
+  /** Правый клик: у курсора; событие от клавиши меню (координат нет) — у ячейки. */
+  function openRowMenu(e: MouseEvent, id: number): void {
+    const cell = cellEls[id];
+    if (e.clientX === 0 && e.clientY === 0 && cell) {
+      void deviceMenus[id]?.openFromElement(cell);
+    } else {
+      void deviceMenus[id]?.openAt(e.clientX, e.clientY);
     }
   }
 
-  // ---- Вывод из состава (D-02: без подтверждения) --------------------------
-  async function removeDevice(deviceId: number, ownerGroupId: number): Promise<void> {
-    try {
-      await groups.removeDevices({ group_id: ownerGroupId, device_ids: [deviceId] });
-      await loadComposition();
-      onChanged?.();
-    } catch (e) {
-      pushToast('error', errMessage(e, 'Не удалось вывести устройство из состава.'));
+  function openGroupMenu(e: MouseEvent, id: number): void {
+    if (e.clientX === 0 && e.clientY === 0) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      groupMenus[id]?.openAt(rect.left, rect.bottom);
+    } else {
+      groupMenus[id]?.openAt(e.clientX, e.clientY);
     }
   }
 
-  // Вложение/вывод группы меняют место её устройств (если у родителя есть
-  // место) — обязательна инвалидация счётчиков дерева «Места» (D-08, INV-7).
+  /** Правка из меню строки (пункт «Редактировать»): форма устройства. */
+  let editTarget = $state<DeviceDto | null>(null);
+
+  async function handleEditSaved(result?: { placeId: number | null }): Promise<void> {
+    editTarget = null;
+    if (result?.placeId != null) notifyPlaceContentChanged([result.placeId]);
+    await afterChange();
+  }
+
+  /** После любого действия: перечитать состав и сообщить странице (D-05). */
+  async function afterChange(): Promise<void> {
+    await loadComposition();
+    onChanged?.();
+  }
+
+  // ---- Строка вложенной группы -------------------------------------------------
+  // Вывод без подтверждения (D-02): обратим вводом. Вложение/вывод группы меняют
+  // место её устройств — обязательна инвалидация счётчиков «Мест» (D-08, INV-7).
   async function detachGroup(child: GroupDto): Promise<void> {
     try {
       const result = await groups.setParent({
@@ -200,11 +231,37 @@
         parent_group_id: null,
       });
       notifyPlaceContentChanged(result.changed_place_ids);
-      await loadComposition();
-      onChanged?.();
+      pushToast('success', `Группа «${child.name}» выведена из «${group.name}»`);
+      await afterChange();
     } catch (e) {
-      pushToast('error', errMessage(e, 'Не удалось вывести группу из состава.'));
+      pushToast(
+        'error',
+        errMessage(e, 'Не удалось вывести из группы. Проверьте подключение и повторите.'),
+      );
     }
+  }
+
+  let moveGroupTarget = $state<GroupDto | null>(null);
+  let writeOffGroupTarget = $state<GroupDto | null>(null);
+
+  async function handleGroupMoved(): Promise<void> {
+    moveGroupTarget = null;
+    await afterChange();
+  }
+
+  async function handleGroupWrittenOff(): Promise<void> {
+    writeOffGroupTarget = null;
+    await afterChange();
+  }
+
+  /** Раскрытие строки группы: один раз на двойной клик (Pitfall 8). */
+  function onGroupRowToggle(e: MouseEvent | undefined, id: number): void {
+    if (e) {
+      if (isRowOverlayEvent(e.target)) return;
+      // 1 — первый клик мышью, 0 — клавиатура; второй клик серии игнорируется.
+      if (e.detail > 1) return;
+    }
+    void toggleChild(id);
   }
 
   // ---- Строка добавления ----------------------------------------------------
@@ -414,17 +471,6 @@
     onChanged?.();
   }
 
-  // Фаза 41.1 (D-14): якорь нельзя вывести из состава — группа без якоря
-  // бессмысленна, расформировывают её удалением. Это вторая линия обороны:
-  // сервер и так отказывает (remove_devices, план 09). Якорь ищем у ВЛАДЕЛЬЦА
-  // строки — для вложенной группы это её собственный якорь, не корневой.
-  function anchorOf(ownerGroupId: number): number | null {
-    if (ownerGroupId === group.id) return group.anchor_device_id;
-    const stack: GroupDto[] = [...(comp?.child_groups ?? [])];
-    for (const c of Object.values(childComp)) stack.push(...(c.data?.child_groups ?? []));
-    return stack.find((g) => g.id === ownerGroupId)?.anchor_device_id ?? null;
-  }
-
   // Фаза 41.1 (D-17/D-18/D-35): «Создать деталь» — форма устройства в
   // create-режиме с местом записи разбора, затем ВТОРОЙ вызов groups.addDevices
   // (происхождение ставит сервер, D-33). Атомарной операции нет намеренно: при
@@ -481,15 +527,42 @@
   }
 </script>
 
-{#snippet deviceRows(rows: GroupMemberDeviceDto[], ownerGroupId: number, nested: boolean)}
+{#snippet deviceRows(rows: GroupMemberDeviceDto[], nested: boolean)}
   {#each rows as d (d.device_id)}
-    <TableRow indent={nested}>
+    {@const id = d.device_id}
+    <TableRow
+      indent={nested}
+      inactive={d.status_code === 'списано'}
+      oncontextmenu={(e) => {
+        if (isRowOverlayEvent(e.target)) return;
+        e.preventDefault();
+        openRowMenu(e, id);
+      }}
+      ondblclick={(e) => {
+        if (isRowOverlayEvent(e.target)) return;
+        // Двойной клик по кебабу, ссылке или кнопке не открывает просмотр.
+        if ((e.target as HTMLElement | null)?.closest?.('button, a')) return;
+        window.getSelection()?.removeAllRanges();
+        void deviceMenus[id]?.openView();
+      }}
+    >
       <td
         class="cell cell-kind"
         role="button"
         tabindex="0"
-        onclick={() => onOpenDevice?.(d.device_id)}
-        onkeydown={(e) => activateDevice(e, d)}
+        aria-haspopup="menu"
+        bind:this={cellEls[id]}
+        onkeydown={(e) => {
+          if (!isOwnKeyEvent(e.target, e.currentTarget)) return;
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void deviceMenus[id]?.openView();
+          } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+            e.preventDefault();
+            const cell = cellEls[id];
+            if (cell) void deviceMenus[id]?.openFromElement(cell);
+          }
+        }}
       >
         {d.type_name}
       </td>
@@ -503,7 +576,7 @@
         {/if}
       </td>
       <td class="cell" title={d.place_path ?? undefined}>{d.place_path_short ?? '—'}</td>
-      <td class="cell">
+      <td class="cell tr-cell-solid">
         {#if d.status_name}
           <Badge
             variant={statusTone(d.status_code).variant}
@@ -514,18 +587,28 @@
           —
         {/if}
       </td>
-      <td class="col-menu">
-        {#if canEdit && d.device_id !== anchorOf(ownerGroupId)}
-          <ActionMenu variant="ghost-sm" label={`Действия: ${d.name}`}>
-            <button
-              type="button"
-              role="menuitem"
-              onclick={() => void removeDevice(d.device_id, ownerGroupId)}
-            >
-              Вывести из состава
-            </button>
-          </ActionMenu>
-        {/if}
+      <td class="col-menu tr-cell-solid">
+        <DeviceRowMenu
+          bind:this={deviceMenus[id]}
+          device={null}
+          deviceId={id}
+          trigger="none"
+          onEdit={(dev) => (editTarget = dev)}
+          onChanged={() => void afterChange()}
+        />
+        <button
+          type="button"
+          class="kebab"
+          aria-haspopup="menu"
+          aria-label={`Действия: ${d.name}`}
+          onclick={(e) => void deviceMenus[id]?.openFromElement(e.currentTarget)}
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+            <circle cx="9" cy="3.5" r="1.5" fill="currentColor" />
+            <circle cx="9" cy="9" r="1.5" fill="currentColor" />
+            <circle cx="9" cy="14.5" r="1.5" fill="currentColor" />
+          </svg>
+        </button>
       </td>
     </TableRow>
   {/each}
@@ -538,23 +621,51 @@
       groupColspan={COLUMNS - 1}
       groupName={deviceCountLabel(child)}
       groupExpanded={!!expanded[child.id]}
-      onToggleGroup={() => void toggleChild(child.id)}
+      onToggleGroup={(e) => onGroupRowToggle(e, child.id)}
+      oncontextmenu={(e) => {
+        if (isRowOverlayEvent(e.target)) return;
+        e.preventDefault();
+        openGroupMenu(e, child.id);
+      }}
       class={depth > 0 ? 'gc-nested' : ''}
     >
       <!-- Клик по меню не должен сворачивать/разворачивать строку. -->
       <td class="col-menu">
         <div class="menu-stop" role="presentation" onclick={(e) => e.stopPropagation()}>
-          <ActionMenu variant="ghost-sm" label={`Действия: ${child.name}`}>
+          <ActionMenu
+            bind:this={groupMenus[child.id]}
+            variant="ghost-sm"
+            label={`Действия: ${child.name}`}
+          >
             <button type="button" role="menuitem" onclick={() => onOpenGroup(child.id)}>
               Открыть группу
             </button>
             {#if canEdit}
+              <!-- svelte-ignore a11y_no_redundant_roles -->
+              <hr role="separator" />
               <button type="button" role="menuitem" onclick={() => void detachGroup(child)}>
-                Вывести из состава
+                Вывести из группы
               </button>
+              <button type="button" role="menuitem" onclick={() => (moveGroupTarget = child)}>
+                Переместить в группу
+              </button>
+              <!-- svelte-ignore a11y_no_redundant_roles -->
+              <hr role="separator" />
               <button type="button" role="menuitem" onclick={() => onRenameGroup(child.id)}>
                 Переименовать
               </button>
+              {#if canWriteOff({ role, statusCode: child.anchor_status_code ?? '' })}
+                <!-- svelte-ignore a11y_no_redundant_roles -->
+                <hr role="separator" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="menu-danger"
+                  onclick={() => (writeOffGroupTarget = child)}
+                >
+                  Списать
+                </button>
+              {/if}
             {/if}
           </ActionMenu>
         </div>
@@ -567,7 +678,7 @@
           <td colspan={COLUMNS}><Spinner size="sm" /> Загрузка…</td>
         </tr>
       {:else}
-        {@render deviceRows(state.data.devices, child.id, true)}
+        {@render deviceRows(state.data.devices, true)}
         {@render groupRows(state.data.child_groups, depth + 1)}
       {/if}
     {/if}
@@ -633,7 +744,7 @@
       {/snippet}
       {#if comp}
         {@render groupRows(comp.child_groups, 0)}
-        {@render deviceRows(comp.devices, group.id, false)}
+        {@render deviceRows(comp.devices, false)}
       {/if}
     </Table>
   </div>
@@ -652,6 +763,33 @@
     originGroup={{ id: group.id, name: group.name }}
     onClose={() => (detailModalOpen = false)}
     onSaved={handleDetailSaved}
+  />
+{/if}
+
+{#if editTarget}
+  <DeviceFormModal
+    open={true}
+    target={editTarget}
+    onClose={() => (editTarget = null)}
+    onSaved={handleEditSaved}
+  />
+{/if}
+
+{#if moveGroupTarget}
+  <AddToGroupModal
+    mode="move"
+    subjectGroup={moveGroupTarget}
+    currentGroup={{ id: group.id, name: group.name }}
+    onClose={() => (moveGroupTarget = null)}
+    onAdded={handleGroupMoved}
+  />
+{/if}
+
+{#if writeOffGroupTarget}
+  <WriteOffGroupModal
+    group={writeOffGroupTarget}
+    onClose={() => (writeOffGroupTarget = null)}
+    onDone={handleGroupWrittenOff}
   />
 {/if}
 
@@ -687,6 +825,28 @@
 
   .menu-stop {
     display: inline-flex;
+  }
+
+  .kebab {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--tr-text-primary);
+    border-radius: var(--tr-radius-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--tr-surface-sunken);
+    }
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
+    }
   }
 
   .gc-loading-row td {
