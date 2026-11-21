@@ -877,3 +877,62 @@ async fn expand_false_keeps_member_outside_group_place_visible() {
     .await
     .expect("test timed out");
 }
+
+// ---------------------------------------------------------------------------
+// quick-261121-heh (INT-31): признак принтера — id типа, а не подпись. После
+// переименования типа id=2 в справочнике содержимое места по-прежнему отдаёт
+// kind = "printer", счётчик принтеров группы и состав группы его учитывают.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn place_printer_identity_survives_printer_type_rename() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let f = group_fixture(&svc).await;
+        svc.writer
+            .execute(|conn| {
+                conn.execute(
+                    "UPDATE device_types SET name = 'Печатающее устройство' WHERE id = 2",
+                    [],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("rename printer type");
+
+        // Физический список: принтер — kind "printer", прочие — "device".
+        let rows = svc
+            .list_subtree_contents(&admin_caller(), f.root, false, true)
+            .await
+            .expect("list physical");
+        assert_eq!(ids_of(&rows, "printer"), vec![f.member_printer]);
+        assert!(ids_of(&rows, "device").contains(&f.member_block));
+        assert!(!ids_of(&rows, "device").contains(&f.member_printer));
+
+        // Свёрнутый список: счётчик принтеров группы учитывает принтер.
+        let rows = svc
+            .list_subtree_contents(&admin_caller(), f.root, true, false)
+            .await
+            .expect("list collapsed");
+        let g = rows
+            .iter()
+            .find(|r| r.kind == "group" && r.id == f.group)
+            .expect("строка группы");
+        assert_eq!(g.member_count, Some(3));
+        assert_eq!(g.printer_member_count, Some(1));
+
+        // Состав группы: принтер — kind "printer".
+        let members = svc
+            .group_members(&admin_caller(), f.group)
+            .await
+            .expect("group members");
+        let printer = members
+            .iter()
+            .find(|m| m.id == f.member_printer)
+            .expect("принтер в составе группы");
+        assert_eq!(printer.kind, "printer");
+    })
+    .await
+    .expect("test timed out");
+}

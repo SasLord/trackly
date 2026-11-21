@@ -741,3 +741,53 @@ async fn employee_devices_my_requests_history_limits() {
         "открытая заявка Петрова: только флаг"
     );
 }
+
+// ------------------------------------------- NEW-5 / INT-31: один признак принтера
+
+/// quick-261121-heh (NEW-5): `is_printer` в списке сотрудника и варианты
+/// принтеров заявки считаются по ОДНОМУ правилу — `devices.type_id` =
+/// `PRINTER_TYPE_ID`. Устройство, помеченное сотруднику принтером, всегда есть
+/// в вариантах заявки (RequestFormModal предзаполняет его); строка `printers`
+/// при type_id «Устройство» (дрейф старых БД) принтером не делает.
+#[tokio::test]
+async fn employee_is_printer_matches_request_printer_options() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let ivanov = seed_user(&ctx, "ivanov", "Иванов И.И.").await;
+    let room = seed_place(&ctx, "Кабинет 7").await;
+    let with_row = seed_device(&ctx, 2, "Принтер А", "INV-P1", Some(room), None).await;
+    make_printer(&ctx, with_row, None).await;
+    let no_row = seed_device(&ctx, 2, "Принтер Б без строки", "INV-P2", Some(room), None).await;
+    let drift = seed_device(&ctx, 1, "Устройство со строкой", "INV-D1", Some(room), None).await;
+    make_printer(&ctx, drift, None).await;
+    let t = seed_arm_type(&ctx).await;
+    let g = seed_group(&ctx, &t, "АРМ #7", None).await;
+    bind_user(&ctx, &t, g, ivanov).await;
+    for d in [with_row, no_row, drift] {
+        member(&ctx, g, d).await;
+    }
+
+    let dto = list(&ctx, &emp(ivanov)).await;
+    let options =
+        trackly_app::tauri_cmds::requests::build_request_printer_options(&ctx, &emp(ivanov))
+            .await
+            .expect("request_printer_options");
+    let option_ids: Vec<i64> = options.iter().map(|o| o.id).collect();
+
+    for item in &dto.items {
+        assert_eq!(
+            item.is_printer,
+            option_ids.contains(&item.id),
+            "is_printer «{}» и варианты принтеров заявки должны совпадать",
+            item.name
+        );
+    }
+    assert!(by_name(&dto, "Принтер А").is_printer);
+    assert!(
+        by_name(&dto, "Принтер Б без строки").is_printer,
+        "type_id принтера без строки printers — принтер"
+    );
+    assert!(
+        !by_name(&dto, "Устройство со строкой").is_printer,
+        "строка printers при type_id «Устройство» — не принтер (признак — type_id)"
+    );
+}

@@ -545,3 +545,45 @@ async fn employee_scope_and_forbidden_code_over_http() {
     .await
     .expect("employee_scope_and_forbidden_code_over_http exceeded 60s budget");
 }
+
+// ---------------------------------------------------------------------------
+// quick-261121-heh (INT-31): признак «это принтер» — id типа, а не подпись.
+// Переименование типа id=2 в справочнике (подпись — данные, D-01 41.12) не
+// должно обнулять варианты принтеров в заявке.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn printer_options_survive_printer_type_rename() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        seed_printer_devices(&ctx, &[("Принтер А", Some("Офис А")), ("Принтер Б", None)]).await;
+        ctx.writer
+            .execute(|conn| {
+                conn.execute(
+                    "UPDATE device_types SET name = 'Печатающее устройство' WHERE id = 2",
+                    [],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("rename printer type");
+
+        let options = trackly_app::tauri_cmds::requests::build_request_printer_options(
+            &ctx,
+            &Identity::trusted_admin(),
+        )
+        .await
+        .expect("request_printer_options");
+        let mut names: Vec<String> = options.into_iter().map(|o| o.name).collect();
+        names.sort();
+        assert_eq!(
+            names,
+            vec!["Принтер А".to_string(), "Принтер Б".to_string()],
+            "переименование типа id=2 не должно терять варианты принтеров"
+        );
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("printer_options_survive_printer_type_rename exceeded 30s budget");
+}
