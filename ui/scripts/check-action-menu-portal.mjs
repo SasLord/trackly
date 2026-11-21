@@ -28,6 +28,17 @@
 //       потомков из других компонентов, помечает селектор неиспользуемым
 //       (`css_unused_selector`, лишь warning) и вырезает правило из выдачи.
 //
+// Фаза 41.8 (план 28, D-36 — строка при открытом меню и подложка):
+//   [G] в разметке ActionMenu ровно один элемент `action-menu-backdrop`: use:portal,
+//       стоит раньше role="menu"; в style `position: fixed`, `inset: 0`, фон прозрачный;
+//   [H] onDown исключает цель внутри подложки до `open = false` (иначе подложка исчезнет
+//       между mousedown и click, и click уйдёт на строку под ней);
+//   [I] script ставит и снимает `data-menu-open`; в openAt строка берётся по точке
+//       (`elementFromPoint(`);
+//   [J] выделение по `[data-menu-open]` в TableRow.svelte только в :global-форме (scoped
+//       и `:has(` — мёртвое правило), есть правило удержания `.row-actions` видимым;
+//   [K] у `<ActionMenu` нет атрибутов `backdrop`/`highlight` (флаг на вызове запрещён).
+//
 // Комментарии (HTML, JS, SCSS) перед проверкой затираются с сохранением длины
 // и переводов строк, поэтому цитаты форм в комментариях гейт не обманывают, а
 // номера строк в сообщениях честные.
@@ -54,6 +65,8 @@ const UI_ROOT = path.resolve(__dirname, '..');
 const TAG = '[check-action-menu-portal]';
 
 const MENU_FILE = 'src/lib/components/ActionMenu.svelte';
+const TABLE_ROW_FILE = 'src/lib/components/TableRow.svelte';
+const GLOBAL_SCSS_FILE = 'src/styles/global.scss';
 // Сколько вызовов <ActionMenu есть в src/**/*.svelte (инвентарь плана 41.1-16):
 // 21 = сумма `grep -rc '<ActionMenu' src --include='*.svelte'` по файлам
 // (в плане 41-27 было 13; 41.1-16/41.1-02: 15; 41.8-13 пересчитан от репозитория: 21 —
@@ -246,11 +259,164 @@ function scanSources(files, minCallSites, violations) {
         'в `.action-menu-panel` нет `position: fixed`.',
       );
     }
+
+    // [G] подложка
+    const bdMatches = [...markup.matchAll(/action-menu-backdrop/g)];
+    if (bdMatches.length !== 1) {
+      add(
+        MENU_FILE,
+        0,
+        'G',
+        `в разметке ${bdMatches.length} вхождений action-menu-backdrop, ожидается ровно одно (подложка D-36).`,
+      );
+    } else {
+      const bIdx = bdMatches[0].index;
+      const bStart = markup.lastIndexOf('<', bIdx);
+      const bEnd = tagEnd(markup, bStart);
+      const bTag = bEnd === -1 ? '' : markup.slice(bStart, bEnd + 1);
+      if (!/\buse:portal\b/.test(bTag)) {
+        add(MENU_FILE, lineOf(markup, bIdx), 'G', 'у подложки нет `use:portal`.');
+      }
+      if (roleMatches.length === 1 && bIdx > roleMatches[0].index) {
+        add(MENU_FILE, lineOf(markup, bIdx), 'G', 'подложка стоит позже панели role="menu".');
+      }
+    }
+    const bdRuleM = /\.action-menu-backdrop\s*\{/.exec(style);
+    const bdRule = bdRuleM
+      ? extractBalanced(style, bdRuleM.index + bdRuleM[0].length - 1, '{', '}')
+      : null;
+    if (!bdRule) {
+      add(MENU_FILE, 0, 'G', 'не найдено правило `.action-menu-backdrop` в style.');
+    } else {
+      if (!/position\s*:\s*fixed/.test(bdRule.body)) {
+        add(MENU_FILE, 0, 'G', 'в `.action-menu-backdrop` нет `position: fixed`.');
+      }
+      if (!/inset\s*:\s*0\b/.test(bdRule.body)) {
+        add(
+          MENU_FILE,
+          0,
+          'G',
+          'в `.action-menu-backdrop` нет `inset: 0` — подложка не покрывает экран.',
+        );
+      }
+      const bg = /background(?:-color)?\s*:\s*([^;]+);/.exec(bdRule.body);
+      if (bg && !/^\s*transparent\s*$/.test(bg[1])) {
+        add(MENU_FILE, 0, 'G', `у подложки непрозрачный фон (${bg[1].trim()}), нужен transparent.`);
+      }
+    }
+
+    // [H] onDown исключает подложку до закрытия
+    const odM = /function\s+onDown\s*\(/.exec(script);
+    const odBraceIdx = odM ? script.indexOf('{', odM.index) : -1;
+    const od = odBraceIdx === -1 ? null : extractBalanced(script, odBraceIdx, '{', '}');
+    if (!od) {
+      add(
+        MENU_FILE,
+        0,
+        'H',
+        'не найден обработчик onDown — гейт не может проверить исключение подложки.',
+      );
+    } else {
+      const bdRef = od.body.search(/backdrop/i);
+      const closeIdx = od.body.search(/\bopen\s*=\s*false\b/);
+      if (bdRef === -1 || (closeIdx !== -1 && bdRef > closeIdx)) {
+        add(
+          MENU_FILE,
+          lineOf(script, od.start),
+          'H',
+          'onDown не исключает цель внутри подложки до `open = false`: mousedown закроет меню, click уйдёт на строку под подложкой.',
+        );
+      }
+    }
+
+    // [I] пометка строки
+    if (!/setAttribute\(\s*'data-menu-open'/.test(script)) {
+      add(
+        MENU_FILE,
+        0,
+        'I',
+        "в script нет `setAttribute('data-menu-open'` — строка-владелец не помечается.",
+      );
+    }
+    if (!/removeAttribute\(\s*'data-menu-open'/.test(script)) {
+      add(
+        MENU_FILE,
+        0,
+        'I',
+        "в script нет `removeAttribute('data-menu-open'` — пометка не снимается при закрытии.",
+      );
+    }
+    const oaM = /function\s+openAt\s*\(/.exec(script);
+    const oaBraceIdx = oaM ? script.indexOf('{', oaM.index) : -1;
+    const oa = oaBraceIdx === -1 ? null : extractBalanced(script, oaBraceIdx, '{', '}');
+    if (!oa || !/elementFromPoint\(/.test(oa.body)) {
+      add(
+        MENU_FILE,
+        0,
+        'I',
+        'в openAt нет `elementFromPoint(` — строка правого клика не определяется по точке.',
+      );
+    }
+  }
+
+  // --- [J] выделение строки: TableRow.svelte + global.scss --------------------
+  const trSrc = files.get(TABLE_ROW_FILE);
+  const globalSrc = files.get(GLOBAL_SCSS_FILE);
+  if (trSrc === undefined) {
+    add(TABLE_ROW_FILE, 0, 'J', 'файл не найден — гейт не может проверить выделение строки.');
+  } else {
+    const trStyle = splitSvelte(trSrc).style;
+    const hits = [...trStyle.matchAll(/data-menu-open/g)];
+    if (hits.length === 0) {
+      add(
+        TABLE_ROW_FILE,
+        0,
+        'J',
+        'в style TableRow нет правила по `[data-menu-open]` — строка-владелец не выделяется.',
+      );
+    }
+    for (const h of hits) {
+      const boundary = Math.max(
+        trStyle.lastIndexOf('{', h.index),
+        trStyle.lastIndexOf('}', h.index),
+        trStyle.lastIndexOf(';', h.index),
+      );
+      const before = trStyle.slice(boundary + 1, h.index);
+      if (!/:global\([^)]*$/.test(before) && !/:global\([^)]*\([^)]*$/.test(before)) {
+        add(
+          TABLE_ROW_FILE,
+          lineOf(trStyle, h.index),
+          'J',
+          '`[data-menu-open]` вне `:global(...)`: атрибут ставит ActionMenu снаружи, Svelte вырежет scoped-селектор (мёртвое правило).',
+        );
+      }
+    }
+    if (/:has\([^)]*data-menu-open/.test(trStyle)) {
+      add(TABLE_ROW_FILE, 0, 'J', '`:has(` с `data-menu-open` — Svelte вырежет такой селектор.');
+    }
+  }
+  const keepSrc =
+    (trSrc === undefined ? '' : splitSvelte(trSrc).style) +
+    '\n' +
+    (globalSrc === undefined ? '' : stripComments(globalSrc));
+  let keeps = false;
+  for (const m of keepSrc.matchAll(/\[data-menu-open\][^{};]*\.row-actions\s*\{/g)) {
+    const r = extractBalanced(keepSrc, m.index + m[0].length - 1, '{', '}');
+    if (r && /opacity\s*:\s*1\b/.test(r.body)) keeps = true;
+  }
+  if (!keeps) {
+    add(
+      GLOBAL_SCSS_FILE,
+      0,
+      'J',
+      'нет правила `[data-menu-open] .row-actions { opacity: 1 }` — кебаб строки исчезнет при правом клике (подложка снимает :hover).',
+    );
   }
 
   // --- вызовы: D, E; видимость триггера: F -----------------------------------
   let callSites = 0;
   for (const [file, src] of files) {
+    if (!file.endsWith('.svelte')) continue;
     const { markup, style } = splitSvelte(src);
 
     if (file !== MENU_FILE) {
@@ -264,6 +430,14 @@ function scanSources(files, minCallSites, violations) {
             lineOf(markup, m.index),
             'D',
             'у вызова <ActionMenu атрибут `portal` — проп удалён, портал и так единственный режим.',
+          );
+        }
+        if (/(^|\s)(backdrop|highlight)(?=\s|=|\/|>|$)/.test(attributeSkeleton(tag))) {
+          add(
+            file,
+            lineOf(markup, m.index),
+            'K',
+            'у вызова <ActionMenu атрибут `backdrop`/`highlight` — подложка и выделение общие, флаг на вызове запрещён (D-36).',
           );
         }
       }
@@ -322,6 +496,8 @@ function checkRepo(root, violations) {
   for (const abs of walk(srcDir)) {
     files.set(path.relative(root, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
   }
+  const globalPath = path.join(root, GLOBAL_SCSS_FILE);
+  if (fs.existsSync(globalPath)) files.set(GLOBAL_SCSS_FILE, fs.readFileSync(globalPath, 'utf8'));
   scanSources(files, MIN_CALL_SITES, violations);
 }
 
@@ -342,6 +518,26 @@ const CLEAN_MENU = `<script lang="ts">
   }
   const { label = 'Действия', disabled = false, children }: Props = $props();
   let open = $state(false);
+  let backdropEl = $state(null);
+  let ownerRow = null;
+  function openAt(x, y) {
+    ownerRow = document.elementFromPoint(x, y)?.closest('tr') ?? null;
+    open = true;
+  }
+  $effect(() => {
+    if (!open) return;
+    const row = ownerRow;
+    row.setAttribute('data-menu-open', 'true');
+    return () => {
+      row.removeAttribute('data-menu-open');
+    };
+  });
+  $effect(() => {
+    function onDown(e) {
+      const insideBackdrop = backdropEl?.contains(e.target) ?? false;
+      if (open && !insideBackdrop) open = false;
+    }
+  });
 </script>
 
 <div class="action-menu" bind:this={rootEl}>
@@ -351,6 +547,13 @@ const CLEAN_MENU = `<script lang="ts">
     {/if}
   </button>
   {#if open}
+    <div
+      class="action-menu-backdrop"
+      role="presentation"
+      bind:this={backdropEl}
+      use:portal
+      onclick={() => close(false)}
+    ></div>
     <div
       class="action-menu-panel"
       role="menu"
@@ -370,6 +573,13 @@ const CLEAN_MENU = `<script lang="ts">
 <style lang="scss">
   .action-menu {
     display: inline-flex;
+  }
+
+  .action-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: transparent;
   }
 
   // раньше: position: absolute
@@ -429,6 +639,32 @@ const CALLER_2 = `<script lang="ts">
 </style>
 `;
 
+const CLEAN_TABLE_ROW = `<script lang="ts">
+  const { children } = $props();
+</script>
+
+<tr class="tr-row">{@render children?.()}</tr>
+
+<style lang="scss">
+  .tr-row {
+    &:hover {
+      background: var(--tr-row-hover);
+    }
+  }
+
+  // раньше: .tr-row[data-menu-open] без :global (мёртвое правило)
+  :global(.tr-row[data-menu-open]:not(.selected)) {
+    background: var(--tr-row-hover);
+  }
+</style>
+`;
+
+const CLEAN_GLOBAL = `.tr-row[data-menu-open] .row-actions {
+  opacity: 1;
+  visibility: visible;
+}
+`;
+
 const PATH_CALLER_1 = 'src/features/a/First.svelte';
 const PATH_CALLER_2 = 'src/features/b/Second.svelte';
 
@@ -446,6 +682,8 @@ function fixtureFiles(over = {}) {
     [MENU_FILE, over.menu ?? CLEAN_MENU],
     [PATH_CALLER_1, over.caller1 ?? CALLER_1],
     [PATH_CALLER_2, over.caller2 ?? CALLER_2],
+    [TABLE_ROW_FILE, over.tableRow ?? CLEAN_TABLE_ROW],
+    [GLOBAL_SCSS_FILE, over.global ?? CLEAN_GLOBAL],
   ]);
 }
 
@@ -489,12 +727,24 @@ function runSelfTest() {
     });
     fixtures.push({
       name: 'M3 убрать use:portal из тега панели',
-      files: fixtureFiles({ menu: mutate(CLEAN_MENU, '      use:portal\n', '') }),
+      files: fixtureFiles({
+        menu: mutate(
+          CLEAN_MENU,
+          '      use:portal\n      use:actionMenuPortalPosition',
+          '      use:actionMenuPortalPosition',
+        ),
+      }),
       codes: ['A'],
     });
     fixtures.push({
       name: 'M4 вернуть position: absolute в .action-menu-panel',
-      files: fixtureFiles({ menu: mutate(CLEAN_MENU, 'position: fixed;', 'position: absolute;') }),
+      files: fixtureFiles({
+        menu: mutate(
+          CLEAN_MENU,
+          'position: fixed;\n    z-index: 1000;',
+          'position: absolute;\n    z-index: 1000;',
+        ),
+      }),
       codes: ['C'],
     });
     fixtures.push({
@@ -555,11 +805,105 @@ function runSelfTest() {
       files: fixtureFiles({
         menu: mutate(
           CLEAN_MENU,
-          'position: fixed;',
-          'position: fixed;\n    // шаблоны лежат в templates/*.html\n    position: absolute;\n    /* настоящий блочный комментарий */',
+          'position: fixed;\n    z-index: 1000;',
+          'position: fixed;\n    z-index: 1000;\n    // шаблоны лежат в templates/*.html\n    position: absolute;\n    /* настоящий блочный комментарий */',
         ),
       }),
       codes: ['C'],
+    });
+    fixtures.push({
+      name: 'M11 [data-menu-open] переписано в scoped-форму без :global (мёртвое правило)',
+      files: fixtureFiles({
+        tableRow: mutate(
+          CLEAN_TABLE_ROW,
+          ':global(.tr-row[data-menu-open]:not(.selected))',
+          '.tr-row[data-menu-open]:not(.selected)',
+        ),
+      }),
+      codes: ['J'],
+      mention: /вне `:global/,
+    });
+    fixtures.push({
+      name: 'M12 удалено правило .row-actions для [data-menu-open]',
+      files: fixtureFiles({
+        global: mutate(
+          CLEAN_GLOBAL,
+          '.tr-row[data-menu-open] .row-actions {',
+          '.tr-row[data-menu-open] .something-else {',
+        ),
+      }),
+      codes: ['J'],
+      mention: /row-actions/,
+    });
+    fixtures.push({
+      name: 'M13 подложка без use:portal',
+      files: fixtureFiles({
+        menu: mutate(
+          CLEAN_MENU,
+          '      bind:this={backdropEl}\n      use:portal\n',
+          '      bind:this={backdropEl}\n',
+        ),
+      }),
+      codes: ['G'],
+      mention: /подложки нет `use:portal`/,
+    });
+    fixtures.push({
+      name: 'M14 подложка без inset: 0',
+      files: fixtureFiles({
+        menu: mutate(CLEAN_MENU, '    inset: 0;\n    z-index: 999;', '    z-index: 999;'),
+      }),
+      codes: ['G'],
+      mention: /inset: 0/,
+    });
+    fixtures.push({
+      name: 'M15 onDown без исключения подложки',
+      files: fixtureFiles({
+        menu: mutate(
+          mutate(
+            CLEAN_MENU,
+            '      const insideBackdrop = backdropEl?.contains(e.target) ?? false;\n',
+            '',
+          ),
+          'if (open && !insideBackdrop) open = false;',
+          'if (open) open = false;',
+        ),
+      }),
+      codes: ['H'],
+    });
+    fixtures.push({
+      name: 'M16 снятие data-menu-open удалено',
+      files: fixtureFiles({
+        menu: mutate(CLEAN_MENU, "      row.removeAttribute('data-menu-open');\n", ''),
+      }),
+      codes: ['I'],
+      mention: /removeAttribute/,
+    });
+    fixtures.push({
+      name: 'M17 TableRow без правила [data-menu-open]',
+      files: fixtureFiles({
+        tableRow: mutate(
+          CLEAN_TABLE_ROW,
+          ':global(.tr-row[data-menu-open]:not(.selected)) {\n    background: var(--tr-row-hover);\n  }',
+          '',
+        ),
+      }),
+      codes: ['J'],
+      mention: /нет правила по/,
+    });
+    fixtures.push({
+      name: 'M18 на вызове <ActionMenu появился атрибут backdrop',
+      files: fixtureFiles({
+        caller1: mutate(CALLER_1, 'label="Первое"', 'label="Первое" backdrop'),
+      }),
+      codes: ['K'],
+    });
+    fixtures.push({
+      name: 'M19 в openAt убран elementFromPoint',
+      files: fixtureFiles({
+        menu: mutate(CLEAN_MENU, "document.elementFromPoint(x, y)?.closest('tr') ?? null", 'null'),
+      }),
+      codes: ['I'],
+      mention: /elementFromPoint/,
     });
   } catch (e) {
     console.error(`${TAG} [selftest] FAIL — ${e.message}`);
@@ -576,13 +920,13 @@ function runSelfTest() {
       ok = v.length === 0;
       expected = '0 нарушений';
     } else {
-      const got = new Set(v.map((line) => /— \[([A-F])\]/.exec(line)?.[1]));
+      const got = new Set(v.map((line) => /— \[([A-K])\]/.exec(line)?.[1]));
       ok = f.codes.every((c) => got.has(c)) && [...got].every((c) => f.codes.includes(c));
       if (ok && f.mention) ok = v.some((line) => f.mention.test(line));
       expected = `правила ${f.codes.join('+')}${f.mention ? `, текст ${f.mention}` : ''}`;
     }
     const gotCodes =
-      [...new Set(v.map((line) => /— \[([A-F])\]/.exec(line)?.[1]))].join('+') || '—';
+      [...new Set(v.map((line) => /— \[([A-K])\]/.exec(line)?.[1]))].join('+') || '—';
     console.error(
       `${TAG} [selftest] ${ok ? 'PASS' : 'FAIL'} — ${f.name} (ожидалось: ${expected}; поймано: ${gotCodes})`,
     );
