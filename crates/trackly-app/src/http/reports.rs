@@ -16,17 +16,18 @@ use axum::{
 use tower_sessions::Session;
 
 use crate::context::AppCtx;
-use crate::dto::reports::{PeriodDto, ReportFilter, ReportResponse};
+use crate::dto::reports::{PeriodDto, ReportCountsDto, ReportFilter, ReportResponse};
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::reports::{
-    build_reports_export_csv, build_reports_export_pdf, build_reports_list_cartridge_consumption,
-    build_reports_list_cartridge_in_stock, build_reports_list_cartridge_in_use,
-    build_reports_list_cartridge_refills, build_reports_list_device_acts,
-    build_reports_list_device_in_stock, build_reports_list_device_in_use,
-    build_reports_list_device_returns, build_reports_list_movements, build_reports_list_repairs,
-    build_reports_list_requests_all, build_reports_list_requests_completed,
-    build_reports_list_requests_in_progress, build_reports_list_requests_open,
+    build_reports_export_csv, build_reports_export_pdf, build_reports_get_report_counts,
+    build_reports_list_cartridge_consumption, build_reports_list_cartridge_in_stock,
+    build_reports_list_cartridge_in_use, build_reports_list_cartridge_refills,
+    build_reports_list_device_acts, build_reports_list_device_in_stock,
+    build_reports_list_device_in_use, build_reports_list_device_returns,
+    build_reports_list_movements, build_reports_list_repairs, build_reports_list_requests_all,
+    build_reports_list_requests_completed, build_reports_list_requests_in_progress,
+    build_reports_list_requests_open,
 };
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,14 @@ pub struct ListWithPeriodPayload {
 #[serde(rename_all = "camelCase")]
 pub struct ListSnapshotPayload {
     pub filter: ReportFilter,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportCountsPayload {
+    pub domain: String,
+    pub filter: ReportFilter,
+    pub period: PeriodDto,
 }
 
 #[derive(serde::Deserialize)]
@@ -318,6 +327,23 @@ pub async fn handler_export_pdf(
     ))
 }
 
+/// Per-tab counts for the «Отчёты» sub-nav (INT-04, quick 261121-hei).
+/// Role gate (ReadData) and ad_register exclusion live in the shared build_*.
+pub async fn handler_get_report_counts(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ReportCountsPayload>,
+) -> Result<Json<ReportCountsDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_reports_get_report_counts(&ctx, &identity, p.domain, p.filter, p.period)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub fn router() -> Router<AppCtx> {
     Router::new()
         .route(
@@ -375,4 +401,8 @@ pub fn router() -> Router<AppCtx> {
         )
         .route("/api/v1/reports_export_csv", post(handler_export_csv))
         .route("/api/v1/reports_export_pdf", post(handler_export_pdf))
+        .route(
+            "/api/v1/reports_get_report_counts",
+            post(handler_get_report_counts),
+        )
 }

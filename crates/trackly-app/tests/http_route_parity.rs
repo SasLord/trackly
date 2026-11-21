@@ -5,11 +5,12 @@
 //! `POST /api/v1/<name>`. Имя команды И имя маршрута — одна и та же строка.
 //! Поэтому команда без маршрута ломает ровно тот же экран, но только по LAN.
 //! Так и случилось со счётчиками «Отчётов»: `reports_get_report_counts`
-//! зарегистрирована в Tauri, маршрута нет, а `spa_fallback`
+//! была зарегистрирована в Tauri без маршрута, а `spa_fallback`
 //! (`src/http/mod.rs`) отдавал на незарегистрированный `/api/v1/*` сам
 //! `index.html` с HTTP 200 и `text/html` — отказ выглядел как успех
 //! (исправлено в Фазе 41.7, F17: теперь 404 JSON, см. тест
-//! `unknown_api_path_answers_json_404_not_spa`). Дыра прожила с фазы 28 и вскрылась только живой приёмкой фазы 41. Имевшиеся
+//! `unknown_api_path_answers_json_404_not_spa`). Дыра прожила с фазы 28 и вскрылась только живой приёмкой фазы 41
+//! (маршрут `reports_get_report_counts` добавлен quick 261121-hei, INT-04). Имевшиеся
 //! тесты полноты маршрутов (`role_endpoint_matrix.rs`:
 //! `group_types_http_route_completeness`, `groups_http_route_completeness`)
 //! скоупнуты на `src/http/group_types.rs` и `src/http/groups.rs` и пропуск в
@@ -28,8 +29,8 @@
 //!      соответствие не один-к-одному — 16 команд идут через
 //!      `build_<name>_tauri` (обёртка, разрешающая desktop-identity), ещё
 //!      3 (`app_restart`, `auth_logout`, `auth_me`) хелпера не имеют вовсе,
-//!      зато `build_reports_get_report_counts` есть без HTTP-вызывающей
-//!      стороны. Число 184 из записи UAT (+1 notify_desktop, 41.5-28) — это и есть `collect_commands!`.
+//!      а `build_reports_get_report_counts` был без HTTP-вызывающей
+//!      стороны (маршрут добавлен quick 261121-hei). Число 184 из записи UAT (+1 notify_desktop, 41.5-28) — это и есть `collect_commands!`.
 //!
 //!   R. HTTP-маршруты — вызовы `.route("/api/v1/<name>", ...)` по
 //!      `src/http/*.rs`. Сейчас: 185 вызовов, 183 уникальных пути
@@ -133,20 +134,45 @@ const CMD_WITHOUT_ROUTE: &[Verdict] = &[
                  HTTP-маршрут удалён как дыра безопасности (9a62908d); в UI вызов только \
                  внутри ветки isTauri экспорта в DevicesPage.svelte",
     },
+    // --- Мёртвая поверхность (INT-11/INT-24, quick 261121-hei) -------------
+    // HTTP-маршрут удалён: потребителя нет ни в одном транспорте. Команда Tauri
+    // оставлена, чтобы не трогать specta_export.rs / bindings.ts. Освобождение
+    // не на веру: тест dead_commands_have_no_ui_consumer краснеет, если в
+    // ui/src появится вызов любой из этих команд (CMD_NO_UI_CONSUMER).
     Verdict {
-        name: "reports_get_report_counts",
-        // ИЗВЕСТНЫЙ ДЕФЕКТ, отложен решением пользователя 2026-10-06:
-        // .planning/phases/41-groups-model-and-editor/deferred-items.md,
-        // раздел «UAT R5 — счётчики отчётов не работают по LAN». Вне границ
-        // фазы 41 (счётчики введены в фазе 28).
-        //
-        // КОГДА МАРШРУТ ДОБАВЯТ — УДАЛИТЬ ЭТУ СТРОКУ. Гейт специально
-        // покраснеет («освобождение больше не нужно»), чтобы заставить это
-        // сделать и не оставить мёртвое освобождение в таблице.
-        reason: "ИЗВЕСТНЫЙ ДЕФЕКТ (не освобождение): случайный пропуск маршрута, из-за которого \
-                 счётчики «Отчётов» по LAN показывают 0. Отложен решением пользователя \
-                 2026-10-06, см. 41/deferred-items.md «UAT R5». При добавлении маршрута \
-                 /api/v1/reports_get_report_counts эту строку УДАЛИТЬ",
+        name: "devices_create",
+        reason: "мёртвая поверхность (INT-11/INT-24): в ui/src вызова нет — UI создаёт устройство \
+                 через devices_create_single_with_number_check (lib/api/devices.ts); HTTP-маршрут \
+                 удалён quick 261121-hei, команда Tauri оставлена ради specta/bindings; появление \
+                 потребителя красит dead_commands_have_no_ui_consumer",
+    },
+    Verdict {
+        name: "number_template_contexts_set",
+        reason: "мёртвая поверхность (INT-11/INT-24): в ui/src вызова нет — UI только читает \
+                 привязку через number_template_contexts_get; HTTP-маршрут удалён quick \
+                 261121-hei, команда Tauri оставлена ради specta/bindings; появление потребителя \
+                 красит dead_commands_have_no_ui_consumer",
+    },
+    Verdict {
+        name: "users_change_password",
+        reason: "мёртвая поверхность (INT-11/INT-24): в ui/src вызова нет — смены своего пароля \
+                 в UI нет, админ меняет пароль через users_update с полем password; HTTP-маршрут \
+                 удалён quick 261121-hei, команда Tauri оставлена ради specta/bindings; появление \
+                 потребителя красит dead_commands_have_no_ui_consumer",
+    },
+    Verdict {
+        name: "server_status",
+        reason: "мёртвая поверхность (INT-11/INT-24): в ui/src вызова нет — NetworkSettings берёт \
+                 статус из ответа server_toggle; HTTP-маршрут удалён quick 261121-hei, команда \
+                 Tauri оставлена ради specta/bindings; появление потребителя красит \
+                 dead_commands_have_no_ui_consumer",
+    },
+    Verdict {
+        name: "auth_me",
+        reason: "мёртвая поверхность (INT-11/INT-24): в ui/src вызова нет — сессию UI определяет \
+                 через auth_status (App.svelte); HTTP-маршрут удалён quick 261121-hei, команда \
+                 Tauri оставлена ради specta/bindings; появление потребителя красит \
+                 dead_commands_have_no_ui_consumer",
     },
 ];
 
@@ -179,13 +205,6 @@ const ROUTE_WITHOUT_CMD: &[Verdict] = &[
         reason: "команда attachments_upload есть в Tauri, но это обычная #[tauri::command] без specta \
                  (tauri::ipc::Request не реализует specta::Type), её диспетчеризует main.rs перед \
                  specta-обработчиком, поэтому в collect_commands! её нет; HTTP — multipart",
-    },
-    Verdict {
-        name: "users_reset_password",
-        reason: "HTTP-only: handler и build_users_reset_password есть в http/users.rs, но ни \
-                 команды Tauri, ни вызывающей стороны в ui/src нет — админский сброс пароля \
-                 доступен только по HTTP-транспорту. Направление безвредное (экран не ломает), \
-                 фиксируется, чтобы паритет не расходился молча",
     },
 ];
 
@@ -474,6 +493,11 @@ fn every_dual_transport_build_helper_has_an_http_caller() {
     let mut orphan_wrappers: Vec<String> = Vec::new();
     for w in wrappers {
         let core = w.trim_end_matches("_tauri");
+        // Команда без маршрута (вердикт в CMD_WITHOUT_ROUTE) парного
+        // HTTP-хелпера иметь не должна: его удалили вместе с маршрутом.
+        if exempt.contains(core.strip_prefix("build_").unwrap_or(core)) {
+            continue;
+        }
         if !http_helpers.contains(core) && !http_helpers.contains(&format!("{core}_http")) {
             orphan_wrappers.push(w.clone());
         }
@@ -702,6 +726,95 @@ async fn unknown_api_path_answers_json_404_not_spa() {
     }
 
     ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// 4б. Мёртвая поверхность: у команд без маршрута нет потребителя в UI
+// ---------------------------------------------------------------------------
+
+/// Команды, HTTP-маршрут которых удалён как мёртвая поверхность (INT-11/INT-24,
+/// quick 261121-hei). Их вердикты в `CMD_WITHOUT_ROUTE` держатся не на
+/// «десктопной природе» и не на гарде `isTauri`, а на отсутствии вызова
+/// вообще — значит, это отсутствие должно быть проверено, иначе освобождение
+/// молча ослабляет гейт паритета: первый же `apiCall('auth_me')` в UI сломал
+/// бы экран по LAN, а `every_tauri_command_is_reachable_over_http` промолчал бы.
+const CMD_NO_UI_CONSUMER: &[&str] = &[
+    "devices_create",
+    "number_template_contexts_set",
+    "users_change_password",
+    "server_status",
+    "auth_me",
+];
+
+/// Нижняя граница на число просканированных файлов ui/src.
+const MIN_UI_FILES: usize = 50;
+
+fn collect_ui_sources(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("не читается каталог {}: {e}", dir.display()));
+    for entry in entries {
+        let path = entry.expect("dir entry").path();
+        if path.is_dir() {
+            collect_ui_sources(&path, out);
+            continue;
+        }
+        let ext = path.extension().and_then(|e| e.to_str());
+        let is_bindings = path.file_name().and_then(|n| n.to_str()) == Some("bindings.ts");
+        if matches!(ext, Some("ts") | Some("svelte")) && !is_bindings {
+            out.push(path);
+        }
+    }
+}
+
+#[test]
+fn dead_commands_have_no_ui_consumer() {
+    let exempt = names(CMD_WITHOUT_ROUTE);
+    for name in CMD_NO_UI_CONSUMER {
+        assert!(
+            exempt.contains(*name),
+            "{name} в CMD_NO_UI_CONSUMER, но не в CMD_WITHOUT_ROUTE — список мёртвой \
+             поверхности разошёлся с таблицей вердиктов"
+        );
+    }
+
+    let ui_src = crate_root().join("../../ui/src");
+    let mut files = Vec::new();
+    collect_ui_sources(&ui_src, &mut files);
+    assert!(
+        files.len() >= MIN_UI_FILES,
+        "в {} найдено {} файлов .ts/.svelte, ожидалось минимум {} — обход сломан, гейт \
+         нельзя считать пройденным",
+        ui_src.display(),
+        files.len(),
+        MIN_UI_FILES
+    );
+
+    let mut hits: Vec<String> = Vec::new();
+    for path in &files {
+        let src = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("не читается {}: {e}", path.display()));
+        for (lineno, line) in src.lines().enumerate() {
+            for name in CMD_NO_UI_CONSUMER {
+                for q in ['\'', '"', '`'] {
+                    if line.contains(&format!("{q}{name}{q}")) {
+                        hits.push(format!(
+                            "{}:{}: {name} — {}",
+                            path.display(),
+                            lineno + 1,
+                            line.trim()
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "в ui/src появился вызов команды, чей HTTP-маршрут удалён как мёртвый (INT-11/INT-24): \
+         по LAN он получит 404. Верните маршрут (и уберите вердикт из CMD_WITHOUT_ROUTE \
+         и CMD_NO_UI_CONSUMER) или вызывайте другую команду:\n{}",
+        hits.join("\n")
+    );
 }
 
 // ---------------------------------------------------------------------------

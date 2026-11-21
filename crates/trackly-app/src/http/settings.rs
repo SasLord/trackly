@@ -4,7 +4,6 @@
 //! - POST /api/v1/settings_get_network — чтение настроек сервера
 //! - POST /api/v1/settings_set_network — сохранение настроек (host, port, cert_path)
 //! - POST /api/v1/server_toggle — старт / стоп axum сервера
-//! - POST /api/v1/server_status — текущий статус
 //! - POST /api/v1/desktop_set_lock — установка флага desktop_lock_enabled
 //!
 //! Все маршруты защищены session middleware.
@@ -331,21 +330,6 @@ pub async fn build_server_toggle(
     })
 }
 
-/// Текущий статус сервера.
-pub async fn build_server_status(
-    ctx: &AppCtx,
-    caller: &trackly_core::auth::Identity,
-) -> Result<ServerStatusDto, AppError> {
-    trackly_core::auth::authorize(caller, &Action::ManageSettings)?;
-    let guard = ctx.server_ctl.lock().await;
-    let running = guard.is_some();
-    Ok(ServerStatusDto {
-        running,
-        url: None,
-        fingerprint: None,
-    })
-}
-
 /// Установить флаг desktop_lock_enabled.
 pub async fn build_desktop_set_lock_http(
     ctx: &AppCtx,
@@ -384,20 +368,6 @@ pub async fn handler_server_toggle(
     ))
 }
 
-pub async fn handler_server_status(
-    State(ctx): State<AppCtx>,
-    session: Session,
-) -> Result<Json<ServerStatusDto>, AppErrorResponse> {
-    let caller = session_identity(&session)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(
-        build_server_status(&ctx, &caller)
-            .await
-            .map_err(AppErrorResponse::from)?,
-    ))
-}
-
 pub async fn handler_desktop_set_lock(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -429,6 +399,5 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/settings_get_network", post(handler_get_network))
         .route("/api/v1/settings_set_network", post(handler_set_network))
         .route("/api/v1/server_toggle", post(handler_server_toggle))
-        .route("/api/v1/server_status", post(handler_server_status))
         .route("/api/v1/desktop_set_lock", post(handler_desktop_set_lock))
 }

@@ -2,7 +2,8 @@
 //!
 //! Два router'а:
 //! - `public_router()` — login + status (нет session gate)
-//! - `protected_router()` — logout + me (за session middleware)
+//! - `protected_router()` — logout + AD-настройки (за session middleware);
+//!   маршрута auth_me нет — сессию UI определяет через auth_status (INT-11/INT-24)
 //!
 //! **Session fixation prevention (T-05-SF):** build_auth_login вызывает
 //! session.flush().await ПЕРЕД session.insert() — старая сессия уничтожается,
@@ -205,13 +206,6 @@ pub async fn build_auth_logout(session: Session) -> Result<(), AppError> {
     })
 }
 
-/// Вернуть текущего пользователя из сессии.
-pub async fn build_auth_me(ctx: &AppCtx, session: Session) -> Result<UserDto, AppError> {
-    let identity = session_identity(&session).await?;
-    let user_id = identity.user_id.ok_or(AppError::Unauthorized)?;
-    ctx.auth.get_user_by_id(user_id).await
-}
-
 /// Статус авторизации: needs_bootstrap, desktop_lock_enabled, user.
 pub async fn build_auth_status(ctx: &AppCtx, session: Session) -> Result<AuthStatusDto, AppError> {
     let needs_bootstrap = ctx.auth.needs_bootstrap().await?;
@@ -373,17 +367,6 @@ pub async fn handler_logout(session: Session) -> Result<Json<()>, AppErrorRespon
     Ok(Json(()))
 }
 
-pub async fn handler_me(
-    State(ctx): State<AppCtx>,
-    session: Session,
-) -> Result<Json<UserDto>, AppErrorResponse> {
-    Ok(Json(
-        build_auth_me(&ctx, session)
-            .await
-            .map_err(AppErrorResponse::from)?,
-    ))
-}
-
 pub async fn handler_status(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -438,11 +421,10 @@ pub fn public_router() -> Router<AppCtx> {
         .route("/api/v1/auth_status", post(handler_status))
 }
 
-/// Защищённые маршруты (за session middleware): logout, me, AD settings.
+/// Защищённые маршруты (за session middleware): logout, AD settings.
 pub fn protected_router() -> Router<AppCtx> {
     Router::new()
         .route("/api/v1/auth_logout", post(handler_logout))
-        .route("/api/v1/auth_me", post(handler_me))
         .route("/api/v1/settings_get_ad", post(handler_get_ad))
         .route("/api/v1/settings_set_ad", post(handler_set_ad))
         .route(

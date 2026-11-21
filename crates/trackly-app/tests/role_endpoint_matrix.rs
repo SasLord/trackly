@@ -4,9 +4,10 @@
 //! устройств/актов/картриджей сотрудник получает 403 Forbidden.
 //!
 //! Test matrix (15 cases):
-//! 1. No session → POST /api/v1/devices_create → 401 Unauthorized
-//! 2. Employee session → POST /api/v1/devices_create → 403 Forbidden
-//! 3. Manager session → POST /api/v1/devices_create → not 401/403 (200 or 422)
+//! 1. No session → POST /api/v1/devices_create_single_with_number_check → 401 Unauthorized
+//! 2. Employee session → POST /api/v1/devices_create_single_with_number_check → 403 Forbidden
+//! 3. Manager session → POST /api/v1/devices_create_single_with_number_check → not 401/403
+//!    (до quick 261121-hei — /api/v1/devices_create; маршрут удалён как мёртвый, INT-11)
 //! 4. Employee session → POST /api/v1/acts_create → 403 Forbidden
 //! 5. Employee session → POST /api/v1/cartridges_create → 403 Forbidden
 //! 6. Employee session → POST /api/v1/users_create → 403 Forbidden
@@ -180,11 +181,12 @@
 //! 67. Manager Identity (Tauri path) → build_number_templates_create/
 //!     _update_mask/_delete/_list → Err(AppError::Forbidden) for all four,
 //!     mirroring Case 66.
-//! 68. Employee session (HTTP) → all 4 Group A endpoints AND all 5 Group B
-//!     endpoints (list_by_context/peek_next/contexts_get/contexts_set/
-//!     is_occupied, context=device_create) → 403 Forbidden for all nine.
+//! 68. Employee session (HTTP) → all 4 Group A endpoints AND 4 Group B
+//!     endpoints (list_by_context/peek_next/contexts_get/is_occupied,
+//!     context=device_create) → 403 Forbidden for all eight (HTTP-маршрут
+//!     contexts_set удалён quick 261121-hei, INT-11).
 //! 69. Employee Identity (Tauri path) → build_number_templates_* for the
-//!     same nine → Err(AppError::Forbidden), mirroring Case 68.
+//!     nine (включая contexts_set) → Err(AppError::Forbidden).
 //! 70. Manager session (HTTP) → number_templates_list_by_context with
 //!     context=device_create / act_create / cartridge_create → not 401/403
 //!     for all three — proves each `action_for_context` branch
@@ -416,6 +418,8 @@ async fn role_endpoint_matrix_test() {
                 .expect("create employee session");
 
         // --- Payloads ---
+        // Тело /api/v1/devices_create_single_with_number_check (как в Case 74):
+        // UI создаёт устройство только этим маршрутом (devices_create удалён, INT-11).
         let device_payload = json!({
             "device": {
                 "type_id": 1,
@@ -428,7 +432,14 @@ async fn role_endpoint_matrix_test() {
                 "state": null,
                 "place_id": null,
                 "status_id": 1
-            }
+            },
+            "numberInput": {
+                "value": "RBAC01-000001",
+                "templateId": null,
+                "confirmMismatch": false,
+                "confirmScriptMix": false
+            },
+            "context": "device_create"
         });
 
         let act_payload = json!({
@@ -650,10 +661,6 @@ async fn role_endpoint_matrix_test() {
         let number_template_contexts_get_device_payload = json!({
             "context": "device_create"
         });
-        let number_template_contexts_set_device_payload = json!({
-            "context": "device_create",
-            "templateId": null
-        });
         let number_template_is_occupied_device_payload = json!({
             "context": "device_create",
             "candidate": "RBAC-64-CANDIDATE",
@@ -674,12 +681,12 @@ async fn role_endpoint_matrix_test() {
         }
 
         // =====================================================================
-        // Case 1: No session → POST /api/v1/devices_create → 401 Unauthorized
+        // Case 1: No session → POST /api/v1/devices_create_single_with_number_check → 401 Unauthorized
         // =====================================================================
         {
             let status = post_with_cookie(
                 new_app!(),
-                "/api/v1/devices_create",
+                "/api/v1/devices_create_single_with_number_check",
                 device_payload.clone(),
                 None,
             )
@@ -687,17 +694,17 @@ async fn role_endpoint_matrix_test() {
             assert_eq!(
                 status,
                 StatusCode::UNAUTHORIZED,
-                "Case 1: No session → devices_create → expected 401, got {status}"
+                "Case 1: No session → devices_create_single_with_number_check → expected 401, got {status}"
             );
         }
 
         // =====================================================================
-        // Case 2: Employee session → POST /api/v1/devices_create → 403 Forbidden
+        // Case 2: Employee session → POST /api/v1/devices_create_single_with_number_check → 403 Forbidden
         // =====================================================================
         {
             let status = post_with_cookie(
                 new_app!(),
-                "/api/v1/devices_create",
+                "/api/v1/devices_create_single_with_number_check",
                 device_payload.clone(),
                 Some(&employee_cookie),
             )
@@ -705,24 +712,24 @@ async fn role_endpoint_matrix_test() {
             assert_eq!(
                 status,
                 StatusCode::FORBIDDEN,
-                "Case 2: Employee → devices_create → expected 403, got {status}"
+                "Case 2: Employee → devices_create_single_with_number_check → expected 403, got {status}"
             );
         }
 
         // =====================================================================
-        // Case 3: Manager session → POST /api/v1/devices_create → not 401/403
+        // Case 3: Manager session → POST /api/v1/devices_create_single_with_number_check → not 401/403
         // =====================================================================
         {
             let status = post_with_cookie(
                 new_app!(),
-                "/api/v1/devices_create",
+                "/api/v1/devices_create_single_with_number_check",
                 device_payload.clone(),
                 Some(&manager_cookie),
             )
             .await;
             assert!(
                 status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
-                "Case 3: Manager → devices_create → expected not 401/403, got {status}"
+                "Case 3: Manager → devices_create_single_with_number_check → expected not 401/403, got {status}"
             );
         }
 
@@ -2794,8 +2801,9 @@ async fn role_endpoint_matrix_test() {
 
         // =====================================================================
         // Case 68 (Phase 40.2 Plan 05): Employee session (HTTP) → all 4
-        // Group A endpoints AND all 5 Group B endpoints (context=
-        // device_create) → 403 Forbidden for all nine.
+        // Group A endpoints AND 4 Group B endpoints (context=device_create)
+        // → 403 Forbidden for all eight. HTTP-маршрут contexts_set удалён
+        // quick 261121-hei (INT-11); его гейт держит Tauri-кейс 69.
         // =====================================================================
         {
             let group_a: &[(&str, serde_json::Value)] = &[
@@ -2839,10 +2847,6 @@ async fn role_endpoint_matrix_test() {
                 (
                     "/api/v1/number_template_contexts_get",
                     number_template_contexts_get_device_payload.clone(),
-                ),
-                (
-                    "/api/v1/number_template_contexts_set",
-                    number_template_contexts_set_device_payload.clone(),
                 ),
                 (
                     "/api/v1/number_templates_is_occupied",
@@ -6977,11 +6981,6 @@ fn int29_debt_mutation_cases() -> Vec<(&'static str, Int29Roles, serde_json::Val
             AdminOnly,
             json!({ "id": 999999, "version": 1 }),
         ),
-        (
-            "users_reset_password",
-            AdminOnly,
-            json!({ "userId": 999999, "newPassword": "Test-Pass-12345" }),
-        ),
         // ManageSettings (Admin only)
         (
             "settings_save_org_fields",
@@ -7031,8 +7030,8 @@ async fn int29_debt_mutations_role_matrix_http() {
     let cases = int29_debt_mutation_cases();
     assert_eq!(
         cases.len(),
-        23,
-        "группа ДОЛГ — ровно 23 мутирующих маршрута"
+        22,
+        "группа ДОЛГ — ровно 22 мутирующих маршрута (users_reset_password удалён quick 261121-hei)"
     );
     int29_check_cases(&env, cases).await;
     env.ctx.shutdown.cancel();
@@ -7046,12 +7045,12 @@ async fn int29_debt_mutations_role_matrix_http() {
 /// Потребители в ui/src (grep по `apiCall('<имя>')`):
 /// settings_get_* и templates_list_for_editor — только страницы раздела «Настройки»
 /// (роль admin в sidebar-config), devices_import_csv_preview — DevicesPage (Admin|Manager);
-/// server_status / organization_get / templates_get_active / templates_render_preview —
-/// UI-вызовов нет вовсе (в lib/api остались неиспользуемые обёртки).
+/// organization_get / templates_get_active / templates_render_preview —
+/// UI-вызовов нет вовсе (в lib/api остались неиспользуемые обёртки). Маршрут server_status
+/// удалён quick 261121-hei (INT-11/INT-24); reports_get_report_counts добавлен там же (INT-04).
 fn int29_read_cases() -> Vec<(&'static str, Int29Roles, serde_json::Value)> {
     use Int29Roles::{AdminOnly, Staff};
     vec![
-        ("server_status", AdminOnly, json!({})),
         ("organization_get", Staff, json!({})),
         ("settings_get_org", AdminOnly, json!({})),
         ("settings_get_org_logo", AdminOnly, json!({})),
@@ -7072,6 +7071,16 @@ fn int29_read_cases() -> Vec<(&'static str, Int29Roles, serde_json::Value)> {
             json!({ "kind": "act_handover", "sampleActId": 999999 }),
         ),
         ("devices_import_csv_preview", Staff, json!({ "bytes": [] })),
+        // INT-04 (quick 261121-hei): счётчики вкладок «Отчётов» по LAN, гейт ReadData.
+        (
+            "reports_get_report_counts",
+            Staff,
+            json!({
+                "domain": "devices",
+                "filter": {},
+                "period": { "mode": "year", "year": 2026, "month": null, "date_from": null, "date_to": null }
+            }),
+        ),
     ]
 }
 
@@ -7079,24 +7088,6 @@ fn int29_read_cases() -> Vec<(&'static str, Int29Roles, serde_json::Value)> {
 async fn int29_ungated_reads_role_matrix_http() {
     let env = gt_env().await;
     int29_check_cases(&env, int29_read_cases()).await;
-    env.ctx.shutdown.cancel();
-}
-
-/// `auth_me` — проба сессии: без сессии 401, любая вошедшая роль получает СВОЮ запись.
-/// Action-гейт не нужен (субъект берётся из сессии, не из тела).
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn int29_auth_me_session_probe() {
-    let env = gt_env().await;
-    let st = post_with_cookie(gt_app(&env.ctx), "/api/v1/auth_me", json!({}), None).await;
-    assert_eq!(st, StatusCode::UNAUTHORIZED, "auth_me без сессии");
-    for (who, cookie) in [
-        ("Admin", &env.admin_cookie),
-        ("Manager", &env.manager_cookie),
-        ("Employee", &env.employee_cookie),
-    ] {
-        let (st, body) = gt_post(&env, cookie, "auth_me", json!({})).await;
-        assert_eq!(st, StatusCode::OK, "auth_me под {who}: {body}");
-    }
     env.ctx.shutdown.cancel();
 }
 
@@ -7174,8 +7165,6 @@ const ROUTE_MATRIX_EXEMPT: &[(&str, &str)] = &[
     // мутирующий, роль-тест в профильном файле tests/: settings_ad.rs (Employee → 403)
     ("settings_set_ad", "мутирующий, роль-тест в профильном файле tests/: settings_ad.rs (Employee → 403)"),
     ("ad_test_connection", "мутирующий, роль-тест в профильном файле tests/: settings_ad.rs (Employee → 403)"),
-    // самообслуживание: субъект берётся из сессии, не из тела (CR-02), нужен текущий пароль; роль не применима
-    ("users_change_password", "самообслуживание: субъект берётся из сессии, не из тела (CR-02), нужен текущий пароль; роль не применима"),
 ];
 // ROUTE-MATRIX-EXEMPT-END
 

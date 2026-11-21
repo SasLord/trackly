@@ -1,6 +1,8 @@
 //! Users HTTP routes — Plan 03.
 //!
-//! POST /api/v1/users_* CRUD + change_password + reset_password.
+//! POST /api/v1/users_* CRUD. Маршрутов users_change_password / users_reset_password
+//! нет: потребителя в UI не было (INT-11/INT-24, удалены quick 261121-hei); админ
+//! меняет пароль через users_update с полем password.
 //! Все маршруты защищены session middleware (из protected router'а в build_router).
 //!
 //! Паттерн аналогичен http/devices.rs.
@@ -12,9 +14,7 @@ use tower_sessions::Session;
 use trackly_core::error::AppError;
 
 use crate::context::AppCtx;
-use crate::dto::auth::{
-    ChangePasswordRequest, UserDto, UserFilter, UserListResponse, UserNew, UserPatch,
-};
+use crate::dto::auth::{UserDto, UserFilter, UserListResponse, UserNew, UserPatch};
 use crate::dto::device::Pagination;
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -51,21 +51,6 @@ pub struct UpdatePayload {
 pub struct DeletePayload {
     pub id: i64,
     pub version: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChangePasswordPayload {
-    // CR-02: `user_id` НЕ принимается от клиента — он берётся из сессии,
-    // иначе это IDOR (смена пароля произвольного пользователя).
-    pub req: ChangePasswordRequest,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResetPasswordPayload {
-    pub user_id: i64,
-    pub new_password: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -111,26 +96,6 @@ pub async fn build_users_delete(
 ) -> Result<(), AppError> {
     let caller = session_identity(session).await?;
     ctx.auth.delete_user(id, version, &caller).await
-}
-
-pub async fn build_users_change_password(
-    ctx: &AppCtx,
-    user_id: i64,
-    req: ChangePasswordRequest,
-) -> Result<(), AppError> {
-    ctx.auth.change_password(user_id, req).await
-}
-
-pub async fn build_users_reset_password(
-    ctx: &AppCtx,
-    session: &Session,
-    user_id: i64,
-    new_password: String,
-) -> Result<(), AppError> {
-    let caller = session_identity(session).await?;
-    ctx.auth
-        .reset_password(user_id, new_password, &caller)
-        .await
 }
 
 // ---------------------------------------------------------------------------
@@ -184,36 +149,6 @@ pub async fn handler_delete(
     Ok(Json(()))
 }
 
-pub async fn handler_change_password(
-    State(ctx): State<AppCtx>,
-    session: Session,
-    Json(payload): Json<ChangePasswordPayload>,
-) -> Result<Json<()>, AppErrorResponse> {
-    // CR-02: derive subject from the session, never from the request body.
-    let caller = session_identity(&session)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    let uid = caller
-        .user_id
-        .ok_or(AppError::Unauthorized)
-        .map_err(AppErrorResponse::from)?;
-    build_users_change_password(&ctx, uid, payload.req)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(()))
-}
-
-pub async fn handler_reset_password(
-    State(ctx): State<AppCtx>,
-    session: Session,
-    Json(payload): Json<ResetPasswordPayload>,
-) -> Result<Json<()>, AppErrorResponse> {
-    build_users_reset_password(&ctx, &session, payload.user_id, payload.new_password)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(()))
-}
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -224,9 +159,4 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/users_create", post(handler_create))
         .route("/api/v1/users_update", post(handler_update))
         .route("/api/v1/users_delete", post(handler_delete))
-        .route(
-            "/api/v1/users_change_password",
-            post(handler_change_password),
-        )
-        .route("/api/v1/users_reset_password", post(handler_reset_password))
 }

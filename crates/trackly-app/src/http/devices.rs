@@ -26,13 +26,12 @@ use crate::dto::printer::PrinterCreateBlockDto;
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
     build_device_statuses_list, build_device_types_list, build_devices_autocomplete,
-    build_devices_bulk_create, build_devices_create, build_devices_create_single_with_number_check,
-    build_devices_delete, build_devices_export_csv, build_devices_get,
-    build_devices_group_children, build_devices_import_csv_commit,
-    build_devices_import_csv_preview, build_devices_list, build_devices_list_by_ids,
-    build_devices_list_containers, build_devices_list_entries, build_devices_list_grouped,
-    build_devices_search, build_devices_state_hints, build_devices_status_counts,
-    build_devices_update,
+    build_devices_bulk_create, build_devices_create_single_with_number_check, build_devices_delete,
+    build_devices_export_csv, build_devices_get, build_devices_group_children,
+    build_devices_import_csv_commit, build_devices_import_csv_preview, build_devices_list,
+    build_devices_list_by_ids, build_devices_list_containers, build_devices_list_entries,
+    build_devices_list_grouped, build_devices_search, build_devices_state_hints,
+    build_devices_status_counts, build_devices_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -50,12 +49,6 @@ pub struct ListPayload {
 #[serde(rename_all = "camelCase")]
 pub struct GetPayload {
     pub id: i64,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreatePayload {
-    pub device: DeviceNew,
 }
 
 #[derive(serde::Deserialize)]
@@ -181,21 +174,6 @@ pub async fn handler_get(
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_get(&ctx, &identity, payload.id)
-            .await
-            .map_err(AppErrorResponse::from)?,
-    ))
-}
-
-pub async fn handler_create(
-    State(ctx): State<AppCtx>,
-    session: Session,
-    Json(payload): Json<CreatePayload>,
-) -> Result<Json<DeviceSaveOutcome>, AppErrorResponse> {
-    let identity = session_identity(&session)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(
-        build_devices_create(&ctx, &identity, payload.device)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -512,7 +490,6 @@ pub fn router() -> Router<AppCtx> {
         // Plan 03 CRUD
         .route("/api/v1/devices_list", post(handler_list))
         .route("/api/v1/devices_get", post(handler_get))
-        .route("/api/v1/devices_create", post(handler_create))
         .route("/api/v1/devices_update", post(handler_update))
         .route(
             "/api/v1/devices_create_single_with_number_check",

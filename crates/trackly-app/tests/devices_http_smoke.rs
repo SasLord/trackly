@@ -48,16 +48,27 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
         assert!(dto_tauri.id > 0, "Tauri path: id > 0");
         assert_eq!(dto_tauri.name, "Ноутбук HP Smoke");
 
-        // axum-path (без сессии): POST /api/v1/devices_create → 401 Unauthorized.
-        // Phase 5 Plan 04: mutation handlers теперь требуют аутентифицированной сессии.
+        // axum-path (без сессии): POST /api/v1/devices_create_single_with_number_check
+        // → 401 Unauthorized. Phase 5 Plan 04: mutation handlers требуют сессии.
+        // Маршрут /api/v1/devices_create удалён quick 261121-hei (INT-11): UI создаёт
+        // устройство только через devices_create_single_with_number_check.
         let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
         let app = build_router(&ctx, session_store);
-        let body_json = serde_json::json!({ "device": new });
+        let body_json = serde_json::json!({
+            "device": new,
+            "numberInput": {
+                "value": "SMOKE-000001",
+                "templateId": null,
+                "confirmMismatch": false,
+                "confirmScriptMix": false
+            },
+            "context": "device_create"
+        });
         let res = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/v1/devices_create")
+                    .uri("/api/v1/devices_create_single_with_number_check")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&body_json)?))?,
             )
@@ -66,7 +77,7 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
         assert_eq!(
             res.status(),
             StatusCode::UNAUTHORIZED,
-            "devices_create без сессии должен возвращать 401"
+            "devices_create_single_with_number_check без сессии должен возвращать 401"
         );
 
         // list — Tauri path

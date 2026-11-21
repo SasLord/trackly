@@ -281,6 +281,10 @@
   // the effect, causing an infinite reload loop (see debug session
   // ui-ws-toast-reports-flicker). A plain let is read/written without reactivity.
   let countsLoading = false;
+  // Тост об отказе счётчиков — не чаще одного раза до следующей успешной загрузки
+  // (эффект автоперезагрузки иначе спамит). Обычный let, как countsLoading: читается
+  // только в асинхронных колбэках и не должен становиться зависимостью эффекта.
+  let countsErrorToasted = false;
 
   // ---------------------------------------------------------------------------
   // Export state
@@ -461,9 +465,17 @@
           map[entry.key] = entry.count;
         }
         statusCounts = map;
+        countsErrorToasted = false;
       })
-      .catch(() => {
-        // Non-fatal — badges fall back to rowCount / '–'
+      .catch((e: unknown) => {
+        // Не фатально: бейджи уходят в прежний фолбэк (rowCount / '–'), но отказ
+        // не глушится молча (INT-04: по LAN маршрута не было, и этого никто не видел).
+        statusCounts = {};
+        console.error('reports_get_report_counts failed', e);
+        if (!countsErrorToasted) {
+          countsErrorToasted = true;
+          pushToast('error', 'Не удалось загрузить счётчики вкладок отчётов');
+        }
       })
       .finally(() => {
         countsLoading = false;

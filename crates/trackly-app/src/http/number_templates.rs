@@ -14,9 +14,8 @@ use crate::dto::number_template::{
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::number_templates::{
-    build_number_template_contexts_get, build_number_template_contexts_set,
-    build_number_templates_create, build_number_templates_delete,
-    build_number_templates_is_occupied, build_number_templates_list,
+    build_number_template_contexts_get, build_number_templates_create,
+    build_number_templates_delete, build_number_templates_is_occupied, build_number_templates_list,
     build_number_templates_list_by_context, build_number_templates_peek_next,
     build_number_templates_preview_mask, build_number_templates_update_mask,
 };
@@ -212,20 +211,6 @@ pub async fn handler_contexts_get(
     ))
 }
 
-pub async fn handler_contexts_set(
-    State(ctx): State<AppCtx>,
-    session: Session,
-    Json(p): Json<ContextSetPayload>,
-) -> Result<Json<()>, AppErrorResponse> {
-    let identity = session_identity(&session)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    build_number_template_contexts_set(&ctx, &identity, p.context, p.template_id)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(()))
-}
-
 pub async fn handler_is_occupied(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -265,10 +250,6 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/number_template_contexts_get",
             post(handler_contexts_get),
-        )
-        .route(
-            "/api/v1/number_template_contexts_set",
-            post(handler_contexts_set),
         )
         .route(
             "/api/v1/number_templates_is_occupied",
