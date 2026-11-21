@@ -18,7 +18,8 @@
 //     (accent, success, warning, danger, info) в варианте active (*-text на *-soft) плюс
 //     warning и danger в варианте muted (*-muted-text на *-muted-soft):
 //     (5 + 2) x 6 фонов x 2 темы = 60 + 24 = 84 композитные проверки за прогон
-//     (60 active + 24 muted). Порог — COMPOSITE_MIN = 4.5. Требование порядка «muted тише
+//     (60 active + 24 muted). Порог — COMPOSITE_MIN = 4.6: запас D-29 над 4.5 (R1/D-15), чтобы
+//     округление канала не уводило значение под границу. Требование порядка «muted тише
 //     active» снято (D-15): различие внутри пары несёт нецветовая обводка (план 09, D-16),
 //     цвет его не гарантирует.
 //
@@ -50,9 +51,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 
-// Порог R1 на композите подложки (D-15). Токены держатся с запасом ≥ 4.6 (D-29), чтобы
-// округление канала (≈0.02) не отправляло значение под границу.
-const COMPOSITE_MIN = 4.5;
+// Порог R1 на композите подложки: 4.6 = запас D-29 над 4.5 (R1/D-15), чтобы округление
+// канала (≈0.02) не уводило значение под границу. До quick 261121-heg (INT-19) здесь
+// стояло 4.5, и заявленный запас гейтом не держался.
+const COMPOSITE_MIN = 4.6;
 // Потолок альфы приглушённой подложки относительно активной (R2, D-17).
 const MAX_ALPHA_RATIO = 0.65;
 // Порог R3: нетекстовый контраст рамки к композиту подложки (WCAG 1.4.11).
@@ -441,6 +443,12 @@ function selftest(content, dumpDir) {
     {
       name: '(4) D-33: светлый success-text возвращён к #0f7343 (композит ≈4.20 на sunken)',
       make: (c) => mutate(c, '--tr-success-text: #0e6c3f;', '--tr-success-text: #0f7343;'),
+      expect: 'light R1 composite success active over --tr-surface-sunken',
+    },
+    {
+      // INT-19: композит в полосе [4.5, 4.6) — прежний порог 4.5 его пропускал.
+      name: '(8) D-29: светлый success-text #0e6d40 — композит ≈4.55 на sunken (полоса 4.5–4.6)',
+      make: (c) => mutate(c, '--tr-success-text: #0e6c3f;', '--tr-success-text: #0e6d40;'),
       expect: 'light R1 composite success active over --tr-surface-sunken',
     },
     {

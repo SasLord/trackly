@@ -113,7 +113,9 @@ const NOT_WORD = '(?<![\\p{L}\\p{N}_$])';
 // Ключ поля с числом: любой идентификатор (`id`, `value`, `printer`, ...) — карта
 // `{ printer: 2, label: 'Принтер' }` тоже копия справочника.
 const KEY = '[\\p{L}_$][\\p{L}\\p{N}_$]*';
-const NAME = '(?:name|label)';
+// Ключ подписи: любой ключ-подпись, не только name/label — копия справочника
+// с `caption` проходила зелёной (quick 261121-heg, INT-20).
+const NAME = '(?:name|label|caption|title|text|displayName|display_name)';
 // Лишние поля между id и подписью в одном литерале (без скобок `{}`).
 const GAP_MAX = 80;
 const GAP = `[^{}]{0,${GAP_MAX}}?`;
@@ -350,6 +352,15 @@ function selftest(root) {
     const old = "{ id: 1, label: 'Устройство' }, { id: 2, label: 'Принтер' },";
     const over = new Map([[GROUP, mutate(real, anchor, old, 'typeOptions spread')]]);
     add('GroupAddDevicesModal: копия справочника с верной подписью', 'T1', run({ over }));
+  }
+
+  // (в2) INT-20: та же копия, но подпись под ключом caption -> T1
+  {
+    const real = disk(GROUP);
+    const anchor = '...orderedTypes().map((t) => ({ id: t.id, label: t.name })),';
+    const old = "{ id: 2, caption: 'Принтер' },";
+    const over = new Map([[GROUP, mutate(real, anchor, old, 'typeOptions spread (caption)')]]);
+    add('GroupAddDevicesModal: копия справочника с ключом caption (INT-20)', 'T1', run({ over }));
   }
 
   // (г) литерал 'Расходник' сам по себе
