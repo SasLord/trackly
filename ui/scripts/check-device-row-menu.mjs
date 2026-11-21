@@ -786,7 +786,97 @@ export function checkMenuFile(src) {
       });
     }
   }
+  violations.push(...checkStatusHandler(script, markup));
   return violations;
+}
+
+/** Тело `function name(...) { ... }` в script; null — функции нет. */
+function functionBody(script, name) {
+  const m = new RegExp(`function\\s+${name}\\s*\\(`).exec(script);
+  if (!m) return null;
+  const open = script.indexOf('(', m.index);
+  const closeParen = readBalanced(script, open, '(', ')');
+  if (closeParen === -1) return null;
+  return bodyAfterParams(script, closeParen + 1, 'function');
+}
+
+/** Правила [S1]-[S6]: пункт «Статус» и обработчик смены статуса (план 41.8-33, D-35). */
+function checkStatusHandler(script, markup) {
+  const v = [];
+  const bad = (code, msg) => v.push({ code, msg });
+  // [S1] подменю через ActionSubmenu в ветке kind 'status' и варианты из statusMenuOptions(
+  if (!/\{#if\s+item\.kind\s*===\s*'status'\s*\}\s*<ActionSubmenu\b/.test(markup)) {
+    bad(
+      'S1',
+      "пункт kind 'status' не рисуется через <ActionSubmenu> (ветка `{#if item.kind === 'status'}`)",
+    );
+  }
+  const smo = /\bstatusMenuOptions\s*\(/.exec(script);
+  if (!smo) bad('S1', 'нет вызова statusMenuOptions(: варианты статуса не из общей логики');
+  // [S6] номер открытой заявки грузится loadOpenRepairs( и подаётся в statusMenuOptions(
+  if (!/\bloadOpenRepairs\s*\(/.test(script)) {
+    bad(
+      'S6',
+      'DeviceRowMenu не вызывает loadOpenRepairs(: при открытой заявке варианты не блокируются',
+    );
+  }
+  if (smo) {
+    const open = script.indexOf('(', smo.index);
+    const end = readBalanced(script, open, '(', ')');
+    const args = end === -1 ? '' : script.slice(open, end);
+    if (!/\bopenRepairRequestId\b/.test(args)) {
+      bad('S6', 'statusMenuOptions( вызван без openRepairRequestId');
+    }
+  }
+  const body = functionBody(script, 'changeStatus');
+  if (body === null) {
+    bad('S2', 'нет функции changeStatus');
+    return v;
+  }
+  const iVerdict = body.search(/\bwriteOffChoiceNeeded\s*\(/);
+  const iUpdate = body.search(/\bdevices\s*\.\s*update\s*\(/);
+  // [S2] вердикт раньше запроса
+  if (iVerdict === -1 || iUpdate === -1 || iVerdict > iUpdate) {
+    bad('S2', 'в changeStatus writeOffChoiceNeeded( должен стоять раньше devices.update(');
+  }
+  // [S3] group_write_off только из выбора пользователя, не меньше двух мест (первичный и повтор)
+  const assigns = [...body.matchAll(/\.group_write_off\s*=\s*([^;]+);/g)];
+  if (assigns.length < 2) {
+    bad(
+      'S3',
+      `group_write_off присваивается ${assigns.length} раз, нужно не меньше 2 (выбор и повтор)`,
+    );
+  }
+  for (const a of assigns) {
+    if (!/^release\s*\?\s*'release'\s*:\s*'keep'$/.test(a[1].trim())) {
+      bad('S3', `group_write_off присвоен не из выбора пользователя: ${a[1].trim()}`);
+    }
+  }
+  // [S4] патч: ненулевые только status_id и group_write_off
+  const decl = /const\s+patch\s*(?::[^=]+)?=\s*\{/.exec(body);
+  if (!decl) {
+    bad('S4', 'в changeStatus нет литерала патча const patch = {…}');
+  } else {
+    const open = body.indexOf('{', decl.index);
+    const end = readBalanced(body, open, '{', '}');
+    const lit = end === -1 ? '' : body.slice(open + 1, end);
+    for (const part of lit.split(',')) {
+      const kv = /^\s*(\w+)\s*:\s*([\s\S]+?)\s*$/.exec(part);
+      if (!kv) continue;
+      if (kv[1] === 'status_id' || kv[1] === 'group_write_off') continue;
+      if (kv[2] !== 'null')
+        bad('S4', `в патче смены статуса ключ ${kv[1]} с ненулевым значением ${kv[2]}`);
+    }
+  }
+  for (const m of body.matchAll(/\bpatch\s*\.\s*(\w+)\s*=/g)) {
+    if (m[1] !== 'group_write_off') bad('S4', `патч дополняется ключом ${m[1]}`);
+  }
+  // [S5] инвалидация в той же функции, после запроса
+  const iNotify = body.search(/\bnotifyPlaceContentChanged\s*\(/);
+  if (iNotify === -1 || iUpdate === -1 || iNotify < iUpdate) {
+    bad('S5', 'в changeStatus notifyPlaceContentChanged( должен стоять после devices.update(');
+  }
+  return v;
 }
 
 export function checkModuleFile(src) {
@@ -1240,6 +1330,47 @@ const SOURCE_MUTANTS = [
 const CLEAN_MENU = `<script lang="ts">
   // раньше здесь было quickActionsFromTypes(types) — удалено
   import { buildMenuSections, quickActionsForDevice } from './deviceRowMenu';
+  import { statusMenuOptions } from './deviceStatusMenu';
+  import { writeOffChoiceNeeded } from './writeOffChoice';
+  import { loadOpenRepairs } from '../requests/repairLocks';
+  async function refreshOpenRepair() {
+    const map = await loadOpenRepairs([id]);
+    openRepairRequestId = map.get(id) ?? null;
+  }
+  const statusOptions = $derived(
+    statusMenuOptions({
+      statuses: orderedStatuses(),
+      currentStatusId: dev.status_id,
+      isAnchor: false,
+      anchorGroupName: null,
+      openRepairRequestId,
+    }),
+  );
+  async function changeStatus(option) {
+    const verdict = writeOffChoiceNeeded({ statusCodeAfter: option.code });
+    if (verdict === 'anchor_refuse') return;
+    const patch: DevicePatch = {
+      type_id: null,
+      name: null,
+      number_input: null,
+      status_id: option.id,
+    };
+    if (verdict === 'choose') {
+      const release = await ask();
+      patch.group_write_off = release ? 'release' : 'keep';
+    }
+    let outcome;
+    for (;;) {
+      try {
+        outcome = await devices.update(target.id, target.version, patch);
+        break;
+      } catch (e) {
+        const release = await ask();
+        patch.group_write_off = release ? 'release' : 'keep';
+      }
+    }
+    if (placeIds.length > 0) notifyPlaceContentChanged(placeIds);
+  }
   const sections = $derived(
     buildMenuSections({
       hasPoll: false,
@@ -1256,7 +1387,15 @@ const CLEAN_MENU = `<script lang="ts">
       <hr role="separator" />
     {/if}
     {#each section as item (item.kind + item.label)}
-      <button role="menuitem">{item.label}</button>
+      {#if item.kind === 'status'}
+        <ActionSubmenu label={item.label}>
+          {#each statusOptions as opt (opt.id)}
+            <button role="menuitemradio" onclick={() => void changeStatus(opt)}>{opt.label}</button>
+          {/each}
+        </ActionSubmenu>
+      {:else}
+        <button role="menuitem">{item.label}</button>
+      {/if}
     {/each}
   {/each}
 </ActionMenu>
@@ -1332,10 +1471,77 @@ const SELFTEST_OPTS = {
 };
 
 /** Структурные мутанты: у каждого «до» зелёная, «после» красная с кодами expectCodes. */
+function statusStructuralMutants(menu) {
+  const one = (name, from, to, expect, label) => ({
+    name,
+    files: fixtureMap({ [MENU_FILE]: menu(from, to, label) }),
+    expect: [expect],
+  });
+  return [
+    one(
+      '[S2] вердикт убран из changeStatus',
+      'const verdict = writeOffChoiceNeeded({',
+      'const verdict = noChoice({',
+      'S2',
+      'S2a',
+    ),
+    one(
+      '[S2] вердикт после devices.update',
+      '    const verdict = writeOffChoiceNeeded({',
+      '    await devices.update(1, 1, {});\n    const verdict = writeOffChoiceNeeded({',
+      'S2',
+      'S2b',
+    ),
+    one(
+      '[S3] group_write_off константой',
+      '    let outcome;',
+      "    patch.group_write_off = 'keep';\n    let outcome;",
+      'S3',
+      'S3',
+    ),
+    one(
+      '[S4] в патч добавлен place_id с ненулевым значением',
+      'status_id: option.id,',
+      'status_id: option.id,\n      place_id: 5,',
+      'S4',
+      'S4',
+    ),
+    one(
+      '[S6] убрана передача openRepairRequestId',
+      '      openRepairRequestId,\n',
+      '',
+      'S6',
+      'S6a',
+    ),
+    one(
+      '[S6] убран вызов loadOpenRepairs(',
+      'const map = await loadOpenRepairs([id]);',
+      'const map = new Map();',
+      'S6',
+      'S6b',
+    ),
+    one(
+      '[S5] notifyPlaceContentChanged убран',
+      'if (placeIds.length > 0) notifyPlaceContentChanged(placeIds);',
+      '',
+      'S5',
+      'S5',
+    ),
+    one(
+      '[S1] подменю заменено обычной кнопкой',
+      '<ActionSubmenu label={item.label}>',
+      '<button label={item.label}>',
+      'S1',
+      'S1',
+    ),
+  ];
+}
+
 function structuralMutants() {
   const row = (from, to, label) => mutate(CLEAN_ROW, from, to, label);
   const menu = (from, to, label) => mutate(CLEAN_MENU, from, to, label);
   return [
+    ...statusStructuralMutants(menu),
     {
       name: '[A] второй <hr у DeviceRowMenu',
       files: fixtureMap({
