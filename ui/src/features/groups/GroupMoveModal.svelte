@@ -17,13 +17,14 @@
   import Button from '$lib/components/Button.svelte';
   import FormField from '$lib/components/FormField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import { groups } from '$lib/api/groups';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { AppError } from '$lib/api/errors';
-  import type { GroupDto, GroupMoveResultDto } from '../../bindings';
+  import type { GroupDto, GroupMoveResultDto, GroupMoveStatusPreviewDto } from '../../bindings';
 
   interface Props {
     group: GroupDto;
@@ -36,6 +37,13 @@
   let targetPlaceId = $state<number | null>(null);
   let placeError = $state<string | null>(null);
   let moving = $state(false);
+
+  // D-34: серверный предпросмотр смены статусов. Правило перехода «склад <-> не
+  // склад», число устройств и подпись целевого статуса приходят с сервера; клиент
+  // ничего не зеркалит и литералов статусов не хранит.
+  let preview = $state<GroupMoveStatusPreviewDto | null>(null);
+  let changeStatus = $state(true);
+  let previewSeq = $state(0);
 
   // Вложенные группы (прямые дети): состав запрашивается один раз при открытии.
   let nested = $state<GroupDto[]>([]);
@@ -64,6 +72,41 @@
       cancelled = true;
     };
   });
+
+  $effect(() => {
+    const id = group.id;
+    const placeId = targetPlaceId;
+    let stale = false;
+    untrack(() => {
+      changeStatus = true;
+      if (placeId === null) {
+        preview = null;
+        return;
+      }
+      previewSeq += 1;
+      const mySeq = previewSeq;
+      groups
+        .moveStatusPreview({ id, target_place_id: placeId })
+        .then((p) => {
+          if (!stale && mySeq === previewSeq) preview = p;
+        })
+        .catch((e) => {
+          if (stale || mySeq !== previewSeq) return;
+          preview = null;
+          const err = e as Partial<AppError> | undefined;
+          if (err?.code === 'VALIDATION') placeError = err.message ?? null;
+        });
+    });
+    return () => {
+      stale = true;
+    };
+  });
+
+  const showStatusBox = $derived(
+    preview !== null && preview.transition !== null && !!preview.target_status_name,
+  );
+  const affected = $derived(preview?.devices_affected ?? 0);
+  const affectedNoun = $derived(pluralizeRu(affected, ['устройства', 'устройств', 'устройств']));
 
   const total = $derived(group.device_count);
   const nestedDevices = $derived(nested.reduce((sum, g) => sum + g.device_count, 0));
@@ -95,6 +138,7 @@
         id: group.id,
         version: group.version,
         target_place_id: targetPlaceId,
+        change_status: preview?.transition != null && preview.devices_affected > 0 && changeStatus,
       });
       notifyPlaceContentChanged(result.changed_place_ids);
       pushToast('success', `Перенесено: ${result.summary}`);
@@ -143,6 +187,26 @@
     {:else}
       <div class="warning-callout" role="note">{calloutText}</div>
     {/if}
+
+    {#if showStatusBox && preview}
+      <div class="status-box">
+        <Checkbox
+          checked={changeStatus && affected > 0}
+          onchange={(v) => (changeStatus = v)}
+          disabled={moving || affected === 0}
+          id="group-move-change-status"
+        >
+          Поменять статус на «{preview.target_status_name}»
+        </Checkbox>
+        <div class="status-hint">
+          {#if affected > 0}
+            Статус сменится у {affected} {affectedNoun}
+          {:else}
+            Подходящих устройств нет: статусы не изменятся
+          {/if}
+        </div>
+      </div>
+    {/if}
   </div>
 
   {#snippet footer()}
@@ -172,6 +236,20 @@
     gap: var(--tr-space-xs);
     color: var(--tr-text-secondary);
     font-size: var(--tr-font-size-body);
+  }
+
+  .status-box {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-xs);
+    white-space: normal;
+    text-align: left;
+  }
+
+  .status-hint {
+    color: var(--tr-text-secondary);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
   }
 
   .warning-callout {
