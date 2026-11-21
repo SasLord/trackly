@@ -301,3 +301,102 @@ async fn a3_invalid_ip_leaves_no_orphan_device() {
     .await
     .expect("timeout");
 }
+
+// ---------------------------------------------------------------------------
+// quick-261121-hef (INT-13): приёмка нумерует принтер по запомненному шаблону
+// контекста «Новый принтер» — как окно создания принтера.
+// ---------------------------------------------------------------------------
+
+/// Второй адрес из `MockSnmpClient::default_fixtures()`.
+const KNOWN_IP_2: &str = "192.168.1.101";
+
+fn printer_numbers(ctx: &AppCtx) -> Vec<Option<String>> {
+    let conn = ctx.readers.acquire();
+    let mut stmt = conn
+        .prepare("SELECT inventory_number FROM devices WHERE type_id = 2 ORDER BY id")
+        .expect("prepare");
+    stmt.query_map([], |r| r.get(0))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect()
+}
+
+#[tokio::test]
+async fn a4_admit_numbers_by_remembered_printer_template() {
+    use trackly_app::dto::number_template::{TemplateContextDto, TemplateTypeDto};
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (ctx, _dir) = minimal_ctx();
+        let template = ctx
+            .number_templates
+            .create(TemplateTypeDto::DeviceInventory, "ПР-[XXXX]".to_string())
+            .await
+            .expect("create template");
+        ctx.number_templates
+            .remember_context(TemplateContextDto::PrinterCreate, Some(template.id))
+            .await
+            .expect("remember");
+        let expected_first = ctx
+            .number_templates
+            .peek_next_for_context(template.id, TemplateContextDto::PrinterCreate)
+            .await
+            .expect("peek")
+            .rendered;
+
+        let admitted = build_printers_admit(
+            &ctx,
+            &Identity::trusted_admin(),
+            vec![KNOWN_IP.to_string(), KNOWN_IP_2.to_string()],
+            COMMUNITY.to_string(),
+        )
+        .await
+        .expect("admit");
+        assert_eq!(admitted.len(), 2);
+
+        let numbers = printer_numbers(&ctx);
+        assert_eq!(numbers.len(), 2);
+        assert_eq!(numbers[0].as_deref(), Some(expected_first.as_str()));
+        let second = numbers[1].as_deref().expect("второй принтер с номером");
+        assert!(second.starts_with("ПР-"), "{second}");
+        assert_ne!(
+            Some(second),
+            numbers[0].as_deref(),
+            "номера последовательны"
+        );
+        // После обоих — шаблон предлагает уже третий, отличный от обоих номеров.
+        let next = ctx
+            .number_templates
+            .peek_next_for_context(template.id, TemplateContextDto::PrinterCreate)
+            .await
+            .expect("peek after")
+            .rendered;
+        assert!(!numbers.iter().any(|n| n.as_deref() == Some(next.as_str())));
+        // Контекстную память приёмка не меняет.
+        assert_eq!(
+            ctx.number_templates
+                .get_context(TemplateContextDto::PrinterCreate)
+                .await
+                .expect("ctx"),
+            Some(template.id)
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+#[tokio::test]
+async fn a5_admit_without_remembered_template_leaves_number_empty() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (ctx, _dir) = minimal_ctx();
+        build_printers_admit(
+            &ctx,
+            &Identity::trusted_admin(),
+            vec![KNOWN_IP.to_string()],
+            COMMUNITY.to_string(),
+        )
+        .await
+        .expect("admit");
+        assert_eq!(printer_numbers(&ctx), vec![None]);
+    })
+    .await
+    .expect("timeout");
+}

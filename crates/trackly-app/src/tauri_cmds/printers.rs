@@ -7,6 +7,7 @@
 
 use crate::context::AppCtx;
 use crate::dto::device::DeviceNew;
+use crate::dto::number_template::TemplateContextDto;
 use crate::dto::printer::{
     CompatibleModelAggregateDto, DiscoveredPrinterDto, Pagination, PrinterCompatibleAggregatesDto,
     PrinterCreateBlockDto, PrinterDto, PrinterFilter, PrinterListResponse,
@@ -20,6 +21,36 @@ use trackly_core::ports::printers::PrinterRepository;
 // ---------------------------------------------------------------------------
 // build_* helpers (shared with axum handlers)
 // ---------------------------------------------------------------------------
+
+/// INT-13: следующий номер запомненного шаблона контекста «Новый принтер» —
+/// тот же, что подставило бы окно создания принтера. Нет запомненного
+/// шаблона, переполнение счётчика или ошибка чтения шаблона — номер пуст
+/// (приёмка от этого не падает). Контекстную память приёмка не меняет.
+async fn next_printer_create_number(ctx: &AppCtx) -> Option<String> {
+    let templates = &ctx.number_templates;
+    let template_id = match templates
+        .get_context(TemplateContextDto::PrinterCreate)
+        .await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => return None,
+        Err(e) => {
+            tracing::warn!(error = %e, "admit: не удалось прочитать шаблон «Новый принтер»");
+            return None;
+        }
+    };
+    match templates
+        .peek_next_for_context(template_id, TemplateContextDto::PrinterCreate)
+        .await
+    {
+        Ok(next) if !next.overflowed && !next.rendered.trim().is_empty() => Some(next.rendered),
+        Ok(_) => None,
+        Err(e) => {
+            tracing::warn!(error = %e, "admit: не удалось вычислить номер по шаблону");
+            None
+        }
+    }
+}
 
 pub async fn build_printers_list(
     ctx: &AppCtx,
@@ -138,39 +169,60 @@ pub async fn build_printers_admit(
             })
             .unwrap_or_else(|| format!("Принтер {ip}"));
 
+        // --- INT-13: номер по запомненному шаблону «Новый принтер» ---
+        // Так же, как окно создания принтера: следующий номер запомненного
+        // шаблона контекста PrinterCreate. Peek на КАЖДОЙ итерации — после
+        // предыдущей вставки счётчик уже сдвинулся.
+        let inventory_no = next_printer_create_number(ctx).await;
+
         // --- Create device type=Принтер (type_id=2, status_id=1) ---
-        // Phase 40.2 Plan 08: `create()` now returns `DeviceSaveOutcome` —
-        // `inventory_no: None` above means the occupied/script-mix chain is
-        // always skipped (SPEC NUM-09), so `NeedsConfirmation` is
-        // structurally unreachable here; handled defensively rather than
+        // Phase 40.2 Plan 08: `create_with_printer_block` returns
+        // `DeviceSaveOutcome`; it never runs the script-mix check (only
+        // `reject_if_occupied` for a non-empty number), so `NeedsConfirmation`
+        // is structurally unreachable here; handled defensively rather than
         // panicking in production code.
-        let device_outcome = ctx
+        let new_device = DeviceNew {
+            type_id: 2,
+            name: device_name,
+            inventory_no: inventory_no.clone(),
+            serial_no: None,
+            model: probe_result
+                .as_ref()
+                .map(|p| p.sys_descr.chars().take(120).collect()),
+            specs: None,
+            kit: None,
+            state: None,
+            // SNMP discovery/admit has no place source at this call site
+            // (no PlacePicker-selected payload — device is auto-created from
+            // an IP probe); place stays unassigned, D-07 (place optional).
+            place_id: None,
+            status_id: 1,
+        };
+        let printer_block = PrinterCreateBlockDto {
+            ip_address: Some(ip.clone()),
+            community: Some(community.clone()),
+            usb_host_device_id: None,
+        };
+        let device_outcome = match ctx
             .devices
-            .create_with_printer_block(
-                DeviceNew {
-                    type_id: 2,
-                    name: device_name,
-                    inventory_no: None,
-                    serial_no: None,
-                    model: probe_result
-                        .as_ref()
-                        .map(|p| p.sys_descr.chars().take(120).collect()),
-                    specs: None,
-                    kit: None,
-                    state: None,
-                    // SNMP discovery/admit has no place source at this call site
-                    // (no PlacePicker-selected payload — device is auto-created from
-                    // an IP probe); place stays unassigned, D-07 (place optional).
-                    place_id: None,
-                    status_id: 1,
-                },
-                Some(PrinterCreateBlockDto {
-                    ip_address: Some(ip.clone()),
-                    community: Some(community.clone()),
-                    usb_host_device_id: None,
-                }),
-            )
-            .await?;
+            .create_with_printer_block(new_device.clone(), Some(printer_block.clone()))
+            .await
+        {
+            // Номер заняли между peek и вставкой (гонка) — принтер не теряем:
+            // один повтор без номера.
+            Err(AppError::Conflict { .. }) if inventory_no.is_some() => {
+                ctx.devices
+                    .create_with_printer_block(
+                        DeviceNew {
+                            inventory_no: None,
+                            ..new_device
+                        },
+                        Some(printer_block),
+                    )
+                    .await?
+            }
+            other => other?,
+        };
         let device = match device_outcome {
             crate::dto::device::DeviceSaveOutcome::Created(dto) => *dto,
             crate::dto::device::DeviceSaveOutcome::NeedsConfirmation(warning) => {
