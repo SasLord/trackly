@@ -1225,17 +1225,21 @@ pub(crate) fn batch_cell(row: &ReportRow) -> String {
 }
 
 /// Русская форма слова «устройство» после числа (1 устройство, 2 устройства,
-/// 5 устройств) — то же правило, что `pluralizeRu` на экране.
+/// 5 устройств) — то же правило и тот же порядок форм, что
+/// `pluralizeRu(n, forms)` на экране. Формы — массивом, индекс — по правилу:
+/// это склонение, а не карта id типа -> подпись (гейт device_type_label_gate).
 fn plural_devices(n: i64) -> &'static str {
+    const FORMS: [&str; 3] = ["устройство", "устройства", "устройств"];
     let n = n.abs();
     let (m10, m100) = (n % 10, n % 100);
-    if m10 == 1 && m100 != 11 {
-        "устройство"
+    let idx = if m10 == 1 && m100 != 11 {
+        0
     } else if (2..=4).contains(&m10) && !(12..=14).contains(&m100) {
-        "устройства"
+        1
     } else {
-        "устройств"
-    }
+        2
+    };
+    FORMS[idx]
 }
 
 fn row_field(row: &ReportRow, col: &str, tz: UtcOffset, shorten: bool) -> String {
