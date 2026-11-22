@@ -268,6 +268,7 @@ pub const REGISTRY: &[Entry] = &[
     // ---- group_membership (примитивы внутри транзакции) --------------------
     ro(GMEMB, "anchor_write_off_error"),
     ex(GMEMB, "release_device_in_tx", TX_PRIMITIVE_REASON),
+    ex(GMEMB, "release_device_with_history_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "release_if_locked_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "restore_membership_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "restore_membership_with_policy_in_tx", TX_PRIMITIVE_REASON),

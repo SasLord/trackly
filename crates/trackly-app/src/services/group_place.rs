@@ -5,10 +5,12 @@
 //! Примитивы `pub(crate)`: их переиспользуют добавление в состав (план 11) и
 //! массовый перенос места (план 15, D-23).
 
+use crate::services::history_events::{new_operation_id, record_status_change_in_tx, HistoryCause};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trackly_core::domain::group_move_status::{
     status_after_move, storage_transition, StorageTransition,
 };
+use trackly_core::domain::history_events::HistoryReason;
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::repairs::is_repair_exempt_status_code;
 use trackly_core::error::AppError;
@@ -93,6 +95,8 @@ pub(crate) struct StatusShift {
 /// Итог применения места группы к одному устройству.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DevicePlaceChange {
+    /// Phase 41.10 (D-04): id записи журнала места, если перемещение записано.
+    pub movement_id: Option<i64>,
     /// Место устройства действительно поменялось.
     pub changed: bool,
     /// Прежнее место (имеет смысл только при `changed`).
@@ -211,6 +215,7 @@ fn apply_group_place_inner(
     // примитив: правило действует и при переносе группы, и при вступлении/возврате.
     if is_repair_exempt_status_code(&before.status_code) && !rides_with_group {
         return Ok(DevicePlaceChange {
+            movement_id: None,
             changed: false,
             previous_place: before.place_id,
             status_changed: false,
@@ -218,6 +223,7 @@ fn apply_group_place_inner(
     }
     if before.place_id == Some(target_place) {
         return Ok(DevicePlaceChange {
+            movement_id: None,
             changed: false,
             previous_place: before.place_id,
             status_changed: false,
@@ -255,7 +261,7 @@ fn apply_group_place_inner(
         now,
     )?;
 
-    deps.movements.record_batch_movement_if_applicable(
+    let movement_id = deps.movements.record_batch_movement_if_applicable(
         tx,
         &deps.places,
         MovementEntityKind::Device,
@@ -324,9 +330,28 @@ fn apply_group_place_inner(
                 created_at_utc: now,
             },
         )?;
+        // Phase 41.10 (D-04, D-25): перемещение уже записано, теперь событие статуса.
+        let group_label: String = deps
+            .groups
+            .get_group_in_tx(tx, group_id)
+            .map(|g| g.name)
+            .unwrap_or_default();
+        let operation_id = new_operation_id();
+        let cause_ev = HistoryCause {
+            operation_id: &operation_id,
+            source: HistoryReason::GroupMove,
+            act_id: cause.act_id,
+            request_id: None,
+            ref_group: Some((group_id, group_label.as_str())),
+            movement_id,
+            user_id,
+            now,
+        };
+        record_status_change_in_tx(tx, device_id, before.status_id, new_status_id, &cause_ev)?;
     }
 
     Ok(DevicePlaceChange {
+        movement_id,
         changed: true,
         previous_place: before.place_id,
         status_changed: status_to.is_some(),

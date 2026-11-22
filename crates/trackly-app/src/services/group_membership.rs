@@ -13,6 +13,9 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::SqliteGroupRepository;
 
+use crate::services::history_events::{new_operation_id, record_group_left_in_tx, HistoryCause};
+use trackly_core::domain::history_events::HistoryReason;
+
 use crate::services::group_place::{
     apply_group_place_to_device_in_tx, GroupMoveCause, GroupMoveDeps,
 };
@@ -36,6 +39,21 @@ pub(crate) fn anchor_write_off_error(group_name: &str, field: &str) -> AppError 
 pub(crate) enum ReleaseEffect {
     Record,
     Skip,
+}
+
+/// Phase 41.10 (D-06, D-24): режим записи события `group_left` при выводе.
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+pub(crate) enum ReleaseHistory<'a> {
+    /// Причина по умолчанию: `act` при заданном `act_id`, иначе `manual`.
+    Default,
+    /// Особая причина (например, списание группы) с группой-основанием.
+    Reason {
+        source: HistoryReason,
+        ref_group: Option<(i64, &'a str)>,
+    },
+    /// «Тихий» режим: перенос (D-05) и restore-пути события не пишут.
+    Suppressed,
 }
 
 /// Вывести устройство из группы (D-22: состав не врёт, акт проходит).
@@ -65,6 +83,7 @@ pub(crate) fn release_device_in_tx(
         user_id,
         now,
         act_id.is_some(),
+        ReleaseHistory::Default,
     )
 }
 
@@ -81,6 +100,7 @@ fn release_inner(
     user_id: Option<i64>,
     now: i64,
     record_effect: bool,
+    history: ReleaseHistory<'_>,
 ) -> Result<Option<i64>, AppError> {
     // Phase 41.1 (D-14, D-36): якорь группы нельзя вывести из состава ни одним путём
     // (акт, restore, удаление). Phase 41.2 (D-13): акт якоря больше не отклоняется — путь акта
@@ -141,7 +161,60 @@ fn release_inner(
             )?;
         }
     }
+    // Phase 41.10 (D-08, D-24): событие со стороны устройства; act_id обязателен в причине,
+    // иначе откат акта его не удалит.
+    let (source, ref_group) = match history {
+        ReleaseHistory::Suppressed => return Ok(Some(group.id)),
+        ReleaseHistory::Default => (
+            if act_id.is_some() {
+                HistoryReason::Act
+            } else {
+                HistoryReason::Manual
+            },
+            None,
+        ),
+        ReleaseHistory::Reason { source, ref_group } => (source, ref_group),
+    };
+    let operation_id = new_operation_id();
+    let cause = HistoryCause {
+        operation_id: &operation_id,
+        source,
+        act_id,
+        request_id: None,
+        ref_group,
+        movement_id: None,
+        user_id,
+        now,
+    };
+    record_group_left_in_tx(tx, device_id, group.id, &group.name, &cause)?;
     Ok(Some(group.id))
+}
+
+/// То же, что [`release_device_in_tx`], но с явным режимом события истории
+/// (Phase 41.10): особая причина (списание) или «тихий» режим (перенос).
+// Потребители (планы 07-10, 18) подключаются позже.
+#[allow(dead_code, clippy::too_many_arguments)]
+pub(crate) fn release_device_with_history_in_tx(
+    tx: &Transaction<'_>,
+    groups: &SqliteGroupRepository,
+    audit: &SqliteAuditLogRepository,
+    device_id: i64,
+    act_id: Option<i64>,
+    user_id: Option<i64>,
+    now: i64,
+    history: ReleaseHistory<'_>,
+) -> Result<Option<i64>, AppError> {
+    release_inner(
+        tx,
+        groups,
+        audit,
+        device_id,
+        act_id,
+        user_id,
+        now,
+        act_id.is_some(),
+        history,
+    )
 }
 
 /// Вывести устройство из группы ТОЛЬКО если оно сейчас член группы с местом
@@ -192,6 +265,7 @@ pub(crate) fn release_if_locked_device_in_tx(
         user_id,
         now,
         effect == ReleaseEffect::Record,
+        ReleaseHistory::Suppressed,
     )
 }
 
@@ -1028,5 +1102,145 @@ mod tests {
         seed(&conn);
         assert_eq!(conflict(&mut conn, 20, Some(1)), None);
         assert_eq!(conflict(&mut conn, 21, Some(2)), None);
+    }
+
+    /// Строки `group_left` устройства: (source, act_id, from_group_id).
+    fn left_events(conn: &Connection, device_id: i64) -> Vec<(String, Option<i64>, Option<i64>)> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT source, act_id, from_group_id FROM history_events \
+                 WHERE kind = 'group_left' AND subject_id = ?1 ORDER BY id",
+            )
+            .unwrap();
+        let rows = stmt
+            .query_map([device_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        rows
+    }
+
+    #[test]
+    fn history_membership_release_writes_left() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        add_member(&conn, 1, 1);
+        with_tx!(conn, tx, {
+            release_device_in_tx(
+                &tx,
+                &SqliteGroupRepository,
+                &SqliteAuditLogRepository,
+                1,
+                None,
+                None,
+                NOW,
+            )
+            .unwrap();
+        });
+        assert_eq!(
+            left_events(&conn, 1),
+            vec![("manual".to_string(), None, Some(1))]
+        );
+    }
+
+    #[test]
+    fn history_membership_release_with_act_carries_act_id() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        add_member(&conn, 1, 1);
+        with_tx!(conn, tx, {
+            release_device_in_tx(
+                &tx,
+                &SqliteGroupRepository,
+                &SqliteAuditLogRepository,
+                1,
+                Some(7),
+                None,
+                NOW,
+            )
+            .unwrap();
+        });
+        assert_eq!(
+            left_events(&conn, 1),
+            vec![("act".to_string(), Some(7), Some(1))]
+        );
+    }
+
+    #[test]
+    fn history_membership_release_with_history_reason_and_suppressed() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        add_member(&conn, 1, 1);
+        add_member(&conn, 2, 1);
+        with_tx!(conn, tx, {
+            release_device_with_history_in_tx(
+                &tx,
+                &SqliteGroupRepository,
+                &SqliteAuditLogRepository,
+                1,
+                None,
+                None,
+                NOW,
+                ReleaseHistory::Reason {
+                    source: HistoryReason::GroupWriteOff,
+                    ref_group: Some((1, "АРМ #3")),
+                },
+            )
+            .unwrap();
+            release_device_with_history_in_tx(
+                &tx,
+                &SqliteGroupRepository,
+                &SqliteAuditLogRepository,
+                2,
+                None,
+                None,
+                NOW,
+                ReleaseHistory::Suppressed,
+            )
+            .unwrap();
+        });
+        assert_eq!(left_events(&conn, 1)[0].0, "group_write_off");
+        assert_eq!(member_of(&conn, 2), None, "вывод состоялся");
+        assert!(
+            left_events(&conn, 2).is_empty(),
+            "тихий режим события не пишет"
+        );
+    }
+
+    #[test]
+    fn history_membership_release_restore_silent() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        add_member(&conn, 1, 1);
+        // restore-путь вывода: место расходится с местом группы.
+        conn.execute("UPDATE devices SET place_id = 2 WHERE id = 1", [])
+            .unwrap();
+        with_tx!(conn, tx, {
+            assert_eq!(
+                release_if_locked_device_in_tx(
+                    &tx,
+                    &SqliteGroupRepository,
+                    &SqliteAuditLogRepository,
+                    1,
+                    Some(7),
+                    None,
+                    NOW,
+                    ReleaseEffect::Skip
+                )
+                .unwrap(),
+                Some(1)
+            );
+        });
+        assert_eq!(member_of(&conn, 1), None, "вывод состоялся");
+        // restore-путь возврата.
+        conn.execute("UPDATE devices SET place_id = 1 WHERE id = 1", [])
+            .unwrap();
+        let out = with_tx!(conn, tx, { restore(&tx, 1, 1, Some(1)) });
+        assert_eq!(out, RestoreOutcome::Restored);
+        assert_eq!(member_of(&conn, 1), Some(1), "возврат состоялся");
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM history_events", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "restore-пути событий не пишут (D-24)");
     }
 }
