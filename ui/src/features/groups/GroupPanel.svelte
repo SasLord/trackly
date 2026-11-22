@@ -19,6 +19,7 @@
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
+  import { openRequestTarget } from '../requests/requestTarget';
   import GroupContentsTable from './GroupContentsTable.svelte';
   import GroupPropertiesForm from './GroupPropertiesForm.svelte';
   import { groups } from '$lib/api/groups';
@@ -26,7 +27,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { parseAppError, type AppError } from '$lib/api/errors';
-  import type { GroupCardDto, MovementEntryDto } from '../../bindings';
+  import type { GroupCardDto, HistoryEntryDto } from '../../bindings';
 
   interface Props {
     groupId: number;
@@ -124,7 +125,7 @@
   ]);
 
   // --- История (D-29) ----------------------------------------------------------
-  let history = $state<MovementEntryDto[]>([]);
+  let history = $state<HistoryEntryDto[]>([]);
   let historyLoading = $state(false);
   let historyError = $state(false);
 
@@ -137,7 +138,7 @@
       historyLoading = true;
       historyError = false;
     });
-    apiCall<MovementEntryDto[]>('place_movements_get_timeline', {
+    apiCall<HistoryEntryDto[]>('history_get_timeline', {
       entityType: 'group',
       entityId: id,
     })
@@ -231,20 +232,26 @@
         <div class="history-region">
           {#if historyLoading}
             <div class="panel-loading"><Spinner /></div>
-          {:else if !historyError && history.length === 0}
-            <div class="history-empty">
-              <p class="history-empty-title">Перемещений нет</p>
-              <p class="history-empty-body">Группу ещё не переносили.</p>
-            </div>
           {:else}
             <MovementTimeline
+              variant="group"
+              {groupId}
               entries={history}
               loading={false}
               loadError={historyError}
-              showInitialPlacementNote={false}
               onNavigateToPlace={(placeId) => {
                 void push(`#/places?id=${placeId}`);
               }}
+              onNavigateToDevice={(id) => {
+                void push(`#/devices?id=${id}`);
+              }}
+              onNavigateToGroup={(id) => {
+                void push(`#/groups?id=${id}`);
+              }}
+              onNavigateToAct={(id) => {
+                void push(`#/acts?id=${id}`);
+              }}
+              onNavigateToRequest={(id) => openRequestTarget(id, 'info')}
             />
           {/if}
         </div>
@@ -355,21 +362,5 @@
     min-height: 0;
     overflow-y: auto;
     padding: var(--tr-space-md);
-  }
-
-  .history-empty {
-    padding: var(--tr-space-md) 0;
-  }
-
-  .history-empty-title {
-    margin: 0 0 var(--tr-space-2xs) 0;
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-secondary);
-  }
-
-  .history-empty-body {
-    margin: 0;
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-tertiary);
   }
 </style>
