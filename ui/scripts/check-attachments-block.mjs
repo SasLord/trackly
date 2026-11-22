@@ -19,7 +19,7 @@
 //   [G8] слушатель paste на window подключается только при canAttach;
 //   [G9] (план 14) в каждой из четырёх карточек `<AttachmentsBlock` стоит РАНЬШЕ
 //        первого заголовка истории (заявка «История», принтер «История статусов»,
-//        картридж «Журнал операций», просмотр места «История перемещений»);
+//        картридж «Журнал операций», просмотр места «История»);
 //   [G10] (план 14) RequestDetail отбрасывает custom:attachment_* на клиенте и
 //        берёт события вложений через attachments.history('request', ...);
 //        CartridgeDetail тоже отбрасывает сырые custom:attachment_*.
@@ -67,7 +67,7 @@ const CARDS = {
   },
   'card:PlaceEntityViewModal.svelte': {
     rel: 'places/PlaceEntityViewModal.svelte',
-    heading: 'История перемещений',
+    heading: 'История',
   },
 };
 // Серверная сторона контракта истории (G12).
