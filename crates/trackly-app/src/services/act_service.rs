@@ -525,6 +525,8 @@ impl ActService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                // D-04: одна операция истории на весь вызов.
+                let history_op_id = crate::services::history_events::new_operation_id();
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
 
                 // Resolve status_id for «В работе» via the V014 code column (B-1).
@@ -858,7 +860,7 @@ impl ActService {
                         // to this act's id (D-04/D-06 guard inside). Устройство переехавшей
                         // группы уже записано пакетом с `batch_id` (D-14): вторая строка
                         // дала бы двойной след.
-                        if !applied.moved_device_ids.contains(&dev_id) {
+                        let movement_id = if !applied.moved_device_ids.contains(&dev_id) {
                             place_movements_repo.record_movement_if_applicable(
                                 &tx,
                                 places_repo.as_ref(),
@@ -871,8 +873,22 @@ impl ActService {
                                 Some(act_id),
                                 user_id_opt,
                                 now,
-                            )?;
-                        }
+                            )?
+                        } else {
+                            None
+                        };
+                        // ST: смена статуса акта; порядок D-25 - после перемещения.
+                        record_act_status_event(
+                            &tx,
+                            dev_id,
+                            before.status_id,
+                            after.status_id,
+                            &history_op_id,
+                            act_id,
+                            movement_id,
+                            user_id_opt,
+                            now,
+                        )?;
                         touched_place_ids.push(before.place_id);
                         touched_place_ids.push(after.place_id);
                     }
@@ -1088,6 +1104,8 @@ impl ActService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                // D-04: одна операция истории на весь вызов.
+                let history_op_id = crate::services::history_events::new_operation_id();
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
                 let mut touched_group_ids: Vec<i64> = Vec::new();
 
@@ -1298,7 +1316,7 @@ impl ActService {
                     // to this act's id (D-04/D-06 guard inside). Устройство переехавшей
                     // группы уже записано пакетом с `batch_id` (D-14): вторая строка
                     // дала бы двойной след.
-                    if !applied.moved_device_ids.contains(&dev_id) {
+                    let movement_id = if !applied.moved_device_ids.contains(&dev_id) {
                         place_movements_repo.record_movement_if_applicable(
                             &tx,
                             places_repo.as_ref(),
@@ -1311,8 +1329,22 @@ impl ActService {
                             Some(payload.id),
                             user_id_opt,
                             now,
-                        )?;
-                    }
+                        )?
+                    } else {
+                        None
+                    };
+                    // ST: смена статуса акта; порядок D-25 - после перемещения.
+                    record_act_status_event(
+                        &tx,
+                        dev_id,
+                        before.status_id,
+                        after.status_id,
+                        &history_op_id,
+                        payload.id,
+                        movement_id,
+                        user_id_opt,
+                        now,
+                    )?;
                     touched_place_ids.push(before.place_id);
                     touched_place_ids.push(after.place_id);
 
@@ -1585,6 +1617,8 @@ impl ActService {
                                 removed_id,
                                 &mut snapshot,
                             )?;
+                            // D-24 (a): правка акта, акт жив - статус снятой позиции пишется
+                            // обычным событием ниже (record_act_status_event) после перемещения.
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                             // Phase 41 D-22: акт выводит устройство из состава группы.
@@ -1660,7 +1694,7 @@ impl ActService {
                     // on this act — this is a per-device edit, not a full
                     // act undo (D-03 is act-scoped, not device-scoped).
                     // Конфликт якоря: место не менялось, возвратной строки нет.
-                    if anchor_conflict.is_none() {
+                    let movement_id = if anchor_conflict.is_none() {
                         place_movements_repo.record_movement_if_applicable(
                             &tx,
                             places_repo.as_ref(),
@@ -1673,10 +1707,26 @@ impl ActService {
                             Some(payload.id),
                             user_id_opt,
                             now,
-                        )?;
+                        )?
+                    } else {
+                        None
+                    };
+                    if anchor_conflict.is_none() {
                         touched_place_ids.push(place_before_restore.place_id);
                         touched_place_ids.push(restored.place_id);
                     }
+                    // ST: смена статуса акта; порядок D-25 - после перемещения.
+                    record_act_status_event(
+                        &tx,
+                        removed_id,
+                        place_before_restore.status_id,
+                        restored.status_id,
+                        &history_op_id,
+                        payload.id,
+                        movement_id,
+                        user_id_opt,
+                        now,
+                    )?;
 
                     audit_repo.insert(
                         &tx,
@@ -2027,6 +2077,8 @@ impl ActService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                // D-04: одна операция истории на весь вызов.
+                let history_op_id = crate::services::history_events::new_operation_id();
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
 
                 // 1. Load + validate parent.
@@ -2451,7 +2503,7 @@ impl ActService {
                         // `effective_location` is `None` and the guard
                         // inside `record_movement_if_applicable` skips the
                         // insert entirely — no extra check needed here.
-                        if !applied.moved_device_ids.contains(&device_id) {
+                        let movement_id = if !applied.moved_device_ids.contains(&device_id) {
                             place_movements_repo.record_movement_if_applicable(
                                 &tx,
                                 places_repo.as_ref(),
@@ -2464,8 +2516,22 @@ impl ActService {
                                 Some(return_act_id),
                                 user_id_opt,
                                 now,
-                            )?;
-                        }
+                            )?
+                        } else {
+                            None
+                        };
+                        // ST: смена статуса акта; порядок D-25 - после перемещения.
+                        record_act_status_event(
+                            &tx,
+                            device_id,
+                            before.status_id,
+                            after.status_id,
+                            &history_op_id,
+                            return_act_id,
+                            movement_id,
+                            user_id_opt,
+                            now,
+                        )?;
                         touched_place_ids.push(before.place_id);
                         touched_place_ids.push(after.place_id);
                     }
@@ -2678,6 +2744,8 @@ impl ActService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                // D-04: одна операция истории на весь вызов.
+                let history_op_id = crate::services::history_events::new_operation_id();
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
                 let mut touched_group_ids: Vec<i64> = Vec::new();
 
@@ -3106,6 +3174,8 @@ impl ActService {
                                 removed_id,
                                 &mut snapshot,
                             )?;
+                            // D-24 (a): правка акта, акт жив - статус снятой позиции пишется
+                            // обычным событием ниже (record_act_status_event) после перемещения.
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                             // Phase 41 D-22: акт выводит устройство из состава группы.
@@ -3179,7 +3249,7 @@ impl ActService {
                     // this return act), so it is not used for this
                     // per-device edit.
                     // Конфликт якоря: место не менялось, возвратной строки нет.
-                    if anchor_conflict.is_none() {
+                    let movement_id = if anchor_conflict.is_none() {
                         place_movements_repo.record_movement_if_applicable(
                             &tx,
                             places_repo.as_ref(),
@@ -3192,10 +3262,26 @@ impl ActService {
                             Some(payload.id),
                             user_id_opt,
                             now,
-                        )?;
+                        )?
+                    } else {
+                        None
+                    };
+                    if anchor_conflict.is_none() {
                         touched_place_ids.push(place_before_restore.place_id);
                         touched_place_ids.push(restored.place_id);
                     }
+                    // ST: смена статуса акта; порядок D-25 - после перемещения.
+                    record_act_status_event(
+                        &tx,
+                        removed_id,
+                        place_before_restore.status_id,
+                        restored.status_id,
+                        &history_op_id,
+                        payload.id,
+                        movement_id,
+                        user_id_opt,
+                        now,
+                    )?;
 
                     audit_repo.insert(
                         &tx,
@@ -3409,7 +3495,7 @@ impl ActService {
                     // HST-03: record the return-driven place change, linked
                     // to this return act's id (D-04/D-06 guard inside).
                     // Устройство переехавшей группы записано пакетом (D-14): второй строки нет.
-                    if !applied_added.moved_device_ids.contains(&added_id) {
+                    let movement_id = if !applied_added.moved_device_ids.contains(&added_id) {
                         place_movements_repo.record_movement_if_applicable(
                             &tx,
                             places_repo.as_ref(),
@@ -3422,8 +3508,22 @@ impl ActService {
                             Some(payload.id),
                             user_id_opt,
                             now,
-                        )?;
-                    }
+                        )?
+                    } else {
+                        None
+                    };
+                    // ST: смена статуса акта; порядок D-25 - после перемещения.
+                    record_act_status_event(
+                        &tx,
+                        added_id,
+                        before.status_id,
+                        after.status_id,
+                        &history_op_id,
+                        payload.id,
+                        movement_id,
+                        user_id_opt,
+                        now,
+                    )?;
                     touched_place_ids.push(before.place_id);
                     touched_place_ids.push(after.place_id);
 
@@ -3604,7 +3704,7 @@ impl ActService {
 
                     // HST-03: record the return-driven place change, linked
                     // to this return act's id (D-04/D-06 guard inside).
-                    if !group_placed {
+                    let movement_id = if !group_placed {
                         place_movements_repo.record_movement_if_applicable(
                             &tx,
                             places_repo.as_ref(),
@@ -3617,8 +3717,22 @@ impl ActService {
                             Some(payload.id),
                             user_id_opt,
                             now,
-                        )?;
-                    }
+                        )?
+                    } else {
+                        None
+                    };
+                    // ST: смена статуса акта; порядок D-25 - после перемещения.
+                    record_act_status_event(
+                        &tx,
+                        dev_id,
+                        before.status_id,
+                        after.status_id,
+                        &history_op_id,
+                        payload.id,
+                        movement_id,
+                        user_id_opt,
+                        now,
+                    )?;
                     touched_place_ids.push(before.place_id);
                     touched_place_ids.push(after.place_id);
 
@@ -4133,6 +4247,9 @@ impl ActService {
                             // scoped strictly to this return's act_id, at
                             // this point in the LIFO loop (Pitfall 5).
                             place_movements_repo.delete_by_act_id_in_tx(&tx, ret.id)?;
+                            // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
+                            trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
+                                .delete_by_act_id_in_tx(&tx, ret.id)?;
                             audit_repo.insert(
                                 &tx,
                                 AuditEntry {
@@ -4172,6 +4289,9 @@ impl ActService {
                         // D-03/HST-03: the handover's own delete, at its own
                         // point in the flow, scoped to its own act_id.
                         place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
+                        // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
+                        trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
+                            .delete_by_act_id_in_tx(&tx, id)?;
                         audit_repo.insert(
                             &tx,
                             AuditEntry {
@@ -4206,6 +4326,9 @@ impl ActService {
                         // D-03/HST-03: standalone return's own delete, scoped
                         // to its own act_id.
                         place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
+                        // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
+                        trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
+                            .delete_by_act_id_in_tx(&tx, id)?;
                         if let Some(parent_id) = act.parent_act_id {
                             // Phase 40.5 (D-01/D-05/WR-01): the displays of the
                             // remaining live returns do NOT change, and `others`
@@ -4941,6 +5064,39 @@ fn extend_unique(into: &mut Vec<i64>, more: Vec<i64>) {
     }
 }
 
+/// Событие `status_changed` с причиной «акт» (ST-2/3/4). Порядок D-25: вызывается после
+/// записи перемещения; при равных статусах запись пропускается внутри.
+#[allow(clippy::too_many_arguments)]
+fn record_act_status_event(
+    tx: &rusqlite::Transaction<'_>,
+    device_id: i64,
+    before_status_id: i64,
+    after_status_id: i64,
+    operation_id: &str,
+    act_id: i64,
+    movement_id: Option<i64>,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<(), AppError> {
+    let cause = crate::services::history_events::HistoryCause {
+        operation_id,
+        source: trackly_core::domain::history_events::HistoryReason::Act,
+        act_id: Some(act_id),
+        request_id: None,
+        ref_group: None,
+        movement_id,
+        user_id,
+        now,
+    };
+    crate::services::history_events::record_status_change_in_tx(
+        tx,
+        device_id,
+        before_status_id,
+        after_status_id,
+        &cause,
+    )
+}
+
 /// Откатывает акт: возвращает группы, устройства и членство «как будто акта не было».
 ///
 /// Порядок (D-08, D-09, ловушка P-05) — от него зависит результат:
@@ -5045,6 +5201,8 @@ fn undo_device_mutations_for_act(
                     device_id,
                     &mut snapshot,
                 )?;
+                // D-24 (b): полный откат/удаление акта - событий истории не пишем;
+                // строки по act_id удаляет delete_by_act_id_in_tx в delete_soft_with_choices.
                 let restored =
                     devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
                 // Phase 41 D-22: акт выводит устройство из состава группы (только на
