@@ -145,8 +145,6 @@ async fn seed_device(ctx: &AppCtx, name: &str, place: i64, status: i64, group: O
         .expect("seed device")
 }
 
-/// Списание по КОДУ статуса, не по id и не по подписи.
-
 /// «На списание» по КОДУ статуса (общая константа домена), не по id и не по подписи.
 async fn set_to_write_off(ctx: &AppCtx, device: i64) {
     ctx.writer
