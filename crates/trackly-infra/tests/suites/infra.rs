@@ -65,6 +65,8 @@ mod groups_anchor_repo;
 mod groups_migration;
 #[path = "../groups_repo.rs"]
 mod groups_repo;
+#[path = "../history_events_repo.rs"]
+mod history_events_repo;
 #[path = "../migration_idempotency.rs"]
 mod migration_idempotency;
 #[path = "../number_templates_migration.rs"]

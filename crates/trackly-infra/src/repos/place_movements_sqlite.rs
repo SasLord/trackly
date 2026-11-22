@@ -90,7 +90,7 @@ impl SqlitePlaceMovementsRepository {
         &self,
         tx: &Transaction<'_>,
         movement: NewMovement<'_>,
-    ) -> Result<(), AppError> {
+    ) -> Result<i64, AppError> {
         tx.execute(
             "INSERT INTO place_movements \
              (entity_type, entity_id, from_place_id, from_place_path, to_place_id, to_place_path, \
@@ -117,7 +117,7 @@ impl SqlitePlaceMovementsRepository {
             ],
         )
         .map_err(map_rusqlite)?;
-        Ok(())
+        Ok(tx.last_insert_rowid())
     }
 
     /// The single shared write-side helper (D-01). Every one of the seven write sites
@@ -147,7 +147,7 @@ impl SqlitePlaceMovementsRepository {
         act_id: Option<i64>,
         user_id: Option<i64>,
         now_utc: i64,
-    ) -> Result<(), AppError> {
+    ) -> Result<Option<i64>, AppError> {
         self.record_inner(
             tx,
             places_repo,
@@ -194,7 +194,7 @@ impl SqlitePlaceMovementsRepository {
         batch_id: Option<&str>,
         entity_label: Option<&str>,
         group_id: Option<i64>,
-    ) -> Result<(), AppError> {
+    ) -> Result<Option<i64>, AppError> {
         self.record_inner(
             tx,
             places_repo,
@@ -231,7 +231,7 @@ impl SqlitePlaceMovementsRepository {
         note: Option<&str>,
         user_id: Option<i64>,
         now_utc: i64,
-    ) -> Result<(), AppError> {
+    ) -> Result<Option<i64>, AppError> {
         self.record_inner(
             tx,
             places_repo,
@@ -269,9 +269,9 @@ impl SqlitePlaceMovementsRepository {
         entity_label: Option<&str>,
         group_id: Option<i64>,
         request_id: Option<i64>,
-    ) -> Result<(), AppError> {
+    ) -> Result<Option<i64>, AppError> {
         if !is_reportable_place_change(before_place_id, after_place_id) {
-            return Ok(());
+            return Ok(None);
         }
 
         // Safe: is_reportable_place_change already proved both sides are Some.
@@ -292,7 +292,7 @@ impl SqlitePlaceMovementsRepository {
             .ok()
         });
 
-        self.insert_in_tx(
+        let id = self.insert_in_tx(
             tx,
             NewMovement {
                 entity_type: entity_type.as_str(),
@@ -312,7 +312,8 @@ impl SqlitePlaceMovementsRepository {
                 request_id,
                 created_at_utc: now_utc,
             },
-        )
+        )?;
+        Ok(Some(id))
     }
 
     /// D-03: undo scoping. Deletes all `place_movements` rows tied to a given act — a
