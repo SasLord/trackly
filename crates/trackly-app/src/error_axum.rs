@@ -55,3 +55,58 @@ impl IntoResponse for AppErrorResponse {
         (status, body).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! GRW-04 (фаза 41.8): «уже состоит в другой группе» уходит по HTTP как 409
+    //! с телом `{ code: "ALREADY_IN_GROUP", details: { items: [...] } }` —
+    //! на этот статус и форму опирается шаг переноса в UI (D-18). Сериализацию
+    //! самого `AppError` держит trackly-core; здесь — именно HTTP-адаптер.
+    use super::*;
+    use trackly_core::error::OccupiedItem;
+
+    async fn status_and_body(e: AppError) -> (StatusCode, serde_json::Value) {
+        let res = AppErrorResponse(e).into_response();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json body");
+        (status, v)
+    }
+
+    #[tokio::test]
+    async fn already_in_group_maps_to_409_with_items() {
+        let (status, v) = status_and_body(AppError::AlreadyInGroup {
+            items: vec![
+                OccupiedItem::device(5, "Монитор 24\"".into(), 7, "АРМ #3".into()),
+                OccupiedItem::group(9, "Разбор #7".into(), 8, "АРМ #4".into()),
+            ],
+        })
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(v["code"], "ALREADY_IN_GROUP");
+        let items = v["details"]["items"].as_array().expect("details.items");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["kind"], "device");
+        assert_eq!(items[0]["id"], 5);
+        assert_eq!(items[0]["group_id"], 7);
+        assert_eq!(items[0]["group_name"], "АРМ #3");
+        assert_eq!(items[1]["kind"], "group");
+        assert_eq!(items[1]["id"], 9);
+        assert_eq!(items[1]["group_id"], 8);
+    }
+
+    #[tokio::test]
+    async fn already_in_group_empty_items_still_409() {
+        // Пустой пакет не должен «проваливаться» в иной статус (400/500).
+        let (status, v) = status_and_body(AppError::AlreadyInGroup { items: vec![] }).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(v["code"], "ALREADY_IN_GROUP");
+        assert_eq!(
+            v["details"]["items"].as_array().map(Vec::len),
+            Some(0),
+            "details.items обязан быть массивом даже пустым"
+        );
+    }
+}
