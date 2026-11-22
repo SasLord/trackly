@@ -11,6 +11,8 @@
 
 #[path = "../employee_devices_list.rs"]
 mod employee_devices_list;
+#[path = "../history_status_repairs.rs"]
+mod history_status_repairs;
 #[path = "../repair_accept.rs"]
 mod repair_accept;
 #[path = "../repair_act_render.rs"]
