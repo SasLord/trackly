@@ -8,9 +8,6 @@
 //! Контракт порядка (D-25): сначала `record_*_movement_*` (возвращает id перемещения),
 //! затем событие истории с `cause.movement_id`.
 
-// Потребители (планы 05-10, 18) подключаются позже; до тех пор API не используется.
-#![allow(dead_code)]
-
 use rusqlite::{params, OptionalExtension, Transaction};
 use trackly_core::domain::history_events::{HistoryEventKind, HistoryReason};
 use trackly_core::error::AppError;
