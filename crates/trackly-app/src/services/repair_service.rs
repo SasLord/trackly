@@ -2251,14 +2251,19 @@ fn apply_device_state_in_tx(
     }
 
     // Место после переноса блока (якорь мог поехать с группой) и до записи ниже.
-    let mid_place = deps.devices.get_in_tx(tx, device_id)?.place_id;
+    // Статус читается здесь же (D-06): перенос блока группы выше мог уже сдвинуть его
+    // событием group_move; сравниваем с актуальным, а не с `before`.
+    let mid = deps.devices.get_in_tx(tx, device_id)?;
+    let mid_place = mid.place_id;
+    let before_status_id = mid.status_id;
     deps.devices
         .update_status_and_place_in_tx(tx, device_id, status_id, final_place, now)?;
 
+    let mut repair_movement_id: Option<i64> = None;
     if mid_place != final_place {
         // NEW-3 (quick 261121-hed): источник «по ремонтной заявке» + id заявки
         // в place_movements.request_id; примечания у строки устройства нет.
-        deps.movements.record_repair_movement_if_applicable(
+        repair_movement_id = deps.movements.record_repair_movement_if_applicable(
             tx,
             &deps.places,
             MovementEntityKind::Device,
@@ -2285,6 +2290,26 @@ fn apply_device_state_in_tx(
             )?;
         }
     }
+
+    // HST-06 / D-25: событие статуса после перемещения; при равенстве статусов
+    // `record_status_change_in_tx` ничего не пишет.
+    let history_op_id = crate::services::history_events::new_operation_id();
+    crate::services::history_events::record_status_change_in_tx(
+        tx,
+        device_id,
+        before_status_id,
+        status_id,
+        &crate::services::history_events::HistoryCause {
+            operation_id: &history_op_id,
+            source: trackly_core::domain::history_events::HistoryReason::Repair,
+            act_id: None,
+            request_id: Some(request_id),
+            ref_group: None,
+            movement_id: repair_movement_id,
+            user_id,
+            now,
+        },
+    )?;
 
     if before.place_id != final_place {
         out.changed = true;
@@ -2387,6 +2412,10 @@ fn status_code_for_current_place(
 
 /// Снять «Ожидает ремонта» при отклонении или отмене автором (D-09, D-11): только до
 /// первого перемещения и вне сервиса; иначе Validation. Без устройства ничего не делает.
+///
+/// Это не примитив `group_membership`: членство в группе здесь не снимается (место не
+/// меняется, `target_place = None`), поэтому отдельная запись `group_left` не нужна.
+/// Смену статуса пишет `apply_device_state_in_tx`.
 fn release_device_in_tx(
     tx: &Transaction<'_>,
     repo: &SqliteRepairRepository,
