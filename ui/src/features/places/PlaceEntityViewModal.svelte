@@ -22,6 +22,7 @@
   // not a new, invented printer form. `DeviceFormModal` already renders the
   // title "Редактирование принтера" once `target.type_id === 2`, so nothing
   // extra is needed to get that right.
+  import { untrack, tick } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { openRequestTarget } from '../requests/requestTarget';
   import Modal from '$lib/components/Modal.svelte';
@@ -30,6 +31,8 @@
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
+  import IconHistory from '$lib/components/icons/IconHistory.svelte';
+  import { historyPanel } from '$lib/stores/historyPanel.svelte';
   import DeviceFormBody from '../devices/DeviceFormBody.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import CartridgeFormBody from '../cartridges/CartridgeFormBody.svelte';
@@ -48,7 +51,7 @@
     DeviceDto,
     CartridgeDto,
     CartridgeModelDto,
-    MovementEntryDto,
+    HistoryEntryDto,
   } from '../../bindings';
 
   interface Props {
@@ -112,13 +115,14 @@
   let deviceDto = $state<DeviceDto | null>(null);
   let cartridgeDto = $state<CartridgeDto | null>(null);
   let cartridgeModels = $state<CartridgeModelDto[]>([]);
-  // D-14/D-21: same section for kind='device' and kind='printer' rows — both
-  // resolve to the SAME underlying `devices` row (see file-header comment),
-  // so both fetch entity_type='device'. Only kind='cartridge' rows fetch
-  // entity_type='cartridge'. Loaded alongside the main entity fetch below, in
-  // the SAME $effect, sharing the modal's single `loading`/`loadError` state
-  // (must_haves truth — no independent spinner/error for this section).
-  let timelineEntries = $state<MovementEntryDto[]>([]);
+  // 41.10 D-19: лента истории грузится ОТДЕЛЬНО от основной загрузки (своё
+  // состояние, свой токен) — ошибка ленты не превращает попап в «Не удалось
+  // загрузить данные». Принтер и устройство — одна и та же запись devices.
+  let historyEntries = $state<HistoryEntryDto[]>([]);
+  let timelineLoading = $state(false);
+  let timelineError = $state(false);
+  let timelineToken = 0;
+  let timelineLoadedFor: string | null = null;
 
   // View popup and edit popup are mutually exclusive, never stacked — a
   // second dim backdrop behind the edit form would just be visual noise.
@@ -133,42 +137,127 @@
     const r = row;
     loading = true;
     loadError = false;
-    timelineEntries = [];
     (async () => {
-      const mainLoad = (async () => {
-        try {
-          if (r.kind === 'cartridge') {
-            const [cart, modelList] = await Promise.all([
-              cartridges.get(r.id),
-              cartridges.modelsList(),
-            ]);
-            cartridgeDto = cart;
-            cartridgeModels = modelList;
-          } else {
-            // device AND printer content rows both carry a `devices` row id —
-            // see the file-header comment.
-            deviceDto = await devices.get(r.id);
-          }
-        } catch {
-          loadError = true;
+      try {
+        if (r.kind === 'cartridge') {
+          const [cart, modelList] = await Promise.all([
+            cartridges.get(r.id),
+            cartridges.modelsList(),
+          ]);
+          cartridgeDto = cart;
+          cartridgeModels = modelList;
+        } else {
+          // device AND printer content rows both carry a `devices` row id —
+          // see the file-header comment.
+          deviceDto = await devices.get(r.id);
         }
-      })();
-      // D-21: printer content rows have no separate entity_type — they read
-      // the exact same timeline as the underlying device (no double-accounting).
-      const entityType = r.kind === 'cartridge' ? 'cartridge' : 'device';
-      const timelineLoad = (async () => {
-        try {
-          timelineEntries = await apiCall<MovementEntryDto[]>('place_movements_get_timeline', {
-            entityType,
-            entityId: r.id,
-          });
-        } catch {
-          loadError = true;
-        }
-      })();
-      await Promise.all([mainLoad, timelineLoad]);
+      } catch {
+        loadError = true;
+      }
       loading = false;
     })();
+  });
+
+  // ---- 41.10 D-14..D-19: переключатель «История» ----
+  let wide = $state(false);
+  let narrowPanelOpen = $state(false);
+  let toggleHost = $state<HTMLElement | null>(null);
+  let panelEl = $state<HTMLElement | null>(null);
+  let savedScroll = 0;
+
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    wide = mq.matches;
+    const onChange = (e: MediaQueryListEvent) => {
+      wide = e.matches;
+      // узкий→широкий: панель закрыта, размер определяет флаг; широкий→узкий:
+      // панель и так закрыта, флаг не трогаем (D-18).
+      narrowPanelOpen = false;
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  });
+
+  // D-18: на узком экране флаг не читается — pressed берётся из narrowPanelOpen.
+  const splitMode = $derived(wide && historyPanel.enabled);
+  const pressed = $derived(wide ? historyPanel.enabled : narrowPanelOpen);
+
+  function toggleHistory() {
+    if (wide) {
+      historyPanel.set(!historyPanel.enabled);
+    } else {
+      toggleNarrowPanel(!narrowPanelOpen);
+    }
+  }
+
+  function scrollHost(): HTMLElement | null {
+    return (
+      toggleHost?.closest('.modal-container')?.querySelector<HTMLElement>('.modal-body') ?? null
+    );
+  }
+
+  async function toggleNarrowPanel(open: boolean) {
+    if (open) {
+      savedScroll = scrollHost()?.scrollTop ?? 0;
+      narrowPanelOpen = true;
+      await tick();
+      panelEl?.focus();
+    } else {
+      narrowPanelOpen = false;
+      await tick();
+      const host = scrollHost();
+      if (host) host.scrollTop = savedScroll;
+    }
+  }
+
+  function handlePanelKeydown(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    // Esc закрывает панель, а не попап: Modal пропускает defaultPrevented.
+    e.preventDefault();
+    toggleNarrowPanel(false).then(() => toggleHost?.querySelector('button')?.focus());
+  }
+
+  async function loadTimeline(r: PlaceContentDto) {
+    const key = `${r.kind}:${r.id}`;
+    if (timelineLoadedFor === key) return;
+    timelineLoadedFor = key;
+    const token = ++timelineToken;
+    timelineLoading = true;
+    timelineError = false;
+    try {
+      const list = await apiCall<HistoryEntryDto[]>('history_get_timeline', {
+        entityType: r.kind === 'cartridge' ? 'cartridge' : 'device',
+        entityId: r.id,
+      });
+      if (token !== timelineToken) return;
+      historyEntries = list;
+    } catch {
+      if (token !== timelineToken) return;
+      timelineError = true;
+      timelineLoadedFor = null;
+    } finally {
+      if (token === timelineToken) timelineLoading = false;
+    }
+  }
+
+  // Смена строки: сброс ленты и панели (объявлен РАНЬШЕ загрузчика — порядок эффектов).
+  $effect(() => {
+    void row;
+    untrack(() => {
+      timelineToken++;
+      timelineLoadedFor = null;
+      historyEntries = [];
+      timelineError = false;
+      timelineLoading = false;
+      narrowPanelOpen = false;
+    });
+  });
+
+  // D-19: лента — при первом включении или сразу, если флаг включён на широком.
+  $effect(() => {
+    const r = row;
+    if (pressed) untrack(() => void loadTimeline(r));
   });
 
   // Фаза 41.4, план 32: счётчик заходов в сервис — отдельная независимая загрузка
@@ -259,7 +348,7 @@
   }
 </script>
 
-<Modal open={viewOpen} title={TITLE_BY_KIND[row.kind] ?? 'Просмотр'} size="md" {onClose}>
+{#snippet dataBlock()}
   {#if loading}
     <div class="view-state" aria-live="polite">
       <Spinner size="md" />
@@ -315,12 +404,26 @@
         <AttachmentHistory events={attEvents.events} onOpen={(id) => attachmentsBlock?.open(id)} />
       </DetailSection>
     {/if}
+  {/if}
+{/snippet}
 
-    <DetailSection heading="История перемещений">
+{#snippet historyBlock()}
+  <DetailSection heading="История">
+    {#if timelineLoading}
+      <div class="history-state" aria-live="polite">
+        <Spinner size="sm" />
+        <span>Загружаем историю…</span>
+      </div>
+    {:else if timelineError}
+      <p class="view-error">
+        Не удалось загрузить историю. Проверьте подключение и откройте карточку снова.
+      </p>
+    {:else}
       <MovementTimeline
-        entries={timelineEntries}
-        {loading}
-        {loadError}
+        entries={historyEntries}
+        loading={false}
+        loadError={false}
+        variant={isCartridge ? 'cartridge' : 'device'}
         onNavigateToPlace={async (id) => {
           await push(`#/places?id=${id}`);
           onClose();
@@ -338,7 +441,57 @@
           onClose();
         }}
       />
-    </DetailSection>
+    {/if}
+  </DetailSection>
+{/snippet}
+
+<Modal
+  open={viewOpen}
+  title={TITLE_BY_KIND[row.kind] ?? 'Просмотр'}
+  size={splitMode ? 'split' : 'md'}
+  {onClose}
+>
+  {#snippet headerActions()}
+    <span class="history-toggle" bind:this={toggleHost}>
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
+        ariaLabel="История"
+        title="История"
+        ariaPressed={pressed}
+        onclick={toggleHistory}
+      >
+        <IconHistory />
+      </Button>
+    </span>
+  {/snippet}
+
+  {#if splitMode}
+    <div class="view-split">
+      <div class="view-split-data">
+        {@render dataBlock()}
+      </div>
+      <section class="view-split-history">
+        {@render historyBlock()}
+      </section>
+    </div>
+  {:else}
+    <div class="view-data" hidden={!wide && narrowPanelOpen}>
+      {@render dataBlock()}
+    </div>
+    {#if !wide && narrowPanelOpen}
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <section
+        class="view-panel"
+        tabindex="-1"
+        aria-label="История"
+        bind:this={panelEl}
+        onkeydown={handlePanelKeydown}
+      >
+        {@render historyBlock()}
+      </section>
+    {/if}
   {/if}
 
   {#snippet footer()}
@@ -392,6 +545,38 @@
     gap: var(--tr-space-md);
     padding: var(--tr-space-2xl);
     color: var(--tr-text-secondary);
+  }
+
+  .history-state {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-sm);
+    color: var(--tr-text-secondary);
+  }
+
+  .history-toggle {
+    display: inline-flex;
+  }
+
+  .view-split {
+    display: grid;
+    grid-template-columns:
+      minmax(0, calc(var(--modal-max-width) - 2 * var(--tr-space-xl)))
+      minmax(360px, 1fr);
+    column-gap: var(--tr-space-xl);
+    height: 100%;
+    min-height: 0;
+  }
+
+  .view-split-data,
+  .view-split-history {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .view-split-history {
+    border-left: 1px solid var(--tr-border);
+    padding-left: var(--tr-space-xl);
   }
 
   .view-error {
