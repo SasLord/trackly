@@ -209,7 +209,7 @@
 | 41.3. Вложения | v1.4 | 15/15 | Complete    | 2026-11-08 |
 | 41.9. Контейнерные группы в «Устройствах» *(следующая, выбрана 2026-11-08)* | v1.4 | 12/12 | Complete    | 2026-11-09 |
 | 41.8. «Группы» как рабочее место | v1.4 | 35/35 | Complete | 2026-11-22 |
-| 41.10. «История» вместо «Истории перемещений» *(после 41.8)* | v1.4 | 3/19 | In Progress|  |
+| 41.10. «История» вместо «Истории перемещений» *(после 41.8)* | v1.4 | 4/19 | In Progress|  |
 | 41.4. Заявки: Ремонт | v1.4 | 51/51 | Complete    | 2026-11-17 |
 | 41.5. Переписка в заявке | v1.4 | 35/35 | Complete    | 2026-11-20 |
 | 41.6. Раздел «Устройства» для сотрудника | v1.4 | 12/12 | Complete    | 2026-11-21 |
@@ -2282,7 +2282,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 41.10-06-PLAN.md — общие примитивы состава: group_membership (group_left с act_id, ReleaseHistory), group_place (movement_id, ST-6)
+- [x] 41.10-06-PLAN.md — общие примитивы состава: group_membership (group_left с act_id, ReleaseHistory), group_place (movement_id, ST-6)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
