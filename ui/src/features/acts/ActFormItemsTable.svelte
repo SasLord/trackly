@@ -24,7 +24,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { REPAIR_ACT_NOTE, loadOpenRepairs } from '../requests/repairLocks';
-  import { STATUS_WRITTEN_OFF } from '../devices/deviceRowMenu';
+  import { STATUS_TO_WRITE_OFF, STATUS_WRITTEN_OFF } from '../devices/deviceRowMenu';
   import type { DeviceDto, DeviceGroup, GroupActUnitDto, GroupSearchHitDto } from '../../bindings';
 
   export interface FormItemRow {
@@ -285,6 +285,28 @@
     }
   }
 
+  /** R7-01: «На списание» передаётся актом и сохраняет статус, поэтому такие устройства
+   *  предлагаются наравне с «В работе» (их члены групп отсеивает fetchWorking). */
+  async function fetchToWriteOff(prefix: string): Promise<DeviceDto[]> {
+    const toWriteOffId = statusIdByCode(STATUS_TO_WRITE_OFF);
+    if (toWriteOffId === null) return [];
+    return (
+      await devices.list(
+        {
+          type_id: null,
+          place_id: null,
+          status_id: toWriteOffId,
+          state: null,
+          name_prefix: prefix,
+          include_deleted: false,
+          group_by_condition: false,
+          group_members_only: false,
+        },
+        { offset: 0, limit: 20 },
+      )
+    ).items;
+  }
+
   /** Источник «Устройства в работе» (D-34 фазы 41.4): устройства в статусе «В работе»
    *  вне групп, включая принтеры, найденные в сети. Члены живых групп отсеиваются
    *  (их показывает секция «Устройства в составе групп» с предупреждением о выносе из
@@ -317,7 +339,11 @@
         byType.push(...(await run(typeId, '')));
       }
       const seen = new Set<number>();
-      const found = [...byType, ...(await run(null, query))].filter((d) => {
+      const found = [
+        ...byType,
+        ...(await run(null, query)),
+        ...(await fetchToWriteOff(query)),
+      ].filter((d) => {
         if (seen.has(d.id)) return false;
         seen.add(d.id);
         return true;

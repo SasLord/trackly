@@ -137,11 +137,11 @@ export function scanSource(raw, violations) {
     grouped.length !== 1 ||
     listed.length !== 1 ||
     listedWorking.length !== 1 ||
-    listedAll.length !== 2 ||
+    listedAll.length !== 3 ||
     searched.length !== 1
   ) {
     violations.push(
-      `(B) ${FILE}: антивакуум — найдено запросов listGrouped=${grouped.length}, devices.list(fetchMembers)=${listed.length}, devices.list(fetchWorking)=${listedWorking.length}, devices.list(всего)=${listedAll.length}, groups.search=${searched.length}; нужно 1/1/1/2/1 (иначе гейт ничего не охраняет).`,
+      `(B) ${FILE}: антивакуум — найдено запросов listGrouped=${grouped.length}, devices.list(fetchMembers)=${listed.length}, devices.list(fetchWorking)=${listedWorking.length}, devices.list(всего)=${listedAll.length}, groups.search=${searched.length}; нужно 1/1/1/3/1 (иначе гейт ничего не охраняет).`,
     );
   }
   for (const body of grouped) {
