@@ -491,13 +491,13 @@ async fn count(ctx: &AppCtx, table: &'static str) -> i64 {
         .expect("count")
 }
 
-// Тест D (D-34): вне групп допустимы только «На складе» и «В работе».
+// Тест D (D-34): вне групп допустимы «На складе», «В работе» и (R7-01) «На списание».
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn statuses_outside_groups_other_than_storage_and_working_rejected() {
     let (ctx, _dir) = make_test_ctx().await;
     let origin = seed_place(&ctx, "Кабинет 12").await;
     let room = seed_place(&ctx, "Кабинет 7").await;
-    for (n, code) in ["на_ремонте", "в_ремонте", "на_списание", "списано"]
+    for (n, code) in ["на_ремонте", "в_ремонте", "списано"]
         .into_iter()
         .enumerate()
     {
