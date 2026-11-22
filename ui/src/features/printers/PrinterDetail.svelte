@@ -2,7 +2,7 @@
   // Plan 06-04: детальная панель принтера.
   // Секции: header (имя, статус-badge, alert-баннер, «Обновить сейчас»),
   //   «Уровни тонера/чернил» (TonerGauge), «Страничные счётчики», «Установленный картридж» (PRN-07),
-  //   «История статусов» (PRN-05), Метаданные.
+  //   «Журнал опросов» (PRN-05), Метаданные.
   // По паттерну CartridgeDetail.svelte.
   // Plan 27-07 (D-01): rebuilt on the shared DetailPanel/DetailSection primitives
   // (extracted in 27-01) per CartridgeDetail.svelte precedent — bespoke
@@ -13,7 +13,7 @@
   // only re-clothed inside DetailSection, content/fields not removed (SC #4).
   // Async readings/aggregates data-loading below (unchanged — data, not visual).
   //
-  // Plan 40-17 (HST-02, D-21): new "История перемещений" section — reads the
+  // Plan 40-17 (HST-02, D-21): new "История" section (ex «История перемещений»; HST-05) — reads the
   // IDENTICAL timeline as the underlying device, fetched by the device's own
   // id (`printer.deviceId`, same field already used by the deviceData/
   // compatAggregates effects below). No separate "printer" entity_type is
@@ -43,7 +43,7 @@
     CompatibleModelAggregateDto,
     DeviceDto,
     CartridgeDto,
-    MovementEntryDto,
+    HistoryEntryDto,
   } from '../../bindings';
 
   interface Props {
@@ -170,7 +170,7 @@
   // Plan 40-17 (D-21): movement timeline, read by the printer's UNDERLYING
   // device id — same code path/entity_type as any plain device row, never a
   // separate "printer" entity_type.
-  let movements = $state<MovementEntryDto[]>([]);
+  let movements = $state<HistoryEntryDto[]>([]);
   let movementsLoading = $state(false);
   let movementsLoadError = $state(false);
 
@@ -183,7 +183,7 @@
     }
     movementsLoading = true;
     movementsLoadError = false;
-    apiCall<MovementEntryDto[]>('place_movements_get_timeline', {
+    apiCall<HistoryEntryDto[]>('history_get_timeline', {
       entityType: 'device',
       entityId: p.deviceId,
     })
@@ -379,7 +379,7 @@
       {/if}
 
       <!-- Секция: история статусов (PRN-05) -->
-      <DetailSection heading="История статусов">
+      <DetailSection heading="Журнал опросов">
         {#if readingsLoading}
           <div class="readings-loading"><Spinner size="sm" /></div>
         {:else if readings.length === 0}
@@ -404,8 +404,9 @@
       </DetailSection>
 
       <!-- Секция: история перемещений (HST-02, D-21 — та же лента, что у устройства) -->
-      <DetailSection heading="История перемещений">
+      <DetailSection heading="История">
         <MovementTimeline
+          variant="device"
           entries={movements}
           loading={movementsLoading}
           loadError={movementsLoadError}

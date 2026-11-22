@@ -18,7 +18,7 @@
 //        (на HTTP-пути он портит бинарное тело);
 //   [G8] слушатель paste на window подключается только при canAttach;
 //   [G9] (план 14) в каждой из четырёх карточек `<AttachmentsBlock` стоит РАНЬШЕ
-//        первого заголовка истории (заявка «История», принтер «История статусов»,
+//        первого заголовка истории (заявка «История», принтер «Журнал опросов»,
 //        картридж «Журнал операций», просмотр места «История»);
 //   [G10] (план 14) RequestDetail отбрасывает custom:attachment_* на клиенте и
 //        берёт события вложений через attachments.history('request', ...);
@@ -59,7 +59,7 @@ const CARDS = {
   'card:RequestDetail.svelte': { rel: 'requests/RequestDetail.svelte', heading: 'История' },
   'card:PrinterDetail.svelte': {
     rel: 'printers/PrinterDetail.svelte',
-    heading: 'История статусов',
+    heading: 'Журнал опросов',
   },
   'card:CartridgeDetail.svelte': {
     rel: 'cartridges/CartridgeDetail.svelte',

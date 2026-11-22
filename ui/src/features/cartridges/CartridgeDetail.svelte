@@ -38,7 +38,7 @@
   import { apiCall } from '$lib/api/client';
   import { push } from 'svelte-spa-router';
   import { openRequestTarget } from '../requests/requestTarget';
-  import type { AuditEntryDto, CartridgeDto, MovementEntryDto } from '../../bindings';
+  import type { AuditEntryDto, CartridgeDto, HistoryEntryDto } from '../../bindings';
 
   interface Props {
     cartridge: CartridgeDto | null;
@@ -73,7 +73,7 @@
     ].sort((a, b) => a.at - b.at),
   );
 
-  let movements = $state<MovementEntryDto[]>([]);
+  let movements = $state<HistoryEntryDto[]>([]);
   let movementsLoading = $state(false);
   let movementsLoadError = $state(false);
 
@@ -86,7 +86,7 @@
     }
     movementsLoading = true;
     movementsLoadError = false;
-    apiCall<MovementEntryDto[]>('place_movements_get_timeline', {
+    apiCall<HistoryEntryDto[]>('history_get_timeline', {
       entityType: 'cartridge',
       entityId: c.id,
     })
@@ -273,7 +273,7 @@
 
       <DetailSection heading="Журнал операций">
         {#if journal.length === 0}
-          <p class="history-empty">История пуста</p>
+          <p class="history-empty">Операций ещё не было</p>
         {:else}
           <ul class="history-list">
             {#each journal as row, i (row.kind === 'entry' ? `e${row.entry.id}` : `a${i}`)}
@@ -293,8 +293,9 @@
         {/if}
       </DetailSection>
 
-      <DetailSection heading="Перемещения">
+      <DetailSection heading="История">
         <MovementTimeline
+          variant="cartridge"
           entries={movements}
           loading={movementsLoading}
           loadError={movementsLoadError}
