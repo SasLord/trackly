@@ -61,7 +61,8 @@ use crate::services::group_place::{
 use crate::services::history_events::{
     new_operation_id, record_group_disbanded_in_tx, record_group_formed_in_tx,
     record_group_joined_in_tx, record_group_left_in_tx, record_group_nested_in_tx,
-    record_group_transferred_in_tx, record_group_unnested_in_tx, HistoryCause, HistorySubject,
+    record_group_transferred_in_tx, record_group_unnested_in_tx, record_status_change_in_tx,
+    HistoryCause, HistorySubject,
 };
 use crate::services::place_path_display::compute_place_path_short_with_conn;
 use crate::services::plural::ru_plural;
@@ -875,6 +876,17 @@ impl GroupService {
                             .map_err(map_rusqlite)?;
                         let before = DeviceDto::from(device.clone());
                         devices_repo.set_status_in_tx(&tx, device.id, status_id, now)?;
+                        // Phase 41.10 (D-06): «Разбор» переводит якорь в «На списание».
+                        record_status_change_in_tx(
+                            &tx,
+                            device.id,
+                            device.status_id,
+                            status_id,
+                            &HistoryCause {
+                                source: HistoryReason::Teardown,
+                                ..create_cause
+                            },
+                        )?;
                         let after = DeviceDto::from(devices_repo.get_in_tx(&tx, device.id)?);
                         audit_repo.insert(
                             &tx,
@@ -1103,6 +1115,23 @@ impl GroupService {
                 let before_json = to_json(&DeviceDto::from(device.clone()))?;
                 let status_id = written_off_status_id(&tx)?;
                 devices.set_status_in_tx(&tx, dto.device_id, status_id, now)?;
+                let wo_operation_id = new_operation_id();
+                record_status_change_in_tx(
+                    &tx,
+                    dto.device_id,
+                    device.status_id,
+                    status_id,
+                    &HistoryCause {
+                        operation_id: &wo_operation_id,
+                        source: HistoryReason::DeviceWriteOff,
+                        act_id: None,
+                        request_id: None,
+                        ref_group: None,
+                        movement_id: None,
+                        user_id,
+                        now,
+                    },
+                )?;
                 let after_json = to_json(&DeviceDto::from(devices.get_in_tx(&tx, dto.device_id)?))?;
 
                 let membership = groups.group_of_device_in_tx(&tx, dto.device_id)?;
@@ -1112,7 +1141,7 @@ impl GroupService {
                     group_ids.push(m.id);
                     if dto.release_from_group {
                         // D-29: общий примитив освобождения пишет запись по устройству.
-                        released_group_id = release_device_in_tx(
+                        released_group_id = release_device_with_history_in_tx(
                             &tx,
                             &groups,
                             &audit_repo,
@@ -1120,6 +1149,10 @@ impl GroupService {
                             None,
                             user_id,
                             now,
+                            ReleaseHistory::Reason {
+                                source: HistoryReason::DeviceWriteOff,
+                                ref_group: None,
+                            },
                         )?;
                     }
                 }
@@ -1206,6 +1239,23 @@ impl GroupService {
                 let before_json = to_json(&DeviceDto::from(anchor.clone()))?;
                 let status_id = written_off_status_id(&tx)?;
                 devices.set_status_in_tx(&tx, anchor_id, status_id, now)?;
+                let wog_operation_id = new_operation_id();
+                record_status_change_in_tx(
+                    &tx,
+                    anchor_id,
+                    anchor.status_id,
+                    status_id,
+                    &HistoryCause {
+                        operation_id: &wog_operation_id,
+                        source: HistoryReason::GroupWriteOff,
+                        act_id: None,
+                        request_id: None,
+                        ref_group: Some((dto.id, before.name.as_str())),
+                        movement_id: None,
+                        user_id,
+                        now,
+                    },
+                )?;
                 let after_json = to_json(&DeviceDto::from(devices.get_in_tx(&tx, anchor_id)?))?;
                 let disband = before.type_behavior == "substitute";
                 audit_repo.insert(
