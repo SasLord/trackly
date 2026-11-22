@@ -61,3 +61,7 @@ mod acts_update_return;
 mod acts_written_off_member;
 #[path = "../group_act_expansion.rs"]
 mod group_act_expansion;
+#[path = "../history_act_undo.rs"]
+mod history_act_undo;
+#[path = "../history_status_acts.rs"]
+mod history_status_acts;
