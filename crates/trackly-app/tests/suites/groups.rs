@@ -33,3 +33,5 @@ mod groups_service;
 mod groups_types_service;
 #[path = "../groups_values_card.rs"]
 mod groups_values_card;
+#[path = "../history_membership_release.rs"]
+mod history_membership_release;
