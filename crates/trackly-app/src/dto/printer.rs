@@ -98,7 +98,7 @@ impl From<PrinterRow> for PrinterDto {
 }
 
 /// Одна строка истории опросов принтера (quick 261121-heg, N2) — лента
-/// «История статусов» в карточке. Форма совпадает с ручным типом
+/// «Журнал опросов» в карточке. Форма совпадает с ручным типом
 /// `PrinterReadingDto` в `ui/src/bindings-phase6.ts`.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

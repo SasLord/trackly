@@ -86,7 +86,7 @@ pub async fn build_printers_get_by_device_id(
 }
 
 /// История опросов принтера по `printers.id` (quick 261121-heg, N2): лента
-/// «История статусов» в карточке звала эту команду с Фазы 6, а её не было.
+/// «Журнал опросов» в карточке звала эту команду с Фазы 6, а её не было.
 /// Тот же гейт, что у `build_printers_get` (ReadData, Admin|Manager).
 pub async fn build_printers_get_readings(
     ctx: &AppCtx,
