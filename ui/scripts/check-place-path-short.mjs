@@ -908,8 +908,8 @@ function selftest(root) {
         run({
           over: swap(
             'src/lib/components/MovementTimeline.svelte',
-            '{entry.from_place_path_short ?? entry.from_place_path}',
-            '{entry.from_place_path}',
+            '{seg.movement.from_place_path_short ?? seg.movement.from_place_path}',
+            '{seg.movement.from_place_path}',
             'текст from-кнопки без short',
           ),
         }),

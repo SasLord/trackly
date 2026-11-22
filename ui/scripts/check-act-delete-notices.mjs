@@ -271,7 +271,7 @@ function swap(source, a, b, label) {
 
 /** Блок хвостов (`{#if actTail(...)}…{/if}`) переносится ВЫШЕ блока со ссылкой на акт. */
 function swapTailAboveLink(src) {
-  const linkStart = src.indexOf('<span class="timeline-reason">\n            актом №');
+  const linkStart = src.indexOf('<span class="timeline-reason">\n              актом №');
   const tailStart = src.indexOf("{#if actTail(entry) === 'group'");
   const tailEnd = src.indexOf("{:else if entry.source === 'group'");
   if (
@@ -445,8 +445,8 @@ function runSelfTest() {
           'timeline',
           mutate(
             raw.timeline,
-            'onclick={() => handleNavigateToGroup(entry.group_id as number)}\n              >\n                {entry.group_label?.trim()}\n              </button>»\n            </span>\n          {/if}',
-            '>\n                {entry.group_label?.trim()}\n              </button>»\n            </span>\n          {/if}',
+            'onclick={() => handleNavigateToGroup(entry.group_id as number)}\n                >\n                  {entry.group_label?.trim()}\n                </button>»\n              </span>\n            {/if}',
+            '>\n                  {entry.group_label?.trim()}\n                </button>»\n              </span>\n            {/if}',
             'member tail no link',
           ),
         ),

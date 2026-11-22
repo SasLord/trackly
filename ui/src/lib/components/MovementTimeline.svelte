@@ -1,61 +1,58 @@
 <script lang="ts">
-  // Plan 40-15 (HST-02): shared timeline-row component consumed by THREE
-  // parents — PlaceEntityViewModal (device+printer, Plan 40-16),
-  // CartridgeDetail (Plan 40-17), PrinterDetail (Plan 40-17, same data as its
-  // device). "3 consumers, 1 formula" per RESEARCH.md — this file is the ONLY
-  // place the canonical row anatomy (UI-SPEC "Timeline row anatomy") is coded.
+  // Фаза 41.10 (HST-05): единая лента «История» для устройства, принтера, картриджа
+  // и группы. Здесь — ЕДИНСТВЕННОЕ место анатомии строки (UI-SPEC R-09).
   //
-  // D-18 / Don't Hand-Roll: this component NEVER re-derives or re-fetches the
-  // display-length reduction applied to a place path. `from_place_path_short`/
-  // `to_place_path_short` are already server-computed (Plan 40-10, via the
-  // single-owner `compute_place_path_short`) — it only displays them, with the
-  // FULL `from_place_path`/`to_place_path` snapshot in the native `title=`
-  // tooltip (D-17). Introducing a JS mirror here would recreate the exact
-  // WR-03/WR-08 divergence class that Phase 39.2 spent itself fixing.
+  // D-02: клиент ничего не склеивает и не пересчитывает — записи приходят готовыми
+  // (`HistoryEntryDto[]`), пути мест — server-computed `*_path_short`, ключ {#each} —
+  // `entry.key`. Тексты событий и оснований — единый словарь `historyEvents.ts`.
+  // Имена групп/устройств выводятся только текстовой интерполяцией (без {@html}).
   //
-  // Loading state (UI-SPEC States table): this component does NOT render its
-  // own spinner — the parent's single fetch already resolves loading/error
-  // before mounting rows, so `loading=true` renders nothing here.
-  import type { MovementEntryDto } from '../../bindings';
+  // Состояние загрузки: компонент спиннер не рисует — это делает родитель.
+  import type { HistoryEntryDto, HistorySegmentDto, MovementEntryDto } from '../../bindings';
   import { reasonText } from '../movementReason';
+  import {
+    entryIcon,
+    kindText,
+    reasonLabel,
+    UNKNOWN_HISTORY_EVENT,
+    UNKNOWN_HISTORY_REASON,
+    type HistoryTextCtx,
+  } from '../historyEvents';
+  import { statusByCode } from '../stores/deviceStatuses.svelte';
+  import HistoryKindChips from './HistoryKindChips.svelte';
+  import HistoryKindIcon from './icons/HistoryKindIcon.svelte';
+
+  type Variant = 'device' | 'cartridge' | 'group';
 
   interface Props {
-    entries: MovementEntryDto[];
+    entries: HistoryEntryDto[];
     loading: boolean;
     loadError: boolean;
+    /** D-13/D-03: выбирает пустые состояния, сноски и набор чипов. */
+    variant?: Variant;
+    /** Открытая группа (вариант group): на неё ссылка не рисуется, тексты иные. */
+    groupId?: number;
     onNavigateToPlace?: (placeId: number) => Promise<void> | void;
     onNavigateToAct?: (actId: number) => Promise<void> | void;
-    /** Plan 41-24 (D-28): переход-фокус на группу из основания «в составе
-     *  группы «…»» — ровно как `onNavigateToAct` для «актом №…». Необязательный:
-     *  без него имя группы показывается обычным текстом. */
     onNavigateToGroup?: (groupId: number) => Promise<void> | void;
-    /** quick 261121-hed (NEW-3): переход к ремонтной заявке из основания
-     *  «по ремонтной заявке №N». Необязательный: без него номер — обычный текст. */
     onNavigateToRequest?: (requestId: number) => Promise<void> | void;
-    /** Plan 41-23: сноска под списком «Первичное размещение при поступлении в
-     *  историю не попадает…» написана про устройства; панель ГРУППЫ скрывает её
-     *  (у группы нет «поступления»). По умолчанию показывается — прочие
-     *  потребители не меняются. */
-    showInitialPlacementNote?: boolean;
+    /** Ссылка на устройство в ленте группы; без него имя — обычный текст. */
+    onNavigateToDevice?: (deviceId: number) => Promise<void> | void;
   }
 
   const {
     entries,
     loading,
     loadError,
+    variant = 'device',
+    groupId,
     onNavigateToPlace,
     onNavigateToAct,
     onNavigateToGroup,
     onNavigateToRequest,
-    showInitialPlacementNote = true,
+    onNavigateToDevice,
   }: Props = $props();
 
-  // Manual DD.MM.YYYY formatting — same `padStart` approach already used by
-  // CartridgeDetail.svelte::formatDate (no `Intl`, per the project's
-  // established single-timezone convention). `formatDate` there is a local
-  // closure, not a module export, so this is an intentional, tiny, exact
-  // duplicate of a formatter (not a re-derivation of business logic like the
-  // display-length-reduction formula this component deliberately avoids mirroring).
   function formatDate(utcSeconds: number): string {
     const d = new Date(utcSeconds * 1000);
     const day = String(d.getUTCDate()).padStart(2, '0');
@@ -64,28 +61,105 @@
     return `${day}.${month}.${year}`;
   }
 
-  // Подписи источников (INT-09) — единый словарь $lib/movementReason, паритет с
-  // Rust-enum MovementSource держит scripts/check-movement-source-labels.mjs.
-  // `source == 'act'`, состав группы и ремонт с id заявки рисуются в шаблоне со
-  // ссылкой-кнопкой; для прочего — текст reasonText. Нераспознанный (будущий)
-  // токен — «причина не определена», никогда не исключение (T-40-30, IN-01).
+  // ---- Чипы (D-21): локальное состояние, нигде не сохраняется ----
+  let chipState = $state<Record<string, boolean>>({});
 
-  // Plan 41.2-15 (D-14, UI-SPEC §10.1, R-13): строки пакета, вызванного актом,
-  // тоже несут source = 'act', поэтому ветка «актом №N» стёрла бы групповой
-  // контекст, который D-28 фазы 41 показывает у `source = 'group'`. Хвост после
-  // номера акта: у строки самой группы — «перенос группы» (на себя она не
-  // ссылается), у члена группы — «в составе группы «имя»» со ссылкой, у
-  // устройства, переехавшего актом само по себе, и без снимка имени — ничего.
-  function actTail(entry: MovementEntryDto): 'group' | 'member' | null {
-    if (entry.entity_type === 'group') return 'group';
-    if (entry.group_id !== null && onNavigateToGroup && (entry.group_label?.trim() ?? '') !== '') {
-      return 'member';
-    }
-    return null;
+  const KNOWN_KINDS = ['move', 'membership', 'status'];
+
+  function entryKinds(entry: HistoryEntryDto): string[] {
+    return entry.segments.map((s) => (KNOWN_KINDS.includes(s.kind) ? s.kind : 'other'));
   }
 
-  function handleNavigateToPlace(placeId: number) {
-    void onNavigateToPlace?.(placeId);
+  const presentKinds = $derived.by(() => {
+    if (variant === 'cartridge') return [] as string[];
+    const set = new Set<string>();
+    for (const e of entries) {
+      for (const k of entryKinds(e)) {
+        if (k === 'other') continue;
+        if (variant === 'group' && k === 'status') continue;
+        set.add(k);
+      }
+    }
+    return KNOWN_KINDS.filter((k) => set.has(k));
+  });
+
+  const showChips = $derived(presentKinds.length >= 2);
+
+  function isVisible(entry: HistoryEntryDto): boolean {
+    if (!showChips) return true;
+    const kinds = entryKinds(entry);
+    if (kinds.length === 0 || kinds.includes('other')) return true;
+    return kinds.some((k) => chipState[k] !== false);
+  }
+
+  const visibleEntries = $derived(entries.filter(isVisible));
+
+  // ---- Тексты ----
+  const textCtx = $derived<HistoryTextCtx>({
+    variant: variant === 'group' ? 'group' : 'device',
+    currentGroupId: groupId,
+    statusLabel: (code) => statusByCode(code)?.name,
+  });
+
+  function orderedSegments(entry: HistoryEntryDto): HistorySegmentDto[] {
+    const rank = (s: HistorySegmentDto) =>
+      s.kind === 'membership' ? 0 : s.kind === 'move' ? 1 : s.kind === 'status' ? 2 : 3;
+    return entry.segments
+      .map((s, i) => ({ s, i }))
+      .sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i)
+      .map((x) => x.s);
+  }
+
+  /** Текст сегмента не из перемещения: «Статус:» после первого сегмента — строчная. */
+  function segmentText(seg: HistorySegmentDto, idx: number): string {
+    const t = kindText(seg, textCtx);
+    if (idx > 0 && seg.kind === 'status' && t.startsWith('Статус:')) {
+      return `статус:${t.slice('Статус:'.length)}`;
+    }
+    return t;
+  }
+
+  interface Cand {
+    label: string;
+    type: 'group' | 'device';
+    id: number;
+  }
+
+  function candidates(seg: HistorySegmentDto): Cand[] {
+    const out: Cand[] = [];
+    const push = (label: string | null, type: 'group' | 'device', id: number | null) => {
+      const l = label?.trim() ?? '';
+      if (l.length > 0 && id !== null) out.push({ label: l, type, id });
+    };
+    push(seg.from_group_label, 'group', seg.from_group_id);
+    push(seg.to_group_label, 'group', seg.to_group_id);
+    push(seg.subject_label, seg.subject_type === 'group' ? 'group' : 'device', seg.subject_id);
+    return out;
+  }
+
+  interface Part {
+    text: string;
+    link?: Cand;
+  }
+
+  /** Режет текст по «…»; имя, совпавшее с кандидатом и имеющее обработчик, становится ссылкой. */
+  function splitParts(text: string, cands: Cand[]): Part[] {
+    const parts: Part[] = [];
+    const re = /«([^»]*)»/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const inner = m[1];
+      const cand = cands.find((c) => c.label === inner);
+      const clickable =
+        cand !== undefined &&
+        (cand.type === 'group' ? !!onNavigateToGroup && cand.id !== groupId : !!onNavigateToDevice);
+      parts.push({ text: text.slice(last, m.index) + '«' });
+      parts.push({ text: inner, link: clickable ? cand : undefined });
+      last = m.index + m[0].length - 1;
+    }
+    parts.push({ text: text.slice(last) });
+    return parts;
   }
 
   function handleNavigateToAct(actId: number) {
@@ -99,66 +173,204 @@
   function handleNavigateToRequest(requestId: number) {
     void onNavigateToRequest?.(requestId);
   }
+
+  function followLink(c: Cand) {
+    if (c.type === 'group') void onNavigateToGroup?.(c.id);
+    else void onNavigateToDevice?.(c.id);
+  }
+
+  function moveOf(entry: HistoryEntryDto): MovementEntryDto | null {
+    return entry.segments.find((s) => s.kind === 'move')?.movement ?? null;
+  }
+
+  // Подпись для основания из события: ссылочные части рисует шаблон.
+  function eventReasonKnown(entry: HistoryEntryDto): boolean {
+    return reasonLabel(entry) !== UNKNOWN_HISTORY_REASON;
+  }
+
+  // Хвост основания «актом №N» у строк пакета группового акта (как раньше).
+  function actTail(entry: MovementEntryDto): 'group' | 'member' | null {
+    if (entry.entity_type === 'group') return 'group';
+    if (entry.group_id !== null && onNavigateToGroup && (entry.group_label?.trim() ?? '') !== '') {
+      return 'member';
+    }
+    return null;
+  }
+
+  const footnotes = $derived.by((): string[] => {
+    const initial =
+      'Первичное размещение при поступлении в историю не попадает — она начинается с первого перемещения между двумя известными местами.';
+    if (variant === 'cartridge') return [initial];
+    if (variant === 'group') {
+      return [
+        'Переносы группы показаны за всё время. Вход и выход устройств, образование группы и вложение в другие группы программа записывает с обновления, в котором появилась эта лента; более ранних таких событий здесь нет.',
+      ];
+    }
+    return [
+      initial,
+      'Перемещения показаны за всё время. Вход в группу, выход из неё и смену статуса программа записывает с обновления, в котором появилась эта лента; более ранних таких событий здесь нет.',
+    ];
+  });
+
+  const emptyHeading = $derived(
+    variant === 'cartridge' ? 'Перемещений ещё не было' : 'Событий ещё не было',
+  );
+  const emptyBody = $derived(
+    variant === 'cartridge'
+      ? 'Место изменится — здесь появится запись: откуда, куда, когда, кем и почему.'
+      : variant === 'group'
+        ? 'Здесь появятся переносы группы, вход и выход устройств, вложение в другие группы.'
+        : 'Здесь появятся перемещения, вход в группу и выход из неё, смена статуса — с датой, автором и причиной.',
+  );
 </script>
 
+{#snippet linked(text: string, cands: Cand[])}
+  {#each splitParts(text, cands) as part, i (i)}
+    {#if part.link}<button
+        type="button"
+        class="timeline-link"
+        onclick={() => followLink(part.link as Cand)}>{part.text}</button
+      >{:else}{part.text}{/if}
+  {/each}
+{/snippet}
+
+{#snippet notes()}
+  {#each footnotes as note, i (i)}
+    <p class="timeline-empty-body timeline-footnote">{note}</p>
+  {/each}
+{/snippet}
+
 {#if loading}
-  <!-- Parent owns the loading spinner (UI-SPEC States table) — nothing to render here. -->
+  <!-- Родитель рисует спиннер загрузки — здесь ничего. -->
 {:else if loadError}
   <p class="timeline-error">
-    Не удалось загрузить историю перемещений. Закройте окно и попробуйте ещё раз.
+    Не удалось загрузить историю. Проверьте подключение и откройте карточку снова.
   </p>
 {:else if entries.length === 0}
   <div class="timeline-empty">
-    <p class="timeline-empty-heading">Перемещений ещё не было</p>
-    <p class="timeline-empty-body">
-      Место изменится — здесь появится запись: откуда, куда, когда, кем и почему.
-    </p>
-    <p class="timeline-empty-body">
-      Первичное размещение при поступлении в историю не попадает — она начинается с первого
-      перемещения между двумя известными местами.
-    </p>
+    <p class="timeline-empty-heading">{emptyHeading}</p>
+    <p class="timeline-empty-body">{emptyBody}</p>
+    {@render notes()}
   </div>
 {:else}
-  <ul class="timeline-list">
-    {#each entries as entry (entry.id)}
-      <li class="timeline-row">
-        <span class="timeline-date">{formatDate(entry.created_at_utc)}</span>
-        <span class="timeline-dash">—</span>
-        <button
-          type="button"
-          class="timeline-link"
-          title={entry.from_place_path}
-          onclick={() => handleNavigateToPlace(entry.from_place_id)}
-        >
-          {entry.from_place_path_short ?? entry.from_place_path}
-        </button>
-        <span class="timeline-arrow">→</span>
-        <button
-          type="button"
-          class="timeline-link"
-          title={entry.to_place_path}
-          onclick={() => handleNavigateToPlace(entry.to_place_id)}
-        >
-          {entry.to_place_path_short ?? entry.to_place_path}
-        </button>
-        <span class="timeline-sep">·</span>
-        <span class="timeline-actor">{entry.actor_display}</span>
-        <span class="timeline-sep">·</span>
-        {#if entry.source === 'act' && entry.act_id !== null && entry.act_number}
-          <span class="timeline-reason">
-            актом №<button
-              type="button"
-              class="timeline-link"
-              onclick={() => handleNavigateToAct(entry.act_id as number)}
-            >
-              {entry.act_number}
-            </button>
+  {#if showChips}
+    <HistoryKindChips kinds={presentKinds} bind:selected={chipState} />
+  {/if}
+  {#if visibleEntries.length === 0}
+    <div class="timeline-empty">
+      <p class="timeline-empty-heading">Нет событий выбранных видов</p>
+      <p class="timeline-empty-body">Включите хотя бы один фильтр выше.</p>
+    </div>
+  {:else}
+    <ul class="timeline-list">
+      {#each visibleEntries as row (row.key)}
+        {@const entry = moveOf(row)}
+        {@const segs = orderedSegments(row)}
+        <li class="timeline-row">
+          <HistoryKindIcon kind={entryIcon(row)} />
+          <span class="timeline-date">{formatDate(row.created_at_utc)}</span>
+          <span class="timeline-dash">—</span>
+          <span class="timeline-event">
+            {#if segs.length === 0}
+              {UNKNOWN_HISTORY_EVENT}
+            {:else}
+              {#each segs as seg, idx (idx)}
+                <span class="timeline-seg"
+                  >{#if seg.kind === 'move' && seg.movement}{#if idx > 0}место:
+                    {/if}<button
+                      type="button"
+                      class="timeline-link"
+                      title={seg.movement.from_place_path}
+                      onclick={() => void onNavigateToPlace?.(seg.movement!.from_place_id)}
+                    >
+                      {seg.movement.from_place_path_short ?? seg.movement.from_place_path}
+                    </button>
+                    <span class="timeline-arrow">→</span>
+                    <button
+                      type="button"
+                      class="timeline-link"
+                      title={seg.movement.to_place_path}
+                      onclick={() => void onNavigateToPlace?.(seg.movement!.to_place_id)}
+                    >
+                      {seg.movement.to_place_path_short ?? seg.movement.to_place_path}
+                    </button>{:else}{@render linked(
+                      segmentText(seg, idx),
+                      candidates(seg),
+                    )}{/if}{#if idx < segs.length - 1};{/if}</span
+                >
+              {/each}
+            {/if}
           </span>
-          {#if actTail(entry) === 'group'}
-            <span class="timeline-sep">·</span>
-            <span class="timeline-reason">перенос группы</span>
-          {:else if actTail(entry) === 'member'}
-            <span class="timeline-sep">·</span>
+          <span class="timeline-sep">·</span>
+          <span class="timeline-actor">{row.actor_display}</span>
+          <span class="timeline-sep">·</span>
+          {#if row.reason_is_event}
+            {#if row.reason_source === 'act' && row.act_id !== null && row.act_number}
+              <span class="timeline-reason">
+                актом №<button
+                  type="button"
+                  class="timeline-link"
+                  onclick={() => handleNavigateToAct(row.act_id as number)}
+                >
+                  {row.act_number}
+                </button>
+              </span>
+            {:else if row.reason_source === 'repair' && row.request_id !== null && onNavigateToRequest}
+              <span class="timeline-reason">
+                по ремонтной заявке №<button
+                  type="button"
+                  class="timeline-link"
+                  onclick={() => handleNavigateToRequest(row.request_id as number)}
+                >
+                  {row.request_id}
+                </button>
+              </span>
+            {:else if eventReasonKnown(row)}
+              <span class="timeline-reason">
+                {@render linked(
+                  reasonLabel(row),
+                  row.ref_group_id !== null && row.ref_group_label
+                    ? [
+                        {
+                          label: row.ref_group_label.trim(),
+                          type: 'group',
+                          id: row.ref_group_id,
+                        },
+                      ]
+                    : [],
+                )}
+              </span>
+            {:else}
+              <span class="timeline-reason">{UNKNOWN_HISTORY_REASON}</span>
+            {/if}
+          {:else if entry === null}
+            <span class="timeline-reason">{UNKNOWN_HISTORY_REASON}</span>
+          {:else if entry.source === 'act' && entry.act_id !== null && entry.act_number}
+            <span class="timeline-reason">
+              актом №<button
+                type="button"
+                class="timeline-link"
+                onclick={() => handleNavigateToAct(entry.act_id as number)}
+              >
+                {entry.act_number}
+              </button>
+            </span>
+            {#if actTail(entry) === 'group'}
+              <span class="timeline-sep">·</span>
+              <span class="timeline-reason">перенос группы</span>
+            {:else if actTail(entry) === 'member'}
+              <span class="timeline-sep">·</span>
+              <span class="timeline-reason">
+                в составе группы «<button
+                  type="button"
+                  class="timeline-link"
+                  onclick={() => handleNavigateToGroup(entry.group_id as number)}
+                >
+                  {entry.group_label?.trim()}
+                </button>»
+              </span>
+            {/if}
+          {:else if entry.source === 'group' && entry.entity_type !== 'group' && entry.group_id !== null && onNavigateToGroup && (entry.group_label?.trim() ?? '').length > 0}
             <span class="timeline-reason">
               в составе группы «<button
                 type="button"
@@ -168,47 +380,28 @@
                 {entry.group_label?.trim()}
               </button>»
             </span>
+          {:else if entry.source === 'repair' && entry.request_id !== null && onNavigateToRequest}
+            <span class="timeline-reason">
+              по ремонтной заявке №<button
+                type="button"
+                class="timeline-link"
+                onclick={() => handleNavigateToRequest(entry.request_id as number)}
+              >
+                {entry.request_id}
+              </button>
+            </span>
+            {#if entry.note && entry.note.trim().length > 0}
+              <span class="timeline-sep">·</span>
+              <span class="timeline-reason">{entry.note}</span>
+            {/if}
+          {:else}
+            <span class="timeline-reason">{reasonText(entry)}</span>
           {/if}
-        {:else if entry.source === 'group' && entry.entity_type !== 'group' && entry.group_id !== null && onNavigateToGroup && (entry.group_label?.trim() ?? '').length > 0}
-          <!-- D-28: group_id приходит в каждой групповой строке, поэтому ссылка
-               есть всегда; id — number, имя только как текст (без разметки из строки). -->
-          <span class="timeline-reason">
-            в составе группы «<button
-              type="button"
-              class="timeline-link"
-              onclick={() => handleNavigateToGroup(entry.group_id as number)}
-            >
-              {entry.group_label?.trim()}
-            </button>»
-          </span>
-        {:else if entry.source === 'repair' && entry.request_id !== null && onNavigateToRequest}
-          <!-- NEW-3: номер заявки — кнопка-ссылка; id — number, примечание — текст
-               (без разметки из строки, T-hed-05). -->
-          <span class="timeline-reason">
-            по ремонтной заявке №<button
-              type="button"
-              class="timeline-link"
-              onclick={() => handleNavigateToRequest(entry.request_id as number)}
-            >
-              {entry.request_id}
-            </button>
-          </span>
-          {#if entry.note && entry.note.trim().length > 0}
-            <span class="timeline-sep">·</span>
-            <span class="timeline-reason">{entry.note}</span>
-          {/if}
-        {:else}
-          <span class="timeline-reason">{reasonText(entry)}</span>
-        {/if}
-      </li>
-    {/each}
-  </ul>
-  {#if showInitialPlacementNote}
-    <p class="timeline-empty-body">
-      Первичное размещение при поступлении в историю не попадает — она начинается с первого
-      перемещения между двумя известными местами.
-    </p>
+        </li>
+      {/each}
+    </ul>
   {/if}
+  {@render notes()}
 {/if}
 
 <style lang="scss">
@@ -227,6 +420,10 @@
     font-size: var(--tr-font-size-body);
     color: var(--tr-text-tertiary);
     font-style: italic;
+  }
+
+  .timeline-footnote {
+    margin-top: var(--tr-space-xs);
   }
 
   .timeline-empty-body {
@@ -256,6 +453,10 @@
     &:last-child {
       border-bottom: none;
     }
+  }
+
+  .timeline-row {
+    overflow-wrap: anywhere;
   }
 
   .timeline-dash,
