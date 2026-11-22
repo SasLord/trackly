@@ -9,6 +9,8 @@
 // тестов остаются самодостаточными и не правились при сборке в suite.
 #![allow(clippy::duplicate_mod)]
 
+#[path = "../history_timeline.rs"]
+mod history_timeline;
 #[path = "../place_movements_act_link.rs"]
 mod place_movements_act_link;
 #[path = "../place_movements_bulk_move.rs"]
