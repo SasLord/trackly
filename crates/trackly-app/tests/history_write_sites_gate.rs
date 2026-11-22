@@ -454,7 +454,8 @@ const GROUP_EVENT_NEEDLES: [&str; 7] = [
 ];
 const GROUP_EVENT_REGISTRY: [(&str, usize); 3] = [
     ("crates/trackly-app/src/services/group_act_plan.rs", 1),
-    ("crates/trackly-app/src/services/group_membership.rs", 1),
+    // left (release_inner) + joined (возврат в состав при правке живого акта, CR-01)
+    ("crates/trackly-app/src/services/group_membership.rs", 2),
     ("crates/trackly-app/src/services/group_service.rs", 10),
 ];
 const HISTORY_EVENTS_FILE: &str = "crates/trackly-app/src/services/history_events.rs";

@@ -13,7 +13,9 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::SqliteGroupRepository;
 
-use crate::services::history_events::{new_operation_id, record_group_left_in_tx, HistoryCause};
+use crate::services::history_events::{
+    new_operation_id, record_group_joined_in_tx, record_group_left_in_tx, HistoryCause,
+};
 use trackly_core::domain::history_events::HistoryReason;
 
 use crate::services::group_place::{
@@ -51,8 +53,24 @@ pub(crate) enum ReleaseHistory<'a> {
         source: HistoryReason,
         ref_group: Option<(i64, &'a str)>,
     },
-    /// «Тихий» режим: перенос (D-05) и restore-пути события не пишут.
+    /// «Тихий» режим только для двух путей: перенос из группы в группу (D-05, событие
+    /// переноса пишет вызывающий) и откат/удаление акта (D-24 (b), события акта удаляются
+    /// по `act_id`). Правка живого акта сюда НЕ относится (D-24 (a)): там `Default`.
+    /// Места использования закреплены гейтом `history_write_sites_gate` (`SILENT_MODE_TOKENS`).
     Suppressed,
+}
+
+/// Phase 41.10 (D-24): чей это restore-путь — правки живого акта или отката акта.
+///
+/// `Edit` — правка живого акта (снятая позиция, правка возврата): акт остаётся, его события
+/// живут, поэтому возврат в состав или во вложенность пишется ОБЫЧНЫМ событием с `act_id`
+/// (D-24 (a)), иначе лента покажет «выведено актом №N», хотя устройство уже в составе.
+/// `Undo` — полный откат или удаление акта: события акта удаляются по `act_id`, новых нет
+/// (D-24 (b)). Места использования `Undo` закреплены гейтом (`SILENT_MODE_TOKENS`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RevertHistory {
+    Edit,
+    Undo,
 }
 
 /// Вывести устройство из группы (D-22: состав не врёт, акт проходит).
@@ -227,7 +245,9 @@ pub(crate) fn release_device_with_history_in_tx(
 /// собственную возвращённую группу разбирать нельзя: `None`, членство цело
 /// (ловушка P-05, D-08, D-14). Сравнение живёт здесь, а не на трёх сайтах акта.
 ///
-/// `effect` выбирает режим следа: см. [`ReleaseEffect`].
+/// `effect` выбирает режим следа: см. [`ReleaseEffect`]. `history` — режим события
+/// `group_left`: правка живого акта передаёт `Default` (событие с `act_id`, D-24 (a)),
+/// откат акта — `Suppressed` (D-24 (b)).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn release_if_locked_device_in_tx(
     tx: &Transaction<'_>,
@@ -238,6 +258,7 @@ pub(crate) fn release_if_locked_device_in_tx(
     user_id: Option<i64>,
     now: i64,
     effect: ReleaseEffect,
+    history: ReleaseHistory<'_>,
 ) -> Result<Option<i64>, AppError> {
     let Some(locked) = groups.locked_group_for_device_in_tx(tx, device_id)? else {
         return Ok(None);
@@ -263,7 +284,7 @@ pub(crate) fn release_if_locked_device_in_tx(
         user_id,
         now,
         effect == ReleaseEffect::Record,
-        ReleaseHistory::Suppressed,
+        history,
     )
 }
 
@@ -327,6 +348,10 @@ pub(crate) enum RestoreResult {
 /// места участников не запирает (D-21 фазы 41), устройство возвращается молча (D-40);
 /// (d) иначе устройство добавлено в группу.
 /// Нарушение правил (a), (b) — не ошибка: откат проходит, менеджер получает уведомление.
+///
+/// `history` (Phase 41.10, D-24): `Edit` — правка живого акта, возврат в состав пишется
+/// событием `group_joined` с `act_id` и причиной act; `Undo` — откат акта, событие не пишется
+/// (события акта удаляются по `act_id`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn restore_membership_with_policy_in_tx(
     tx: &Transaction<'_>,
@@ -340,6 +365,7 @@ pub(crate) fn restore_membership_with_policy_in_tx(
     user_id: Option<i64>,
     now: i64,
     policy: PlaceConflictPolicy,
+    history: RevertHistory,
 ) -> Result<RestoreResult, AppError> {
     let groups = &deps.groups;
     let skipped = |reason: &str, group_id: Option<i64>| {
@@ -406,6 +432,8 @@ pub(crate) fn restore_membership_with_policy_in_tx(
         .get_in_tx(tx, device_id)
         .map(|d| is_repair_exempt_status_code(&d.status_code))
         .unwrap_or(false);
+    let mut result = RestoreResult::Restored;
+    let mut movement_id: Option<i64> = None;
     if let Some(group_place) = move_to.filter(|_| !device_exempt) {
         let change = apply_group_place_to_device_in_tx(
             tx,
@@ -419,12 +447,29 @@ pub(crate) fn restore_membership_with_policy_in_tx(
             now,
             GroupMoveCause::GROUP,
         )?;
-        return Ok(RestoreResult::RestoredToGroupPlace {
+        movement_id = change.movement_id;
+        result = RestoreResult::RestoredToGroupPlace {
             previous_place: change.previous_place,
             group_place,
-        });
+        };
     }
-    Ok(RestoreResult::Restored)
+    // Phase 41.10 (D-24 (a), D-25): правка живого акта — возврат в состав пишется обычным
+    // событием с act_id, после перемещения (если оно было). Откат акта событий не пишет.
+    if history == RevertHistory::Edit {
+        let operation_id = new_operation_id();
+        let cause = HistoryCause {
+            operation_id: &operation_id,
+            source: HistoryReason::Act,
+            act_id: Some(act_id),
+            request_id: None,
+            ref_group: None,
+            movement_id,
+            user_id,
+            now,
+        };
+        record_group_joined_in_tx(tx, device_id, group.id, &group.name, &cause)?;
+    }
+    Ok(result)
 }
 
 /// Итог возврата устройства в группу при откате акта (политика `Skip`).
@@ -435,9 +480,10 @@ pub(crate) enum RestoreOutcome {
 }
 
 /// Тонкая обёртка над [`restore_membership_with_policy_in_tx`] с политикой `Skip`:
-/// пути правки акта и правки возврата конфликт не спрашивают (D-42).
+/// пути правки акта и правки возврата конфликт не спрашивают (D-42). Только для правки
+/// живого акта: возврат в состав пишет `group_joined` (D-24 (a), `RevertHistory::Edit`).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn restore_membership_in_tx(
+pub(crate) fn restore_membership_on_edit_in_tx(
     tx: &Transaction<'_>,
     _groups: &SqliteGroupRepository,
     _audit: &SqliteAuditLogRepository,
@@ -463,6 +509,7 @@ pub(crate) fn restore_membership_in_tx(
         user_id,
         now,
         PlaceConflictPolicy::Skip,
+        RevertHistory::Edit,
     )? {
         RestoreResult::Skipped(n) => Ok(RestoreOutcome::Skipped(n)),
         _ => Ok(RestoreOutcome::Restored),
@@ -658,7 +705,7 @@ mod tests {
         group_id: i64,
         place: Option<i64>,
     ) -> RestoreOutcome {
-        restore_membership_in_tx(
+        restore_membership_on_edit_in_tx(
             tx,
             &SqliteGroupRepository,
             &SqliteAuditLogRepository,
@@ -785,6 +832,7 @@ mod tests {
             None,
             NOW,
             policy,
+            RevertHistory::Undo,
         )
         .expect("restore")
     }
@@ -945,7 +993,8 @@ mod tests {
                     Some(7),
                     None,
                     NOW,
-                    ReleaseEffect::Skip
+                    ReleaseEffect::Skip,
+                    ReleaseHistory::Suppressed
                 )
                 .unwrap(),
                 Some(1)
@@ -966,7 +1015,8 @@ mod tests {
                     Some(7),
                     None,
                     NOW,
-                    ReleaseEffect::Record
+                    ReleaseEffect::Record,
+                    ReleaseHistory::Suppressed
                 )
                 .unwrap(),
                 Some(1)
@@ -993,7 +1043,8 @@ mod tests {
                     Some(7),
                     None,
                     NOW,
-                    ReleaseEffect::Skip
+                    ReleaseEffect::Skip,
+                    ReleaseHistory::Suppressed
                 )
                 .unwrap(),
                 None
@@ -1015,7 +1066,8 @@ mod tests {
                     Some(7),
                     None,
                     NOW,
-                    ReleaseEffect::Skip
+                    ReleaseEffect::Skip,
+                    ReleaseHistory::Suppressed
                 )
                 .unwrap(),
                 Some(1)
@@ -1223,7 +1275,8 @@ mod tests {
                     Some(7),
                     None,
                     NOW,
-                    ReleaseEffect::Skip
+                    ReleaseEffect::Skip,
+                    ReleaseHistory::Suppressed
                 )
                 .unwrap(),
                 Some(1)
@@ -1233,12 +1286,60 @@ mod tests {
         // restore-путь возврата.
         conn.execute("UPDATE devices SET place_id = 1 WHERE id = 1", [])
             .unwrap();
-        let out = with_tx!(conn, tx, { restore(&tx, 1, 1, Some(1)) });
-        assert_eq!(out, RestoreOutcome::Restored);
+        let out = with_tx!(conn, tx, {
+            restore_with(&tx, 1, 1, Some(1), PlaceConflictPolicy::Skip)
+        });
+        assert_eq!(out, RestoreResult::Restored);
         assert_eq!(member_of(&conn, 1), Some(1), "возврат состоялся");
         let n: i64 = conn
             .query_row("SELECT COUNT(*) FROM history_events", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(n, 0, "restore-пути событий не пишут (D-24)");
+        assert_eq!(n, 0, "пути отката акта событий не пишут (D-24 (b))");
+    }
+
+    /// Phase 41.10 (D-24 (a), ревью CR-01): правка живого акта пишет обычные события и при
+    /// выводе (`ReleaseHistory::Default`), и при возврате в состав (`restore_membership_on_edit_in_tx`).
+    #[test]
+    fn history_membership_release_restore_on_edit_writes_events() {
+        let (mut conn, _g) = fresh_db();
+        seed(&conn);
+        add_member(&conn, 1, 1);
+        conn.execute("UPDATE devices SET place_id = 2 WHERE id = 1", [])
+            .unwrap();
+        with_tx!(conn, tx, {
+            assert_eq!(
+                release_if_locked_device_in_tx(
+                    &tx,
+                    &SqliteGroupRepository,
+                    &SqliteAuditLogRepository,
+                    1,
+                    Some(7),
+                    None,
+                    NOW,
+                    ReleaseEffect::Skip,
+                    ReleaseHistory::Default,
+                )
+                .unwrap(),
+                Some(1)
+            );
+        });
+        conn.execute("UPDATE devices SET place_id = 1 WHERE id = 1", [])
+            .unwrap();
+        let out = with_tx!(conn, tx, { restore(&tx, 1, 1, Some(1)) });
+        assert_eq!(out, RestoreOutcome::Restored);
+        let kinds: Vec<(String, Option<i64>, String)> = conn
+            .prepare("SELECT kind, act_id, source FROM history_events ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ("group_left".to_string(), Some(7), "act".to_string()),
+                ("group_joined".to_string(), Some(7), "act".to_string()),
+            ]
+        );
     }
 }

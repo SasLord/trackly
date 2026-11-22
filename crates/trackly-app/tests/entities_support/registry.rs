@@ -270,7 +270,7 @@ pub const REGISTRY: &[Entry] = &[
     ex(GMEMB, "release_device_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "release_device_with_history_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "release_if_locked_device_in_tx", TX_PRIMITIVE_REASON),
-    ex(GMEMB, "restore_membership_in_tx", TX_PRIMITIVE_REASON),
+    ex(GMEMB, "restore_membership_on_edit_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "restore_membership_with_policy_in_tx", TX_PRIMITIVE_REASON),
     ex(GMEMB, "anchor_restore_conflict_in_tx", TX_PRIMITIVE_REASON),
     // ---- group_type_service ------------------------------------------------

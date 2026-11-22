@@ -2944,8 +2944,8 @@ fn write_site_gate_act_restore_release_adjacent() {
 
     // Мутант 2: режим следа убран из вызова в undo (последний аргумент заменён).
     let m2 = src.replacen(
-        "crate::services::group_membership::ReleaseEffect::Skip,\n                        )?\n                    {\n                        extend_unique(",
-        "None::<()>,\n                        )?\n                    {\n                        extend_unique(",
+        "crate::services::group_membership::ReleaseEffect::Skip,\n                            // D-24 (b): откат акта, события акта удаляются по act_id.\n                            ReleaseHistory::Suppressed,\n                        )?\n                    {\n                        extend_unique(",
+        "None::<()>,\n                            ReleaseHistory::Suppressed,\n                        )?\n                    {\n                        extend_unique(",
         1,
     );
     assert_ne!(m2, src, "якорь мутанта режима найден в undo");

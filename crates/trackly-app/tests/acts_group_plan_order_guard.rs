@@ -22,7 +22,7 @@
 //!   (e) ветки `removed` правки и правки возврата: читатель прежнего эффекта release
 //!       идёт ПЕРВЫМ (W-7, V-4), `revert_move_effect_in_tx`, `anchor_restore_conflict_in_tx`
 //!       и `release_effect_for_removed_in_tx` выше `restore_from_snapshot_in_tx`,
-//!       `restore_membership_in_tx` ниже;
+//!       `restore_membership_on_edit_in_tx` ниже;
 //!   (e2) после единственного `release_if_locked_device_in_tx` в теле нет ни повторного
 //!       чтения эффектов акта, ни второго `prior_release_effect_id_in_tx`: повторное чтение
 //!       подобрало бы только что записанный след `Record`, эффект удалился бы, откат не
@@ -193,7 +193,7 @@ fn anchor_table() -> Vec<(&'static str, Vec<(&'static str, Count)>)> {
                 ("anchor_restore_conflict_in_tx(", Exactly(1)),
                 ("restore_from_snapshot_in_tx(", Exactly(1)),
                 ("release_if_locked_device_in_tx(", Exactly(1)),
-                ("restore_membership_in_tx(", Exactly(1)),
+                ("restore_membership_on_edit_in_tx(", Exactly(1)),
                 ("ActWriteStep::NeedsGroupRelease(", AtLeast(2)),
             ],
         ),
@@ -218,7 +218,7 @@ fn anchor_table() -> Vec<(&'static str, Vec<(&'static str, Count)>)> {
                 ("anchor_restore_conflict_in_tx(", Exactly(1)),
                 ("restore_from_snapshot_in_tx(", Exactly(1)),
                 ("release_if_locked_device_in_tx(", Exactly(1)),
-                ("restore_membership_in_tx(", Exactly(1)),
+                ("restore_membership_on_edit_in_tx(", Exactly(1)),
                 ("delete_act_group_effect_in_tx(", AtLeast(1)),
             ],
         ),
@@ -397,7 +397,7 @@ fn order_defects(src: &str) -> Vec<String> {
         let conflict = pos(body, "anchor_restore_conflict_in_tx(", 0).expect("conflict");
         let snap = pos(body, "restore_from_snapshot_in_tx(", 0).expect("snap");
         let release = pos(body, "release_if_locked_device_in_tx(", 0).expect("release");
-        let member = pos(body, "restore_membership_in_tx(", 0).expect("member");
+        let member = pos(body, "restore_membership_on_edit_in_tx(", 0).expect("member");
         if prior >= mode {
             out.push(format!(
                 "(e) {label}: prior_release_effect_id_in_tx( ({prior}) не выше release_effect_for_removed_in_tx( ({mode})"
@@ -425,7 +425,7 @@ fn order_defects(src: &str) -> Vec<String> {
         }
         if member <= snap {
             out.push(format!(
-                "(e) {label}: restore_membership_in_tx( ({member}) не ниже restore_from_snapshot_in_tx( ({snap})"
+                "(e) {label}: restore_membership_on_edit_in_tx( ({member}) не ниже restore_from_snapshot_in_tx( ({snap})"
             ));
         }
         let tail = &body[release..];
@@ -690,14 +690,17 @@ fn plan_order_guard_mutant_2_undo_members_before_snapshots() {
     assert!(!has(&d, "(cnt)"), "{d:?}");
 }
 
-// (3) update: restore_membership_in_tx <-> restore_from_snapshot_in_tx.
+// (3) update: restore_membership_on_edit_in_tx <-> restore_from_snapshot_in_tx.
 #[test]
 fn plan_order_guard_mutant_3_update_membership_before_snapshot() {
-    let anchors = ["restore_membership_in_tx(", "restore_from_snapshot_in_tx("];
+    let anchors = [
+        "restore_membership_on_edit_in_tx(",
+        "restore_from_snapshot_in_tx(",
+    ];
     let m = swap_lines(
         SRC,
         SIG_UPDATE,
-        ("restore_membership_in_tx(", 0),
+        ("restore_membership_on_edit_in_tx(", 0),
         ("restore_from_snapshot_in_tx(", 0),
     );
     assert_eq!(

@@ -63,7 +63,8 @@ use crate::services::group_act_plan::{
     revert_move_effect_in_tx, units_of_group_in_tx, GroupSplitChoice,
 };
 use crate::services::group_membership::{
-    anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, RestoreOutcome,
+    anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, ReleaseHistory,
+    RestoreOutcome,
 };
 use crate::services::group_place::GroupMoveDeps;
 use crate::services::number_template_service::{
@@ -1632,6 +1633,8 @@ impl ActService {
                                     user_id_opt,
                                     now,
                                     release_mode,
+                                    // D-24 (a): правка живого акта, вывод пишется событием.
+                                    ReleaseHistory::Default,
                                 )?
                             {
                                 if !touched_group_ids.contains(&group_id) {
@@ -1647,7 +1650,7 @@ impl ActService {
                         if let Some(effect_id) = prior_release {
                             if let Some(effect) = effects_before.iter().find(|e| e.id == effect_id)
                             {
-                                match crate::services::group_membership::restore_membership_in_tx(
+                                match crate::services::group_membership::restore_membership_on_edit_in_tx(
                                     &tx,
                                     &SqliteGroupRepository,
                                     &audit_repo,
@@ -3189,6 +3192,8 @@ impl ActService {
                                     user_id_opt,
                                     now,
                                     release_mode,
+                                    // D-24 (a): правка живого акта, вывод пишется событием.
+                                    ReleaseHistory::Default,
                                 )?
                             {
                                 if !touched_group_ids.contains(&group_id) {
@@ -3204,7 +3209,7 @@ impl ActService {
                         if let Some(effect_id) = prior_release {
                             if let Some(effect) = effects_before.iter().find(|e| e.id == effect_id)
                             {
-                                match crate::services::group_membership::restore_membership_in_tx(
+                                match crate::services::group_membership::restore_membership_on_edit_in_tx(
                                     &tx,
                                     &SqliteGroupRepository,
                                     &audit_repo,
@@ -5218,6 +5223,8 @@ fn undo_device_mutations_for_act(
                             user_id_opt,
                             now,
                             crate::services::group_membership::ReleaseEffect::Skip,
+                            // D-24 (b): откат акта, события акта удаляются по act_id.
+                            ReleaseHistory::Suppressed,
                         )?
                     {
                         extend_unique(&mut out.touched_group_ids, vec![group_id]);

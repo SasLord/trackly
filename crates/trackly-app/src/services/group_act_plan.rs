@@ -38,7 +38,7 @@ use trackly_infra::repos::{SqliteDeviceRepository, SqliteGroupRepository, Sqlite
 use crate::services::act_service::device_snapshot_json;
 use crate::services::group_membership::{
     release_device_in_tx, restore_membership_with_policy_in_tx, GroupNotice, GroupRestoreConflict,
-    PlaceConflictPolicy, ReleaseEffect, RestoreResult,
+    PlaceConflictPolicy, ReleaseEffect, RestoreResult, RevertHistory,
 };
 use crate::services::group_place::{propagate_group_place_in_tx, GroupMoveCause, GroupMoveDeps};
 use crate::services::history_events::{
@@ -1761,6 +1761,7 @@ pub(crate) fn restore_released_members_in_tx(
                 user_id,
                 now,
                 policy,
+                RevertHistory::Undo,
             )
         });
         match result {
@@ -1872,6 +1873,7 @@ pub(crate) fn rejoin_released_retained_for_whole_group_in_tx(
                 user_id,
                 now,
                 PlaceConflictPolicy::Skip,
+                RevertHistory::Edit,
             )? {
                 RestoreResult::Skipped(notice) => {
                     tracing::warn!(act_id, group_id = ?notice.group_id, "{}", notice.message);
@@ -1997,6 +1999,7 @@ pub(crate) fn rejoin_released_by_act_in_tx(
                 user_id,
                 now,
                 PlaceConflictPolicy::Skip,
+                RevertHistory::Edit,
             )? {
                 RestoreResult::Skipped(notice) => {
                     tracing::warn!(act_id, group_id = ?notice.group_id, "{}", notice.message);
