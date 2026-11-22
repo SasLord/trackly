@@ -41,6 +41,10 @@ use crate::services::group_membership::{
     PlaceConflictPolicy, ReleaseEffect, RestoreResult,
 };
 use crate::services::group_place::{propagate_group_place_in_tx, GroupMoveCause, GroupMoveDeps};
+use crate::services::history_events::{
+    new_operation_id, record_group_unnested_in_tx, HistoryCause,
+};
+use trackly_core::domain::history_events::HistoryReason;
 
 /// Снимок живых групп и членства для планировщика (читается одним набором запросов).
 #[derive(Debug, Clone)]
@@ -1008,6 +1012,34 @@ fn return_move_target(mv: &GroupMove, return_places: &HashMap<i64, Option<i64>>)
     }
 }
 
+/// Phase 41.10 (D-09, D-25): отцепление группы актом пишет `group_unnested` с причиной act
+/// и `act_id` (иначе откат акта его не удалит, D-24). Вызывается сразу после `set_parent_in_tx(None)`.
+/// Обратный путь (`set_parent_in_tx(Some)` при откате, restore_membership_*) событий не пишет (D-24).
+#[allow(clippy::too_many_arguments)]
+fn record_act_unnested(
+    tx: &Transaction<'_>,
+    child_id: i64,
+    child_label: &str,
+    parent_id: i64,
+    parent_label: &str,
+    act_id: i64,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<(), AppError> {
+    let operation_id = new_operation_id();
+    let cause = HistoryCause {
+        operation_id: &operation_id,
+        source: HistoryReason::Act,
+        act_id: Some(act_id),
+        request_id: None,
+        ref_group: None,
+        movement_id: None,
+        user_id,
+        now,
+    };
+    record_group_unnested_in_tx(tx, child_id, child_label, parent_id, parent_label, &cause)
+}
+
 /// `MoveGroup` для одного разбиения: kept-члены выходят (эффект `release`), непокрытые
 /// дочерние и сама группа отцепляются (эффект `detach`), затем группа с возвращаемыми
 /// членами и покрытыми дочерними переезжает на `target`.
@@ -1047,6 +1079,16 @@ fn apply_split_move_in_tx(
         deps.groups.insert_act_group_effect_in_tx(tx, &effect)?;
         deps.groups
             .set_parent_in_tx(tx, child.group_id, child.version, None, now)?;
+        record_act_unnested(
+            tx,
+            child.group_id,
+            &child.name,
+            split.group_id,
+            &split.group_name,
+            act_id,
+            user_id,
+            now,
+        )?;
         touched_groups.push(child.group_id);
     }
     if let Some(parent) = split.parent_group_id {
@@ -1061,6 +1103,16 @@ fn apply_split_move_in_tx(
         deps.groups.insert_act_group_effect_in_tx(tx, &effect)?;
         deps.groups
             .set_parent_in_tx(tx, split.group_id, split.group_version, None, now)?;
+        record_act_unnested(
+            tx,
+            split.group_id,
+            &split.group_name,
+            parent,
+            split.parent_name.as_deref().unwrap_or_default(),
+            act_id,
+            user_id,
+            now,
+        )?;
         touched_groups.push(parent);
     }
 
@@ -1287,6 +1339,16 @@ pub(crate) fn apply_plan_in_tx(
             deps.groups.insert_act_group_effect_in_tx(tx, &effect)?;
             deps.groups
                 .set_parent_in_tx(tx, mv.root_group_id, mv.root_version, None, now)?;
+            record_act_unnested(
+                tx,
+                mv.root_group_id,
+                &mv.root_name,
+                detach.parent_group_id,
+                &detach.parent_name,
+                act_id,
+                user_id,
+                now,
+            )?;
             push_unique(&mut applied.touched_group_ids, detach.parent_group_id);
         }
         let mut effect = effect_new(
@@ -1478,6 +1540,8 @@ pub(crate) fn revert_move_effect_in_tx(
             if group.place_id.is_none() {
                 return Ok(None);
             }
+            // D-24: события истории этого акта (по act_id) удаляет act_service вместе с
+            // place_movements при откате/удалении акта; здесь отдельно их не трогаем.
             deps.movements
                 .forget_group_move_rows_in_tx(tx, act_id, effect.group_id)?;
             deps.groups.rebase_later_move_effects_in_tx(
@@ -1577,6 +1641,7 @@ pub(crate) fn revert_detach_effect_in_tx(
         if group.parent_group_id.is_some() || group.place_id != parent.place_id {
             return Ok(false);
         }
+        // D-24: возврат вложенности при откате акта событий не пишет.
         deps.groups
             .set_parent_in_tx(tx, group.id, group.version, Some(parent_id), now)?;
         Ok(true)
