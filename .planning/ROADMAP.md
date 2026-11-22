@@ -2269,7 +2269,68 @@ Phase 41.8 (вывод из группы и перемещение между г
   3. Лента доступна в обоих транспортах и не ломает существующий отчёт о перемещениях (HST-04):
      отчёт по-прежнему показывает только перемещения.
 
-**Plans**: TBD
+**Plans:** 19 plans
+Plans:
+**Wave 1**
+
+- [ ] 41.10-01-PLAN.md — V057 history_events, токены видов и причин, репозиторий, возврат id перемещения (D-25)
+- [ ] 41.10-02-PLAN.md — Modal: слот headerActions и размер split, IconHistory, стор флага истории
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 41.10-03-PLAN.md — модуль записи событий services/history_events.rs
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 41.10-06-PLAN.md — общие примитивы состава: group_membership (group_left с act_id, ReleaseHistory), group_place (movement_id, ST-6)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 41.10-05-PLAN.md — писатели статуса: device_service, place_service
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 41.10-07-PLAN.md — акты: статус и откат событий по act_id (D-24)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 41.10-08-PLAN.md — ремонты: статус по заявке
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 41.10-18-PLAN.md — group_service: создание, ввод, перенос, вложение, каскад удаления
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 41.10-04-PLAN.md — HistoryService, DTO, команда history_get_timeline в обоих транспортах, bindings
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 41.10-09-PLAN.md — group_service: разбор, списание устройства и группы
+- [ ] 41.10-12-PLAN.md — historyEvents.ts и гейт паритета check-history-event-labels
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 41.10-10-PLAN.md — групповые акты: group_unnested и откат
+- [ ] 41.10-14-PLAN.md — MovementTimeline: значки, чипы, варианты device/cartridge/group, витрина
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 41.10-11-PLAN.md — тест-гвард HST-07 и матрица ролей для history_get_timeline
+- [ ] 41.10-15-PLAN.md — PlaceEntityViewModal: переключатель, две колонки, панель на узком экране
+
+**Wave 12** *(blocked on Wave 11 completion)*
+
+- [ ] 41.10-13-PLAN.md — реестровый гейт мест записи истории с мутациями и проверкой порядка
+- [ ] 41.10-16-PLAN.md — GroupPanel, PrinterDetail, CartridgeDetail, «Журнал опросов»
+
+**Wave 13** *(blocked on Wave 12 completion)*
+
+- [ ] 41.10-19-PLAN.md — комментарии «Журнал опросов» в Rust и перегенерация bindings
+
+**Wave 14** *(blocked on Wave 13 completion)*
+
+- [ ] 41.10-17-PLAN.md — сплошные гейты, приватность, живая UAT
 
 **UI hint**: yes
 

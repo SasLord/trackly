@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-11-21T15:03:30.463Z"
-last_activity: 2026-11-22 -- Phase 41.8 complete (35/35, verification passed)
+last_updated: "2026-11-22T11:28:49.583Z"
+last_activity: 2026-11-22 -- Phase 41.10 planning complete
 progress:
   total_phases: 27
-  completed_phases: 21
-  total_plans: 403
-  completed_plans: 389
-  percent: 78
+  completed_phases: 22
+  total_plans: 443
+  completed_plans: 424
+  percent: 81
 ---
 
 # Project State
@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 41.8 (groups-workspace) — COMPLETE
-Plan: 14 of 25 (01–14 выполнены; 15–25 gap closure, plan-checker PASSED за 3 итерации, решения D-26..D-31)
-Status: Фаза 41.8 закрыта 2026-11-22: 35/35 планов, верификация passed 7/7, сплошной прогон 2926/0, живая приёмка второго раунда 16/16 (Tauri + LAN). GRW-01..08 Complete. Далее по зависимости: Фаза 41.10 («История»).
+Phase: 41.10 (device-history) — PLANNED
+Plan: 0 of 19 (19 планов / 14 волн, plan-checker PASSED за 2 итерации, решения D-24/D-25 добавлены после исследования)
+Status: Ready to execute — фаза 41.8 закрыта 2026-11-22 (35/35, UAT 16/16); далее /gsd-execute-phase 41.10
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
 показаны так, как остальные группы (нет строки с шевроном и раскрытием состава), — это сбивает с
@@ -186,7 +186,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-22 -- Quick 261122-i5p: акт сохраняет статус «На списание» (R7-01); аудит v1.4 раунд 7
+Last activity: 2026-11-22 -- Phase 41.10 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
