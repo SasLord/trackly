@@ -558,12 +558,13 @@
     display: inline-flex;
   }
 
+  // Тело split-попапа без отступов (Modal): каждая колонка прокручивается сама
+  // и держит отступы внутри, поэтому полоса прокрутки данных стоит вплотную к
+  // разделителю, а полоса истории — к правому краю; между контентом и полосой
+  // остаётся --tr-space-xl, как в узком попапе (41.10 UAT).
   .view-split {
     display: grid;
-    grid-template-columns:
-      minmax(0, calc(var(--modal-max-width) - 2 * var(--tr-space-xl)))
-      minmax(360px, 1fr);
-    column-gap: var(--tr-space-xl);
+    grid-template-columns: minmax(0, var(--modal-max-width)) minmax(360px, 1fr);
     height: 100%;
     min-height: 0;
   }
@@ -572,11 +573,11 @@
   .view-split-history {
     min-height: 0;
     overflow-y: auto;
+    padding: var(--tr-space-xl);
   }
 
   .view-split-history {
     border-left: 1px solid var(--tr-border);
-    padding-left: var(--tr-space-xl);
   }
 
   .view-error {

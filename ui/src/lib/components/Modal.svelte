@@ -14,6 +14,8 @@
 
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
+  import Button from './Button.svelte';
+  import IconClose from './icons/IconClose.svelte';
 
   interface Props {
     open: boolean;
@@ -43,6 +45,9 @@
     headerActions,
     initialFocus,
   }: Props = $props();
+
+  // Обёртка, чтобы кнопка «×» всегда звала актуальный onClose (проп может смениться).
+  const onclick = () => onClose();
 
   const titleId = `modal-title-${Math.random().toString(36).slice(2)}`;
 
@@ -230,7 +235,9 @@
             {@render headerActions()}
           </div>
         {/if}
-        <button type="button" class="modal-close" onclick={onClose} aria-label="Закрыть">×</button>
+        <Button variant="ghost" size="sm" iconOnly ariaLabel="Закрыть" title="Закрыть" {onclick}>
+          <IconClose />
+        </Button>
       </header>
       <div class="modal-body">
         {@render children?.()}
@@ -307,7 +314,10 @@
     width: min(var(--modal-max-width-split), calc(100vw - 64px));
     height: min(calc(100vh - 64px), 760px);
   }
+  // Колонки split сами задают внутренние отступы, чтобы полосы прокрутки
+  // стояли вплотную к разделителю и к правому краю (41.10 UAT).
   .modal-split .modal-body {
+    padding: 0;
     overflow: hidden;
     min-height: 0;
     display: flex;
@@ -319,6 +329,8 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--tr-space-md) var(--tr-space-xl);
+    // Отступ между заголовком, доп. кнопками шапки и «×» (41.10 UAT).
+    gap: var(--tr-space-xs);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
   }
@@ -334,9 +346,8 @@
   .modal-header-actions {
     display: flex;
     align-items: center;
-    gap: var(--tr-space-2xs);
+    gap: var(--tr-space-xs);
     flex: none;
-    margin-left: var(--tr-space-xs);
   }
 
   .modal-title {
@@ -349,31 +360,6 @@
     font-weight: var(--tr-font-weight-semibold);
     line-height: var(--tr-line-height-h3);
     color: var(--tr-text-primary);
-  }
-
-  .modal-close {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--tr-text-secondary);
-    font-size: 20px;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--tr-radius-xs);
-    padding: 0;
-    line-height: 1;
-
-    &:hover {
-      background: var(--tr-surface);
-      color: var(--tr-text-primary);
-    }
-    &:focus-visible {
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-      outline: none;
-    }
   }
 
   .modal-body {
