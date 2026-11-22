@@ -43,7 +43,6 @@ pub(crate) enum ReleaseEffect {
 
 /// Phase 41.10 (D-06, D-24): режим записи события `group_left` при выводе.
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
 pub(crate) enum ReleaseHistory<'a> {
     /// Причина по умолчанию: `act` при заданном `act_id`, иначе `manual`.
     Default,
@@ -192,8 +191,7 @@ fn release_inner(
 
 /// То же, что [`release_device_in_tx`], но с явным режимом события истории
 /// (Phase 41.10): особая причина (списание) или «тихий» режим (перенос).
-// Потребители (планы 07-10, 18) подключаются позже.
-#[allow(dead_code, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn release_device_with_history_in_tx(
     tx: &Transaction<'_>,
     groups: &SqliteGroupRepository,

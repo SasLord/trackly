@@ -25,6 +25,7 @@ use trackly_core::domain::groups::{
     validate_name, GroupBehavior, GroupNew, GroupRow, GroupTypeRow, GroupValueRow,
     PropertyDataType, MAX_DEVICES_PER_BATCH, MAX_REFS_PER_PROPERTY,
 };
+use trackly_core::domain::history_events::HistoryReason;
 use trackly_core::error::{AppError, OccupiedItem};
 use trackly_core::ports::group_types::GroupTypeRepository;
 use trackly_core::ports::groups::GroupRepository;
@@ -49,11 +50,18 @@ use crate::dto::groups::{
 };
 use crate::dto::printer::WsEvent;
 use crate::services::group_act_plan;
-use crate::services::group_membership::release_device_in_tx;
+use crate::services::group_membership::{
+    release_device_in_tx, release_device_with_history_in_tx, ReleaseHistory,
+};
 use crate::services::group_place::{
     apply_group_place_to_device_in_tx, ensure_group_movable_in_tx, group_move_transition_in_tx,
     move_group_with_status_in_tx, propagate_group_place_in_tx, status_shift_candidates_in_tx,
     GroupMoveCause, GroupMoveDeps, GroupMoveOutcome,
+};
+use crate::services::history_events::{
+    new_operation_id, record_group_disbanded_in_tx, record_group_formed_in_tx,
+    record_group_joined_in_tx, record_group_left_in_tx, record_group_nested_in_tx,
+    record_group_transferred_in_tx, record_group_unnested_in_tx, HistoryCause, HistorySubject,
 };
 use crate::services::place_path_display::compute_place_path_short_with_conn;
 use crate::services::plural::ru_plural;
@@ -243,18 +251,84 @@ fn device_briefs(conn: &Connection, ids: &[i64]) -> Result<HashMap<i64, DeviceBr
     Ok(out)
 }
 
+/// События расформирования группы (D-07): якорю `group_disbanded` (безъякорной — со
+/// стороны группы), участникам `group_left`, вложенным группам `group_unnested`.
+fn record_group_disband_events_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    before: &GroupDto,
+    reason: HistoryReason,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<(), AppError> {
+    let operation_id = new_operation_id();
+    let ref_group =
+        (reason == HistoryReason::GroupWriteOff).then_some((before.id, before.name.as_str()));
+    let cause = HistoryCause {
+        operation_id: &operation_id,
+        source: reason,
+        act_id: None,
+        request_id: None,
+        ref_group,
+        movement_id: None,
+        user_id,
+        now,
+    };
+    let member_ids: Vec<i64> = {
+        let mut st = tx
+            .prepare("SELECT device_id FROM group_devices WHERE group_id = ?1 ORDER BY device_id")
+            .map_err(map_rusqlite)?;
+        let rows = st
+            .query_map(rusqlite::params![before.id], |r| r.get(0))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<i64>, _>>()
+            .map_err(map_rusqlite)?;
+        rows
+    };
+    let subject = match before.anchor_device_id {
+        Some(anchor) => HistorySubject::Device { id: anchor },
+        None => HistorySubject::Group { id: before.id },
+    };
+    record_group_disbanded_in_tx(tx, subject, before.id, &before.name, &cause)?;
+    for member in member_ids {
+        if Some(member) == before.anchor_device_id {
+            continue;
+        }
+        record_group_left_in_tx(tx, member, before.id, &before.name, &cause)?;
+    }
+    let nested: Vec<(i64, String)> = {
+        let mut st = tx
+            .prepare("SELECT id, name FROM groups WHERE parent_group_id = ?1 ORDER BY id")
+            .map_err(map_rusqlite)?;
+        let rows = st
+            .query_map(rusqlite::params![before.id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(map_rusqlite)?
+            .collect::<Result<Vec<(i64, String)>, _>>()
+            .map_err(map_rusqlite)?;
+        rows
+    };
+    for (child_id, child_name) in nested {
+        record_group_unnested_in_tx(tx, child_id, &child_name, before.id, &before.name, &cause)?;
+    }
+    Ok(())
+}
+
 /// Общее расформирование группы (D-22): жёсткое удаление строки группы (члены
 /// освобождаются каскадом, вложенные становятся корневыми) и запись аудита `delete`.
 /// Зовётся из `delete_group` и из `write_off_group` (substitute): тело одно.
+#[allow(clippy::too_many_arguments)]
 fn delete_group_in_tx_audited(
     tx: &rusqlite::Transaction<'_>,
     repo: &SqliteGroupRepository,
     audit_repo: &SqliteAuditLogRepository,
     before: &GroupDto,
     released_devices: i64,
+    reason: HistoryReason,
     user_id: Option<i64>,
     now: i64,
 ) -> Result<(), AppError> {
+    // Phase 41.10 (D-07, MB-6): остаток состава, якорь и вложенные группы читаются ДО
+    // DELETE: каскад `ON DELETE CASCADE` событий не пишет.
+    record_group_disband_events_in_tx(tx, before, reason, user_id, now)?;
     repo.delete_group_in_tx(tx, before.id)?;
     audit_repo.insert(
         tx,
@@ -751,11 +825,44 @@ impl GroupService {
                     // Устройство входит в состав; его место не меняется и строк
                     // `place_movements` создание не пишет (группа берёт место устройства).
                     repo.add_device_in_tx(&tx, id, device.id, now)?;
-                    if matches!(
+                    let anchored = matches!(
                         behavior,
                         Some(GroupBehavior::Substitute) | Some(GroupBehavior::Teardown)
-                    ) {
+                    );
+                    if anchored {
                         repo.set_anchor_in_tx(&tx, id, device.id)?;
+                    }
+                    // Phase 41.10 (D-07): якорю — group_formed со стороны устройства;
+                    // без якоря группа формируется сама, устройство просто входит (group_create).
+                    let group_label = repo.get_group_in_tx(&tx, id)?.name;
+                    let operation_id = new_operation_id();
+                    let create_cause = HistoryCause {
+                        operation_id: &operation_id,
+                        source: HistoryReason::GroupCreate,
+                        act_id: None,
+                        request_id: None,
+                        ref_group: None,
+                        movement_id: None,
+                        user_id,
+                        now,
+                    };
+                    if anchored {
+                        record_group_formed_in_tx(
+                            &tx,
+                            HistorySubject::Device { id: device.id },
+                            id,
+                            &group_label,
+                            &create_cause,
+                        )?;
+                    } else {
+                        record_group_formed_in_tx(
+                            &tx,
+                            HistorySubject::Group { id },
+                            id,
+                            &group_label,
+                            &create_cause,
+                        )?;
+                        record_group_joined_in_tx(&tx, device.id, id, &group_label, &create_cause)?;
                     }
                     if behavior == Some(GroupBehavior::Teardown) {
                         // «На разбор» → «На списание»; статус ищется по коду (D-04, D-15).
@@ -925,6 +1032,7 @@ impl GroupService {
                     &audit_repo,
                     &before,
                     released,
+                    HistoryReason::GroupDisband,
                     user_id,
                     now,
                 )?;
@@ -1135,7 +1243,7 @@ impl GroupService {
                         rows
                     };
                     for member in member_ids {
-                        if release_device_in_tx(
+                        if release_device_with_history_in_tx(
                             &tx,
                             &SqliteGroupRepository,
                             &audit_repo,
@@ -1143,6 +1251,10 @@ impl GroupService {
                             None,
                             user_id,
                             now,
+                            ReleaseHistory::Reason {
+                                source: HistoryReason::GroupWriteOff,
+                                ref_group: Some((dto.id, before.name.as_str())),
+                            },
                         )?
                         .is_some()
                         {
@@ -1155,6 +1267,7 @@ impl GroupService {
                         &audit_repo,
                         &before,
                         i64::from(released),
+                        HistoryReason::GroupWriteOff,
                         user_id,
                         now,
                     )?;
@@ -1367,6 +1480,17 @@ enum AddMode {
     MoveOccupied,
 }
 
+/// Phase 41.10 (D-08, D-05): писать ли событие входа. В переносе между группами
+/// событие входа не пишется: вызывающий пишет одно `group_transferred` (D-05).
+#[derive(Clone, Copy)]
+enum JoinHistory<'a> {
+    Joined {
+        source: HistoryReason,
+        operation_id: &'a str,
+    },
+    Silent,
+}
+
 /// Исход ввода одного устройства.
 enum AddOne {
     Added,
@@ -1385,10 +1509,12 @@ fn add_one_in_tx(
     target_behavior: Option<GroupBehavior>,
     device_id: i64,
     mode: AddMode,
+    history: JoinHistory<'_>,
     user_id: Option<i64>,
     now: i64,
     added: &mut Vec<i64>,
     changed_places: &mut Vec<i64>,
+    movement_out: &mut Option<i64>,
 ) -> Result<AddOne, AppError> {
     let group_id = group.id;
     let device = match deps.devices.get_in_tx(tx, device_id) {
@@ -1479,12 +1605,31 @@ fn add_one_in_tx(
             now,
             GroupMoveCause::GROUP,
         )?;
+        *movement_out = change.movement_id;
         if change.changed {
             if let Some(p) = change.previous_place {
                 push_unique_place(changed_places, p);
             }
             push_unique_place(changed_places, place);
         }
+    }
+    // D-25: перемещение записано выше, событие входа — после него и с тем же movement_id.
+    if let JoinHistory::Joined {
+        source,
+        operation_id,
+    } = history
+    {
+        let cause = HistoryCause {
+            operation_id,
+            source,
+            act_id: None,
+            request_id: None,
+            ref_group: None,
+            movement_id: *movement_out,
+            user_id,
+            now,
+        };
+        record_group_joined_in_tx(tx, device_id, group_id, &group.name, &cause)?;
     }
     Ok(AddOne::Added)
 }
@@ -1503,6 +1648,8 @@ pub(crate) fn join_origin_group_in_tx(
     let deps = GroupMoveDeps::new();
     let group = deps.groups.get_group_in_tx(tx, group_id)?;
     let mut added: Vec<i64> = Vec::new();
+    let operation_id = new_operation_id();
+    let mut movement: Option<i64> = None;
     match add_one_in_tx(
         tx,
         &deps,
@@ -1510,10 +1657,15 @@ pub(crate) fn join_origin_group_in_tx(
         Some(GroupBehavior::Teardown),
         device_id,
         AddMode::Plain,
+        JoinHistory::Joined {
+            source: HistoryReason::Teardown,
+            operation_id: &operation_id,
+        },
         user_id,
         now,
         &mut added,
         changed_places,
+        &mut movement,
     )? {
         AddOne::Added | AddOne::Skipped => {}
         AddOne::Occupied(_) => {
@@ -1573,7 +1725,9 @@ impl GroupService {
                 let mut added: Vec<i64> = Vec::new();
                 let mut changed_places: Vec<i64> = Vec::new();
                 let mut occupied: Vec<OccupiedItem> = Vec::new();
+                let operation_id = new_operation_id();
                 for device_id in &device_ids {
+                    let mut movement: Option<i64> = None;
                     match add_one_in_tx(
                         &tx,
                         &deps,
@@ -1581,10 +1735,15 @@ impl GroupService {
                         target_behavior,
                         *device_id,
                         AddMode::Plain,
+                        JoinHistory::Joined {
+                            source: HistoryReason::Manual,
+                            operation_id: &operation_id,
+                        },
                         user_id,
                         now,
                         &mut added,
                         &mut changed_places,
+                        &mut movement,
                     )? {
                         AddOne::Occupied(item) => occupied.push(item),
                         AddOne::Added | AddOne::Skipped => {}
@@ -1659,7 +1818,9 @@ impl GroupService {
                 let mut changed_places: Vec<i64> = Vec::new();
                 // device_id -> исходная группа (только реально перенесённые).
                 let mut from: Vec<(i64, i64)> = Vec::new();
+                let operation_id = new_operation_id();
                 for device_id in &device_ids {
+                    let mut transferred_from: Option<(i64, String)> = None;
                     if let Some(existing) = deps.groups.group_of_device_in_tx(&tx, *device_id)? {
                         if existing.id == group_id {
                             return Err(device_ids_error(
@@ -1682,7 +1843,8 @@ impl GroupService {
                                 device_name, anchor_group.name
                             )));
                         }
-                        release_device_in_tx(
+                        // D-05: перенос — одно событие; вывод «тихий».
+                        release_device_with_history_in_tx(
                             &tx,
                             &deps.groups,
                             &deps.audit,
@@ -1690,9 +1852,12 @@ impl GroupService {
                             None,
                             user_id,
                             now,
+                            ReleaseHistory::Suppressed,
                         )?;
                         from.push((*device_id, existing.id));
+                        transferred_from = Some((existing.id, existing.name.clone()));
                     }
+                    let mut movement: Option<i64> = None;
                     add_one_in_tx(
                         &tx,
                         &deps,
@@ -1700,11 +1865,41 @@ impl GroupService {
                         target_behavior,
                         *device_id,
                         AddMode::MoveOccupied,
+                        if transferred_from.is_some() {
+                            JoinHistory::Silent
+                        } else {
+                            JoinHistory::Joined {
+                                source: HistoryReason::Manual,
+                                operation_id: &operation_id,
+                            }
+                        },
                         user_id,
                         now,
                         &mut added,
                         &mut changed_places,
+                        &mut movement,
                     )?;
+                    if let Some((from_id, from_name)) = transferred_from {
+                        let cause = HistoryCause {
+                            operation_id: &operation_id,
+                            source: HistoryReason::Manual,
+                            act_id: None,
+                            request_id: None,
+                            ref_group: None,
+                            movement_id: movement,
+                            user_id,
+                            now,
+                        };
+                        record_group_transferred_in_tx(
+                            &tx,
+                            *device_id,
+                            from_id,
+                            &from_name,
+                            group_id,
+                            &group.name,
+                            &cause,
+                        )?;
+                    }
                 }
 
                 let mut groups_touched: Vec<i64> = vec![group_id];
@@ -1884,6 +2079,42 @@ impl GroupService {
                 }
                 deps.groups
                     .set_parent_in_tx(&tx, id, version, parent_group_id, now)?;
+                // Phase 41.10 (D-09): событие группы (subject_type=group), не устройств.
+                if before.parent_group_id != parent_group_id {
+                    let operation_id = new_operation_id();
+                    let cause = HistoryCause {
+                        operation_id: &operation_id,
+                        source: HistoryReason::Manual,
+                        act_id: None,
+                        request_id: None,
+                        ref_group: None,
+                        movement_id: None,
+                        user_id,
+                        now,
+                    };
+                    if let Some(old) = before.parent_group_id {
+                        let old_row = deps.groups.get_group_in_tx(&tx, old)?;
+                        record_group_unnested_in_tx(
+                            &tx,
+                            id,
+                            &before.name,
+                            old,
+                            &old_row.name,
+                            &cause,
+                        )?;
+                    }
+                    if let Some(new_parent) = parent_group_id {
+                        let new_row = deps.groups.get_group_in_tx(&tx, new_parent)?;
+                        record_group_nested_in_tx(
+                            &tx,
+                            id,
+                            &before.name,
+                            new_parent,
+                            &new_row.name,
+                            &cause,
+                        )?;
+                    }
+                }
 
                 let mut outcome = GroupMoveOutcome::default();
                 if let Some(parent_id) = parent_group_id {

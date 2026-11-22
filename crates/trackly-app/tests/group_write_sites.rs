@@ -2443,8 +2443,9 @@ fn anchor_guard_scopes() -> Vec<(&'static str, String, &'static str, &'static st
             )
             .to_string(),
             ANCHOR_GUARD,
-            // Plan 19 (WR-01, D-29): перенос освобождает через общий примитив.
-            "release_device_in_tx(",
+            // Plan 19 (WR-01, D-29): перенос освобождает через общий примитив; Phase 41.10
+            // (D-05): «тихий» режим вывода, одно событие group_transferred пишет перенос.
+            "release_device_with_history_in_tx(",
         ),
         (
             "GroupService::delete_group",
