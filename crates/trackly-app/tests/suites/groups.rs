@@ -37,3 +37,5 @@ mod groups_values_card;
 mod history_membership;
 #[path = "../history_membership_release.rs"]
 mod history_membership_release;
+#[path = "../history_status_groups.rs"]
+mod history_status_groups;
