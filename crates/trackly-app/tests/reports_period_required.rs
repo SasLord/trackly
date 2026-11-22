@@ -130,6 +130,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
     let place_movements = Arc::new(trackly_app::services::PlaceMovementService::new(
         readers.clone(),
     ));
+    let history = Arc::new(trackly_app::services::HistoryService::new(readers.clone()));
     let number_templates = Arc::new(trackly_app::services::NumberTemplateService::new(
         writer.clone(),
         readers.clone(),
@@ -168,6 +169,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         group_types,
         groups,
         place_movements,
+        history,
         number_templates,
         attachments,
         chat,

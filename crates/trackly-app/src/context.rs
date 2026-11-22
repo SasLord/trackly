@@ -37,7 +37,7 @@ use crate::services::attachment_store::AttachmentStore;
 use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AttachmentService, AuthService,
     BackupService, CartridgeService, ChatService, DashboardService, DeviceService, GroupService,
-    GroupTypeService, NumberTemplateService, OrgDbService, OrganizationService,
+    GroupTypeService, HistoryService, NumberTemplateService, OrgDbService, OrganizationService,
     PlaceMovementService, PlaceService, PrinterService, RepairActRenderer, RepairService,
     ReportService, RequestService, TemplateService,
 };
@@ -132,6 +132,8 @@ pub struct AppCtx {
     /// Place-movement timeline read service — HST-02, `ReadPlaces`-gated
     /// (Admin|Manager per D-12). Added in Phase 40 Plan 10.
     pub place_movements: Arc<PlaceMovementService>,
+    /// Лента истории (склейка перемещений и событий) — фаза 41.10, `ReadPlaces`.
+    pub history: Arc<HistoryService>,
     /// Numbering-template service — CRUD (`Action::ManageSettings`, Admin-only)
     /// and per-context usage (`Action::Mutate{Devices,Acts,Cartridges}`, gated
     /// by the popup that calls it — Plan 05's `action_for_context`). Added in
@@ -429,6 +431,7 @@ impl AppCtx {
         // Phase 40 Plan 10: place-movement timeline read service. Read-only, no
         // writer dependency — mirrors PlaceService's ordering-independence note.
         let place_movements = Arc::new(PlaceMovementService::new(readers.clone()));
+        let history = Arc::new(HistoryService::new(readers.clone()));
 
         // Phase 40.2 Plan 05: numbering-template service (built in Plan 04,
         // wired into the composition root here). No cross-entity dependencies,
@@ -574,6 +577,7 @@ impl AppCtx {
             group_types,
             groups,
             place_movements,
+            history,
             number_templates,
             attachments,
             chat,

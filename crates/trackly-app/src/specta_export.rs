@@ -268,6 +268,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::groups::groups_set_values,
         // Phase 40 — Movement history timeline (Plan 10)
         crate::tauri_cmds::place_movements::place_movements_get_timeline,
+        crate::tauri_cmds::history::history_get_timeline,
         // Phase 40.2 Plan 05 — Numbering templates: Group A (CRUD, ManageSettings)
         crate::tauri_cmds::number_templates::number_templates_create,
         crate::tauri_cmds::number_templates::number_templates_update_mask,

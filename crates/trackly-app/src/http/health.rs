@@ -139,6 +139,7 @@ mod tests {
             clock.clone(),
         ));
         let place_movements = Arc::new(crate::services::PlaceMovementService::new(readers.clone()));
+        let history = Arc::new(crate::services::HistoryService::new(readers.clone()));
         let number_templates = Arc::new(crate::services::NumberTemplateService::new(
             writer.clone(),
             readers.clone(),
@@ -183,6 +184,7 @@ mod tests {
             group_types,
             groups,
             place_movements,
+            history,
             number_templates,
             attachments,
             chat,

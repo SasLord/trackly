@@ -18,6 +18,7 @@ pub mod fs_helpers;
 pub mod group_types;
 pub mod groups;
 pub mod health;
+pub mod history;
 pub mod number_templates;
 pub mod organization;
 pub mod place_movements;
