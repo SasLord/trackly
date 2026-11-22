@@ -129,6 +129,16 @@ body {
     opacity: 0.45;
     cursor: not-allowed;
   }
+
+  // Нажатое состояние кнопки-переключателя (41.10 D-15).
+  &[aria-pressed='true'] {
+    background: var(--tr-accent-soft);
+    color: var(--tr-accent-text);
+
+    &:hover:not(:disabled) {
+      background: var(--tr-accent-soft);
+    }
+  }
 }
 
 // ── Scrollbar (Webkit) ────────────────────────────────────────────────────────
