@@ -1690,9 +1690,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-21T14:31:23.075Z
-Stopped at: Phase 41.8 UI-SPEC approved
-Resume file: .planning/phases/41.8-groups-workspace/41.8-UI-SPEC.md
+Last session: 2026-11-22T10:46:48.911Z
+Stopped at: Phase 41.10 context gathered
+Resume file: .planning/phases/41.10-device-history/41.10-CONTEXT.md
 
 None
 
