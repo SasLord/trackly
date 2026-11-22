@@ -228,6 +228,13 @@ const VERDICTS = [
       'справочник переменных шаблона акта (`act.place_path`): описание переменной, не колонка',
   },
 
+  {
+    path: 'src/lib/historyEvents.ts',
+    kind: 'DATA_ONLY',
+    reason:
+      'словарь текстов ленты истории: короткий путь места с откатом на полный идёт в текст-заготовку; кнопки мест с title полного пути рисует MovementTimeline (LINK_BUTTON)',
+  },
+
   // --- DEMO: витрина дизайн-системы с вымышленными данными ---
   {
     path: 'src/features/showcase/',
