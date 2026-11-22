@@ -63,3 +63,5 @@ mod devices_type_conversion;
 mod devices_usb_host;
 #[path = "../devices_write_off_via_form.rs"]
 mod devices_write_off_via_form;
+#[path = "../history_status_devices.rs"]
+mod history_status_devices;
