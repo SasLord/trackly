@@ -18,11 +18,13 @@
   interface Props {
     open: boolean;
     title: string;
-    size?: 'md' | 'wide' | 'xwide' | 'pdf-preview';
+    size?: 'md' | 'wide' | 'xwide' | 'pdf-preview' | 'split';
     onClose: () => void;
     children?: Snippet;
     footer?: Snippet;
     titleExtra?: Snippet;
+    /** Слот шапки между заголовком и «×» (41.10 D-15). */
+    headerActions?: Snippet;
     /** FE-WR-10 (а): CSS selector (inside the dialog) of the element that gets
      *  the initial focus instead of the first focusable one (which is the «×»
      *  close button). Used by the D-01 soft-warning popups to land on the safe
@@ -38,6 +40,7 @@
     children,
     footer,
     titleExtra,
+    headerActions,
     initialFocus,
   }: Props = $props();
 
@@ -222,6 +225,11 @@
             {@render titleExtra()}
           {/if}
         </div>
+        {#if headerActions}
+          <div class="modal-header-actions">
+            {@render headerActions()}
+          </div>
+        {/if}
         <button type="button" class="modal-close" onclick={onClose} aria-label="Закрыть">×</button>
       </header>
       <div class="modal-body">
@@ -295,6 +303,17 @@
     height: min(90vh, 920px);
   }
 
+  .modal-split {
+    width: min(var(--modal-max-width-split), calc(100vw - 64px));
+    height: min(calc(100vh - 64px), 760px);
+  }
+  .modal-split .modal-body {
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .modal-header {
     display: flex;
     align-items: center;
@@ -310,6 +329,14 @@
     gap: var(--tr-space-xs);
     min-width: 0;
     flex: 1 1 auto;
+  }
+
+  .modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-2xs);
+    flex: none;
+    margin-left: var(--tr-space-xs);
   }
 
   .modal-title {
