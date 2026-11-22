@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41.10 (device-history) — EXECUTING
-Plan: 1 of 19 выполнен (41.10-01 — V057 history_events, репозиторий, movement_id; D-25)
+Plan: 2 of 19 выполнено (41.10-01 — V057 history_events, movement_id; 41.10-02 — Modal headerActions/split, стор historyPanel)
 Status: Executing Phase 41.10
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
