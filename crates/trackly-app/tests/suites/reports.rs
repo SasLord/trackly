@@ -9,6 +9,8 @@
 // тестов остаются самодостаточными и не правились при сборке в suite.
 #![allow(clippy::duplicate_mod)]
 
+#[path = "../history_report_guard.rs"]
+mod history_report_guard;
 #[path = "../html_act_render.rs"]
 mod html_act_render;
 #[path = "../html_report_render.rs"]
