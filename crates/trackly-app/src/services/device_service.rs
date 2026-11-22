@@ -1496,6 +1496,7 @@ impl DeviceService {
                         source_chain: format!("audit_log before-json: {e}"),
                     })?;
                 let before_place_id = before.as_ref().and_then(|b| b.place_id);
+                let before_status_id = before.as_ref().map(|b| b.status_id);
 
                 // Phase 41.4 (D-21): пока по устройству открыта ремонтная заявка, ручная
                 // смена статуса и места запрещена. Конфликт возникает только если значение
@@ -1592,12 +1593,14 @@ impl DeviceService {
                     .as_deref()
                     .is_some_and(is_repair_exempt_status_code);
                 let mut group_moved = false;
+                // Phase 41.10 (D-25): id перемещения, записанного этой правкой.
+                let mut history_movement_id: Option<i64> = None;
                 if was_exempt && !status_is_exempt && !to_written_off {
                     if let Some(g) = groups.group_of_device_in_tx(&tx, id)? {
                         if let Some(group_place) = g.place_id {
                             if after.place_id != Some(group_place) {
                                 let deps = crate::services::group_place::GroupMoveDeps::new();
-                                apply_group_place_to_device_in_tx(
+                                let place_change = apply_group_place_to_device_in_tx(
                                     &tx,
                                     &deps,
                                     id,
@@ -1612,6 +1615,7 @@ impl DeviceService {
                                         act_id: None,
                                     },
                                 )?;
+                                history_movement_id = place_change.movement_id;
                                 after = repo.get_in_tx(&tx, id)?;
                                 group_moved = true;
                             }
@@ -1716,7 +1720,7 @@ impl DeviceService {
                 // D-17: при переносе на место группы запись журнала уже написана
                 // примитивом apply_group_place_to_device_in_tx — второй не пишем.
                 if !group_moved {
-                    place_movements_repo.record_movement_if_applicable(
+                    history_movement_id = place_movements_repo.record_movement_if_applicable(
                         &tx,
                         place_repo.as_ref(),
                         MovementEntityKind::Device,
@@ -1728,6 +1732,28 @@ impl DeviceService {
                         None,
                         user_id_opt,
                         now,
+                    )?;
+                }
+
+                // Phase 41.10 (D-06, D-25, ST-1): событие смены статуса пишется ПОСЛЕ
+                // перемещения и несёт его movement_id; при равенстве статусов молчит.
+                if let Some(before_status) = before_status_id {
+                    let operation_id = crate::services::history_events::new_operation_id();
+                    crate::services::history_events::record_status_change_in_tx(
+                        &tx,
+                        id,
+                        before_status,
+                        after.status_id,
+                        &crate::services::history_events::HistoryCause {
+                            operation_id: &operation_id,
+                            source: trackly_core::domain::history_events::HistoryReason::Manual,
+                            act_id: None,
+                            request_id: None,
+                            ref_group: None,
+                            movement_id: history_movement_id,
+                            user_id: user_id_opt,
+                            now,
+                        },
                     )?;
                 }
 
