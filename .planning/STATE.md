@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-11-22T11:28:49.583Z"
-last_activity: 2026-11-22 -- Phase 41.10 planning complete
+last_updated: "2026-11-22T11:30:18.181Z"
+last_activity: 2026-11-22 -- Phase 41.10 execution started
 progress:
   total_phases: 27
   completed_phases: 22
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41.8 — groups-workspace
+**Current focus:** Phase 41.10 — device-history
 
 ## Current Position
 
-Phase: 41.10 (device-history) — PLANNED
-Plan: 0 of 19 (19 планов / 14 волн, plan-checker PASSED за 2 итерации, решения D-24/D-25 добавлены после исследования)
-Status: Ready to execute — фаза 41.8 закрыта 2026-11-22 (35/35, UAT 16/16); далее /gsd-execute-phase 41.10
+Phase: 41.10 (device-history) — EXECUTING
+Plan: 1 of 19 выполнен (41.10-01 — V057 history_events, репозиторий, movement_id; D-25)
+Status: Executing Phase 41.10
 
 **Почему 41.9, а не 41.4 (решение пользователя 2026-11-08):** в «Устройствах» группы типа АРМ не
 показаны так, как остальные группы (нет строки с шевроном и раскрытием состава), — это сбивает с
@@ -186,7 +186,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-22 -- Phase 41.10 planning complete
+Last activity: 2026-11-22 -- Phase 41.10 execution started
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
