@@ -18,6 +18,7 @@ pub mod employee_device;
 pub mod group_types;
 pub mod groups;
 pub mod health;
+pub mod history;
 pub mod number_template;
 pub mod organization;
 pub mod place;

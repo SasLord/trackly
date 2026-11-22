@@ -63,73 +63,10 @@ impl PlaceMovementService {
             let conn = readers.acquire();
             let rows = repo.get_history(&conn, &entity_type, entity_id)?;
 
-            let mut out = Vec::with_capacity(rows.len());
-            for row in rows {
-                // D-11 actor-display precedence: ФИО snapshot → current login
-                // fallback (edge case, should not normally happen post-40-05) →
-                // "система" for user_id IS NULL.
-                let actor_display = match (row.user_id, row.actor_name_snapshot.as_deref()) {
-                    (Some(_), Some(name)) if !name.is_empty() => name.to_string(),
-                    (Some(uid), _) => conn
-                        .query_row("SELECT login FROM users WHERE id = ?1", params![uid], |r| {
-                            r.get::<_, String>(0)
-                        })
-                        .optional()
-                        .ok()
-                        .flatten()
-                        .unwrap_or_else(|| "система".to_string()),
-                    (None, _) => "система".to_string(),
-                };
-
-                // Single owner of this formula since Phase 40-29 gap-closure:
-                // `act_number_display::resolve_movement_act_number` — used by
-                // BOTH the timeline (here) and `report_service.rs`'s movements
-                // report, so a return act shows the same canonical number
-                // ("20в", not the bare parent "20") on both surfaces.
-                let act_number: Option<String> = resolve_movement_act_number(&conn, row.act_id);
-
-                // Shortening formula: single owner is
-                // `place_path_display::compute_place_path_short` (Plan 40-02) — no
-                // JS mirror, no re-derived copy (WR-03/WR-08 anti-pattern).
-                let from_place_path_short = compute_place_path_short_with_conn(
-                    &conn,
-                    Some(row.from_place_id),
-                    Some(row.from_place_path.clone()),
-                );
-                let to_place_path_short = compute_place_path_short_with_conn(
-                    &conn,
-                    Some(row.to_place_id),
-                    Some(row.to_place_path.clone()),
-                );
-
-                out.push(MovementEntryDto {
-                    id: row.id,
-                    entity_type: row.entity_type,
-                    entity_id: row.entity_id,
-                    from_place_id: row.from_place_id,
-                    from_place_path: row.from_place_path,
-                    from_place_path_short,
-                    to_place_id: row.to_place_id,
-                    to_place_path: row.to_place_path,
-                    to_place_path_short,
-                    actor_display,
-                    // Raw token passed through by design (Pitfall 6 / IN-01):
-                    // an unrecognized `source` never crashes this read — the UI
-                    // composes the final phrase, `MovementSource::from_str_lenient`
-                    // is available for any Rust-side caller needing a typed match.
-                    source: row.source,
-                    note: row.note,
-                    act_id: row.act_id,
-                    act_number,
-                    // D-28/D-26: прямо из колонок журнала (V046), без доп. запросов
-                    // и без JOIN групп — снимок читаем после переименования/удаления.
-                    batch_id: row.batch_id,
-                    group_id: row.group_id,
-                    group_label: row.entity_label,
-                    request_id: row.request_id,
-                    created_at_utc: row.created_at_utc,
-                });
-            }
+            let out: Vec<MovementEntryDto> = rows
+                .into_iter()
+                .map(|row| movement_row_to_dto(&conn, row))
+                .collect();
 
             Ok(out)
         })
@@ -137,5 +74,68 @@ impl PlaceMovementService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })?
+    }
+}
+
+/// ФИО-снимок → login текущего пользователя → «система» (D-11). Единый владелец
+/// приоритета автора для перемещений и событий истории (фаза 41.10).
+pub(crate) fn resolve_actor_display(
+    conn: &rusqlite::Connection,
+    user_id: Option<i64>,
+    snapshot: Option<&str>,
+) -> String {
+    match (user_id, snapshot) {
+        (Some(_), Some(name)) if !name.is_empty() => name.to_string(),
+        (Some(uid), _) => conn
+            .query_row("SELECT login FROM users WHERE id = ?1", params![uid], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "система".to_string()),
+        (None, _) => "система".to_string(),
+    }
+}
+
+/// Строка журнала → `MovementEntryDto`. Единый владелец формул номера акта и
+/// сокращённых путей (общий для `get_timeline` и `HistoryService`).
+pub(crate) fn movement_row_to_dto(
+    conn: &rusqlite::Connection,
+    row: trackly_infra::repos::place_movements_sqlite::MovementRow,
+) -> MovementEntryDto {
+    let actor_display =
+        resolve_actor_display(conn, row.user_id, row.actor_name_snapshot.as_deref());
+    let act_number: Option<String> = resolve_movement_act_number(conn, row.act_id);
+    let from_place_path_short = compute_place_path_short_with_conn(
+        conn,
+        Some(row.from_place_id),
+        Some(row.from_place_path.clone()),
+    );
+    let to_place_path_short = compute_place_path_short_with_conn(
+        conn,
+        Some(row.to_place_id),
+        Some(row.to_place_path.clone()),
+    );
+    MovementEntryDto {
+        id: row.id,
+        entity_type: row.entity_type,
+        entity_id: row.entity_id,
+        from_place_id: row.from_place_id,
+        from_place_path: row.from_place_path,
+        from_place_path_short,
+        to_place_id: row.to_place_id,
+        to_place_path: row.to_place_path,
+        to_place_path_short,
+        actor_display,
+        source: row.source,
+        note: row.note,
+        act_id: row.act_id,
+        act_number,
+        batch_id: row.batch_id,
+        group_id: row.group_id,
+        group_label: row.entity_label,
+        request_id: row.request_id,
+        created_at_utc: row.created_at_utc,
     }
 }
