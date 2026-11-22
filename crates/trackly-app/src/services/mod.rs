@@ -27,6 +27,7 @@ pub(crate) mod group_membership;
 pub(crate) mod group_place;
 pub mod group_service;
 pub mod group_type_service;
+pub(crate) mod history_events;
 pub mod number_template_service;
 pub mod org_db_service;
 pub mod organization_service;
