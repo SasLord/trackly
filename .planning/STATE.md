@@ -186,7 +186,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-11-22 -- Phase 41.8 complete (35/35, verification passed)
+Last activity: 2026-11-22 -- Quick 261122-i5p: акт сохраняет статус «На списание» (R7-01); аудит v1.4 раунд 7
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -1611,6 +1611,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 | Date | Slug | Summary | Status |
 |------|------|---------|--------|
+| 2026-11-22 | i5p-act-keep-write-off-status | R7-01 аудита v1.4 (решение пользователя): акт передаёт, возвращает и откатывает устройства «На списание», сохраняя статус; «Списано» и открытая ремонтная заявка по-прежнему отказывают; пикер акта предлагает одиночные «На списание»; 7 тестов acts_to_write_off_status. Живая проверка — за пользователем. | complete ✓ |
 | 2026-11-21 | hjw-residual-41-7-privacy | WR-07 вердикт exw, WR-05 IP в аудите bootstrap, WR-08, WR-04 отмена таймера WS (W6), WR-09 (INV-11), INT-02→PAG-01; гейт приватности: межстрочный проход, cp1251/UTF-16/PNG, бинарные форматы; 41.3-SECURITY набл. 4/5/8 закрыты (vcpkg закреплён, гонка скана, симлинки), 7 — принятый риск R-07 (PDF iframe без sandbox). | complete ✓ |
 | 2026-11-21 | hei-dead-api-reports | INT-04 маршрут reports_get_report_counts + тост вместо немого catch; INT-11/24 удалены 6 HTTP-маршрутов без потребителя + гейт dead_commands_have_no_ui_consumer; INT-12 снято 66 мёртвых фильтров groups.deleted_at_utc; TLS-сертификат сохраняется рядом с exe. | complete ✓ |
 | 2026-11-21 | heg-ui-gates-cleanup | N2 printers_get_readings (Tauri+HTTP, Case 89); INT-36 а–г, INT-10 кнопка папки только в Tauri, NEW-6, IN-01; INT-35 HTML_COMMANDS + гейт; INT-20 caption, INT-19 порог 4.6; WR-13 мета-гейт selftest-проводки + selftest корневых гейтов в ci-fast. | complete ✓ |
