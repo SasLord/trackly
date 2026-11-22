@@ -221,6 +221,7 @@ use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::tauri_cmds::devices::{build_devices_create, build_devices_update};
+use trackly_app::tauri_cmds::history::build_history_get_timeline;
 use trackly_app::tauri_cmds::number_templates::{
     build_number_template_contexts_get, build_number_template_contexts_set,
     build_number_templates_create, build_number_templates_delete,
@@ -7325,4 +7326,94 @@ fn http_routes_covered_by_role_matrix() {
             "ROUTE_MATRIX_EXEMPT: «{name}» уже есть в матрице — убери из EXEMPT"
         );
     }
+}
+
+/// Лента истории (Phase 41.10, HST-05, D-02): `Action::ReadPlaces`, оба транспорта.
+/// Отдельная функция, а не кейс монолита. Ответ разбирается как JSON-массив:
+/// `spa_fallback` на отсутствующий маршрут отдаёт index.html с 200, и тест краснеет.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_get_timeline_role_matrix() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let env = gt_env().await;
+        let payload = json!({ "entityType": "device", "entityId": 999_999 });
+
+        // HTTP: без сессии 401, Employee 403.
+        let (status, _) = post_with_cookie_json(
+            gt_app(&env.ctx),
+            "/api/v1/history_get_timeline",
+            payload.clone(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "без сессии → history_get_timeline → ожидался 401, получен {status}"
+        );
+        let (status, _) = gt_post(
+            &env,
+            &env.employee_cookie,
+            "history_get_timeline",
+            payload.clone(),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "employee → history_get_timeline → ожидался 403, получен {status}"
+        );
+
+        // HTTP: Admin и Manager — 200 и JSON-массив.
+        for (who, cookie) in [
+            ("manager", &env.manager_cookie),
+            ("admin", &env.admin_cookie),
+        ] {
+            let (status, body) =
+                gt_post(&env, cookie, "history_get_timeline", payload.clone()).await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "{who} → history_get_timeline → ожидался 200, получен {status} ({body})"
+            );
+            assert!(
+                body.is_array(),
+                "{who}: ответ не массив (spa_fallback вместо роута?): {body}"
+            );
+        }
+
+        // HTTP: неизвестный entityType — 4xx, не пустая лента.
+        let (status, body) = gt_post(
+            &env,
+            &env.manager_cookie,
+            "history_get_timeline",
+            json!({ "entityType": "unknown_kind", "entityId": 1 }),
+        )
+        .await;
+        assert!(
+            status.is_client_error(),
+            "неизвестный entityType → ожидался 4xx, получен {status} ({body})"
+        );
+
+        // Tauri-путь: Manager и Admin Ok, Employee Forbidden.
+        for (who, id) in [("manager", &env.manager), ("admin", &env.admin)] {
+            let res = build_history_get_timeline(&env.ctx, id, "device".to_string(), 999_999).await;
+            assert!(res.is_ok(), "{who} (Tauri) → ожидали Ok, получили {res:?}");
+        }
+        let res =
+            build_history_get_timeline(&env.ctx, &env.employee, "device".to_string(), 999_999)
+                .await;
+        assert!(
+            matches!(res, Err(AppError::Forbidden)),
+            "employee (Tauri) → ожидали Forbidden, получили {res:?}"
+        );
+        let res =
+            build_history_get_timeline(&env.ctx, &env.manager, "unknown_kind".to_string(), 1).await;
+        assert!(
+            matches!(res, Err(AppError::Validation { .. })),
+            "неизвестный entityType (Tauri) → ожидали Validation, получили {res:?}"
+        );
+        env.ctx.shutdown.cancel();
+    })
+    .await
+    .expect("history_get_timeline_role_matrix exceeded 60s");
 }
