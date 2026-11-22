@@ -28,6 +28,7 @@ use trackly_core::domain::devices::DeviceRow;
 use trackly_core::domain::groups::ActGroupEffectKind;
 use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateContext, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
+use trackly_core::domain::repairs::DEVICE_STATUS_CODE_TO_WRITE_OFF;
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
 use trackly_core::ports::places::PlaceRepository;
@@ -90,10 +91,11 @@ enum ActWriteStep {
 /// Устройство можно передать актом (D-34 фазы 41.4; заменяет правило D-02 фазы 41.2).
 ///
 /// Порядок: открытая ремонтная заявка отказывает раньше всего (D-22); затем «Списано»
-/// отказывает всегда, в том числе члену группы (D-27, CR-01); затем допустимы статусы
+/// отказывает всегда, в том числе члену группы (D-27, CR-01); «На списание» допустимо
+/// (R7-01: акт передаёт такое устройство и сохраняет статус); затем допустимы статусы
 /// «На складе» и «В работе» (определяются по `code`, не по подписи и не по числовому id)
 /// и член живой группы при любом остальном статусе. Вне групп любой другой статус
-/// («Ожидает ремонта», «В ремонте», «На списание») акт не допускает.
+/// («Ожидает ремонта», «В ремонте») акт не допускает.
 fn is_act_assignable(
     tx: &rusqlite::Transaction<'_>,
     groups: &SqliteGroupRepository,
@@ -112,6 +114,9 @@ fn is_act_assignable(
     // не передаётся актом ни в одной ветке.
     if device.status_code == "списано" {
         return Ok(false);
+    }
+    if device.status_code == DEVICE_STATUS_CODE_TO_WRITE_OFF {
+        return Ok(true);
     }
     if device.status_id == on_warehouse_status_id {
         return Ok(true);
@@ -150,6 +155,29 @@ fn assignable_conflict(tx: &rusqlite::Transaction<'_>, dev_id: i64) -> AppError 
         }
     };
     AppError::Conflict { reason }
+}
+
+/// Статус устройства при выдаче актом: «На списание» сохраняется (R7-01), иначе «В работе».
+fn handover_status_id(before: &DeviceRow, in_work_status_id: i64) -> i64 {
+    if before.status_code == DEVICE_STATUS_CODE_TO_WRITE_OFF {
+        before.status_id
+    } else {
+        in_work_status_id
+    }
+}
+
+/// Статус устройства при возврате актом: «На списание» сохраняется (R7-01), иначе «На складе».
+fn return_status_id(before: &DeviceRow, on_warehouse_status_id: i64) -> i64 {
+    if before.status_code == DEVICE_STATUS_CODE_TO_WRITE_OFF {
+        before.status_id
+    } else {
+        on_warehouse_status_id
+    }
+}
+
+/// Устройство можно вернуть актом: «В работе» либо «На списание» (R7-01).
+fn is_returnable_status(d: &DeviceRow, in_work_status_id: i64) -> bool {
+    d.status_id == in_work_status_id || d.status_code == DEVICE_STATUS_CODE_TO_WRITE_OFF
 }
 
 /// Отказ возврата устройства, не стоящего «В работе». Для «Списано» (D-27) текст называет
@@ -785,7 +813,7 @@ impl ActService {
                         let after = devices_repo.update_status_and_place_in_tx(
                             &tx,
                             dev_id,
-                            in_work_status_id,
+                            handover_status_id(&before, in_work_status_id),
                             resolved_place_id,
                             now,
                         )?;
@@ -1226,7 +1254,7 @@ impl ActService {
                     let after = devices_repo.update_status_and_place_in_tx(
                         &tx,
                         dev_id,
-                        in_work_status_id,
+                        handover_status_id(&before, in_work_status_id),
                         resolved_place_id,
                         now,
                     )?;
@@ -2280,7 +2308,7 @@ impl ActService {
 
                         // CR-02 (ACT-13): status guard. Защита от двойного
                         // возврата — device должен быть 'в_работе'.
-                        if before.status_id != in_work_status_id {
+                        if !is_returnable_status(&before, in_work_status_id) {
                             return Err(not_in_work_return_conflict(&before));
                         }
 
@@ -2376,7 +2404,7 @@ impl ActService {
                         let after = devices_repo.update_full_in_tx(
                             &tx,
                             device_id,
-                            on_warehouse_status_id,
+                            return_status_id(&before, on_warehouse_status_id),
                             location_for_device,
                             effective_condition.as_deref(),
                             now,
@@ -2781,7 +2809,7 @@ impl ActService {
                         });
                     }
                     let d = devices_repo.get_in_tx(&tx, dev_id)?;
-                    if d.status_id != in_work_status_id {
+                    if !is_returnable_status(&d, in_work_status_id) {
                         return Err(not_in_work_return_conflict(&d));
                     }
 
@@ -3340,7 +3368,7 @@ impl ActService {
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         added_id,
-                        on_warehouse_status_id,
+                        return_status_id(&before, on_warehouse_status_id),
                         effective_location,
                         condition.as_deref(),
                         now,
@@ -3535,7 +3563,7 @@ impl ActService {
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         dev_id,
-                        on_warehouse_status_id,
+                        return_status_id(&before, on_warehouse_status_id),
                         effective_location,
                         condition.as_deref(),
                         now,
