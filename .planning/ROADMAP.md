@@ -2322,7 +2322,7 @@ Plans:
 **Wave 12** *(blocked on Wave 11 completion)*
 
 - [x] 41.10-13-PLAN.md — реестровый гейт мест записи истории с мутациями и проверкой порядка
-- [ ] 41.10-16-PLAN.md — GroupPanel, PrinterDetail, CartridgeDetail, «Журнал опросов»
+- [x] 41.10-16-PLAN.md — GroupPanel, PrinterDetail, CartridgeDetail, «Журнал опросов»
 
 **Wave 13** *(blocked on Wave 12 completion)*
 
