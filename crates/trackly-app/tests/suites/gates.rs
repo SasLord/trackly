@@ -37,6 +37,8 @@ mod entities_changed_repairs;
 mod entities_changed_ws;
 #[path = "../group_write_sites.rs"]
 mod group_write_sites;
+#[path = "../history_write_sites_gate.rs"]
+mod history_write_sites_gate;
 #[path = "../html_field_row_underline_gate.rs"]
 mod html_field_row_underline_gate;
 #[path = "../html_header_parity.rs"]
