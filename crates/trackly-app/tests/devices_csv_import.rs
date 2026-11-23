@@ -760,18 +760,16 @@ async fn import_commit_records_audit_log() {
 // Helper: auto-map CSV headers to device field names
 // ---------------------------------------------------------------------------
 
-/// Зеркало АВТО-маппинга заголовков в модалке импорта
-/// (`ui/src/features/devices/DeviceImportCsvModal.svelte::autoMapHeaders`) —
-/// ровно тот же набор алиасов, ни одного лишнего.
+/// Авто-маппинг заголовков CSV — зеркало `autoMapHeaders` модалки импорта
+/// (`DeviceImportCsvModal.svelte`).
 ///
-/// WR-14 (ревью 40.4): раньше этот helper был ШИРЕ продукта — принимал
-/// «Расположение» / «Местоположение» / `location` / `inv_no` / `serial_no` /
-/// `specs` / `kit` / `state` / `status`, которых в модалке нет, и не принимал
-/// `место` / `Place`, которые в ней есть. Тест, прогоняющий маппинг, который
-/// продукт никогда не производит, проверяет не продукт. Набор ниже сверен
-/// строка-в-строку со `switch (h)` модалки; при правке одной таблицы обязана
-/// правиться и вторая (заголовки, которые модалка НЕ узнаёт, пользователь
-/// выбирает руками — см. `auto_map_with_manual_place`).
+/// Источник истины для обеих сторон — golden-фикстура
+/// `tests/fixtures/devices/automap-golden.json` (заголовок -> поле, пустая
+/// строка = не распознан). Rust-тест `auto_map_golden_fixture` ниже и
+/// `ui/scripts/check-import-automap.mjs` (в `pnpm lint`) прогоняют её каждый
+/// против своей реализации, поэтому расхождение таблиц (WR-14 ревью 40.4) —
+/// красный гейт, а не договорённость в комментарии. Меняя алиасы, правьте
+/// модалку, этот helper И фикстуру.
 pub(crate) fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
 
@@ -792,7 +790,9 @@ pub(crate) fn auto_map(headers: &[String]) -> std::collections::HashMap<String, 
             }
             "Комплектация" => Some("kit"),
             "Состояние" => Some("state"),
-            "Место" | "место" | "Place" | "place" => Some("place"),
+            "Место" | "место" | "Place" | "place" | "Расположение" | "Местоположение" => {
+                Some("place")
+            }
             "Статус" => Some("status"),
             _ => None,
         };
@@ -804,77 +804,32 @@ pub(crate) fn auto_map(headers: &[String]) -> std::collections::HashMap<String, 
     map
 }
 
-/// Авто-маппинг + РУЧНОЙ выбор поля «Место» для заголовка «Расположение».
-///
-/// WR-14: заголовок «Расположение» в `tests/fixtures/devices/*.csv` модалка
-/// авто-НЕ распознаёт (в её таблице его нет) — на шаге 2 пользователь
-/// выбирает для этой колонки поле «Место» в dropdown'е руками. Этот helper
-/// воспроизводит ровно тот ручной выбор, поэтому fixture-тесты остаются
-/// сценарием, который продукт реально производит, а `auto_map` выше не
-/// приходится расширять алиасами, которых в продукте нет.
+/// «Расположение» теперь распознаётся авто-маппингом (39 W6); имя оставлено,
+/// чтобы не менять вызовы в fixture-тестах.
 fn auto_map_with_manual_place(headers: &[String]) -> std::collections::HashMap<String, String> {
-    let mut map = auto_map(headers);
-    for header in headers {
-        if header.trim() == "Расположение" {
-            map.insert(header.clone(), "place".to_string());
-        }
-    }
-    map
+    auto_map(headers)
 }
 
-/// WR-14: сторож против повторного расхождения `auto_map` с авто-маппингом
-/// модалки. Проверяет обе стороны: алиасы «Место» / «место» / `Place` /
-/// `place`, которые модалка узнаёт, распознаются; заголовки, которых в её
-/// `switch (h)` НЕТ («Расположение», «Местоположение», `location`, `inv_no`),
-/// остаются НЕраспознанными — то есть helper не шире продукта. «Расположение»
-/// становится `place` только через явный ручной выбор
-/// (`auto_map_with_manual_place`), как это и происходит в модалке.
+/// Golden-фикстура автомаппинга: каждый заголовок даёт ровно записанное поле
+/// (пустое — «не распознан»). Парный гейт стороны UI — `check-import-automap.mjs`.
 #[test]
-fn auto_map_mirrors_modal_aliases_and_stays_no_broader() {
-    let headers: Vec<String> = [
-        "Наименование",
-        "Место",
-        "место",
-        "Place",
-        "place",
-        "Расположение",
-        "Местоположение",
-        "location",
-        "inv_no",
-        "status",
-    ]
-    .iter()
-    .map(|h| (*h).to_string())
-    .collect();
-
-    let map = auto_map(&headers);
-    for known in ["Место", "место", "Place", "place"] {
+fn auto_map_golden_fixture() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/devices/automap-golden.json");
+    let raw = std::fs::read_to_string(&path).expect("golden-фикстура читается");
+    let json: serde_json::Value = serde_json::from_str(&raw).expect("golden-фикстура — JSON");
+    let cases = json["cases"].as_array().expect("cases — массив");
+    assert!(cases.len() > 10, "фикстура не должна быть пустой (вакуум)");
+    for case in cases {
+        let header = case["header"].as_str().expect("header").to_string();
+        let want = case["field"].as_str().expect("field");
+        let map = auto_map(std::slice::from_ref(&header));
         assert_eq!(
-            map.get(known).map(String::as_str),
-            Some("place"),
-            "{known:?} есть в autoMapHeaders модалки — helper обязан его распознавать"
+            map.get(&header).map(String::as_str).unwrap_or(""),
+            want,
+            "заголовок {header:?}: автомаппинг расходится с golden-фикстурой"
         );
     }
-    for unknown in [
-        "Расположение",
-        "Местоположение",
-        "location",
-        "inv_no",
-        "status",
-    ] {
-        assert!(
-            !map.contains_key(unknown),
-            "{unknown:?} в autoMapHeaders модалки НЕТ — helper не должен быть шире продукта"
-        );
-    }
-
-    assert_eq!(
-        auto_map_with_manual_place(&headers)
-            .get("Расположение")
-            .map(String::as_str),
-        Some("place"),
-        "«Расположение» маппится только ручным выбором поля «Место» на шаге 2"
-    );
 }
 
 // ---------------------------------------------------------------------------

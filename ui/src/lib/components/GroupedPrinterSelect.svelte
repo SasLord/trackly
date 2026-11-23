@@ -32,7 +32,7 @@
     onchange,
   }: Props = $props();
 
-  const NO_LOCATION_LABEL = 'Без расположения';
+  const NO_LOCATION_LABEL = 'Без места';
 
   interface PrinterGroup {
     label: string;

@@ -121,6 +121,8 @@
           case 'место':
           case 'Place':
           case 'place':
+          case 'Расположение':
+          case 'Местоположение':
             return 'place';
           case 'Статус':
             return 'status';

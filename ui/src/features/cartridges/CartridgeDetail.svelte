@@ -172,10 +172,11 @@
       if (p.given_by_name) parts.push(`выдал ${String(p.given_by_name)}`);
       if (p.given_to_name) parts.push(`получил ${String(p.given_to_name)}`);
       // Plan 09 Task 2 renamed the audit-log JSON key from "location" to
-      // "place_id" — the value is now a numeric place id, not a readable
-      // path string (known display-quality tradeoff, out of this plan's
-      // scope; would need a network lookup inside a synchronous parser).
-      if (p.place_id) parts.push(String(p.place_id));
+      // "place_id" — the value is a numeric place id, not a readable path.
+      // Читаемый путь требует сетевого запроса (в клиенте нет стора мест, а
+      // парсер синхронный) — это отдельный бэкенд/асинхронный шаг (долг 39 W3,
+      // перенесён); пока подпись «место №N» вместо голого числа.
+      if (p.place_id) parts.push(`место №${String(p.place_id)}`);
       return parts.length > 0 ? parts.join(', ') : null;
     } catch {
       return null;

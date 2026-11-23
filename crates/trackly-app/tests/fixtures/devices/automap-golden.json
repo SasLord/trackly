@@ -1,0 +1,121 @@
+{
+  "_comment": "Golden-фикстура автомаппинга заголовков CSV импорта устройств: заголовок -> поле ('' = не распознан). Читают Rust-тест auto_map_golden_fixture и ui/scripts/check-import-automap.mjs. Только вымышленные/справочные заголовки.",
+  "cases": [
+    {
+      "header": "Тип",
+      "field": "type"
+    },
+    {
+      "header": "тип",
+      "field": "type"
+    },
+    {
+      "header": "Наименование",
+      "field": "name"
+    },
+    {
+      "header": "наименование",
+      "field": "name"
+    },
+    {
+      "header": "Имя",
+      "field": "name"
+    },
+    {
+      "header": "имя",
+      "field": "name"
+    },
+    {
+      "header": "Инвентарный №",
+      "field": "inventory_no"
+    },
+    {
+      "header": "Инв.№",
+      "field": "inventory_no"
+    },
+    {
+      "header": "Инвентарный",
+      "field": "inventory_no"
+    },
+    {
+      "header": "Серийный №",
+      "field": "serial_no"
+    },
+    {
+      "header": "Серийный",
+      "field": "serial_no"
+    },
+    {
+      "header": "Модель",
+      "field": "model"
+    },
+    {
+      "header": "модель",
+      "field": "model"
+    },
+    {
+      "header": "Технические характеристики",
+      "field": "specs"
+    },
+    {
+      "header": "Тех.характеристики",
+      "field": "specs"
+    },
+    {
+      "header": "Комплектация",
+      "field": "kit"
+    },
+    {
+      "header": "Состояние",
+      "field": "state"
+    },
+    {
+      "header": "Место",
+      "field": "place"
+    },
+    {
+      "header": "место",
+      "field": "place"
+    },
+    {
+      "header": "Place",
+      "field": "place"
+    },
+    {
+      "header": "place",
+      "field": "place"
+    },
+    {
+      "header": "Расположение",
+      "field": "place"
+    },
+    {
+      "header": "Местоположение",
+      "field": "place"
+    },
+    {
+      "header": "Статус",
+      "field": "status"
+    },
+    {
+      "header": "  Статус  ",
+      "field": "status"
+    },
+    {
+      "header": "location",
+      "field": ""
+    },
+    {
+      "header": "inv_no",
+      "field": ""
+    },
+    {
+      "header": "Цвет",
+      "field": ""
+    },
+    {
+      "header": "",
+      "field": ""
+    }
+  ]
+}

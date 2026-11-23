@@ -451,7 +451,7 @@
             >
           </div>
           <div class="meta-row">
-            <span class="meta-label">Расположение</span>
+            <span class="meta-label">Место</span>
             <span class="meta-value">{deviceData?.full_path ?? '—'}</span>
           </div>
           <div class="meta-row">

@@ -8,7 +8,7 @@
 // пара «действующий / ожидающий» делит variant и различается яркостью.
 
 export type StatusVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
-export type StatusAppearance = 'soft' | 'solid' | 'dot' | 'count';
+export type StatusAppearance = 'soft' | 'solid' | 'count';
 export interface StatusTone {
   variant: StatusVariant;
   appearance: StatusAppearance;
