@@ -13,7 +13,12 @@ feature-depth = 1
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-ignore = []
+# Каждая запись: id, почему неприменимо, когда пересмотреть (не позднее 2027-02-24).
+# RUSTSEC-2026-0459 (SQLite) здесь НЕ игнорируется — закрыт обновлением rusqlite 0.41.
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "rsa (Marvin, тайминг) приходит только через sspi/picky (Kerberos-SSO), патча в зафиксированной rc-версии нет, sspi пинит rsa =0.10.0-rc.18. Атака требует наблюдения таймингов RSA-расшифровки по сети; сервис её не выставляет. Пересмотреть: при выходе sspi с обновлённым rsa, не позднее 2027-02-24." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained (не уязвимость): парсит только шрифты, встроенные в бинарник (krilla/rustybuzz) и dev-тесты lopdf; замена skrifa требует смены krilla/lopdf upstream. Пересмотреть: при выходе krilla/lopdf без ttf-parser, не позднее 2027-02-24." },
+]
 
 [licenses]
 # License allow-list — extend cautiously and only after a manual audit of the new license.
