@@ -233,9 +233,15 @@
   // Because this component is re-mounted via {#key} on every modal open,
   // these are always fresh: no stale closures, no missing resets.
   // ---------------------------------------------------------------------------
-  let name = $state(target?.name ?? '');
-  let placeId = $state<number | null>(target ? target.place_id : presetPlaceId);
-  let statusId = $state(target ? String(target.status_id) : '');
+  // Снимок при открытии формы — повторная инициализация затёрла бы ввод.
+  const initialTarget = untrack(() => target);
+  const initialPresetPlaceId = untrack(() => presetPlaceId);
+  const initialReadonly = untrack(() => readonly);
+  let name = $state(initialTarget?.name ?? '');
+  let placeId = $state<number | null>(
+    initialTarget ? initialTarget.place_id : initialPresetPlaceId,
+  );
+  let statusId = $state(initialTarget ? String(initialTarget.status_id) : '');
   // Фаза 41.1 (D-18): статус по умолчанию для create-режима ставится, как
   // только справочник загружен; дальше поле полностью ручное. Флаг не
   // реактивный намеренно — применяем ровно один раз.
@@ -315,7 +321,7 @@
   function noExpandStatus(): { id: number; label: string }[] {
     return [];
   }
-  let inventoryNo = $state(target?.inventory_no ?? '');
+  let inventoryNo = $state(initialTarget?.inventory_no ?? '');
   // Phase 40.3 Plan 07 (UAT-defect fix): captured ONCE from `target` at
   // mount, never recomputed from the live `inventoryNo` $state — comparing
   // the live value against this snapshot tells us whether the field still
@@ -325,12 +331,12 @@
   // active). Safe as a plain `const`: this component is fully remounted via
   // {#key openInstanceCounter} in DeviceFormModal on every open, so there is
   // no stale-closure risk across re-opens.
-  const savedInventoryNo = (target?.inventory_no ?? '').trim();
-  let serialNo = $state(target?.serial_no ?? '');
-  let model = $state(target?.model ?? '');
-  let specs = $state(target?.specs ?? '');
-  let kit = $state(target?.kit ?? '');
-  let stateField = $state(target?.state ?? '');
+  const savedInventoryNo = (initialTarget?.inventory_no ?? '').trim();
+  let serialNo = $state(initialTarget?.serial_no ?? '');
+  let model = $state(initialTarget?.model ?? '');
+  let specs = $state(initialTarget?.specs ?? '');
+  let kit = $state(initialTarget?.kit ?? '');
+  let stateField = $state(initialTarget?.state ?? '');
   // Блок «SNMP / Сеть» (IP и community) доступен и при ПРАВКЕ принтера (D-13).
   // Это ОТМЕНЯЕТ решение D-03 фазы 40.3 («только создание»): при правке IP нельзя
   // было ни изменить, ни стереть. IP и USB-хост независимы (D-15). DOM блока
@@ -339,7 +345,7 @@
   // community при правке НЕ предзаполняется: сохранённое значение с сервера не
   // приходит, а 'public' затёр бы настоящую (пустое поле ключ не отправляет).
   let ipAddress = $state('');
-  let community = $state(target === null ? 'public' : '');
+  let community = $state(untrack(() => (target === null ? 'public' : '')));
   let communityConfigured = $state(false);
   // Фаза 41.13 (PGR-03, D-05/D-07/D-10): USB-хост принтера. Поле доступно и при
   // создании, и при редактировании. Здесь только чтение и выбор; отправка на
@@ -353,7 +359,7 @@
   let usbHost = $state<{ id: number; name: string; inventoryNo: string | null } | null>(null);
   let hostQuery = $state('');
   let usbHostTouched = $state(false);
-  let printerLoaded = $state(target === null || target.type_id !== PRINTER_TYPE_ID);
+  let printerLoaded = $state(initialTarget === null || initialTarget.type_id !== PRINTER_TYPE_ID);
   let loadedPrinterIp = $state<string | null>(null);
   let sectionOne = $state<HostItem[]>([]);
   let sectionOneTitle = $state('');
@@ -372,7 +378,7 @@
   let fieldErrors = $state<Record<string, string>>({});
   // Local mutable copy of target.version so we can refresh it after a
   // successful update without requiring the parent to re-mount the form.
-  let currentVersion = $state(target?.version ?? 1);
+  let currentVersion = $state(initialTarget?.version ?? 1);
 
   // ---------------------------------------------------------------------------
   // Phase 40.2 Plan 13 — D-01/D-05 save-chain popup orchestration state.
@@ -500,7 +506,7 @@
   // Запрос членства завершён (успехом или ошибкой). Пока он в полёте,
   // lockedByGroup ложно-отрицателен; при создании и просмотре запроса нет.
   // Пишется только в async-продолжении onMount, не из $effect.
-  let membershipLoaded = $state(target === null || readonly);
+  let membershipLoaded = $state(initialTarget === null || initialReadonly);
   // WR-01: при правке автостатус «На складе» включается только после явного
   // действия пользователя (смена места или клик по чекбоксу); при создании
   // не требуется. Пишется только в обработчиках событий, не из $effect.
@@ -772,7 +778,7 @@
   // field only «до следующей правки» — clear it the moment the value
   // actually changes (manual edit, template pick, or «Взять следующий
   // свободный»), regardless of which of those caused the change.
-  let previousInventoryNo = inventoryNo;
+  let previousInventoryNo = untrack(() => inventoryNo);
   $effect(() => {
     if (inventoryNo !== previousInventoryNo) {
       previousInventoryNo = inventoryNo;

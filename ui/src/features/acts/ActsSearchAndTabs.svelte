@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Plan 03-02: search input + switch-bar (Акты / Возвраты / Архив) с counter-badges.
   // Plan 27-02 (D-05): switch-bar migrated to shared Tabs primitive (variant="underline"),
   // per DeviceFilters.svelte precedent — count now built into Tabs, no bespoke <button class="tab">.
@@ -18,7 +19,7 @@
 
   const { searchQuery, activeTab, counts, onSearchChange, onTabChange }: Props = $props();
 
-  let localQuery = $state(searchQuery);
+  let localQuery = $state(untrack(() => searchQuery));
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {

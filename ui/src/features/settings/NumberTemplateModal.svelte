@@ -7,7 +7,7 @@
   // Предпросмотр и валидация маски — ВСЕГДА с сервера (js_rust_mirror_needs_
   // fixture_gate): 300 мс debounce после изменения типа/маски, устаревшие
   // ответы отбрасываются (см. previewRequestId).
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
@@ -52,10 +52,11 @@
     { id: 'repair_act', label: 'Акты ремонта' },
   ];
 
+  // Снимок при открытии формы — повторная инициализация затёрла бы ввод.
   let templateType = $state<TemplateTypeDto | null>(
-    mode === 'edit' ? (template?.templateType ?? null) : null,
+    untrack(() => (mode === 'edit' ? (template?.templateType ?? null) : null)),
   );
-  let mask = $state(mode === 'edit' ? (template?.mask ?? '') : '');
+  let mask = $state(untrack(() => (mode === 'edit' ? (template?.mask ?? '') : '')));
   let maskTouched = $state(false);
 
   const selectedTypeLabel = $derived(

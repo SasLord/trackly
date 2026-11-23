@@ -101,7 +101,7 @@
     cartridge: 'Перейти к картриджу',
   };
 
-  const isCartridge = row.kind === 'cartridge';
+  const isCartridge = $derived(row.kind === 'cartridge');
 
   // 41.3-14: вложения карточки (устройство и принтер — одна сущность device).
   const attParentKind = $derived(row.kind === 'cartridge' ? 'cartridge' : 'device');

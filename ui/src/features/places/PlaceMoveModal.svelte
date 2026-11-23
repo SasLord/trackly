@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Phase 39 Plan 19 (PLC-01, D-21): move modal per UI-SPEC §11.3. Invoked by
   // Plan 14's tree ActionMenu ("Переместить в…") and by drag-drop (§8.4, which
   // always opens this same dialog rather than moving directly).
@@ -46,13 +47,16 @@
 
   const { place, onClose, onMoved, defaultParentId }: Props = $props();
 
-  const hasDefaultTarget = defaultParentId !== undefined;
+  // Снимок при открытии формы — повторная инициализация затёрла бы ввод.
+  const hasDefaultTarget = untrack(() => defaultParentId !== undefined);
 
   let stats = $state<SubtreeStatsDto | null>(null);
   let statsLoading = $state(true);
   let statsError = $state(false);
 
-  let selectedParentId = $state<number | null>(hasDefaultTarget ? (defaultParentId ?? null) : null);
+  let selectedParentId = $state<number | null>(
+    untrack(() => (hasDefaultTarget ? (defaultParentId ?? null) : null)),
+  );
   // Tracks whether a destination has been EXPLICITLY chosen (by prop or by the
   // user), independent of the value itself — `null` is a legitimate chosen
   // value (root, D-03), not an "unfilled" sentinel.

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Phase 39 Plan 19 (PLC-01/PLC-02): create/rename modal per UI-SPEC §11.1-§11.2.
   // Shared by Plan 14's tree ActionMenu ("Создать вложенное место" / "Переименовать")
   // and the Places page's primary "Создать место" button.
@@ -97,14 +98,16 @@
 
   const isRename = $derived(mode === 'rename');
 
-  let name = $state(mode === 'rename' && place ? place.name : '');
+  // Снимок при открытии формы — повторная инициализация затёрла бы ввод.
+  let name = $state(untrack(() => (mode === 'rename' && place ? place.name : '')));
   // Captured once at mount so handleSubmit can tell "user changed the variant"
   // from "user never touched it" — see the guarded second RPC below.
-  const initialPathVariant =
-    mode === 'rename' && place ? (place.path_variant_override ?? null) : null;
+  const initialPathVariant = untrack(() =>
+    mode === 'rename' && place ? (place.path_variant_override ?? null) : null,
+  );
   let pathVariant = $state<string | null>(initialPathVariant);
   let kind = $state('');
-  let parentId = $state<number | null>(defaultParentId);
+  let parentId = $state<number | null>(untrack(() => defaultParentId));
   let level = $state('');
   let isStorage = $state(false);
   let sortOrder = $state('');

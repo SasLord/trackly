@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Plan 04-06: добавляемый список строк (имя принтера) с focus-open autocomplete.
   // Plan 13-06 (R3/D-04): свёрнуто с пар (Бренд+Модель) до одного свободного
   // текстового поля «Имя принтера» — V032/Phase 13 single-column contract
@@ -25,7 +26,7 @@
   // из свежего prop. Любая будущая правка, сбрасывающая `compatibility` без
   // бампа `openInstanceCounter`, ДОЛЖНА сохранить этот ремонт, иначе
   // редактор останется со старым снимком.
-  let rows = $state<string[]>([...compatibility]);
+  let rows = $state<string[]>(untrack(() => [...compatibility]));
 
   function addRow() {
     rows = [...rows, ''];

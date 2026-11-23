@@ -5,7 +5,7 @@
   import Input from '$lib/components/Input.svelte';
   import Tabs from '$lib/components/Tabs.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import {
     deviceStatusesStore,
     ensureLoaded,
@@ -34,7 +34,7 @@
   }: Props = $props();
 
   // Internal search input value with debounce.
-  let localSearch = $state(searchQuery);
+  let localSearch = $state(untrack(() => searchQuery));
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {

@@ -79,7 +79,7 @@
   // `Input` (D-05 — no templates in edit) but gets occupied+script-mix on
   // submit (never mismatch — `ActNumberEditInput` has no `template_id`
   // field at all, a structural guarantee from Plan 06).
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
@@ -163,7 +163,9 @@
     return `${y}-${m}-${day}`;
   }
 
-  const isEditPrefill = mode === 'edit' && initialAct !== null;
+  // Снимок при открытии формы — повторная инициализация затёрла бы ввод.
+  const isEditPrefill = untrack(() => mode === 'edit' && initialAct !== null);
+  const prefillAct = untrack(() => initialAct);
 
   /** Plan 19-05: prefilled from initialAct.items directly (bypassing the
    *  live на_складе search path) — existing positions are в_работе, not
@@ -186,18 +188,18 @@
   // mode starts empty (NumberTemplateField autofills the remembered
   // template's next number on mount, NUM-08); edit mode prefills the act's
   // current raw number.
-  let numberValue = $state(isEditPrefill ? initialAct!.number_raw : '');
-  let giverName = $state(isEditPrefill ? initialAct!.giver_name : '');
-  let receiverName = $state(isEditPrefill ? initialAct!.receiver_name : '');
-  let placeId = $state<number | null>(isEditPrefill ? (initialAct!.place_id ?? null) : null);
-  let deadlineISO = $state(isEditPrefill ? unixToIso(initialAct!.deadline_utc) : ''); // YYYY-MM-DD picker value
+  let numberValue = $state(isEditPrefill ? prefillAct!.number_raw : '');
+  let giverName = $state(isEditPrefill ? prefillAct!.giver_name : '');
+  let receiverName = $state(isEditPrefill ? prefillAct!.receiver_name : '');
+  let placeId = $state<number | null>(isEditPrefill ? (prefillAct!.place_id ?? null) : null);
+  let deadlineISO = $state(isEditPrefill ? unixToIso(prefillAct!.deadline_utc) : ''); // YYYY-MM-DD picker value
   let handoverDateISO = $state(
-    isEditPrefill ? unixToIso(initialAct!.handover_date_utc) : todayISO(),
+    isEditPrefill ? unixToIso(prefillAct!.handover_date_utc) : todayISO(),
   );
-  let notes = $state(isEditPrefill ? (initialAct!.notes ?? '') : '');
+  let notes = $state(isEditPrefill ? (prefillAct!.notes ?? '') : '');
   let items = $state<FormItemRow[]>(
     isEditPrefill
-      ? itemsFromInitialAct(initialAct!)
+      ? itemsFromInitialAct(prefillAct!)
       : [{ device_id: null, quantity: 1, device_label: '', query: '', picked: false }],
   );
 
@@ -323,7 +325,7 @@
   // «Номер уже занят.» stays under the field only «до следующей правки» —
   // clear it the moment the value actually changes (manual edit, template
   // pick, or «Взять следующий свободный»).
-  let previousNumberValue = numberValue;
+  let previousNumberValue = untrack(() => numberValue);
   $effect(() => {
     if (numberValue !== previousNumberValue) {
       previousNumberValue = numberValue;
@@ -845,11 +847,6 @@
     font-size: var(--tr-font-size-label);
     font-weight: 500;
     color: var(--tr-text-secondary);
-  }
-  .hint {
-    margin: 0;
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-tertiary);
   }
   .req {
     color: var(--tr-danger);

@@ -82,7 +82,7 @@
   // verification of this). Edit mode is UNCHANGED — code stays a disabled
   // plain `Input`, no template concept in edit (SPEC boundaries, out of
   // scope for this plan).
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
   // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
@@ -150,7 +150,9 @@
 
   // Вид расходника: 1 = Картридж, 2 = Фотобарабан. При создании выбирается
   // пользователем (первое поле); при редактировании фиксирован моделью.
-  let kindId = $state<number>(target?.model_kind_id ?? 1);
+  // Снимок при открытии формы — повторная инициализация затёрла бы ввод.
+  const initialTarget = untrack(() => target);
+  let kindId = $state<number>(initialTarget?.model_kind_id ?? 1);
 
   // Состояния по виду: картридж → «Состояние заряда» (Полный/Частичный/Пустой);
   // фотобарабан → «Состояние» (Новый/Изношенный/Отработанный) (V017).
@@ -180,12 +182,14 @@
   );
 
   // Form fields — initialised from target (edit) or defaults (create)
-  let code = $state(target?.code ?? '');
-  let modelId = $state<number | null>(target?.model_id ?? null);
-  let stateId = $state<number>(target?.state_id ?? (target?.model_kind_id === 2 ? 4 : 1));
+  let code = $state(initialTarget?.code ?? '');
+  let modelId = $state<number | null>(initialTarget?.model_id ?? null);
+  let stateId = $state<number>(
+    initialTarget?.state_id ?? (initialTarget?.model_kind_id === 2 ? 4 : 1),
+  );
   // Plan 16 (D-12): картридж — своё place_id, как у устройства.
-  let placeId = $state<number | null>(target?.place_id ?? null);
-  let notes = $state(target?.notes ?? '');
+  let placeId = $state<number | null>(initialTarget?.place_id ?? null);
+  let notes = $state(initialTarget?.notes ?? '');
 
   // Validation errors
   let codeError = $state('');
@@ -333,7 +337,7 @@
   // «Код уже занят.» stays under the field only «до следующей правки» —
   // clear it the moment the value actually changes (manual edit, template
   // pick, «Взять следующий свободный», or a kindId-driven context switch).
-  let previousCode = code;
+  let previousCode = untrack(() => code);
   $effect(() => {
     if (code !== previousCode) {
       previousCode = code;

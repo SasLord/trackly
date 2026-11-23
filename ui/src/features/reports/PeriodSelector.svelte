@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Plan 07-06 Task 1: Period selector — Месяц / Год / Диапазон modes.
   // Snapshot reports disable controls with helper text (T-07-06-03 date range validation).
   // Plan 28-03 Task 2 (D-06): mode switch on Tabs segmented, month/year on Select primitive.
@@ -30,11 +31,11 @@
 
   const { period, isSnapshot, onPeriodChange }: Props = $props();
 
-  let mode = $state<PeriodMode>((period.mode as PeriodMode) ?? 'month');
-  let selectedMonth = $state<number>(period.month ?? new Date().getMonth() + 1);
-  let selectedYear = $state<number>(period.year ?? new Date().getFullYear());
-  let dateFrom = $state<string>(period.date_from ?? '');
-  let dateTo = $state<string>(period.date_to ?? '');
+  let mode = $state<PeriodMode>(untrack(() => (period.mode as PeriodMode) ?? 'month'));
+  let selectedMonth = $state<number>(untrack(() => period.month ?? new Date().getMonth() + 1));
+  let selectedYear = $state<number>(untrack(() => period.year ?? new Date().getFullYear()));
+  let dateFrom = $state<string>(untrack(() => period.date_from ?? ''));
+  let dateTo = $state<string>(untrack(() => period.date_to ?? ''));
   let rangeError = $state<string | null>(null);
 
   const MONTHS = [

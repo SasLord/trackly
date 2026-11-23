@@ -986,7 +986,7 @@ function runSelfTest() {
       {
         name: "(30) начальное значение community снова голое 'public'",
         files: form(
-          "$state(target === null ? 'public' : '')",
+          "$state(untrack(() => (target === null ? 'public' : '')))",
           "$state('public')",
           'community-public',
         ),

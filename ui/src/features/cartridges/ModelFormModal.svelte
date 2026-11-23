@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Plan 04-06: CRUD-модалка модели картриджа.
   // По образцу DeviceFormModal.svelte — openInstanceCounter + {#key} remount.
   // size="wide" (960px) из-за CompatibilityEditor.
@@ -53,14 +54,16 @@
   let _wasOpen = $state(false);
 
   // --- Form state (внутри {#key openInstanceCounter}) ---
-  let kindId = $state<number>(target?.kind_id ?? 1);
-  let brand = $state(target?.brand ?? '');
-  let model = $state(target?.model ?? '');
-  let color = $state(target?.color ?? 'Чёрный');
-  let notes = $state(target?.notes ?? '');
+  // Снимок при открытии формы — повторная инициализация затёрла бы ввод.
+  const initialTarget = untrack(() => target);
+  let kindId = $state<number>(initialTarget?.kind_id ?? 1);
+  let brand = $state(initialTarget?.brand ?? '');
+  let model = $state(initialTarget?.model ?? '');
+  let color = $state(initialTarget?.color ?? 'Чёрный');
+  let notes = $state(initialTarget?.notes ?? '');
 
   // Совместимость: список имён принтеров (V032/Phase 13, прямое присваивание).
-  let compatibility = $state<string[]>(target?.compatibility ?? []);
+  let compatibility = $state<string[]>(initialTarget?.compatibility ?? []);
 
   const kindLabel = $derived(KIND_OPTIONS.find((o) => o.id === kindId)?.label ?? '');
   const colorLabel = $derived(COLOR_DROPDOWN_OPTIONS.find((o) => o.id === color)?.label ?? color);

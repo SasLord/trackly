@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Plan 06-04: поиск + switch-bar статусов.
   // По паттерну CartridgesSearchAndTabs.svelte.
   // FIX F1 (Phase 27 batch F): кнопка «Найти принтеры» перенесена в PageHeader
@@ -29,7 +30,7 @@
     { key: 'offline', label: 'Не в сети' },
   ];
 
-  let localQuery = $state(filter.search ?? '');
+  let localQuery = $state(untrack(() => filter.search ?? ''));
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {

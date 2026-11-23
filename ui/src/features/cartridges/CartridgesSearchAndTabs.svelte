@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Plan 04-04: search input + tab switcher («Картриджи» / «Модели») для CartridgesPage.
   // Паттерн по образцу ActsSearchAndTabs.svelte.
   import Input from '$lib/components/Input.svelte';
@@ -27,7 +28,7 @@
     onModelSearchChange,
   }: Props = $props();
 
-  let localQuery = $state(searchQuery);
+  let localQuery = $state(untrack(() => searchQuery));
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
@@ -45,7 +46,7 @@
     }, 250);
   }
 
-  let localModelQuery = $state(modelSearchQuery);
+  let localModelQuery = $state(untrack(() => modelSearchQuery));
   let modelDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {

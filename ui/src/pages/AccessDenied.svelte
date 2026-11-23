@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // Plan 10-04 (D-DENY-01): экран показывается, когда Сотрудник переходит по прямой
   // ссылке/хэшу на раздел, к которому у его роли нет доступа. Структура — точная копия
   // NotFound.svelte с изменённым текстом и целевым CTA.
@@ -14,7 +15,7 @@
   // copy is route-independent. `void` keeps both eslint (no-empty-pattern) and
   // svelte-check (noUnusedLocals) satisfied without reintroducing a dev warning.
   const props: Props = $props();
-  void props;
+  void untrack(() => props);
 </script>
 
 <div class="access-denied">
