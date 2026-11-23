@@ -643,7 +643,7 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use tokio::sync::{Mutex, MutexGuard};
+    use tokio::sync::MutexGuard;
     use trackly_infra::{
         clock_impl::SystemClock,
         db::{pools::ReaderPool, writer_worker::WriterHandle},
@@ -654,7 +654,7 @@ mod tests {
     /// (mirrors the `ENV_GUARD` pattern in `pdf/html_templates.rs`). Uses
     /// `tokio::sync::Mutex` (not `std::sync::Mutex`) because these tests hold
     /// the guard across `.await` points (`clippy::await_holding_lock`).
-    static ENV_GUARD: Mutex<()> = Mutex::const_new(());
+    use crate::pdf::html_templates::TEMPLATES_ENV_GUARD as ENV_GUARD;
 
     fn build_test_db() -> (Arc<WriterHandle>, Arc<ReaderPool>) {
         let tmp = tempfile::NamedTempFile::new().unwrap();

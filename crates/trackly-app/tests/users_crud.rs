@@ -13,6 +13,11 @@ use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_writer_and_readers;
 
+/// Бюджет на один тест: страховка от зависания, а не проверка скорости —
+/// argon2 при создании/дубликате/пересоздании под нагрузкой полного прогона
+/// легко превышает 30 с.
+const TEST_BUDGET: Duration = Duration::from_secs(120);
+
 fn make_auth_service() -> (AuthService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
@@ -52,7 +57,7 @@ fn admin_new(login: &str) -> UserNew {
 /// still yields a Conflict.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn delete_then_recreate_revives_same_login() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -151,7 +156,7 @@ async fn delete_then_recreate_revives_same_login() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn users_create_read_update_delete() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -243,7 +248,7 @@ async fn users_create_read_update_delete() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn users_password_validation() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -299,7 +304,7 @@ async fn users_password_validation() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn users_role_enforcement() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -369,7 +374,7 @@ async fn users_role_enforcement() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn users_search_filter() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -431,7 +436,7 @@ async fn users_search_filter() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn users_update_email_clear_vs_keep() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -509,7 +514,7 @@ async fn users_update_email_clear_vs_keep() {
 /// update.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn users_update_password_change() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -645,7 +650,7 @@ async fn users_update_password_change() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn last_admin_cannot_be_demoted_or_deleted() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
@@ -774,7 +779,7 @@ fn user_patch_email_serde_double_option_distinguishes_absent_vs_null() {
 /// Вымышленное имя — CLAUDE.md privacy gate.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn update_user_clears_email_via_json_null_without_touching_full_name() {
-    tokio::time::timeout(Duration::from_secs(30), async {
+    tokio::time::timeout(TEST_BUDGET, async {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 

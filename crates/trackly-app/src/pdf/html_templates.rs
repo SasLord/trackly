@@ -108,6 +108,12 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             // body would be misclassified as user-customized and never
             // receive the fix.
             include_str!("../../templates/_legacy_defaults/v29/act_handover.html"),
+            // Quick 261123-vn8 (40.4 WR-12): pre-change snapshot captured
+            // immediately before `<title>` switched its guard from
+            // `act.number` to `act.number_display` (the value it prints) —
+            // without this entry, installs holding the pre-fix body would be
+            // misclassified as user-customized and never receive the fix.
+            include_str!("../../templates/_legacy_defaults/v31/act_handover.html"),
         ],
     ),
     (
@@ -336,14 +342,21 @@ pub fn read_template_if_present(
     }
 }
 
+/// Общий замок тестов, трогающих `TRACKLY_TEMPLATES_DIR` (процесс-глобальное
+/// окружение). `tokio::sync::Mutex`: его можно держать через `.await`
+/// (тесты `template_service`), у него нет отравления при панике одного теста;
+/// из синхронных тестов берётся через `blocking_lock()`.
+#[cfg(test)]
+pub(crate) static TEMPLATES_ENV_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[cfg(test)]
 mod tests {
+    /// Единый для всего lib-бинарника замок: `std::env` общий на процесс,
+    /// а `TRACKLY_TEMPLATES_DIR` трогают и тесты этого модуля, и
+    /// `services::template_service`. Используем общий `TEMPLATES_ENV_GUARD`.
+    use super::TEMPLATES_ENV_GUARD as ENV_GUARD;
     use super::*;
     use std::sync::Mutex;
-
-    /// Serializes tests that touch `TRACKLY_TEMPLATES_DIR` — `std::env` is
-    /// process-global and Rust test threads run in parallel by default.
-    static ENV_GUARD: Mutex<()> = Mutex::new(());
 
     fn set_templates_dir_env(val: &str) {
         // SAFETY: guarded by ENV_GUARD for the duration of the calling test;
@@ -362,7 +375,7 @@ mod tests {
 
     #[test]
     fn materialize_creates_both_defaults_in_empty_dir() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         materialize_defaults_on_startup(dir.path()).expect("materialize ok");
@@ -375,7 +388,7 @@ mod tests {
 
     #[test]
     fn materialize_is_idempotent_and_does_not_clobber_hand_edits() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         materialize_defaults_on_startup(dir.path()).expect("first materialize ok");
@@ -397,7 +410,7 @@ mod tests {
     /// fails if `upgrade_untouched_defaults_on_startup` is reverted to a no-op.
     #[test]
     fn upgrade_replaces_untouched_legacy_default_with_current_bundled_body() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         // Pre-populate disk with the OLD (pre-Phase-20) content for each file
@@ -467,7 +480,7 @@ mod tests {
     /// filename's `KNOWN_LEGACY_DEFAULTS` slice.
     #[test]
     fn upgrade_replaces_v21_legacy_default_with_current_bundled_body() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
@@ -521,14 +534,16 @@ mod tests {
     /// `upgrade_replaces_v21_legacy_default_with_current_bundled_body`, proving
     /// the NEW v22 slice element (the pre-Phase-35 body snapshot, C-01) drives
     /// a real upgrade for installs currently on that body — pulls index `2`
-    /// (the v22 element) instead of index `1`. For `report.html` (2-element
-    /// slice: v20, v21) and `_header.html` (empty slice), `bodies.get(2)` is
-    /// `None`, so this test correctly `continue`s past them and only exercises
-    /// `act_handover.html`/`act_acceptance.html`, which are the only two
-    /// filenames with a v22 snapshot.
+    /// (the v22 element) instead of index `1`. Index `2` is "the third slice
+    /// element", not literally "the v22 directory": for `act_handover.html` /
+    /// `act_acceptance.html` it is the v22 snapshot, for `report.html`
+    /// (v20, v21, v28) it is the v28 snapshot, and for filenames with fewer
+    /// than three elements (`_header.html`, `repair_device_report.html` —
+    /// empty; `repair_transfer_act.html` — one) `bodies.get(2)` is `None` and
+    /// the test `continue`s past them.
     #[test]
     fn upgrade_replaces_v22_legacy_default_with_current_bundled_body() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
@@ -586,7 +601,7 @@ mod tests {
     /// skeleton exactly, pulling index `3` (the v23 element) instead of `2`.
     #[test]
     fn upgrade_replaces_v23_legacy_default_with_current_bundled_body() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
@@ -644,7 +659,7 @@ mod tests {
     /// skeleton exactly, pulling index `4` (the v24 element) instead of `3`.
     #[test]
     fn upgrade_replaces_v24_legacy_default_with_current_bundled_body() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
@@ -708,7 +723,7 @@ mod tests {
     /// `act.items_grouped`.
     #[test]
     fn upgrade_replaces_v25_legacy_default_with_current_bundled_body() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
@@ -757,12 +772,58 @@ mod tests {
         }
     }
 
+    /// Quick 261123-vn8 (40.4 WR-12): the v31 snapshot (the LAST
+    /// `act_handover.html` element) is the pre-fix body whose `<title>` guards
+    /// on `act.number` while printing `act.number_display`. Proves (a) the
+    /// frozen snapshot really differs from the current body and carries the
+    /// old guard, (b) the current body carries the fixed guard, and (c) an
+    /// install on the v31 body is upgraded to the current one.
+    #[test]
+    fn upgrade_replaces_v31_act_handover_title_guard_body() {
+        let _guard = ENV_GUARD.blocking_lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let current = DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(n, _)| *n == "act_handover.html")
+            .map(|(_, b)| *b)
+            .expect("act_handover.html registered");
+        let v31 = KNOWN_LEGACY_DEFAULTS
+            .iter()
+            .find(|(n, _)| *n == "act_handover.html")
+            .and_then(|(_, bodies)| bodies.last().copied())
+            .expect("act_handover.html has a legacy slice");
+
+        let old_title = "<title>Акт приема-передачи{% if act.number %} №{{ act.number_display }}{% endif %}</title>";
+        let new_title = "<title>Акт приема-передачи{% if act.number_display %} №{{ act.number_display }}{% endif %}</title>";
+        assert!(
+            v31.contains(old_title),
+            "v31 snapshot must carry the pre-fix title guard"
+        );
+        assert!(!v31.contains(new_title));
+        assert!(
+            current.contains(new_title),
+            "current body must carry the fixed title guard"
+        );
+        assert!(!current.contains(old_title));
+        assert_ne!(v31, current);
+
+        std::fs::write(dir.path().join("act_handover.html"), v31).expect("write v31 body");
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+        let contents =
+            std::fs::read_to_string(dir.path().join("act_handover.html")).expect("file exists");
+        assert_eq!(
+            contents, current,
+            "v31 body must be upgraded to the current body"
+        );
+    }
+
     /// D-12 Test 2: a user-customized file (matches neither the current default
     /// nor any known legacy default) is NEVER overwritten — the fail-closed
     /// safety guarantee (T-20-06-01 mitigation).
     #[test]
     fn upgrade_leaves_user_customized_file_untouched() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         let custom = "<html>МОЙ КАСТОМНЫЙ ШАБЛОН</html>";
@@ -812,7 +873,7 @@ mod tests {
     /// process and a global default can only ever be installed once.
     #[test]
     fn upgrade_warns_when_it_skips_a_user_customized_file() {
-        let _guard = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         // Hand-edited file → matches neither the current default nor any known
@@ -872,7 +933,7 @@ mod tests {
     /// no wrongful rewrite, content stays identical.
     #[test]
     fn upgrade_is_noop_when_file_already_current() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
 
         let current = DEFAULT_HTML_TEMPLATES
@@ -900,7 +961,7 @@ mod tests {
     fn readonly_templates_dir_does_not_fail_startup() {
         use std::os::unix::fs::PermissionsExt;
 
-        let _guard = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let templates_dir = dir.path().join("templates");
         std::fs::create_dir_all(&templates_dir).expect("create templates dir");
@@ -939,7 +1000,7 @@ mod tests {
 
     #[test]
     fn load_template_falls_back_to_embedded_default_when_file_absent() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         // No materialize call — directory has no files, doesn't even need
         // to exist for load_template's fallback path.
@@ -951,7 +1012,7 @@ mod tests {
 
     #[test]
     fn load_template_returns_on_disk_content_when_file_present() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("act_handover.html");
         std::fs::write(&path, "ON_DISK_CONTENT").expect("write file");
@@ -964,7 +1025,7 @@ mod tests {
 
     #[test]
     fn resolve_templates_dir_prefers_env_override_when_set() {
-        let _guard = ENV_GUARD.lock().unwrap();
+        let _guard = ENV_GUARD.blocking_lock();
         let paths = Paths::resolve_for_exe_dir(PathBuf::from("/does/not/matter"))
             .expect("resolve_for_exe_dir ok");
 
