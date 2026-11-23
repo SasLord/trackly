@@ -300,24 +300,35 @@
     mode = 'closed';
   }
 
+  // 39 WR-02: счётчик запроса (не $state) — ответ устаревшего запроса не
+  // перетирает результаты, liveMessage и activeId актуального.
+  let searchSeq = 0;
+
   function scheduleSearch(query: string): void {
     if (searchDebounceTimer !== null) clearTimeout(searchDebounceTimer);
+    const seq = ++searchSeq;
     if (query.trim() === '') {
       searchResults = null;
+      searchLoading = false;
       mode = 'tree';
       return;
     }
     searchDebounceTimer = setTimeout(async () => {
       searchLoading = true;
+      const isCurrent = () => seq === searchSeq && query === searchQuery;
       try {
         const results = await fetchSearchResults(query);
+        if (!isCurrent()) return;
         searchResults = results.slice(0, 50);
       } catch {
+        if (!isCurrent()) return;
         searchResults = [];
       } finally {
-        searchLoading = false;
-        liveMessage = `Найдено совпадений: ${searchResults?.length ?? 0}`;
-        activeId = searchResults?.length === 0 && isAdmin ? -1 : null;
+        if (isCurrent()) {
+          searchLoading = false;
+          liveMessage = `Найдено совпадений: ${searchResults?.length ?? 0}`;
+          activeId = searchResults?.length === 0 && isAdmin ? -1 : null;
+        }
       }
     }, 200);
   }

@@ -6,7 +6,10 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { ensureLoaded as ensureStatusesLoaded } from '$lib/stores/deviceStatuses.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
-  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
+  import {
+    notifyPlaceContentChanged,
+    placeContentEventsStore,
+  } from '$lib/stores/placeContentEvents.svelte';
   import { apiCall } from '$lib/api/client';
   import { parseIdFromHash } from '$lib/utils/hashId';
   import DeviceList from './DeviceList.svelte';
@@ -288,13 +291,19 @@
   }
 
   /** АРМ, совпавшие с поисковым запросом по имени (D-14). */
-  async function fetchSearchContainers(mode: Mode): Promise<DeviceEntryDto[]> {
-    if (!shouldShowContainerRows(mode.ctx)) return [];
+  async function fetchSearchContainers(
+    mode: Mode,
+  ): Promise<{ rows: DeviceEntryDto[]; truncated: boolean }> {
+    if (!shouldShowContainerRows(mode.ctx)) return { rows: [], truncated: false };
     const conts = await devices.listContainers(
       { ...mode.raw, ...deviceListFlags('containers', mode.ctx) },
       mode.query,
     );
-    return conts.containers.map((container) => ({ kind: 'container', container }));
+    return {
+      rows: conts.containers.map((container): DeviceEntryDto => ({ kind: 'container', container })),
+      // 41.9 WR-06: сервер усёк список АРМ — не молчим об этом (тост в refresh()).
+      truncated: conts.truncated,
+    };
   }
 
   /**
@@ -339,8 +348,9 @@
     }
     if (mode.searchActive) {
       const found = await fetchSearchContainers(mode);
-      acc.rows = [...found, ...acc.rows];
-      acc.total += found.length;
+      acc.rows = [...found.rows, ...acc.rows];
+      acc.total += found.rows.length;
+      acc.truncated = found.truncated;
     } else if (mode.grouped) {
       const head = await fetchHead(mode);
       acc.headRows = head.rows;
@@ -390,6 +400,9 @@
     }
   }
 
+  const entryKey = (e: DeviceEntryDto): string =>
+    e.kind === 'container' ? 'c' + e.container.group_id : 'd' + e.device.id;
+
   /** Следующая порция (D-07): одна в полёте, ошибка без тоста и без автоповторов. */
   async function loadMore() {
     if (!shouldLoadMore({ hasMore, loadingMore, moreError, loading, remainingPx: 0 })) return;
@@ -401,7 +414,9 @@
       const p = await fetchPortion(mode, offset, PAGE_SIZE);
       if (seq !== refreshSeq) return;
       const extra = mode.searchActive ? rows.filter((r) => r.kind === 'container').length : 0;
-      rows = [...rows, ...p.rows];
+      // 41.9 WR-01: список мог сдвинуться между порциями — известные ключи не дублируем.
+      const seen = new Set(rows.map(entryKey));
+      rows = [...rows, ...p.rows.filter((r) => !seen.has(entryKey(r)))];
       groups = [...groups, ...p.groups];
       if (!mode.grouped) total = p.total + extra;
       hasMore = p.hasMore;
@@ -653,6 +668,22 @@
     });
   });
 
+  // 41.9 WR-01: изменение списка другим клиентом (WS entities_changed -> reloadSeq)
+  // перечитывает уже загруженные порции — иначе догрузка по смещению даёт дубли и пропуски.
+  // Читаем ТОЛЬКО reloadSeq; запись lastReloadSeq и вызов refresh() (он пишет состояние
+  // до первого await) — в untrack, иначе effect_update_depth_exceeded, который
+  // не ловят svelte-check/eslint/build. lastReloadSeq не $state: нужен лишь для сравнения.
+  let lastReloadSeq = placeContentEventsStore.reloadSeq;
+  $effect(() => {
+    const seq = placeContentEventsStore.reloadSeq;
+    untrack(() => {
+      if (seq === lastReloadSeq) return;
+      lastReloadSeq = seq;
+      void refresh();
+      void refreshCounts();
+    });
+  });
+
   onMount(() => {
     void ensureStatusesLoaded();
     void refresh({ reset: true });
@@ -702,7 +733,7 @@
     const changedPlaceIds = Array.from(
       new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null)),
     );
-    if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
+    notifyPlaceContentChanged(changedPlaceIds); // пустой список — нет-оп внутри (40.4 IN-01)
 
     modalOpen = false;
     refresh();
@@ -862,7 +893,7 @@
   open={csvModalOpen}
   onClose={() => (csvModalOpen = false)}
   onImported={(placeIds: number[]) => {
-    if (placeIds.length > 0) notifyPlaceContentChanged(placeIds);
+    notifyPlaceContentChanged(placeIds);
     csvModalOpen = false;
     refresh();
     refreshCounts();

@@ -2640,8 +2640,8 @@ async function selftest(cases) {
           '      const extra = mode.searchActive',
         ],
         [
-          '      rows = [...rows, ...p.rows];\n',
-          '      rows = [...rows, ...p.rows];\n      if (seq !== refreshSeq) return;\n',
+          '      rows = [...rows, ...p.rows.filter((r) => !seen.has(entryKey(r)))];\n',
+          '      rows = [...rows, ...p.rows.filter((r) => !seen.has(entryKey(r)))];\n      if (seq !== refreshSeq) return;\n',
         ],
       ],
       expect: 'H8',

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { AUTOLOAD_THRESHOLD_PX } from '../../features/devices/deviceListMode';
   // Table — reusable shell (header row, loading skeleton, empty state) for
   // TableRow-based tables. See .planning/phases/25-dropdown/25-01-PLAN.md <interfaces>.
   import type { Snippet } from 'svelte';
@@ -52,7 +53,8 @@
   }: Props & { wrapperEl?: HTMLDivElement | null } = $props();
 
   // Порог автоподгрузки (UI-SPEC §10.1): расстояние до конца прокрутки, px.
-  const NEAR_END_PX = 240;
+  // Единый источник — deviceListMode.ts (чистый модуль без импортов; 41.9 IN-02).
+  const NEAR_END_PX = AUTOLOAD_THRESHOLD_PX;
 
   $effect(() => {
     const wrapper = wrapperEl;

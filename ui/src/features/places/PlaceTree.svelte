@@ -325,6 +325,16 @@
   // re-fetched once known. Zero-count nodes render no counter at all (§8.2).
   let statsCache = $state<Record<number, number>>({});
   const statsInFlight = new Set<number>();
+  // 39 WR-01: поколение кэша — ответ, начатый до «Обновить», в сброшенный кэш не пишется.
+  let statsGen = 0;
+
+  /** «Обновить»: сбрасывает кэш счётчиков (иначе числа остаются прежними) и перечитывает дерево. */
+  function refreshTree(): void {
+    statsGen += 1;
+    statsInFlight.clear();
+    statsCache = {};
+    void loadTree();
+  }
 
   // This effect reads `statsCache` reactively (via `statsCache[id]`) AND
   // writes it (`statsCache = { ...statsCache, [id]: ... }`), which looks
@@ -341,15 +351,17 @@
       const id = row.place.id;
       if (statsCache[id] !== undefined || statsInFlight.has(id)) continue;
       statsInFlight.add(id);
+      const gen = statsGen;
       apiCall<SubtreeStatsDto>('places_subtree_stats', { rootId: id })
         .then((s) => {
+          if (gen !== statsGen) return;
           statsCache = { ...statsCache, [id]: s.device_count + s.cartridge_count };
         })
         .catch(() => {
           // Non-critical enrichment — counter simply stays absent on failure.
         })
         .finally(() => {
-          statsInFlight.delete(id);
+          if (gen === statsGen) statsInFlight.delete(id);
         });
     }
   });
@@ -405,24 +417,33 @@
     if (searchDebounceTimer !== null) clearTimeout(searchDebounceTimer);
   });
 
+  // 39 WR-02: счётчик запроса (не $state) — ответ устаревшего запроса не
+  // перетирает результаты, activeId и liveMessage актуального.
+  let searchSeq = 0;
+
   function scheduleSearch(query: string): void {
     if (searchDebounceTimer !== null) clearTimeout(searchDebounceTimer);
+    const seq = ++searchSeq;
     if (query.trim() === '') {
       searchResults = null;
+      searchLoading = false;
       return;
     }
     searchDebounceTimer = setTimeout(async () => {
       searchLoading = true;
+      const isCurrent = () => seq === searchSeq && query === searchQuery;
       try {
         const results = await apiCall<PlacePathDto[]>('places_search', { query });
+        if (!isCurrent()) return;
         searchResults = results;
         activeId = results[0]?.place_id ?? null;
         liveMessage = `Найдено совпадений: ${results.length}`;
       } catch {
+        if (!isCurrent()) return;
         searchResults = [];
         liveMessage = 'Найдено совпадений: 0';
       } finally {
-        searchLoading = false;
+        if (isCurrent()) searchLoading = false;
       }
     }, 200);
   }
@@ -879,7 +900,7 @@
     <Checkbox checked={showArchived} onchange={(c) => (showArchived = c)}
       >Показывать архивные</Checkbox
     >
-    <Button variant="ghost" size="sm" onclick={() => void loadTree()}>Обновить</Button>
+    <Button variant="ghost" size="sm" onclick={refreshTree}>Обновить</Button>
   </div>
 
   <div
