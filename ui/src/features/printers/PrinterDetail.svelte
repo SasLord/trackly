@@ -34,6 +34,7 @@
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';
   import { apiCall } from '$lib/api/client';
+  import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import { push } from 'svelte-spa-router';
   import { openRequestTarget } from '../requests/requestTarget';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
@@ -175,11 +176,16 @@
   let movementsLoadError = $state(false);
 
   $effect(() => {
+    void placeContentEventsStore.reloadSeq;
+    let cancelled = false;
     const p = printer;
     if (p === null) {
       movements = [];
       movementsLoadError = false;
-      return;
+      movementsLoading = false;
+      return () => {
+        cancelled = true;
+      };
     }
     movementsLoading = true;
     movementsLoadError = false;
@@ -188,15 +194,19 @@
       entityId: p.deviceId,
     })
       .then((entries) => {
-        movements = entries;
+        if (!cancelled) movements = entries;
       })
       .catch(() => {
+        if (cancelled) return;
         movements = [];
         movementsLoadError = true;
       })
       .finally(() => {
-        movementsLoading = false;
+        if (!cancelled) movementsLoading = false;
       });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Badge variant по status.

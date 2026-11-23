@@ -33,6 +33,7 @@
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
   import IconHistory from '$lib/components/icons/IconHistory.svelte';
   import { historyPanel } from '$lib/stores/historyPanel.svelte';
+  import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import DeviceFormBody from '../devices/DeviceFormBody.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import CartridgeFormBody from '../cartridges/CartridgeFormBody.svelte';
@@ -258,6 +259,20 @@
   $effect(() => {
     const r = row;
     if (pressed) untrack(() => void loadTimeline(r));
+  });
+
+  // R8-01: событие другого клиента — перечитать открытую ленту (кэш timelineLoadedFor
+  // иначе выходит сразу). Читаем ТОЛЬКО reloadSeq; всё остальное — в untrack,
+  // lastReloadSeq не $state (иначе effect_update_depth_exceeded).
+  let lastReloadSeq = placeContentEventsStore.reloadSeq;
+  $effect(() => {
+    const seq = placeContentEventsStore.reloadSeq;
+    untrack(() => {
+      if (seq === lastReloadSeq) return;
+      lastReloadSeq = seq;
+      timelineLoadedFor = null;
+      if (pressed) void loadTimeline(row);
+    });
   });
 
   // Фаза 41.4, план 32: счётчик заходов в сервис — отдельная независимая загрузка

@@ -36,6 +36,7 @@
   import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
   import type { AttachmentHistoryEventDto } from '../../bindings';
   import { apiCall } from '$lib/api/client';
+  import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import { push } from 'svelte-spa-router';
   import { openRequestTarget } from '../requests/requestTarget';
   import type { AuditEntryDto, CartridgeDto, HistoryEntryDto } from '../../bindings';
@@ -78,11 +79,16 @@
   let movementsLoadError = $state(false);
 
   $effect(() => {
+    void placeContentEventsStore.reloadSeq;
+    let cancelled = false;
     const c = cartridge;
     if (c === null) {
       movements = [];
       movementsLoadError = false;
-      return;
+      movementsLoading = false;
+      return () => {
+        cancelled = true;
+      };
     }
     movementsLoading = true;
     movementsLoadError = false;
@@ -91,15 +97,19 @@
       entityId: c.id,
     })
       .then((entries) => {
-        movements = entries;
+        if (!cancelled) movements = entries;
       })
       .catch(() => {
+        if (cancelled) return;
         movements = [];
         movementsLoadError = true;
       })
       .finally(() => {
-        movementsLoading = false;
+        if (!cancelled) movementsLoading = false;
       });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Badge variant по status_id (UI-SPEC §Badge-цвета статусов):
