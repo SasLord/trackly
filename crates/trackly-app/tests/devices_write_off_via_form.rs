@@ -604,3 +604,49 @@ async fn u11_event_carries_group() {
         );
     }
 }
+
+/// Ревью WR-05 (D-06, D-07): списание через карточку устройства пишет ту же причину, что
+/// списание через группу, — «при списании» (`device_write_off`) и у статуса, и у вывода.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn u11_release_history_cause_is_write_off() {
+    let (ctx, _d) = make_ctx().await;
+    let g = seed_group(&ctx, "container", "АРМ #31", None).await;
+    let dev = seed_device(&ctx, "Монитор", "INV-WR05-1", None, "в_работе", Some(g)).await;
+    let written = status_id(&ctx, "списано").await;
+
+    update_ok(
+        &ctx,
+        dev,
+        write_off_patch(written, Some(GroupWriteOffChoice::Release)),
+    )
+    .await;
+
+    let sources: Vec<(String, String)> = ctx
+        .writer
+        .execute(move |conn| {
+            let mut st = conn
+                .prepare(
+                    "SELECT kind, source FROM history_events \
+                     WHERE subject_type = 'device' AND subject_id = ?1 ORDER BY id",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = st
+                .query_map(params![dev], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
+        })
+        .await
+        .expect("events");
+    let mut kinds: Vec<(String, String)> = sources;
+    kinds.sort();
+    assert_eq!(
+        kinds,
+        vec![
+            ("group_left".to_string(), "device_write_off".to_string()),
+            ("status_changed".to_string(), "device_write_off".to_string()),
+        ],
+        "причина списания одна на всех экранах"
+    );
+}

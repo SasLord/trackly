@@ -1627,7 +1627,9 @@ impl DeviceService {
                 if write_off_choice == Some(GroupWriteOffChoice::Release)
                     && write_off_group_id.is_some()
                 {
-                    crate::services::group_membership::release_device_in_tx(
+                    // Phase 41.10 (D-06, D-07, ревью WR-05): причина та же, что у списания
+                    // через группу (`group_service::write_off_device`) — «при списании».
+                    crate::services::group_membership::release_device_with_history_in_tx(
                         &tx,
                         &groups,
                         &audit_repo,
@@ -1635,6 +1637,10 @@ impl DeviceService {
                         None,
                         user_id_opt,
                         now,
+                        crate::services::group_membership::ReleaseHistory::Reason {
+                            source: trackly_core::domain::history_events::HistoryReason::DeviceWriteOff,
+                            ref_group: None,
+                        },
                     )?;
                     after = repo.get_in_tx(&tx, id)?;
                 }
@@ -1737,6 +1743,12 @@ impl DeviceService {
 
                 // Phase 41.10 (D-06, D-25, ST-1): событие смены статуса пишется ПОСЛЕ
                 // перемещения и несёт его movement_id; при равенстве статусов молчит.
+                // Ревью WR-05: списание из карточки — та же причина, что списание через группу.
+                let status_source = if to_written_off {
+                    trackly_core::domain::history_events::HistoryReason::DeviceWriteOff
+                } else {
+                    trackly_core::domain::history_events::HistoryReason::Manual
+                };
                 if let Some(before_status) = before_status_id {
                     let operation_id = crate::services::history_events::new_operation_id();
                     crate::services::history_events::record_status_change_in_tx(
@@ -1746,7 +1758,7 @@ impl DeviceService {
                         after.status_id,
                         &crate::services::history_events::HistoryCause {
                             operation_id: &operation_id,
-                            source: trackly_core::domain::history_events::HistoryReason::Manual,
+                            source: status_source,
                             act_id: None,
                             request_id: None,
                             ref_group: None,
