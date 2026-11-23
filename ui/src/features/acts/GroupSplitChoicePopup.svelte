@@ -29,7 +29,7 @@
   {onClose}
 >
   <div class="choice-body">
-    {#each items as item (item.group_id)}
+    {#each items as item, gi (`${item.group_id}-${gi}`)}
       {@const kept = item.kept_names.length}
       {@const total = item.returned_names.length + kept}
       <section class="group">

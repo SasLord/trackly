@@ -257,8 +257,14 @@
     );
   });
 
+  function setBulkPlace(id: number | null) {
+    bulkPlaceId = id;
+    formError = null;
+  }
+
   function handleRowsChange(next: ReturnRowState[]) {
     rows = next;
+    formError = null;
   }
 
   // D-45: что именно уходит на сервер. Собирается один раз: и вопрос (preview),
@@ -369,13 +375,22 @@
       }
       // Серверная валидация (в т.ч. разные места целиком возвращаемой группы) —
       // последняя защита; показываем тем же встроенным блоком.
-      formError = errorMessage(
+      // D-46: во встроенный блок — только валидация места (place_id); остальное — тостом.
+      const msg = errorMessage(
         e,
         built.kind === 'edit' ? 'Не удалось сохранить возврат' : 'Не удалось оформить возврат',
       );
+      if (isPlaceIdValidation(e)) formError = msg;
+      else pushToast('error', msg);
     } finally {
       submitting = false;
     }
+  }
+
+  function isPlaceIdValidation(e: unknown): boolean {
+    if (!e || typeof e !== 'object') return false;
+    const err = e as { code?: string; details?: { field?: string } };
+    return err.code === 'VALIDATION' && err.details?.field === 'place_id';
   }
 
   // Повторный вопрос после ответа «нужен выбор» уже идёт (защита от цикла).
@@ -514,7 +529,7 @@
                   <Button
                     variant={bulkPlaceId === id ? 'primary' : 'secondary'}
                     size="sm"
-                    onclick={() => (bulkPlaceId = id)}
+                    onclick={() => setBulkPlace(id)}
                   >
                     {storagePlaceLabels[id] ?? `#${id}`}
                   </Button>
@@ -523,7 +538,7 @@
             {/if}
             <PlacePicker
               value={bulkPlaceId}
-              onChange={(id) => (bulkPlaceId = id)}
+              onChange={(id) => setBulkPlace(id)}
               id="ret-bulk-place"
             />
           </div>
