@@ -10,7 +10,14 @@
 // Тип из bindings — только type-only импорт: bindings.ts в рантайме не импортируется.
 import type { MovementEntryDto } from '../bindings';
 
-export type MovementSourceToken = 'manual' | 'act' | 'map' | 'workstation' | 'group' | 'repair';
+export type MovementSourceToken =
+  | 'manual'
+  | 'act'
+  | 'map'
+  | 'workstation'
+  | 'group'
+  | 'repair'
+  | 'act_delete';
 
 export const UNKNOWN_MOVEMENT_REASON = 'причина не определена';
 
@@ -47,6 +54,10 @@ export const MOVEMENT_SOURCE_LABELS: Record<
     const base = repairReasonBase(entry);
     return hasNote(entry) ? `${base} · ${entry.note}` : base;
   },
+  // UAT-3 (фаза 41.10): возврат на место «до акта» при удалении акта; акта больше нет,
+  // поэтому act_id пуст, а номер акта записан в примечание строки.
+  act_delete: (entry) =>
+    hasNote(entry) ? `при удалении акта №${entry.note}` : 'при удалении акта',
 };
 
 export function reasonText(entry: MovementEntryDto): string {

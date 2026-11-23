@@ -1854,8 +1854,8 @@ function selftest() {
         run(
           swap(
             ACTS_PAGE,
-            'const result = await acts.delete(act.id, act.version, choices);',
-            'const result = await acts.remove(act.id, act.version, choices);',
+            'const result = await acts.delete(act.id, act.version, groupChoices, movedChoice);',
+            'const result = await acts.remove(act.id, act.version, groupChoices, movedChoice);',
             'маркер acts.delete переименован',
           ),
         ),

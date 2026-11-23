@@ -23,6 +23,19 @@
 //   (D) api/acts.ts: delete принимает третий параметр и передаёт groupChoices.
 //   (M) отсутствующий файл — нарушение, не SKIP.
 //
+// UAT-3 (фаза 41.10): «устройства перемещали после акта» (needs_moved_after_choice).
+//   (A) та же проверка для needs_moved_after_choice, и она стоит ВЫШЕ needs_group_restore:
+//       попапы идут по очереди, сначала выбор по перемещённым.
+//   (B) каждый acts.delete( передаёт ЧЕТВЁРТЫЙ аргумент (оба выбора в одном вызове);
+//       confirmMovedPrompt передаёт prompt.groupChoices, confirmRestorePrompt —
+//       prompt.movedChoice (уже сделанный выбор не теряется); <MovedAfterActChoicePopup
+//       внутри {#if movedPrompt} и не вложен в <ActDeleteModal.
+//   (E) MovedAfterActChoicePopup презентационный, фокус на «Отмена», варианты на
+//       компонентах Radio и Checkbox (без нативного <input), чекбокс отключён, когда выбран
+//       не «Вернуть», умолчания: «Вернуть» + отметка, каждый текст ровно по разу, выбор
+//       отображается на return_erase / return_mark / keep.
+//   (D) api/acts.ts: delete принимает четвёртый параметр и передаёт movedChoice.
+//
 // Usage:
 //   node scripts/check-act-delete-choice.mjs              # проверить репозиторий
 //   node scripts/check-act-delete-choice.mjs --src=<dir>  # копия каталога ui/
@@ -39,8 +52,24 @@ const TAG = '[check-act-delete-choice]';
 
 const PAGE = 'src/features/acts/ActsPage.svelte';
 const POPUP = 'src/features/acts/GroupRestoreChoicePopup.svelte';
+const MOVED_POPUP = 'src/features/acts/MovedAfterActChoicePopup.svelte';
 const API = 'src/lib/api/acts.ts';
-const FILES = [PAGE, POPUP, API];
+const FILES = [PAGE, POPUP, MOVED_POPUP, API];
+
+// UAT-3: тексты попапа «Устройства перемещали после акта» — каждый ровно по разу.
+const MOVED_TEXTS = [
+  'Устройства перемещали после акта',
+  'После акта №{actNumber} эти устройства ещё раз перемещали:',
+  'Где оставить устройства?',
+  'Вернуть на место до акта',
+  'Стереть из истории перемещения после акта',
+  'Без отметки в истории появится запись о возврате на место до акта.',
+  'Оставить на текущем месте',
+  'В истории перемещение будет показано с места до акта сразу на текущее.',
+  '— сейчас «',
+  '», до акта «',
+];
+const CHECKBOX_DISABLED = "disabled={mode !== 'return'}";
 
 const PHRASE_RESTORE = 'Вернуть в группу (на её новое место)';
 const PHRASE_KEEP = 'Оставить вне группы на прежнем месте';
@@ -156,6 +185,41 @@ export function scanSource(files, violations) {
           );
         }
       }
+      const iMoved = body.indexOf('needs_moved_after_choice');
+      if (iMoved === -1) {
+        violations.push(
+          `(A) ${PAGE}: handleDelete не обрабатывает needs_moved_after_choice — сервер ничего не удалил, а UI сообщит «Акт удалён».`,
+        );
+      } else {
+        const iSuccess = body.search(/pushToast\(\s*'success'/);
+        const iNotify = body.indexOf('notifyPlaceContentChanged(');
+        if (iSuccess !== -1 && iMoved > iSuccess) {
+          violations.push(
+            `(A) ${PAGE}: проверка needs_moved_after_choice стоит НИЖЕ success-тоста.`,
+          );
+        }
+        if (iNotify !== -1 && iMoved > iNotify) {
+          violations.push(
+            `(A) ${PAGE}: проверка needs_moved_after_choice стоит НИЖЕ notifyPlaceContentChanged(.`,
+          );
+        }
+        if (iNeeds !== -1 && iMoved > iNeeds) {
+          violations.push(
+            `(A) ${PAGE}: проверка needs_moved_after_choice стоит НИЖЕ needs_group_restore — сначала выбор по перемещённым.`,
+          );
+        }
+        const braceOpen = body.indexOf('{', iMoved);
+        const branch = braceOpen === -1 ? null : extractBalanced(body, braceOpen, '{', '}');
+        if (branch === null) {
+          violations.push(`(A) ${PAGE}: не удалось выделить ветку needs_moved_after_choice.`);
+        } else if (/pushToast\(|notifyPlaceContentChanged\(|\brefresh\(/.test(branch)) {
+          violations.push(
+            `(A) ${PAGE}: ветка needs_moved_after_choice содержит pushToast/notifyPlaceContentChanged/refresh( — ничего не удалено.`,
+          );
+        } else if (!branch.includes('movedPrompt')) {
+          violations.push(`(A) ${PAGE}: ветка needs_moved_after_choice не открывает movedPrompt.`);
+        }
+      }
     }
 
     const calls = deleteCalls(page);
@@ -172,7 +236,52 @@ export function scanSource(files, violations) {
         `(B) ${PAGE}: есть acts.delete( без третьего аргумента — повторный вызов потеряет выбор.`,
       );
     }
+    if (calls.some((a) => topLevelArgCount(a) < 4)) {
+      violations.push(
+        `(B) ${PAGE}: есть acts.delete( без четвёртого аргумента (выбор по перемещённым) — оба выбора уходят одним вызовом.`,
+      );
+    }
+    const movedConfirm = functionBody(page, 'confirmMovedPrompt');
+    if (
+      movedConfirm === null ||
+      !/handleDelete\(\s*prompt\.act,\s*prompt\.groupChoices,/.test(movedConfirm)
+    ) {
+      violations.push(
+        `(B) ${PAGE}: confirmMovedPrompt не передаёт prompt.groupChoices в handleDelete( — выбор по группам потеряется.`,
+      );
+    }
+    const restoreConfirm = functionBody(page, 'confirmRestorePrompt');
+    if (
+      restoreConfirm === null ||
+      !/handleDelete\([^)]*prompt\.movedChoice\s*\)/.test(restoreConfirm)
+    ) {
+      violations.push(
+        `(B) ${PAGE}: confirmRestorePrompt не передаёт prompt.movedChoice в handleDelete( — выбор по перемещённым потеряется.`,
+      );
+    }
     const markup = markupOf(page);
+    const movedTag = /<MovedAfterActChoicePopup\b/.exec(markup);
+    if (movedTag === null) {
+      violations.push(`(B) ${PAGE}: в разметке не смонтирован <MovedAfterActChoicePopup.`);
+    } else {
+      const cond = enclosingIfCondition(markup, movedTag.index);
+      if (cond === null || !cond.includes('movedPrompt')) {
+        violations.push(
+          `(B) ${PAGE}: <MovedAfterActChoicePopup обязан стоять внутри {#if movedPrompt}.`,
+        );
+      }
+      const dm = /<ActDeleteModal\b/.exec(markup);
+      if (dm !== null) {
+        const rest = markup.slice(dm.index);
+        const end = rest.search(/\/>|<\/ActDeleteModal>/);
+        const spanEnd = end === -1 ? markup.length : dm.index + end;
+        if (movedTag.index > dm.index && movedTag.index < spanEnd) {
+          violations.push(
+            `(B) ${PAGE}: попап перемещённых вложен в <ActDeleteModal — модалка над модалкой запрещена.`,
+          );
+        }
+      }
+    }
     const tag = /<GroupRestoreChoicePopup\b/.exec(markup);
     if (tag === null) {
       violations.push(`(B) ${PAGE}: в разметке не смонтирован <GroupRestoreChoicePopup.`);
@@ -225,6 +334,67 @@ export function scanSource(files, violations) {
     }
   }
 
+  const moved = s[MOVED_POPUP];
+  if (moved !== undefined) {
+    if (/\bacts\.delete\s*\(/.test(moved)) {
+      violations.push(
+        `(E) ${MOVED_POPUP}: попап вызывает acts.delete( — он обязан быть презентационным.`,
+      );
+    }
+    if (/from\s*['"][^'"]*\bapi\b[^'"]*['"]/.test(moved)) {
+      violations.push(`(E) ${MOVED_POPUP}: импорт из api — попап обязан быть презентационным.`);
+    }
+    if (!moved.includes('initialFocus=".modal-footer .btn-secondary"')) {
+      violations.push(
+        `(E) ${MOVED_POPUP}: нет initialFocus=".modal-footer .btn-secondary" — фокус не на «Отмена» (Enter удалил бы акт).`,
+      );
+    }
+    for (const comp of ['Radio', 'Checkbox', 'Modal', 'Button']) {
+      if (
+        !new RegExp(`import\\s+${comp}\\s+from\\s+'\\$lib/components/${comp}\\.svelte'`).test(moved)
+      ) {
+        violations.push(`(E) ${MOVED_POPUP}: нет импорта компонента ${comp}.`);
+      }
+    }
+    if (/<input\b/.test(markupOf(moved))) {
+      violations.push(`(E) ${MOVED_POPUP}: нативный <input — варианты только на Radio/Checkbox.`);
+    }
+    const radios = (markupOf(moved).match(/<Radio\b/g) ?? []).length;
+    const boxes = (markupOf(moved).match(/<Checkbox\b/g) ?? []).length;
+    if (radios !== 2 || boxes !== 1) {
+      violations.push(`(E) ${MOVED_POPUP}: Radio ${radios} и Checkbox ${boxes} (нужно 2 и 1).`);
+    }
+    const box = /<Checkbox\b[^>]*>/.exec(markupOf(moved));
+    if (box === null || !box[0].includes(CHECKBOX_DISABLED)) {
+      violations.push(
+        `(E) ${MOVED_POPUP}: чекбокс без ${CHECKBOX_DISABLED} — при «Оставить» он обязан быть отключён.`,
+      );
+    }
+    if (!/let\s+mode\s*=\s*\$state<string>\(\s*'return'\s*\)/.test(moved)) {
+      violations.push(`(E) ${MOVED_POPUP}: по умолчанию выбран не «Вернуть на место до акта».`);
+    }
+    if (!/let\s+erase\s*=\s*\$state\(\s*true\s*\)/.test(moved)) {
+      violations.push(`(E) ${MOVED_POPUP}: отметка «Стереть…» по умолчанию не стоит.`);
+    }
+    const submit = functionBody(moved, 'submit') ?? '';
+    for (const token of ["'keep'", "'return_erase'", "'return_mark'"]) {
+      if (!submit.includes(token)) {
+        violations.push(`(E) ${MOVED_POPUP}: submit не отображает выбор на ${token}.`);
+      }
+    }
+    const flat = markupOf(moved).replace(/\s+/g, ' ').replace(/\{\s+/g, '{').replace(/\s+\}/g, '}');
+    for (const text of MOVED_TEXTS) {
+      const n = countOf(flat, text);
+      if (n !== 1)
+        violations.push(`(E) ${MOVED_POPUP}: текст «${text}» встречается ${n} раз, нужно ровно 1.`);
+    }
+    for (const label of ['Отмена', 'Удалить акт']) {
+      if (!new RegExp(`>\\s*${label}\\s*<`).test(moved)) {
+        violations.push(`(E) ${MOVED_POPUP}: нет кнопки «${label}».`);
+      }
+    }
+  }
+
   const api = s[API];
   if (api !== undefined) {
     const m = /\bdelete:\s*\(/.exec(api);
@@ -238,6 +408,13 @@ export function scanSource(files, violations) {
       const tail = api.slice(m.index, m.index + 600);
       if (!tail.includes('groupChoices', tail.indexOf(')'))) {
         violations.push(`(D) ${API}: delete не передаёт groupChoices в apiCall.`);
+      }
+      if (topLevelArgCount(params) < 4) {
+        violations.push(`(D) ${API}: delete не принимает четвёртый параметр (movedChoice).`);
+      }
+      const call = tail.slice(tail.indexOf('apiCall'));
+      if (!/\bmovedChoice\b/.test(call)) {
+        violations.push(`(D) ${API}: delete не передаёт movedChoice в apiCall.`);
       }
     }
   }
@@ -263,6 +440,135 @@ function mutate(source, from, to, label) {
     );
   }
   return source.replace(from, () => to);
+}
+
+/** UAT-3: мутанты попапа «перемещали после акта» и его проводки. */
+function movedMutants(raw, pg, withFile, successRe) {
+  const mp = raw[MOVED_POPUP];
+  const movedRe = /\n\s*if \(result\.needs_moved_after_choice\) \{[\s\S]*?\n\s*return;\n\s*\}\n/;
+  const mm = movedRe.exec(pg);
+  if (mm === null) throw new Error('ветка needs_moved_after_choice не найдена в ActsPage');
+  const movedBranch = mm[0];
+  mutate(pg, movedBranch, '', 'probe moved branch');
+  const noMoved = pg.replace(movedBranch, '');
+  const belowSuccess = noMoved.replace(successRe, (m) => `${movedBranch}\n      ${m}`);
+  if (belowSuccess === noMoved) throw new Error('перестановка moved не применилась');
+  const groupRe = /\n\s*if \(result\.needs_group_restore\) \{[\s\S]*?\n\s*return;\n\s*\}\n/;
+  const gm = groupRe.exec(noMoved);
+  if (gm === null) throw new Error('ветка needs_group_restore не найдена');
+  const belowGroup = noMoved.replace(gm[0], `${gm[0]}${movedBranch}`);
+  return [
+    {
+      name: '(9) удалена ветка needs_moved_after_choice',
+      files: withFile(PAGE, noMoved),
+      rule: 'A',
+    },
+    {
+      name: '(10) ПЕРЕСТАНОВКА: needs_moved_after_choice ниже success-тоста',
+      files: withFile(PAGE, belowSuccess),
+      rule: 'A',
+    },
+    {
+      name: '(11) ПЕРЕСТАНОВКА: needs_moved_after_choice ниже needs_group_restore',
+      files: withFile(PAGE, belowGroup),
+      rule: 'A',
+    },
+    {
+      name: '(12) чекбокс не отключается при «Оставить»',
+      files: withFile(MOVED_POPUP, mutate(mp, ` ${CHECKBOX_DISABLED}`, '', 'checkbox disabled')),
+      rule: 'E',
+    },
+    {
+      name: '(13) нативный чекбокс вместо компонента',
+      files: withFile(
+        MOVED_POPUP,
+        mutate(
+          mp,
+          '<Checkbox bind:checked={erase}',
+          '<input type="checkbox" bind:checked={erase}',
+          'native',
+        ),
+      ),
+      rule: 'E',
+    },
+    {
+      name: '(14) убран initialFocus в попапе перемещённых',
+      files: withFile(
+        MOVED_POPUP,
+        mutate(mp, '  initialFocus=".modal-footer .btn-secondary"\n', '', 'moved focus'),
+      ),
+      rule: 'E',
+    },
+    {
+      name: '(15) ПОДМЕНА: подсказка «Оставить» заменена подсказкой «Вернуть»',
+      files: withFile(MOVED_POPUP, mutate(mp, MOVED_TEXTS[7], MOVED_TEXTS[5], 'swap hint')),
+      rule: 'E',
+    },
+    {
+      name: '(16) confirmMovedPrompt теряет выбор по группам',
+      files: withFile(
+        PAGE,
+        mutate(
+          pg,
+          'handleDelete(prompt.act, prompt.groupChoices, choice)',
+          'handleDelete(prompt.act, undefined, choice)',
+          'lose group',
+        ),
+      ),
+      rule: 'B',
+    },
+    {
+      name: '(17) confirmRestorePrompt теряет выбор по перемещённым',
+      files: withFile(
+        PAGE,
+        mutate(
+          pg,
+          'handleDelete(prompt.act, choices, prompt.movedChoice)',
+          'handleDelete(prompt.act, choices)',
+          'lose moved',
+        ),
+      ),
+      rule: 'B',
+    },
+    {
+      name: '(18) api.delete не передаёт movedChoice',
+      files: withFile(
+        API,
+        mutate(raw[API], '      ...(movedChoice ? { movedChoice } : {}),\n', '', 'api drop moved'),
+      ),
+      rule: 'D',
+    },
+    {
+      name: '(19) по умолчанию выбрано «Оставить»',
+      files: withFile(
+        MOVED_POPUP,
+        mutate(
+          mp,
+          "let mode = $state<string>('return');",
+          "let mode = $state<string>('keep');",
+          'default',
+        ),
+      ),
+      rule: 'E',
+    },
+    {
+      name: '(20) отметка «Стереть…» по умолчанию снята',
+      files: withFile(
+        MOVED_POPUP,
+        mutate(mp, 'let erase = $state(true);', 'let erase = $state(false);', 'erase'),
+      ),
+      rule: 'E',
+    },
+    {
+      name: '(21) попап перемещённых отсутствует',
+      files: (() => {
+        const f = { ...raw };
+        delete f[MOVED_POPUP];
+        return f;
+      })(),
+      rule: 'M',
+    },
+  ];
 }
 
 function runSelfTest() {
@@ -332,7 +638,7 @@ function runSelfTest() {
           PAGE,
           mutate(
             pg,
-            'acts.delete(act.id, act.version, choices)',
+            'acts.delete(act.id, act.version, groupChoices, movedChoice)',
             'acts.delete(act.id, act.version)',
             'drop third arg',
           ),
@@ -358,13 +664,14 @@ function runSelfTest() {
           API,
           mutate(
             raw[API],
-            'delete: (id: number, version: number, groupChoices?: GroupRestoreChoiceDto[])',
-            'delete: (id: number, version: number)',
+            '    groupChoices?: GroupRestoreChoiceDto[],\n    movedChoice?: MovedAfterActChoiceDto,\n',
+            '',
             'api drop param',
           ),
         ),
         rule: 'D',
       },
+      ...movedMutants(raw, pg, withFile, successRe),
     ];
     void iSuccess;
   } catch (e) {

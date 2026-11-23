@@ -17,6 +17,7 @@
   import PdfPreviewModal from './PdfPreviewModal.svelte';
   import ActDeleteModal from './ActDeleteModal.svelte';
   import GroupRestoreChoicePopup from './GroupRestoreChoicePopup.svelte';
+  import MovedAfterActChoicePopup from './MovedAfterActChoicePopup.svelte';
   import { acts } from './api';
   import type {
     ActDto,
@@ -26,6 +27,8 @@
     ActsCountsDto,
     GroupRestoreChoiceDto,
     GroupRestoreConflictDto,
+    MovedAfterActChoiceDto,
+    MovedAfterActDeviceDto,
     Pagination,
   } from '../../bindings';
 
@@ -58,7 +61,19 @@
   let deleteTargetAct = $state<ActDto | null>(null);
   let deleting = $state(false);
   // D-42: конфликт «группа перенесена после акта» — попап выбора вместо ActDeleteModal.
-  let restorePrompt = $state<{ act: ActDto; groups: GroupRestoreConflictDto[] } | null>(null);
+  // `movedChoice` — уже сделанный выбор UAT-3: он уходит вместе с выбором по группам.
+  let restorePrompt = $state<{
+    act: ActDto;
+    groups: GroupRestoreConflictDto[];
+    movedChoice?: MovedAfterActChoiceDto;
+  } | null>(null);
+  // UAT-3: «устройства перемещали после акта». Попапы идут по очереди: сначала этот, потом
+  // (если сервер ещё просит) выбор по группам; последний вызов несёт оба выбора.
+  let movedPrompt = $state<{
+    act: ActDto;
+    devices: MovedAfterActDeviceDto[];
+    groupChoices?: GroupRestoreChoiceDto[];
+  } | null>(null);
   let searchQuery = $state('');
   const pagination = $state<Pagination>({ offset: 0, limit: 50 });
 
@@ -331,14 +346,25 @@
   }
 
   // Вызывается ТОЛЬКО из confirmDelete, после подтверждения в ActDeleteModal.
-  async function handleDelete(act: ActDto, choices?: GroupRestoreChoiceDto[]) {
+  async function handleDelete(
+    act: ActDto,
+    groupChoices?: GroupRestoreChoiceDto[],
+    movedChoice?: MovedAfterActChoiceDto,
+  ) {
     const isReturn = act.act_type === 'return';
     try {
-      const result = await acts.delete(act.id, act.version, choices);
+      const result = await acts.delete(act.id, act.version, groupChoices, movedChoice);
+      // UAT-3: сервер ничего не удалил — устройства акта перемещали после акта. Никаких
+      // тостов, notify и refresh; сначала этот выбор, выбор по группам (если есть) — следом.
+      if (result.needs_moved_after_choice) {
+        movedPrompt = { act, devices: result.needs_moved_after_choice.devices, groupChoices };
+        deleteTargetAct = null;
+        return;
+      }
       // D-42: сервер ничего не удалил и просит выбор по группам. Никаких тостов,
       // notify и refresh; ActDeleteModal закрывается, поверх ничего не накладывается.
       if (result.needs_group_restore) {
-        restorePrompt = { act, groups: result.needs_group_restore.groups };
+        restorePrompt = { act, groups: result.needs_group_restore.groups, movedChoice };
         deleteTargetAct = null;
         return;
       }
@@ -402,7 +428,24 @@
     deleting = true;
     restorePrompt = null;
     try {
-      await handleDelete(prompt.act, choices);
+      await handleDelete(prompt.act, choices, prompt.movedChoice);
+    } finally {
+      deleting = false;
+    }
+  }
+
+  function cancelMovedPrompt() {
+    if (deleting) return;
+    movedPrompt = null;
+  }
+
+  async function confirmMovedPrompt(choice: MovedAfterActChoiceDto) {
+    const prompt = movedPrompt;
+    if (prompt === null || deleting) return;
+    deleting = true;
+    movedPrompt = null;
+    try {
+      await handleDelete(prompt.act, prompt.groupChoices, choice);
     } finally {
       deleting = false;
     }
@@ -503,6 +546,16 @@
     {deleting}
     onCancel={cancelDelete}
     onConfirm={confirmDelete}
+  />
+{/if}
+
+{#if movedPrompt}
+  <MovedAfterActChoicePopup
+    actNumber={movedPrompt.act.number}
+    devices={movedPrompt.devices}
+    loading={deleting}
+    onConfirm={confirmMovedPrompt}
+    onClose={cancelMovedPrompt}
   />
 {/if}
 

@@ -205,11 +205,11 @@ async function main() {
       [
         '(б) в Rust добавлен вариант Survey с токеном "survey"',
         'rs',
-        '            Self::Repair => "repair",\n',
-        '            Self::Repair => "repair",\n            Self::Survey => "survey",\n',
+        '            Self::ActDelete => "act_delete",\n',
+        '            Self::ActDelete => "act_delete",\n            Self::Survey => "survey",\n',
         'M3',
         // второй якорь — сам вариант в enum
-        ['    Repair,\n}', '    Repair,\n    /// Инвентаризация.\n    Survey,\n}'],
+        ['    ActDelete,\n}', '    ActDelete,\n    /// Инвентаризация.\n    Survey,\n}'],
       ],
       [
         '(в) подпись workstation заменена возвратом в fallback',
@@ -218,7 +218,7 @@ async function main() {
         '  workstation: () => UNKNOWN_MOVEMENT_REASON,\n',
         'M4',
       ],
-      ['(г) из ALL убран Repair', 'rs', '        Self::Repair,\n    ];', '    ];', 'M1'],
+      ['(г) из ALL убран ActDelete', 'rs', '        Self::ActDelete,\n    ];', '    ];', 'M1'],
     ];
     const replaceOnce = (src, from, to, name) => {
       const n = src.split(from).length - 1;

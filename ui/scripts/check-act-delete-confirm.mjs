@@ -260,8 +260,8 @@ function runSelfTest() {
           PAGE,
           mutate(
             raw[PAGE],
-            'async function handleDelete(act: ActDto, choices?: GroupRestoreChoiceDto[]) {',
-            "async function handleDelete(act: ActDto, choices?: GroupRestoreChoiceDto[]) {\n    if (!window.confirm('x')) return;",
+            '    movedChoice?: MovedAfterActChoiceDto,\n  ) {\n',
+            "    movedChoice?: MovedAfterActChoiceDto,\n  ) {\n    if (!window.confirm('x')) return;\n",
             'confirm in handleDelete',
           ),
         ),

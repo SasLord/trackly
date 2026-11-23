@@ -21,6 +21,7 @@ import type {
   ActUpdateReturnDto,
   GroupRestoreChoiceDto,
   GroupSplitChoiceDto,
+  MovedAfterActChoiceDto,
   Pagination,
   ReturnGroupSplitWarningDto,
 } from '../../bindings';
@@ -70,12 +71,21 @@ export const acts = {
    * delivered together with a SUCCESSFUL deletion.
    */
   /** D-42: `groupChoices` уходит только когда непуст (первый вызов идёт без выбора;
-   *  сервер при конфликте ничего не удаляет и возвращает `needs_group_restore`). */
-  delete: (id: number, version: number, groupChoices?: GroupRestoreChoiceDto[]) =>
-    apiCall<ActDeleteResultDto>(
-      'acts_delete',
-      groupChoices && groupChoices.length > 0 ? { id, version, groupChoices } : { id, version },
-    ),
+   *  сервер при конфликте ничего не удаляет и возвращает `needs_group_restore`).
+   *  UAT-3: `movedChoice` — выбор по устройствам, которые перемещали после акта; без него
+   *  сервер при таком конфликте тоже ничего не удаляет (`needs_moved_after_choice`). */
+  delete: (
+    id: number,
+    version: number,
+    groupChoices?: GroupRestoreChoiceDto[],
+    movedChoice?: MovedAfterActChoiceDto,
+  ) =>
+    apiCall<ActDeleteResultDto>('acts_delete', {
+      id,
+      version,
+      ...(groupChoices && groupChoices.length > 0 ? { groupChoices } : {}),
+      ...(movedChoice ? { movedChoice } : {}),
+    }),
 
   counts: () => apiCall<ActsCountsDto>('acts_counts'),
 

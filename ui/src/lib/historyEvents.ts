@@ -32,7 +32,8 @@ export type HistoryReasonToken =
   | 'group_disband'
   | 'device_write_off'
   | 'group_write_off'
-  | 'teardown';
+  | 'teardown'
+  | 'act_delete';
 
 export const UNKNOWN_HISTORY_EVENT = 'событие не определено';
 // Дубль UNKNOWN_MOVEMENT_REASON из movementReason.ts (рантайм-импорт запрещён, см. шапку);
@@ -144,6 +145,12 @@ export const HISTORY_REASON_LABELS: Record<HistoryReasonToken, ReasonFn> = {
   device_write_off: () => 'при списании',
   group_write_off: (e) => refBase('при списании группы', e),
   teardown: (e) => refBase('при разборе', e),
+  // UAT-3: событие склеено со строкой перемещения «при удалении акта»; номер акта —
+  // примечание этой строки (act_id нет: акт удалён).
+  act_delete: (e) => {
+    const note = e.segments.find((s) => s.kind === 'move')?.movement?.note?.trim() ?? '';
+    return note.length > 0 ? `при удалении акта №${note}` : 'при удалении акта';
+  },
 };
 
 /**

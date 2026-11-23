@@ -265,9 +265,9 @@ async function main() {
         'H2',
       ],
       [
-        '(г) из HistoryReason::ALL убран Teardown',
+        '(г) из HistoryReason::ALL убран ActDelete',
         'rs',
-        '        Self::Teardown,\n    ];',
+        '        Self::ActDelete,\n    ];',
         '    ];',
         'H1',
       ],
