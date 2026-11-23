@@ -13,7 +13,10 @@
 //   [H2] у каждого варианта есть токен в as_str(), токены уникальны;
 //   [H3] ключи словарей == токены соответствующего enum;
 //   [H4] kindText по каждому токену ≠ «событие не определено», для garbage — равен;
-//        reasonLabel для garbage — «причина не определена»; для каждого токена — не она.
+//        reasonLabel для garbage — «причина не определена»; для каждого токена — не она;
+//   [H5] (ревью 41.10 WR-01) образование безъякорной группы в ленте группы
+//        (subject_type 'group', subject_label = имя самой группы) не называет группу
+//        устройством; от якоря-устройства — называет устройство.
 //
 // Название не check-history-labels: оно занято событиями заявки (41.5).
 //
@@ -202,6 +205,23 @@ function runChecks({ rs, mod }) {
     bad.push(`[H4] нераспознанное основание должно давать «${UNKNOWN_REASON}»`);
   if (mod.UNKNOWN_HISTORY_EVENT !== UNKNOWN_EVENT)
     bad.push('[H4] UNKNOWN_HISTORY_EVENT ≠ «событие не определено»');
+
+  // [H5] субъект образования — сама группа (безъякорная): не «от устройства «<группа>»».
+  const groupCtx = { variant: 'group', currentGroupId: 2 };
+  const selfFormed = {
+    ...segment('group_formed'),
+    subject_type: 'group',
+    subject_id: 2,
+    subject_label: 'АРМ-5',
+  };
+  const selfText = run(() => mod.kindText(selfFormed, groupCtx));
+  if (typeof selfText !== 'string' || /устройств/.test(selfText) || selfText.includes('АРМ-5'))
+    bad.push(
+      `[H5] образование безъякорной группы названо устройством: ${JSON.stringify(selfText)}`,
+    );
+  const anchorText = run(() => mod.kindText(segment('group_formed'), groupCtx));
+  if (typeof anchorText !== 'string' || !anchorText.includes('Монитор #2'))
+    bad.push(`[H5] образование от якоря не называет устройство: ${JSON.stringify(anchorText)}`);
   return bad;
 }
 
@@ -265,6 +285,13 @@ async function main() {
         '  group_formed: (seg, ctx) => {',
         "  group_formed: () => 'событие не определено',\n  group_formed_old: (seg, ctx) => {",
         'H4',
+      ],
+      [
+        '(з) group_formed в ленте группы не смотрит на subject_type (WR-01)',
+        'ts',
+        "      return seg.subject_type === 'device' && (seg.subject_label?.trim() ?? '').length > 0",
+        "      return (seg.subject_label?.trim() ?? '').length > 0",
+        'H5',
       ],
       [
         '(ж) нераспознанное основание больше не «причина не определена»',

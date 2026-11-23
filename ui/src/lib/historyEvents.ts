@@ -100,7 +100,8 @@ export const HISTORY_KIND_LABELS: Record<HistoryEventKindToken, KindFn> = {
   },
   group_formed: (seg, ctx) => {
     if (ctx.variant === 'group') {
-      return (seg.subject_label?.trim() ?? '').length > 0
+      // Ревью 41.10 WR-01: у безъякорной группы субъект — сама группа, не устройство.
+      return seg.subject_type === 'device' && (seg.subject_label?.trim() ?? '').length > 0
         ? `Группа образована от устройства${quoted(seg.subject_label)}`
         : 'Группа образована';
     }
