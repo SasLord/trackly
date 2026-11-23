@@ -17,7 +17,8 @@
 //   [M2] в ЭТОМ правиле нет одного из трёх объявлений либо значение иное
 //        (сброс, перенесённый в другое правило, тоже [M2]);
 //   [M3] в разметке `class="modal-backdrop"` не содержит `class="modal-container`
-//        (корень перестал быть обёрткой над контейнером).
+//        (корень перестал быть обёрткой над контейнером);
+//   [M4] корень Modal не гасит всплытие click/dblclick/contextmenu (41.1 WR-03/04).
 //
 // Self-test (`--selftest`): мутанты РЕАЛЬНОГО Modal.svelte (якорь каждого встречается
 // ровно один раз, иначе replace молча отключил бы соседний фрагмент); у каждого
@@ -135,6 +136,15 @@ export function checkModalSource(source) {
       msg: 'в разметке нет class="modal-backdrop" либо class="modal-container" (корень перестал быть обёрткой)',
     });
   }
+  // [M4]: корень останавливает всплытие click/dblclick/contextmenu (WR-03/04).
+  for (const ev of ['onclick', 'ondblclick', 'oncontextmenu']) {
+    if (!new RegExp(`${ev}=\\{stopEvent\\}`).test(markup)) {
+      v.push({ code: 'M4', msg: `корень Modal не гасит всплытие: нет ${ev}={stopEvent}` });
+    }
+  }
+  if (!/function stopEvent\([^)]*\)\s*\{\s*e\.stopPropagation\(\);/.test(text)) {
+    v.push({ code: 'M4', msg: 'stopEvent не вызывает e.stopPropagation()' });
+  }
   return v;
 }
 
@@ -154,6 +164,21 @@ const RESET_BLOCK = '    white-space: normal;\n    text-align: start;\n    curso
 const FOOTER_ANCHOR = '    gap: var(--tr-space-xs);\n    flex-shrink: 0;\n';
 
 const MUTANTS = [
+  {
+    name: 'убран onclick={stopEvent}',
+    apply: (s) => mutate(s, '    onclick={stopEvent}\n', '', 'del onclick stop'),
+    expect: 'M4',
+  },
+  {
+    name: 'убран oncontextmenu={stopEvent}',
+    apply: (s) => mutate(s, '    oncontextmenu={stopEvent}\n', '', 'del oncontextmenu stop'),
+    expect: 'M4',
+  },
+  {
+    name: 'stopEvent без stopPropagation',
+    apply: (s) => mutate(s, '    e.stopPropagation();\n', '', 'del stopPropagation'),
+    expect: 'M4',
+  },
   {
     name: 'удалена white-space: normal',
     apply: (s) => mutate(s, '    white-space: normal;\n', '', 'del white-space'),

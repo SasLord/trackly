@@ -199,6 +199,15 @@
     mouseDownOnBackdrop = e.target === e.currentTarget;
   }
 
+  // 41.1 WR-03/04: Modal монтируется на месте вызова (внутри td/tr с собственными
+  // click/dblclick/contextmenu). События изнутри попапа не должны доходить до
+  // строки-родителя. onclick/ondblclick/oncontextmenu в Svelte 5 делегируются, и
+  // делегированный обход учитывает cancelBubble. mousedown/keydown НЕ останавливаются:
+  // на них держатся внешний клик закрытия меню/дропдаунов и Escape (document/window).
+  function stopEvent(e: Event) {
+    e.stopPropagation();
+  }
+
   function handleBackdropMouseup(e: MouseEvent) {
     if (!isTop) return;
     if (mouseDownOnBackdrop && e.target === e.currentTarget) {
@@ -211,12 +220,17 @@
 <svelte:window onkeydown={open ? handleKeydown : undefined} />
 
 {#if open}
+  <!-- Клик здесь только гасит всплытие к строке-родителю; клавиатурный путь — Escape/Tab на window. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     class="modal-backdrop"
     style:z-index={backdropZIndex}
     data-modal-depth={stackDepth}
     onmousedown={handleBackdropMousedown}
     onmouseup={handleBackdropMouseup}
+    onclick={stopEvent}
+    ondblclick={stopEvent}
+    oncontextmenu={stopEvent}
     aria-modal="true"
     role="dialog"
     aria-labelledby={titleId}
