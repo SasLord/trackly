@@ -84,6 +84,12 @@ pub(crate) struct GroupMoveOutcome {
     pub batch_id: Option<String>,
     /// D-34: устройства, у которых вместе с местом сменился статус.
     pub status_changed_device_ids: Vec<i64>,
+    /// Phase 41.10 (D-04, D-25, ревью WR-04): устройство -> id строки журнала места,
+    /// записанной пакетом группы. Вызывающий связывает с ней событие статуса той же операции.
+    pub device_movement_ids: std::collections::HashMap<i64, i64>,
+    /// Id строки журнала места самой группы (если перенос записан): событие вложения той же
+    /// операции несёт его (D-25).
+    pub group_movement_id: Option<i64>,
 }
 
 /// D-34: сдвиг статуса при переносе через границу «склад <-> не склад».
@@ -701,11 +707,12 @@ pub(crate) fn propagate_group_place_with_shift_in_tx(
     let group_moves = old_place != Some(target_place);
 
     let mut changed_places: Vec<i64> = Vec::new();
+    let mut group_movement_id: Option<i64> = None;
 
     if group_moves {
         deps.groups
             .set_groups_place_in_tx(tx, &group_ids, Some(target_place), now)?;
-        deps.movements.record_batch_movement_if_applicable(
+        group_movement_id = deps.movements.record_batch_movement_if_applicable(
             tx,
             &deps.places,
             MovementEntityKind::Group,
@@ -728,6 +735,8 @@ pub(crate) fn propagate_group_place_with_shift_in_tx(
 
     let mut moved_devices = 0;
     let mut status_changed_device_ids: Vec<i64> = Vec::new();
+    let mut device_movement_ids: std::collections::HashMap<i64, i64> =
+        std::collections::HashMap::new();
     for device_id in &device_ids {
         let change = apply_group_place_inner(
             tx,
@@ -743,6 +752,9 @@ pub(crate) fn propagate_group_place_with_shift_in_tx(
             old_place,
             status_shift,
         )?;
+        if let Some(m) = change.movement_id {
+            device_movement_ids.insert(*device_id, m);
+        }
         if change.changed {
             moved_devices += 1;
             if change.status_changed {
@@ -769,6 +781,8 @@ pub(crate) fn propagate_group_place_with_shift_in_tx(
         changed_place_ids: changed_places,
         batch_id: Some(batch_id.to_string()),
         status_changed_device_ids,
+        device_movement_ids,
+        group_movement_id,
     })
 }
 

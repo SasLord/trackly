@@ -926,6 +926,43 @@ fn order_violations(code_src: &str) -> Vec<String> {
     out
 }
 
+/// Ревью WR-04 (D-25): события вложения, сопровождающие перенос места группы, пишутся ПОСЛЕ
+/// него и несут `movement_id` строки группы. (файл, функция, перенос, события).
+const NESTING_ORDER_SITES: [(&str, &str, &str, [&str; 2]); 1] = [(
+    "crates/trackly-app/src/services/group_service.rs",
+    "set_parent",
+    "propagate_group_place_in_tx(",
+    ["record_group_nested_in_tx(", "record_group_unnested_in_tx("],
+)];
+
+/// Нарушения порядка «перенос места группы -> событие вложения» на заданных исходниках.
+fn nesting_order_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (file, func, mv, events) in NESTING_ORDER_SITES {
+        let Some((_, code)) = sources.iter().find(|(r, _)| r == file) else {
+            out.push(format!("{file}: нет в дереве"));
+            continue;
+        };
+        let lines: Vec<&str> = code.lines().collect();
+        let Some((_, s, e)) = fn_ranges(&lines).into_iter().find(|(n, _, _)| n == func) else {
+            out.push(format!("{file}: функции {func} нет"));
+            continue;
+        };
+        let first = |needles: &[&str]| (s..e).find(|i| line_calls(lines[*i], needles) > 0);
+        match (first(&[mv]), first(&events)) {
+            (Some(m), Some(ev)) if m < ev => {}
+            (Some(_), Some(ev)) => out.push(format!(
+                "{func}: событие вложения (строка {}) раньше переноса места (D-25)",
+                ev + 1
+            )),
+            _ => out.push(format!(
+                "{func}: нет переноса или события вложения — проверка вакуумна"
+            )),
+        }
+    }
+    out
+}
+
 /// Файлы, где порядок обязан проверяться (есть и перемещение, и событие в одной функции).
 const ORDER_FILES: [&str; 3] = [
     "crates/trackly-app/src/services/device_service.rs",
@@ -1733,5 +1770,47 @@ fn history_write_sites_pinned_exempt_status_unchanged() {
     assert!(
         !pinned_exempt_violations(&with_source(&sources, f, &m)).is_empty(),
         "настоящая смена статуса в «Местах» не покраснила гейт"
+    );
+}
+
+/// WR-04: событие вложения после переноса места; перестановка блоков краснит проверку,
+/// а счётные реестры не видят её.
+#[test]
+fn history_write_sites_nesting_event_after_group_move() {
+    let sources = prod_sources();
+    let v = nesting_order_violations(&sources);
+    assert!(v.is_empty(), "порядок вложения: {v:#?}");
+    let f = "crates/trackly-app/src/services/group_service.rs";
+    let raw = raw_of(f);
+    // мутация-перестановка: первое событие вложения и перенос места меняются именами
+    let code = production_code(raw);
+    let lines: Vec<&str> = code.lines().collect();
+    let (_, s, e) = fn_ranges(&lines)
+        .into_iter()
+        .find(|(n, _, _)| n == "set_parent")
+        .expect("set_parent");
+    let mi = (s..e)
+        .find(|i| line_calls(lines[*i], &["propagate_group_place_in_tx("]) > 0)
+        .expect("перенос");
+    let ei = (s..e)
+        .find(|i| line_calls(lines[*i], &["record_group_unnested_in_tx("]) > 0)
+        .expect("событие");
+    let mut raw_lines: Vec<String> = raw.lines().map(String::from).collect();
+    raw_lines[mi] = raw_lines[mi].replacen("propagate_group_place_in_tx(", "__SWAP__(", 1);
+    raw_lines[ei] = raw_lines[ei].replacen(
+        "record_group_unnested_in_tx(",
+        "propagate_group_place_in_tx(",
+        1,
+    );
+    raw_lines[mi] = raw_lines[mi].replacen("__SWAP__(", "record_group_unnested_in_tx(", 1);
+    let mutated = raw_lines.join("\n");
+    let ms = with_source(&sources, f, &mutated);
+    assert!(
+        writer_call_violations(&ms).is_empty() && event_call_violations(&ms).is_empty(),
+        "перестановка не меняет счёт — счётный гейт слеп к порядку"
+    );
+    assert!(
+        !nesting_order_violations(&ms).is_empty(),
+        "событие вложения раньше переноса места не покраснило проверку"
     );
 }

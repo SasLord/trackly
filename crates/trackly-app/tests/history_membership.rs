@@ -419,3 +419,44 @@ async fn history_membership_set_parent() {
     assert!(of_kind(&dev_ev, "group_nested").is_empty(), "{dev_ev:?}");
     assert!(of_kind(&dev_ev, "group_unnested").is_empty(), "{dev_ev:?}");
 }
+
+/// Ревью WR-04 (D-04, D-25): вложение группы в родителя на другом месте — одна операция.
+/// Событие `group_nested` пишется ПОСЛЕ переноса места и несёт `movement_id` строки группы.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_membership_set_parent_links_group_movement() {
+    let (ctx, _d) = make_test_ctx().await;
+    let room = seed_place(&ctx, "Кабинет 12", None, false).await;
+    let other = seed_place(&ctx, "Кабинет 14", None, false).await;
+    let parent = seed_group(&ctx, "АРМ-7", 7, Some(room), None).await;
+    let child = seed_group(&ctx, "АРМ-8", 8, Some(other), None).await;
+    seed_device(
+        &ctx,
+        "Монитор #8",
+        "INV-8",
+        Some(other),
+        Some(child),
+        "в_работе",
+    )
+    .await;
+
+    let v = group_version(&ctx, child).await;
+    ctx.groups
+        .set_parent(&admin(), child, v, Some(parent), false)
+        .await
+        .expect("nest");
+
+    let movement = scalar_i64(
+        &ctx,
+        "SELECT id FROM place_movements WHERE entity_type = 'group' AND entity_id = ?1",
+        vec![int(child)],
+    )
+    .await;
+    let cev = group_events(&ctx, child).await;
+    let nested = of_kind(&cev, "group_nested");
+    assert_eq!(nested.len(), 1, "{cev:?}");
+    assert_eq!(
+        nested[0].movement_id,
+        Some(movement),
+        "вложение и перенос места — одна строка (D-04, D-25)"
+    );
+}

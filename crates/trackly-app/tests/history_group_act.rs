@@ -318,3 +318,46 @@ async fn history_group_act_undo_no_nesting_event() {
     assert!(events(&ctx, "group_nested").await.is_empty());
     assert!(events(&ctx, "group_unnested").await.is_empty());
 }
+
+/// Ревью WR-04 (D-04, D-25): устройство, переехавшее с группой актом, — одна строка ленты.
+/// Событие статуса акта несёт `movement_id` строки перемещения, записанной пакетом группы.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_group_act_moved_member_status_links_movement() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let g = seed_group(&ctx, "АРМ #9", a, None).await;
+    let d1 = seed_device(&ctx, "Системный блок #9", a, Some(g)).await;
+    let d2 = seed_device(&ctx, "Монитор #9", a, Some(g)).await;
+    let (act, _) = create(&ctx, dto("HGA-9", &[d1, d2], b)).await;
+    for dev in [d1, d2] {
+        let (ev_movement, movement): (Option<i64>, i64) = ctx
+            .writer
+            .execute(move |conn| {
+                let ev: Option<i64> = conn
+                    .query_row(
+                        "SELECT movement_id FROM history_events \
+                         WHERE kind = 'status_changed' AND subject_id = ?1 AND act_id = ?2",
+                        params![dev, act],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                let mv: i64 = conn
+                    .query_row(
+                        "SELECT id FROM place_movements WHERE entity_type = 'device' \
+                         AND entity_id = ?1 AND act_id = ?2",
+                        params![dev, act],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                Ok((ev, mv))
+            })
+            .await
+            .expect("status event and movement");
+        assert_eq!(
+            ev_movement,
+            Some(movement),
+            "статус и перемещение одной операции — одна строка (D-04)"
+        );
+    }
+}

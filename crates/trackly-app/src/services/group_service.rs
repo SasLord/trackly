@@ -2129,43 +2129,6 @@ impl GroupService {
                 }
                 deps.groups
                     .set_parent_in_tx(&tx, id, version, parent_group_id, now)?;
-                // Phase 41.10 (D-09): событие группы (subject_type=group), не устройств.
-                if before.parent_group_id != parent_group_id {
-                    let operation_id = new_operation_id();
-                    let cause = HistoryCause {
-                        operation_id: &operation_id,
-                        source: HistoryReason::Manual,
-                        act_id: None,
-                        request_id: None,
-                        ref_group: None,
-                        movement_id: None,
-                        user_id,
-                        now,
-                    };
-                    if let Some(old) = before.parent_group_id {
-                        let old_row = deps.groups.get_group_in_tx(&tx, old)?;
-                        record_group_unnested_in_tx(
-                            &tx,
-                            id,
-                            &before.name,
-                            old,
-                            &old_row.name,
-                            &cause,
-                        )?;
-                    }
-                    if let Some(new_parent) = parent_group_id {
-                        let new_row = deps.groups.get_group_in_tx(&tx, new_parent)?;
-                        record_group_nested_in_tx(
-                            &tx,
-                            id,
-                            &before.name,
-                            new_parent,
-                            &new_row.name,
-                            &cause,
-                        )?;
-                    }
-                }
-
                 let mut outcome = GroupMoveOutcome::default();
                 if let Some(parent_id) = parent_group_id {
                     let parent = deps.groups.get_group_in_tx(&tx, parent_id)?;
@@ -2192,6 +2155,45 @@ impl GroupService {
                                 }
                             }
                         }
+                    }
+                }
+
+                // Phase 41.10 (D-09): событие группы (subject_type=group), не устройств.
+                // D-25 (ревью WR-04): сначала перенос места, потом событие с movement_id
+                // строки группы — вложение с переносом показывается одной строкой (D-04).
+                if before.parent_group_id != parent_group_id {
+                    let operation_id = new_operation_id();
+                    let cause = HistoryCause {
+                        operation_id: &operation_id,
+                        source: HistoryReason::Manual,
+                        act_id: None,
+                        request_id: None,
+                        ref_group: None,
+                        movement_id: outcome.group_movement_id,
+                        user_id,
+                        now,
+                    };
+                    if let Some(old) = before.parent_group_id {
+                        let old_row = deps.groups.get_group_in_tx(&tx, old)?;
+                        record_group_unnested_in_tx(
+                            &tx,
+                            id,
+                            &before.name,
+                            old,
+                            &old_row.name,
+                            &cause,
+                        )?;
+                    }
+                    if let Some(new_parent) = parent_group_id {
+                        let new_row = deps.groups.get_group_in_tx(&tx, new_parent)?;
+                        record_group_nested_in_tx(
+                            &tx,
+                            id,
+                            &before.name,
+                            new_parent,
+                            &new_row.name,
+                            &cause,
+                        )?;
                     }
                 }
 

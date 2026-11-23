@@ -876,7 +876,8 @@ impl ActService {
                                 now,
                             )?
                         } else {
-                            None
+                            // WR-04 (D-04, D-25): строка журнала записана пакетом группы.
+                            applied.movement_ids.get(&dev_id).copied()
                         };
                         // ST: смена статуса акта; порядок D-25 - после перемещения.
                         record_act_status_event(
@@ -1332,7 +1333,8 @@ impl ActService {
                             now,
                         )?
                     } else {
-                        None
+                        // WR-04 (D-04, D-25): строка журнала записана пакетом группы.
+                        applied.movement_ids.get(&dev_id).copied()
                     };
                     // ST: смена статуса акта; порядок D-25 - после перемещения.
                     record_act_status_event(
@@ -2528,7 +2530,8 @@ impl ActService {
                                 now,
                             )?
                         } else {
-                            None
+                            // WR-04 (D-04, D-25): строка журнала записана пакетом группы.
+                            applied.movement_ids.get(&device_id).copied()
                         };
                         // ST: смена статуса акта; порядок D-25 - после перемещения.
                         record_act_status_event(
@@ -3529,7 +3532,8 @@ impl ActService {
                             now,
                         )?
                     } else {
-                        None
+                        // WR-04 (D-04, D-25): строка журнала записана пакетом группы.
+                        applied_added.movement_ids.get(&added_id).copied()
                     };
                     // ST: смена статуса акта; порядок D-25 - после перемещения.
                     record_act_status_event(
@@ -3738,7 +3742,8 @@ impl ActService {
                             now,
                         )?
                     } else {
-                        None
+                        // WR-04 (D-04, D-25): строка журнала записана пакетом группы.
+                        applied_retained.movement_ids.get(&dev_id).copied()
                     };
                     // ST: смена статуса акта; порядок D-25 - после перемещения.
                     record_act_status_event(

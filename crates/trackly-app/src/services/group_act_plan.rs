@@ -1170,6 +1170,7 @@ fn absorb_applied(total: &mut AppliedGroupPlan, part: AppliedGroupPlan) {
         total.pre_snapshots.entry(id).or_insert(row);
     }
     total.moved_device_ids.extend(part.moved_device_ids);
+    total.movement_ids.extend(part.movement_ids);
     for place in part.touched_place_ids {
         push_unique(&mut total.touched_place_ids, place);
     }
@@ -1187,6 +1188,9 @@ pub(crate) struct AppliedGroupPlan {
     /// Все устройства переехавших поддеревьев: вызывающий НЕ пишет им отдельную строку
     /// журнала места и НЕ вызывает release (их место уже поставила группа).
     pub moved_device_ids: HashSet<i64>,
+    /// Phase 41.10 (D-04, D-25, ревью WR-04): устройство переехавшего поддерева -> id его
+    /// строки журнала места (пакет группы). Событие статуса акта несёт этот `movement_id`.
+    pub movement_ids: HashMap<i64, i64>,
     /// Устройства якорных групп, чей перенос возврат пропустил из-за незаданного места:
     /// группа осталась на месте, поэтому место устройства определяет она, а не позиция акта.
     pub stationary_device_ids: HashSet<i64>,
@@ -1375,6 +1379,7 @@ pub(crate) fn apply_plan_in_tx(
             now,
             GroupMoveCause::act(act_id),
         )?;
+        applied.movement_ids.extend(outcome.device_movement_ids);
         for place in outcome.changed_place_ids {
             push_unique(&mut applied.touched_place_ids, place);
         }
