@@ -275,4 +275,24 @@ impl SqliteHistoryEventsRepository {
         )
         .map_err(map_rusqlite)
     }
+
+    /// R8-03: события акта `act_id` по субъекту, чей `movement_id` указывает на уже стёртую
+    /// строку журнала мест (правка забыла строки акта по сущности), теряют ссылку — событие
+    /// остаётся, висячего id нет. Возвращает число строк.
+    pub fn clear_dangling_movement_refs_by_act_subject_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        subject_type: &str,
+        subject_id: i64,
+    ) -> Result<usize, AppError> {
+        tx.execute(
+            "UPDATE history_events SET movement_id = NULL \
+             WHERE act_id = ?1 AND subject_type = ?2 AND subject_id = ?3 \
+               AND movement_id IS NOT NULL \
+               AND NOT EXISTS (SELECT 1 FROM place_movements m WHERE m.id = movement_id)",
+            params![act_id, subject_type, subject_id],
+        )
+        .map_err(map_rusqlite)
+    }
 }

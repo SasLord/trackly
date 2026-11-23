@@ -624,21 +624,29 @@ fn rebase_successors(
     rows: &[ForgettableRow],
 ) -> Result<(), AppError> {
     for (id, entity_type, entity_id, to_place, from_place, from_path) in rows {
+        let successor: Option<i64> = tx
+            .query_row(
+                "SELECT MIN(id) FROM place_movements \
+                  WHERE id > ?1 AND entity_type = ?2 AND entity_id = ?3 \
+                    AND from_place_id = ?4 \
+                    AND (act_id IS NULL OR act_id != ?5)",
+                params![id, entity_type, entity_id, to_place, act_id],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        let Some(successor) = successor else {
+            continue;
+        };
         tx.execute(
-            "UPDATE place_movements SET from_place_id = ?1, from_place_path = ?2 \
-              WHERE id = (SELECT MIN(id) FROM place_movements \
-                           WHERE id > ?3 AND entity_type = ?4 AND entity_id = ?5 \
-                             AND from_place_id = ?6 \
-                             AND (act_id IS NULL OR act_id != ?7))",
-            params![
-                from_place,
-                from_path,
-                id,
-                entity_type,
-                entity_id,
-                to_place,
-                act_id
-            ],
+            "UPDATE place_movements SET from_place_id = ?1, from_place_path = ?2 WHERE id = ?3",
+            params![from_place, from_path, successor],
+        )
+        .map_err(map_rusqlite)?;
+        // 41.2 WR-04: преемник «откуда» = «куда» после переписывания — пустое перемещение
+        // «место -> то же место»; журнал его не хранит.
+        tx.execute(
+            "DELETE FROM place_movements WHERE id = ?1 AND from_place_id = to_place_id",
+            params![successor],
         )
         .map_err(map_rusqlite)?;
     }

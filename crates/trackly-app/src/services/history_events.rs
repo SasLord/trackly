@@ -365,6 +365,17 @@ pub(crate) fn erase_act_events_of_group_in_tx(
     SqliteHistoryEventsRepository.delete_by_act_and_subject_in_tx(tx, act_id, "group", group_id)
 }
 
+/// R8-03: после «забывания» строк перемещений акта по устройству оставшиеся события акта
+/// (`group_left`, пережившее исключение) не ссылаются на стёртые строки.
+pub(crate) fn clear_dangling_act_movement_refs_in_tx(
+    tx: &Transaction<'_>,
+    act_id: i64,
+    device_id: i64,
+) -> Result<usize, AppError> {
+    SqliteHistoryEventsRepository
+        .clear_dangling_movement_refs_by_act_subject_in_tx(tx, act_id, "device", device_id)
+}
+
 /// UAT-1 (D-24): устройство вернулось в группу, из которой его вывел этот акт — стереть
 /// `group_left` этого акта. Вызывается только после успешного возврата в состав: при правке,
 /// исключившей устройство, и при возврате в группу, когда позиция в акте осталась (D-49).

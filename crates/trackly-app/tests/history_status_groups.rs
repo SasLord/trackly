@@ -249,6 +249,11 @@ async fn history_status_write_off_device() {
     let left = of_kind(&ev, "group_left");
     assert_eq!(left.len(), 1, "{ev:?}");
     assert_eq!(left[0].source, "device_write_off");
+    // R8-05 (D-04): одна операция списания — один operation_id у смены статуса и вывода.
+    assert_eq!(
+        st[0].operation_id, left[0].operation_id,
+        "status_changed и group_left списания делят operation_id"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

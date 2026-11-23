@@ -489,6 +489,12 @@ async fn history_act_edit_skipped_rejoin_keeps_group_left() {
         vec!["group_left".to_string()],
         "вывод актом остаётся правдой, смена статуса стёрта"
     );
+    // R8-03: строка акта забыта правкой — оставшийся вывод не ссылается на неё.
+    assert_eq!(
+        dangling_movement_refs(&ctx).await,
+        0,
+        "group_left не ссылается на стёртую строку перемещения"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -684,6 +690,36 @@ async fn history_act_edit_real_change_writes_return_movement_then_group_left() {
         "события акта, кроме нового вывода, стёрты"
     );
     assert_eq!(dangling_movement_refs(&ctx).await, 0);
+}
+
+/// R8-03: правка с настоящим изменением записала возвратную строку и `group_left` с её
+/// movement_id; повторное добавление и повторное исключение позиции забывают строки акта
+/// по устройству, включая возвратную, — оставшийся `group_left` не должен ссылаться на неё.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_reexclude_leaves_no_dangling_group_left_movement() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let c = seed_place(&ctx, "Кабинет В").await;
+    let d = seed_device(&ctx, "Монитор #30", a, None).await;
+    let free = seed_device(&ctx, "Принтер #30", a, None).await;
+    let act = create(&ctx, create_dto("HAE-10", &[d, free], b)).await;
+    let h = seed_group(&ctx, "АРМ #30", c, None).await;
+    ctx.groups
+        .add_devices(&admin(), h, vec![d])
+        .await
+        .expect("ввод в группу на месте В");
+    edit_keep(&ctx, act, &[free]).await;
+    assert_eq!(dangling_movement_refs(&ctx).await, 0, "предусловие");
+
+    edit_keep(&ctx, act, &[free, d]).await;
+    edit_keep(&ctx, act, &[free]).await;
+
+    assert_eq!(
+        dangling_movement_refs(&ctx).await,
+        0,
+        "group_left не ссылается на стёртую строку перемещения"
+    );
 }
 
 /// UAT-2 / D-03: удаление акта после правки (исключение и добавление) не оставляет ни строк

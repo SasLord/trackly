@@ -465,6 +465,31 @@ async fn forget_act_entity_rows_rebases_later_move() {
     .expect("test timed out");
 }
 
+/// 41.2 WR-04: акт переместил А -> Б, затем вручную Б -> А; «забывание» акта не оставляет
+/// в журнале пустую строку «А -> А».
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn forget_act_entity_rows_drops_same_place_successor() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let (place_a, place_b) = seed_two_places(&mut conn);
+        let act = seed_act(&conn, 17);
+        let tx = conn.transaction().expect("tx");
+        record(&tx, 1, place_a, place_b, Some(act), NOW);
+        record(&tx, 1, place_b, place_a, None, NOW + 1);
+        SqlitePlaceMovementsRepository
+            .forget_act_entity_rows_in_tx(&tx, act, MovementEntityKind::Device, 1)
+            .expect("forget");
+        tx.commit().expect("commit");
+        assert_eq!(
+            rows_of(&conn, 1),
+            Vec::new(),
+            "строки «место -> то же место» в журнале нет"
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
 /// Строк акта по сущности нет: ничего не удаляется, место возврата — текущее.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn forget_act_entity_rows_noop_without_act_rows() {

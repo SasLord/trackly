@@ -1149,9 +1149,10 @@ impl GroupService {
                             None,
                             user_id,
                             now,
-                            ReleaseHistory::Reason {
+                            ReleaseHistory::ReasonInOperation {
                                 source: HistoryReason::DeviceWriteOff,
                                 ref_group: None,
+                                operation_id: &wo_operation_id,
                             },
                         )?;
                     }

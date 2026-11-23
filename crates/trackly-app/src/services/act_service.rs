@@ -5404,6 +5404,8 @@ fn forget_excluded_device_movements_in_tx(
         MovementEntityKind::Device,
         device_id,
     )?;
+    // R8-03: оставшийся `group_left` акта не должен ссылаться на только что забытую строку.
+    crate::services::history_events::clear_dangling_act_movement_refs_in_tx(tx, act_id, device_id)?;
     movements.record_movement_if_applicable(
         tx,
         &SqlitePlaceRepository,

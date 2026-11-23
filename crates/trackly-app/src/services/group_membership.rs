@@ -57,6 +57,14 @@ pub(crate) enum ReleaseHistory<'a> {
         source: HistoryReason,
         ref_group: Option<(i64, &'a str)>,
     },
+    /// R8-05 (D-04): то же, что `Reason`, но событие входит в операцию вызывающего — делит
+    /// `operation_id` с его собственными событиями (списание устройства: смена статуса и
+    /// вывод из группы — одна запись ленты).
+    ReasonInOperation {
+        source: HistoryReason,
+        ref_group: Option<(i64, &'a str)>,
+        operation_id: &'a str,
+    },
     /// «Тихий» режим только для двух путей: перенос из группы в группу (D-05, событие
     /// переноса пишет вызывающий) и откат/удаление акта (D-24 (b), события акта удаляются
     /// по `act_id`). Правка живого акта сюда НЕ относится: вывод из группы при правке —
@@ -172,7 +180,7 @@ fn release_inner(
     }
     // Phase 41.10 (D-08, D-24): событие со стороны устройства; act_id обязателен в причине,
     // иначе откат акта его не удалит.
-    let (source, ref_group, movement_id) = match history {
+    let (source, ref_group, movement_id, shared_operation) = match history {
         ReleaseHistory::Suppressed => return Ok(Some(group.id)),
         ReleaseHistory::Default | ReleaseHistory::AfterMovement(_) => (
             if act_id.is_some() {
@@ -185,12 +193,19 @@ fn release_inner(
                 ReleaseHistory::AfterMovement(movement_id) => movement_id,
                 _ => None,
             },
+            None,
         ),
-        ReleaseHistory::Reason { source, ref_group } => (source, ref_group, None),
+        ReleaseHistory::Reason { source, ref_group } => (source, ref_group, None, None),
+        ReleaseHistory::ReasonInOperation {
+            source,
+            ref_group,
+            operation_id,
+        } => (source, ref_group, None, Some(operation_id)),
     };
-    let operation_id = new_operation_id();
+    let own_operation_id = new_operation_id();
+    let operation_id = shared_operation.unwrap_or(own_operation_id.as_str());
     let cause = HistoryCause {
-        operation_id: &operation_id,
+        operation_id,
         source,
         act_id,
         request_id: None,

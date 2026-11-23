@@ -359,6 +359,12 @@ fn export_gate_action(report_type: &str) -> Action {
     }
 }
 
+/// IN-03 (фаза 41, gap-wave): склейка резюме фильтров и фразы об усечении. Имя места или типа
+/// может кончаться точкой — без обрезки в печати вышло бы «..».
+fn join_summary_notice(summary: &str, notice: &str) -> String {
+    format!("{}. {notice}", summary.trim_end_matches('.'))
+}
+
 fn authorize_report_export(caller: &Identity, report_type: &str) -> Result<(), AppError> {
     authorize(caller, &export_gate_action(report_type))
 }
@@ -451,7 +457,7 @@ pub async fn build_reports_export_pdf(
     let filter_summary = if report_type == "movements" || report_type == "repairs" {
         match movements_truncation_notice(rows.rows.len(), rows.total) {
             Some(notice) => Some(match filter_summary {
-                Some(summary) => format!("{summary}. {notice}"),
+                Some(summary) => join_summary_notice(&summary, &notice),
                 None => notice,
             }),
             None => filter_summary,
@@ -940,6 +946,23 @@ pub async fn reports_get_report_counts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// IN-03: точка в конце резюме не удваивается при склейке с фразой об усечении.
+    #[test]
+    fn join_summary_notice_does_not_double_the_dot() {
+        assert_eq!(
+            join_summary_notice("Откуда: Склад А", "Показаны первые 5"),
+            "Откуда: Склад А. Показаны первые 5"
+        );
+        assert_eq!(
+            join_summary_notice("Тип устройства: Монитор 24\".", "Показаны первые 5"),
+            "Тип устройства: Монитор 24\". Показаны первые 5"
+        );
+        assert_eq!(
+            join_summary_notice("Откуда: Корп. А.", "Показаны первые 5"),
+            "Откуда: Корп. А. Показаны первые 5"
+        );
+    }
 
     /// D-03/CR-01 regression guard: `column_labels_for` must return exactly
     /// as many labels as `columns_for` returns keys for every known
