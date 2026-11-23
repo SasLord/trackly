@@ -265,6 +265,8 @@
             height={bar.height}
             fill={bar.color}
             rx="2"
+            role="img"
+            aria-label="{bar.monthLabel}, {bar.model}: {bar.installs}"
             style="cursor: crosshair;"
             onmouseenter={(e) => {
               const target = e.currentTarget as SVGRectElement;

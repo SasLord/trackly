@@ -1109,10 +1109,4 @@
     font: var(--tr-text-caption);
     color: var(--tr-text-tertiary);
   }
-
-  .hint-warn {
-    margin: var(--tr-space-2xs) 0 0;
-    font-size: 12px;
-    color: var(--tr-warning);
-  }
 </style>

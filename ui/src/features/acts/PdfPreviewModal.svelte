@@ -35,6 +35,7 @@
   //   - Print → handlePrint() (offers "Save as PDF" natively in both modes).
   //   - Закрыть.
 
+  import { makeRepeatTableHeadHandler } from '$lib/pdfPreview/repeatTableHeadHandler';
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
@@ -573,24 +574,9 @@
     // see 36-RESEARCH.md Pitfall 1). Scoped strictly to table.appendix-table
     // (T-36-03) — never touches any other table/DOM on the page.
     const { Previewer, Handler, registerHandlers } = await import('pagedjs');
-    class RepeatTableHeadHandler extends Handler {
-      savedThead: Node | null = null;
-
-      constructor(chunker: unknown, polisher: unknown, caller: unknown) {
-        super(chunker, polisher, caller);
-        const sourceTable = document.querySelector('table.appendix-table');
-        const sourceThead = sourceTable?.querySelector('thead') ?? null;
-        this.savedThead = sourceThead ? sourceThead.cloneNode(true) : null;
-      }
-
-      afterPageLayout(pageElement: HTMLElement) {
-        if (!this.savedThead) return;
-        pageElement.querySelectorAll('table.appendix-table').forEach((table) => {
-          if (table.querySelector('thead')) return; // already has one — first fragment
-          table.insertBefore(this.savedThead!.cloneNode(true), table.firstChild);
-        });
-      }
-    }
+    // Класс строится фабрикой (lib/pdfPreview/repeatTableHeadHandler.ts) — объявление
+    // класса внутри функции компонента даёт perf_avoid_nested_class.
+    const RepeatTableHeadHandler = makeRepeatTableHeadHandler(Handler);
     // pagedjs's registerHandlers() call accumulates into its own internal
     // registry — it does not deduplicate by class identity across repeated
     // calls with a freshly-declared class each time. Guard it so the
