@@ -6,6 +6,13 @@
 //! сверены с числом вызовов записывающих историю примитивов; освобождения
 //! (рождение устройства, restore отката) кодированы вердиктами с причиной.
 //!
+//! Ревью 41.10 WR-03: счёт по файлам не различает путь вызова. Тот же restore-код идёт и
+//! из отката акта (D-24 (b), событий нет), и из правки живого акта (D-24 (a), события
+//! обычные). Поэтому «тихие» режимы истории (`ReleaseHistory::Suppressed`,
+//! `RevertHistory::Undo`) и освобождения отката привязаны к ИМЕНИ функции
+//! (`SILENT_MODE_TOKENS`, `UNDO_SCOPED_EXEMPTS`), а функции отката — к списку вызывающих
+//! (`UNDO_ONLY_FNS`). Тихий режим на пути правки или вызов отката из правки краснит гейт.
+//!
 //! Гейт слеп к порядку (счёт не видит перестановки), поэтому порядок D-25
 //! «перемещение, потом событие» держит отдельная проверка, а selftest включает
 //! мутацию-ПЕРЕСТАНОВКУ реального исходника. Источник конструкции: `group_write_sites.rs`
@@ -187,8 +194,6 @@ enum Verdict {
     EventRequired,
     /// рождение устройства: события «смена статуса» нет по смыслу (D-06)
     BirthExempt,
-    /// restore отката: события удаляются по act_id, новых не пишется (D-24)
-    RestoreNoEvent,
     /// продакшн-вызовов нет (не-tx методы трейта)
     NoProductionCallers,
     /// состав/статус не меняется, события по решению D-08 нет (см. `NEUTRAL_CALLS`)
@@ -211,18 +216,21 @@ const STATUS_WRITER_METHODS: [(&str, &str, Verdict); 9] = [
     (DEVICES_REPO, "update_full_in_tx", Verdict::EventRequired),
     (DEVICES_REPO, "create_in_tx", Verdict::BirthExempt),
     (DEVICES_REPO, "clone_device_in_tx", Verdict::BirthExempt),
+    // правка живого акта пишет статус событием (record_act_status_event); вызов отката
+    // освобождён ТОЛЬКО внутри undo_device_mutations_for_act (`UNDO_SCOPED_EXEMPTS`).
     (
         DEVICES_REPO,
         "restore_from_snapshot_in_tx",
-        Verdict::RestoreNoEvent,
+        Verdict::EventRequired,
     ),
     (DEVICES_REPO, "create", Verdict::NoProductionCallers),
     (DEVICES_REPO, "update", Verdict::NoProductionCallers),
 ];
 
 /// Методы репозитория групп, пишущие состав (`group_devices`, строки/родитель/якорь `groups`).
-/// `EventRequired` = событие пишет сервисный слой (см. реестры вызовов); `RestoreNoEvent`
-/// относится к конкретному файлу-вызывателю и закодирован в `EXEMPT_CALLS`.
+/// `EventRequired` = событие пишет сервисный слой (см. реестры вызовов). Откат акта, где
+/// событий нет (D-24 (b)), отличается от правки режимом истории, а не файлом: см.
+/// `SILENT_MODE_TOKENS` и `UNDO_ONLY_FNS`.
 const MEMBERSHIP_WRITER_METHODS: [(&str, &str, Verdict); 6] = [
     (GROUPS_REPO, "insert_group_in_tx", Verdict::EventRequired),
     (GROUPS_REPO, "delete_group_in_tx", Verdict::EventRequired),
@@ -311,7 +319,7 @@ fn writer_diff(
 
 /// (needle, файл, число вызовов): каждый такой вызов сопровождается записью события.
 /// Числа сняты grep'ом по production-коду на момент плана 13 и сверены с SUMMARY 05-10, 18.
-const REQUIRED_CALLS: [(&str, &str, usize); 13] = [
+const REQUIRED_CALLS: [(&str, &str, usize); 15] = [
     // --- статус (D-06) ---
     (
         "update_in_tx(",
@@ -348,6 +356,13 @@ const REQUIRED_CALLS: [(&str, &str, usize); 13] = [
         "crates/trackly-app/src/services/act_service.rs",
         3,
     ),
+    // правка живого акта (update, update_return): статус снятой позиции пишет
+    // record_act_status_event после перемещения (D-24 (a), D-25)
+    (
+        "restore_from_snapshot_in_tx(",
+        "crates/trackly-app/src/services/act_service.rs",
+        2,
+    ),
     // --- состав (D-08) ---
     (
         "add_device_in_tx(",
@@ -359,10 +374,19 @@ const REQUIRED_CALLS: [(&str, &str, usize); 13] = [
         "crates/trackly-app/src/services/group_membership.rs",
         1,
     ),
+    // restore_membership_with_policy_in_tx: RevertHistory::Edit пишет group_joined (CR-01);
+    // Undo разрешён только в функциях отката (`SILENT_MODE_TOKENS`)
+    (
+        "add_device_in_tx(",
+        "crates/trackly-app/src/services/group_membership.rs",
+        1,
+    ),
+    // 3 отцепления актом (record_act_unnested) + 1 возврат вложенности:
+    // RevertHistory::Edit пишет group_nested (CR-02), Undo — только в откате
     (
         "set_parent_in_tx(",
         "crates/trackly-app/src/services/group_act_plan.rs",
-        3,
+        4,
     ),
     (
         "set_parent_in_tx(",
@@ -383,7 +407,7 @@ const REQUIRED_CALLS: [(&str, &str, usize); 13] = [
 
 /// Вызовы без требования события: (needle, файл, число, причина >= 40 символов).
 /// Одна пара (needle, файл) не может быть одновременно в `REQUIRED_CALLS`.
-const EXEMPT_CALLS: [(&str, &str, usize, &str); 5] = [
+const EXEMPT_CALLS: [(&str, &str, usize, &str); 3] = [
     (
         "repo.create_in_tx(",
         "crates/trackly-app/src/services/device_service.rs",
@@ -399,20 +423,82 @@ const EXEMPT_CALLS: [(&str, &str, usize, &str); 5] = [
     (
         "restore_from_snapshot_in_tx(",
         "crates/trackly-app/src/services/act_service.rs",
-        3,
-        "restore отката акта (D-24): события удаляются по act_id, новых не пишется",
+        1,
+        "откат/удаление акта (D-24 (b)): события акта удаляются по act_id, новых нет",
+    ),
+];
+
+/// Освобождения, привязанные к ИМЕНИ функции (WR-03): (needle, файл, функция, число).
+/// Каждая строка `EXEMPT_CALLS` с методом не-`BirthExempt` обязана быть здесь, а функция —
+/// в `UNDO_ONLY_FNS` (её вызывающие проверены). Вызов в другой функции того же файла
+/// (например, в правке акта) освобождения не получает.
+const UNDO_SCOPED_EXEMPTS: [(&str, &str, &str, usize); 1] = [(
+    "restore_from_snapshot_in_tx(",
+    "crates/trackly-app/src/services/act_service.rs",
+    "undo_device_mutations_for_act",
+    1,
+)];
+
+const ACT_SERVICE: &str = "crates/trackly-app/src/services/act_service.rs";
+const GROUP_ACT_PLAN: &str = "crates/trackly-app/src/services/group_act_plan.rs";
+const GROUP_MEMBERSHIP: &str = "crates/trackly-app/src/services/group_membership.rs";
+const GROUP_SERVICE: &str = "crates/trackly-app/src/services/group_service.rs";
+
+/// «Тихие» режимы истории (WR-03): (токен, файл, функция, число, причина >= 40 символов).
+/// Инвентарь снимается от исходника: токен в функции без строки — красный гейт. Правка живого
+/// акта обязана писать события (D-24 (a)), поэтому её функций здесь нет и быть не может.
+const SILENT_MODE_TOKENS: [(&str, &str, &str, usize, &str); 5] = [
+    (
+        "ReleaseHistory::Suppressed",
+        GROUP_MEMBERSHIP,
+        "release_inner",
+        1,
+        "определение: ветка «тихого» режима внутри тела вывода, а не передача режима",
     ),
     (
-        "add_device_in_tx(",
-        "crates/trackly-app/src/services/group_membership.rs",
+        "ReleaseHistory::Suppressed",
+        GROUP_SERVICE,
+        "move_devices",
         1,
-        "restore состава при откате акта (D-24): откат событий не пишет, а удаляет",
+        "перенос из группы в группу (D-05): одно событие group_transferred пишет сам перенос",
     ),
     (
-        "set_parent_in_tx(",
-        "crates/trackly-app/src/services/group_act_plan.rs",
+        "ReleaseHistory::Suppressed",
+        ACT_SERVICE,
+        "undo_device_mutations_for_act",
         1,
-        "возврат вложенности при откате акта (D-24): событие удалено по act_id",
+        "откат/удаление акта (D-24 (b)): события акта удаляются по act_id, новых нет",
+    ),
+    (
+        "RevertHistory::Undo",
+        GROUP_ACT_PLAN,
+        "revert_group_moves_in_tx",
+        1,
+        "откат/удаление акта (D-24 (b)): возврат вложенности без события, события акта удалены",
+    ),
+    (
+        "RevertHistory::Undo",
+        GROUP_ACT_PLAN,
+        "restore_released_members_in_tx",
+        1,
+        "откат/удаление акта (D-24 (b)): возврат в состав без события, события акта удалены",
+    ),
+];
+
+/// Функции пути отката и единственные допустимые вызывающие (WR-03). Вызов функции отката
+/// из правки акта (или откуда-либо ещё) краснит гейт: там тихий режим стал бы дырой ленты.
+const UNDO_ONLY_FNS: [(&str, &[&str]); 3] = [
+    (
+        "undo_device_mutations_for_act",
+        &["delete_soft_with_choices"],
+    ),
+    (
+        "revert_group_moves_in_tx",
+        &["undo_device_mutations_for_act"],
+    ),
+    (
+        "restore_released_members_in_tx",
+        &["undo_device_mutations_for_act"],
     ),
 ];
 
@@ -550,6 +636,140 @@ fn event_call_violations(sources: &[(String, String)]) -> Vec<String> {
         None,
         "record_group_*",
     ));
+    out
+}
+
+// ---------------------------------------------------------------------------
+// WR-03: путь вызова — откат или правка (по имени функции, не по файлу)
+// ---------------------------------------------------------------------------
+
+const APP_SRC_PREFIX: &str = "crates/trackly-app/src/";
+
+/// Имя функции, в которую попадает строка `idx` (по `fn_ranges`).
+fn enclosing_fn(ranges: &[(String, usize, usize)], idx: usize) -> Option<&str> {
+    ranges
+        .iter()
+        .find(|(_, s, e)| *s <= idx && idx < *e)
+        .map(|(n, _, _)| n.as_str())
+}
+
+/// (файл, функция) -> число вхождений `needle` (с границей идентификатора, без строк `fn `).
+fn occurrences_by_fn(code_src: &str, needle: &str) -> Vec<(String, usize)> {
+    let lines: Vec<&str> = code_src.lines().collect();
+    let ranges = fn_ranges(&lines);
+    let mut out: Vec<(String, usize)> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if l.contains("fn ") {
+            continue;
+        }
+        let n = line_calls(l, &[needle]);
+        if n == 0 {
+            continue;
+        }
+        let f = enclosing_fn(&ranges, i)
+            .unwrap_or("<вне функции>")
+            .to_string();
+        match out.iter_mut().find(|(name, _)| *name == f) {
+            Some((_, c)) => *c += n,
+            None => out.push((f, n)),
+        }
+    }
+    out
+}
+
+/// Нарушения инвентаря «тихих» режимов истории: токен в функции без строки реестра, число
+/// разошлось, строка реестра без токена в исходнике.
+fn silent_mode_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut tokens: Vec<&str> = SILENT_MODE_TOKENS.iter().map(|(t, ..)| *t).collect();
+    tokens.sort();
+    tokens.dedup();
+    for token in tokens {
+        let mut seen: Vec<(String, String, usize)> = Vec::new();
+        for (rel, code) in sources
+            .iter()
+            .filter(|(r, _)| r.starts_with(APP_SRC_PREFIX))
+        {
+            for (f, n) in occurrences_by_fn(code, token) {
+                seen.push((rel.clone(), f, n));
+            }
+        }
+        for (rel, f, n) in &seen {
+            match SILENT_MODE_TOKENS
+                .iter()
+                .find(|(t, rf, rfn, _, _)| *t == token && rf == rel && rfn == f)
+            {
+                None => out.push(format!(
+                    "тихий режим `{token}` в {rel}::{f} ({n}) без вердикта: правка акта обязана писать события (D-24 (a))"
+                )),
+                Some((_, _, _, want, _)) if want != n => out.push(format!(
+                    "число `{token}` в {rel}::{f} изменилось ({n}, в реестре {want})"
+                )),
+                Some(_) => {}
+            }
+        }
+        for (t, rf, rfn, want, _) in SILENT_MODE_TOKENS.iter().filter(|(t, ..)| *t == token) {
+            if !seen.iter().any(|(r, f, _)| r == rf && f == rfn) {
+                out.push(format!(
+                    "строка реестра `{t}` в {rf}::{rfn} ({want}) больше не встречается"
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Нарушения списка вызывающих функций отката; пустой набор вызывающих — тоже нарушение
+/// (иначе проверка вакуумна).
+fn undo_caller_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (callee, allowed) in UNDO_ONLY_FNS {
+        let needle = format!("{callee}(");
+        let mut callers = 0usize;
+        for (rel, code) in sources
+            .iter()
+            .filter(|(r, _)| r.starts_with(APP_SRC_PREFIX))
+        {
+            for (f, n) in occurrences_by_fn(code, &needle) {
+                callers += n;
+                if !allowed.contains(&f.as_str()) {
+                    out.push(format!(
+                        "функция отката {callee} вызвана из {rel}::{f}: там тихий режим истории скрыл бы событие (D-24)"
+                    ));
+                }
+            }
+        }
+        if callers == 0 {
+            out.push(format!(
+                "у функции отката {callee} нет вызывающих: строка реестра устарела"
+            ));
+        }
+    }
+    out
+}
+
+/// Нарушения освобождений, привязанных к функции: вызов освобождён только внутри
+/// указанной функции, а она — функция отката.
+fn scoped_exempt_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (needle, file, func, want) in UNDO_SCOPED_EXEMPTS {
+        let Some((_, code)) = sources.iter().find(|(r, _)| r == file) else {
+            out.push(format!("{file}: нет в дереве"));
+            continue;
+        };
+        let got = occurrences_by_fn(code, needle)
+            .into_iter()
+            .find(|(f, _)| f == func)
+            .map_or(0, |(_, n)| n);
+        if got != want {
+            out.push(format!(
+                "{file}::{func}: освобождённых вызовов {needle} {got}, в реестре {want}"
+            ));
+        }
+        if !UNDO_ONLY_FNS.iter().any(|(f, _)| *f == func) {
+            out.push(format!("{func}: освобождение отката вне функции отката"));
+        }
+    }
     out
 }
 
@@ -795,7 +1015,7 @@ fn history_write_sites_repo_inventory_matches_registry() {
 }
 
 /// Каждый EventRequired-метод репозитория имеет needle в `REQUIRED_CALLS`, каждый
-/// BirthExempt/RestoreNoEvent — в `EXEMPT_CALLS` (вердикт кодирован числом, не комментарием).
+/// BirthExempt — в `EXEMPT_CALLS` (вердикт кодирован числом, не комментарием).
 #[test]
 fn history_write_sites_verdicts_match_call_registries() {
     let required: Vec<&str> = REQUIRED_CALLS.iter().map(|(n, _, _)| *n).collect();
@@ -810,7 +1030,7 @@ fn history_write_sites_verdicts_match_call_registries() {
                 probe(&required),
                 "{m}: EventRequired, но нет строки в REQUIRED_CALLS"
             ),
-            Verdict::BirthExempt | Verdict::RestoreNoEvent => assert!(
+            Verdict::BirthExempt => assert!(
                 probe(&exempt),
                 "{m}: вердикт-освобождение без строки в EXEMPT_CALLS"
             ),
@@ -1307,4 +1527,122 @@ fn history_write_sites_mutation_anchor_is_unique() {
             .sum::<usize>(),
         1
     );
+}
+
+// ---------------------------------------------------------------------------
+// WR-03: правка живого акта против отката (D-24 (a)/(b))
+// ---------------------------------------------------------------------------
+
+#[test]
+fn history_write_sites_silent_modes_only_on_undo_paths() {
+    let sources = prod_sources();
+    let v = silent_mode_violations(&sources);
+    assert!(v.is_empty(), "тихие режимы истории: {v:#?}");
+    let v = undo_caller_violations(&sources);
+    assert!(v.is_empty(), "вызывающие функций отката: {v:#?}");
+    let v = scoped_exempt_violations(&sources);
+    assert!(v.is_empty(), "освобождения отката: {v:#?}");
+    for (t, f, func, _, reason) in SILENT_MODE_TOKENS {
+        assert!(
+            reason.chars().count() >= 40,
+            "причина `{t}` в {f}::{func} короче 40 символов"
+        );
+    }
+    // каждое освобождение не-рождения привязано к функции отката
+    for (n, f, c, _) in EXEMPT_CALLS {
+        let birth = STATUS_WRITER_METHODS
+            .iter()
+            .chain(MEMBERSHIP_WRITER_METHODS.iter())
+            .any(|(_, m, v)| *v == Verdict::BirthExempt && n.trim_end_matches('(').ends_with(m));
+        if birth {
+            continue;
+        }
+        let scoped: usize = UNDO_SCOPED_EXEMPTS
+            .iter()
+            .filter(|(sn, sf, _, _)| *sn == n && *sf == f)
+            .map(|(_, _, _, sc)| *sc)
+            .sum();
+        assert_eq!(
+            scoped, c,
+            "{n} в {f}: освобождение без привязки к функции отката (WR-03)"
+        );
+    }
+}
+
+/// Мутации реального исходника: тихий режим на пути правки, вызов отката из правки и
+/// снятая запись события правки краснят гейт.
+#[test]
+fn history_write_sites_mutation_edit_path_silence_turns_red() {
+    let sources = prod_sources();
+    let act = raw_of(ACT_SERVICE);
+    // (1) правка акта выводит устройство «тихо»
+    let m1 = act.replacen("ReleaseHistory::Default,", "ReleaseHistory::Suppressed,", 1);
+    assert_ne!(
+        m1, act,
+        "якорь ReleaseHistory::Default в act_service найден"
+    );
+    let v = silent_mode_violations(&with_source(&sources, ACT_SERVICE, &m1));
+    assert!(
+        v.iter().any(|m| m.contains("::update ")),
+        "тихий вывод в правке акта не покраснил гейт: {v:?}"
+    );
+    // (2) правка акта возвращает вложенность без события
+    let m2 = act.replacen("RevertHistory::Edit,", "RevertHistory::Undo,", 1);
+    assert_ne!(m2, act, "якорь RevertHistory::Edit в act_service найден");
+    assert!(
+        !silent_mode_violations(&with_source(&sources, ACT_SERVICE, &m2)).is_empty(),
+        "тихий возврат вложенности в правке акта не покраснил гейт"
+    );
+    // (3) правка возврата возвращает в состав без события
+    let gap = raw_of(GROUP_ACT_PLAN);
+    let m3 = gap.replacen("RevertHistory::Edit,", "RevertHistory::Undo,", 1);
+    assert_ne!(m3, gap, "якорь RevertHistory::Edit в group_act_plan найден");
+    assert!(
+        !silent_mode_violations(&with_source(&sources, GROUP_ACT_PLAN, &m3)).is_empty(),
+        "тихий возврат в состав при правке возврата не покраснил гейт"
+    );
+    // (4) правка акта зовёт функцию отката
+    let m4 = act.replacen(
+        "let back = revert_detach_effect_in_tx(",
+        "let back = revert_group_moves_in_tx(",
+        1,
+    );
+    assert_ne!(m4, act, "якорь вызова revert_detach_effect_in_tx найден");
+    assert!(
+        !undo_caller_violations(&with_source(&sources, ACT_SERVICE, &m4)).is_empty(),
+        "вызов функции отката из правки не покраснил гейт"
+    );
+    // (5) освобождённый вызов restore отката переехал в правку: счёт по файлу тот же,
+    // привязка к функции краснеет
+    let m5 = act.replacen(
+        "devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?",
+        "devices_repo.noop_removed(tx, device_id, &snapshot, now)?",
+        1,
+    );
+    assert_ne!(m5, act, "якорь restore в undo найден");
+    let m5 = m5.replacen(
+        "let restored = devices_repo\n",
+        "let _x = devices_repo.restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;\n                            let restored = devices_repo\n",
+        1,
+    );
+    let ms = with_source(&sources, ACT_SERVICE, &m5);
+    assert!(
+        writer_call_violations(&ms).is_empty(),
+        "счёт по файлу не изменился — счётный гейт слеп (поэтому нужна привязка)"
+    );
+    assert!(
+        !scoped_exempt_violations(&ms).is_empty(),
+        "освобождение отката, уехавшее в правку, не покраснило гейт"
+    );
+    // (6) снятая запись событий правки (CR-01 group_joined, CR-02 group_nested)
+    for (f, needle) in [
+        (GROUP_MEMBERSHIP, "record_group_joined_in_tx("),
+        (GROUP_ACT_PLAN, "record_group_nested_in_tx("),
+    ] {
+        let m = remove_nth_call(raw_of(f), needle, 0).expect("вызов события правки найден");
+        assert!(
+            !event_call_violations(&with_source(&sources, f, &m)).is_empty(),
+            "{f}: снятый {needle} не покраснил гейт"
+        );
+    }
 }
