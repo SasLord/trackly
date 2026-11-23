@@ -486,6 +486,82 @@ async fn forget_act_entity_rows_noop_without_act_rows() {
     .expect("test timed out");
 }
 
+/// UAT-3: «перемещали после акта» — есть строка другого акта или без акта позже первой
+/// строки каскада; строки самого каскада (акт и его возврат) поздними не считаются.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn entities_moved_after_acts_counts_only_foreign_later_rows() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let (place_a, place_b) = seed_two_places(&mut conn);
+        let act = seed_act(&conn, 15);
+        let ret = seed_act(&conn, 16);
+        let tx = conn.transaction().expect("tx");
+        // 1: акт, затем ручное — перемещали после акта.
+        let first = record(&tx, 1, place_a, place_b, Some(act), NOW);
+        record(&tx, 1, place_b, place_a, None, NOW + 1);
+        // 2: акт, затем возврат того же каскада — не перемещали.
+        record(&tx, 2, place_a, place_b, Some(act), NOW);
+        record(&tx, 2, place_b, place_a, Some(ret), NOW + 1);
+        // 3: ручное ДО акта, затем акт — не перемещали после.
+        record(&tx, 3, place_b, place_a, None, NOW);
+        record(&tx, 3, place_a, place_b, Some(act), NOW + 1);
+        let repo = SqlitePlaceMovementsRepository;
+        let got = repo
+            .entities_moved_after_acts_in_tx(&tx, MovementEntityKind::Device, &[act, ret])
+            .expect("moved after");
+        assert_eq!(got, vec![(1, first)]);
+        assert!(repo
+            .entities_moved_after_acts_in_tx(&tx, MovementEntityKind::Device, &[])
+            .expect("empty")
+            .is_empty());
+        assert_eq!(
+            repo.journal_end_place_in_tx(&tx, MovementEntityKind::Device, 1)
+                .expect("end"),
+            Some(place_a)
+        );
+        assert_eq!(
+            repo.journal_end_place_in_tx(&tx, MovementEntityKind::Device, 99)
+                .expect("end"),
+            None
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+/// UAT-3 «стереть»: удаляются строки сущности позже `after_id`, кроме строк каскада; чужие
+/// сущности и более ранние строки целы; возвращаются id удалённых.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn erase_rows_after_keeps_cascade_and_earlier_rows() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let (place_a, place_b) = seed_two_places(&mut conn);
+        let act = seed_act(&conn, 17);
+        let tx = conn.transaction().expect("tx");
+        record(&tx, 1, place_b, place_a, None, NOW - 1);
+        let first = record(&tx, 1, place_a, place_b, Some(act), NOW);
+        let manual = record(&tx, 1, place_b, place_a, None, NOW + 1);
+        record(&tx, 1, place_a, place_b, Some(act), NOW + 2);
+        record(&tx, 2, place_a, place_b, None, NOW + 3);
+        let erased = SqlitePlaceMovementsRepository
+            .erase_rows_after_in_tx(&tx, MovementEntityKind::Device, 1, first, &[act])
+            .expect("erase");
+        tx.commit().expect("commit");
+        assert_eq!(erased, vec![manual]);
+        assert_eq!(
+            rows_of(&conn, 1),
+            vec![
+                (place_b, place_a, None),
+                (place_a, place_b, Some(act)),
+                (place_a, place_b, Some(act))
+            ]
+        );
+        assert_eq!(rows_of(&conn, 2), vec![(place_a, place_b, None)]);
+    })
+    .await
+    .expect("test timed out");
+}
+
 // ---------------------------------------------------------------------------
 // Task 2: get_history — newest-first (D-20), empty Vec on no rows, no LIMIT
 // ---------------------------------------------------------------------------

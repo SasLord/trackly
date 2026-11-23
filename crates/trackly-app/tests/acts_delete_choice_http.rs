@@ -391,3 +391,170 @@ async fn http_delete_act_denied_for_employee() {
     .await
     .expect("budget");
 }
+
+// ---------------------------------------------------------------------------
+// UAT-3 (фаза 41.10): выбор по устройствам, перемещённым после акта, доходит по HTTP.
+// ---------------------------------------------------------------------------
+
+/// Акт переводит «Ноутбук #35» из «Склад А» в «Склад Б», затем его вручную переводят в
+/// «Склад В»: (act_id, version, device, place_c).
+async fn moved_after_fixture(ctx: &AppCtx, number: &str) -> (i64, i64, i64, i64) {
+    let a = seed_place(ctx, "Склад А").await;
+    let b = seed_place(ctx, "Склад Б").await;
+    let c = seed_place(ctx, "Склад В").await;
+    let device: i64 = ctx
+        .writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices (type_id, name, place_id, status_id, created_at_utc, \
+                 updated_at_utc, version) VALUES (1, 'Ноутбук #35', ?1, 1, 1700000000, 1700000000, 1)",
+                params![a],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .unwrap();
+    let payload = ActCreateDto {
+        number_input: NumberFieldInput {
+            value: number.into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
+        giver_name: "Иванов И.И.".into(),
+        receiver_name: "Петров П.П.".into(),
+        place_id: Some(b),
+        notes: None,
+        deadline_utc: None,
+        handover_date_utc: None,
+        items: vec![ActItemNewDto {
+            device_id: device,
+            device_ids: vec![device],
+            quantity: 1,
+        }],
+        confirm_group_release: true,
+    };
+    let act = match ctx
+        .acts
+        .create(&Identity::trusted_admin(), payload)
+        .await
+        .unwrap()
+    {
+        ActSaveOutcome::Created(a) => a,
+        other => panic!("{other:?}"),
+    };
+    let dv = ctx.devices.get(device).await.unwrap().version;
+    ctx.devices
+        .update(
+            &Identity::trusted_admin(),
+            device,
+            dv,
+            trackly_app::dto::device::DevicePatch {
+                type_id: None,
+                name: None,
+                number_input: None,
+                serial_no: None,
+                model: None,
+                specs: None,
+                kit: None,
+                state: None,
+                place_id: Some(Some(c)),
+                status_id: None,
+                usb_host_device_id: None,
+                printer_ip_address: None,
+                printer_community: None,
+                group_write_off: None,
+            },
+        )
+        .await
+        .expect("ручное перемещение после акта");
+    (act.id, act.version, device, c)
+}
+
+async fn device_place(ctx: &AppCtx, device: i64) -> Option<i64> {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT place_id FROM devices WHERE id = ?1",
+                params![device],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_delete_act_moved_after_asks_then_applies_choice() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let (ctx, _dir) = build_ctx().await;
+        let admin_id = make_user(&ctx, "admin_mv", "admin").await;
+        let store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let cookie = session_cookie(&store, admin_id, "admin").await;
+        let app = build_router(&ctx, store);
+        let (act, version, device, c) = moved_after_fixture(&ctx, "HC-4").await;
+
+        let (s, ct, b) = post_delete(
+            &app,
+            &cookie,
+            serde_json::json!({"id": act, "version": version}),
+        )
+        .await;
+        let r = parse_json_result(s, ct, &b);
+        let w = r
+            .needs_moved_after_choice
+            .expect("нужен выбор по перемещённым");
+        assert_eq!(w.devices.len(), 1);
+        assert_eq!(w.devices[0].name, "Ноутбук #35");
+        assert_eq!(w.devices[0].current_place_path.as_deref(), Some("Склад В"));
+        assert_eq!(w.devices[0].before_place_path.as_deref(), Some("Склад А"));
+        assert!(!act_deleted(&ctx, act).await, "акт жив");
+
+        let (s, ct, b) = post_delete(
+            &app,
+            &cookie,
+            serde_json::json!({"id": act, "version": version, "movedChoice": "keep"}),
+        )
+        .await;
+        let r = parse_json_result(s, ct, &b);
+        assert!(r.needs_moved_after_choice.is_none(), "выбор применён");
+        assert!(act_deleted(&ctx, act).await, "акт удалён");
+        assert_eq!(
+            device_place(&ctx, device).await,
+            Some(c),
+            "оставлен на текущем месте"
+        );
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("budget");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_delete_act_moved_choice_denied_for_employee() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let (ctx, _dir) = build_ctx().await;
+        let emp_id = make_user(&ctx, "emp_mv", "employee").await;
+        let store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let cookie = session_cookie(&store, emp_id, "employee").await;
+        let app = build_router(&ctx, store);
+        let (act, version, device, c) = moved_after_fixture(&ctx, "HC-5").await;
+        let (s, _ct, _b) = post_delete(
+            &app,
+            &cookie,
+            serde_json::json!({"id": act, "version": version, "movedChoice": "return_erase"}),
+        )
+        .await;
+        assert!(
+            s == StatusCode::FORBIDDEN || s == StatusCode::UNAUTHORIZED,
+            "статус {s}"
+        );
+        assert!(!act_deleted(&ctx, act).await, "акт жив");
+        assert_eq!(device_place(&ctx, device).await, Some(c));
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("budget");
+}
