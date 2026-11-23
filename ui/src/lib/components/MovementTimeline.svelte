@@ -28,6 +28,8 @@
     entries: HistoryEntryDto[];
     loading: boolean;
     loadError: boolean;
+    /** Текст при loadError; по умолчанию — про карточку. */
+    errorText?: string;
     /** D-13/D-03: выбирает пустые состояния, сноски и набор чипов. */
     variant?: Variant;
     /** Открытая группа (вариант group): на неё ссылка не рисуется, тексты иные. */
@@ -44,6 +46,7 @@
     entries,
     loading,
     loadError,
+    errorText = 'Не удалось загрузить историю. Проверьте подключение и откройте карточку снова.',
     variant = 'device',
     groupId,
     onNavigateToPlace,
@@ -150,7 +153,9 @@
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
       const inner = m[1];
-      const cand = cands.find((c) => c.label === inner);
+      // Неоднозначная подпись (несколько кандидатов) ссылкой не становится.
+      const matches = cands.filter((c) => c.label === inner);
+      const cand = matches.length === 1 ? matches[0] : undefined;
       const clickable =
         cand !== undefined &&
         (cand.type === 'group' ? !!onNavigateToGroup && cand.id !== groupId : !!onNavigateToDevice);
@@ -244,7 +249,7 @@
   <!-- Родитель рисует спиннер загрузки — здесь ничего. -->
 {:else if loadError}
   <p class="timeline-error">
-    Не удалось загрузить историю. Проверьте подключение и откройте карточку снова.
+    {errorText}
   </p>
 {:else if entries.length === 0}
   <div class="timeline-empty">

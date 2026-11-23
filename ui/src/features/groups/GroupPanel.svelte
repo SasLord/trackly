@@ -160,6 +160,7 @@
   });
 
   function handleSaved(next: GroupCardDto): void {
+    cardSeq++;
     card = next;
     onChanged?.();
   }
@@ -239,6 +240,7 @@
               entries={history}
               loading={false}
               loadError={historyError}
+              errorText="Не удалось загрузить историю. Откройте вкладку ещё раз."
               onNavigateToPlace={(placeId) => {
                 void push(`#/places?id=${placeId}`);
               }}

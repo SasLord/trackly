@@ -121,7 +121,13 @@
       );
       if (seq !== loadSeq) return;
       comp = data;
-      childComp = fresh;
+      // Слияние: ребёнок, раскрытый во время перезагрузки (loading/data из toggleChild),
+      // не теряется; отбрасываются только id, более не раскрытые.
+      const merged: Record<number, { loading: boolean; data: GroupCompositionDto | null }> = {};
+      for (const [k, v] of Object.entries({ ...childComp, ...fresh })) {
+        if (expanded[Number(k)]) merged[Number(k)] = v;
+      }
+      childComp = merged;
     } catch (e) {
       if (seq === loadSeq) {
         if (parseAppError(e).code === 'NOT_FOUND') {

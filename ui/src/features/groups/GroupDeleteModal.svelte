@@ -58,9 +58,8 @@
       {#if directDeviceCount > 0}
         {directDeviceCount}
         {devicesWord}
-        {directDeviceCount % 10 === 1 && directDeviceCount % 100 !== 11
-          ? 'освободится из состава'
-          : 'освободятся из состава'}, их место не изменится.
+        {pluralizeRu(directDeviceCount, ['освободится', 'освободятся', 'освободятся'])} из состава, их
+        место не изменится.
       {:else}
         Устройств в составе нет.
       {/if}
