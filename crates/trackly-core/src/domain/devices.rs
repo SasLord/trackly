@@ -291,20 +291,12 @@ impl AutocompleteField {
 }
 
 /// Вид строки смешанного списка «Устройства» (Phase 41.9): устройство или строка
-/// АРМ (контейнер). Ранг задаёт порядок при совпадающих именах: устройство раньше.
+/// АРМ (контейнер). Порядок при совпадающих именах (устройство раньше) задаёт SQL
+/// выборки смешанного списка, а не само перечисление.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
     Device,
     Container,
-}
-
-impl EntryKind {
-    pub fn rank(self) -> i64 {
-        match self {
-            EntryKind::Device => 0,
-            EntryKind::Container => 1,
-        }
-    }
 }
 
 /// Ключ строки смешанного списка: вид и id.

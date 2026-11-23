@@ -206,12 +206,20 @@ struct TypeLookup {
 
 impl TypeLookup {
     fn from_rows(rows: Vec<(i64, String)>) -> Result<Self, AppError> {
-        if !rows.iter().any(|(id, _)| *id == DEVICE_TYPE_ID) {
-            return Err(AppError::Internal {
-                source_chain: "device_types: нет типа с id=1 (Устройство)".to_string(),
-            });
-        }
         Ok(Self { rows })
+    }
+
+    /// Импорт подставляет «Устройство» (id=1) пустым и нераспознанным подписям —
+    /// без этой строки справочника он не работает. Экспорту тип по умолчанию не нужен
+    /// (41.12 IN-03), поэтому проверка не в `from_rows`/`load`.
+    fn require_default_type(&self) -> Result<(), AppError> {
+        if self.rows.iter().any(|(id, _)| *id == DEVICE_TYPE_ID) {
+            Ok(())
+        } else {
+            Err(AppError::Internal {
+                source_chain: "device_types: нет типа с id=1 (Устройство)".to_string(),
+            })
+        }
     }
 
     async fn load(readers: Arc<ReaderPool>) -> Result<Self, AppError> {
@@ -2243,6 +2251,7 @@ impl DeviceService {
         // O(строки × колонки) сравнений в памяти, без запросов в цикле (T-hef-03).
         let statuses = StatusLookup::load(self.readers.clone()).await?;
         let types = TypeLookup::load(self.readers.clone()).await?;
+        types.require_default_type()?;
         let label_checks = Self::label_checks(&headers, &all_rows, &types, &statuses);
 
         // Store session for commit step.
@@ -2373,6 +2382,7 @@ impl DeviceService {
         // ячейки сопоставляется со справочником в Rust, SQL из текста не строится.
         let statuses = StatusLookup::load(self.readers.clone()).await?;
         let types = TypeLookup::load(self.readers.clone()).await?;
+        types.require_default_type()?;
 
         let mut report = CsvImportReport {
             inserted: 0,
@@ -3178,5 +3188,22 @@ mod printer_connection_tests {
         assert_eq!(p, serde_json::json!({ "community": { "changed": true } }));
         assert!(!p.to_string().contains("s3cr3t-comm"));
         assert!(!p.to_string().contains("public"));
+    }
+
+    /// 41.12 IN-03: экспорту тип по умолчанию не нужен — справочник без id=1 читается;
+    /// импорт тип «Устройство» по-прежнему требует (`require_default_type`).
+    #[test]
+    fn type_lookup_without_default_type_is_ok_for_export() {
+        let types = TypeLookup::from_rows(vec![(2, "Принтер".to_string())])
+            .expect("экспорт не требует id=1");
+        assert_eq!(types.name_for_id(2), "Принтер");
+    }
+
+    #[test]
+    fn type_lookup_import_requires_default_type() {
+        let without = TypeLookup::from_rows(vec![(2, "Принтер".to_string())]).unwrap();
+        assert!(without.require_default_type().is_err());
+        let with = TypeLookup::from_rows(vec![(1, "Устройство".to_string())]).unwrap();
+        assert!(with.require_default_type().is_ok());
     }
 }
