@@ -243,6 +243,57 @@ fn last_pos(body: &str, ident: &str) -> Option<usize> {
     call_positions(body, ident).last().copied()
 }
 
+/// Читатели и вычислители плана: вызовы `*_in_tx(`, которые НЕ пишут. Освобождения
+/// записаны явно и с причиной; всё остальное с суффиксом `_in_tx` считается записью.
+const READ_ONLY_IN_TX_PREFIXES: [&str; 5] = ["get_", "fetch_", "list_", "plan_", "ensure_"];
+const READ_ONLY_IN_TX_NAMES: [&str; 12] = [
+    // чтение места/состава/групп
+    "place_full_path_in_tx",
+    "units_of_group_in_tx",
+    "anchor_group_of_device_in_tx",
+    "group_of_device_in_tx",
+    "kit_for_item_in_tx",
+    // чтение журнала/эффектов (решают, что делать, ничего не пишут)
+    "moved_after_act_devices_in_tx",
+    "moved_by_rollback_in_tx",
+    "entities_moved_after_acts_in_tx",
+    "prior_release_effect_id_in_tx",
+    "release_effect_for_removed_in_tx",
+    // проверки и вычисление снимка в памяти
+    "anchor_restore_conflict_in_tx",
+    "populate_outstanding_device_ids_in_tx",
+];
+
+fn is_read_only_in_tx(name: &str) -> bool {
+    READ_ONLY_IN_TX_PREFIXES.iter().any(|p| name.starts_with(p))
+        || READ_ONLY_IN_TX_NAMES.contains(&name)
+        || name.starts_with("snapshot_keeping_")
+}
+
+/// Вызовы `ident_in_tx(` в тексте: (позиция, имя). Слева от имени нет символа идентификатора.
+fn in_tx_calls(body: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    for (pos, _) in body.match_indices("_in_tx(") {
+        let start = body[..pos]
+            .rfind(|c: char| !is_ident_char(c))
+            .map_or(0, |i| i + 1);
+        let name = format!("{}_in_tx", &body[start..pos]);
+        if body[..start].trim_end().ends_with("fn") {
+            continue; // определение, не вызов
+        }
+        out.push((start, name));
+    }
+    out
+}
+
+/// Позиция первой записи, выведенной из текста (`*_in_tx(` вне списка читателей).
+fn derived_first_write(body: &str) -> Option<usize> {
+    in_tx_calls(body)
+        .into_iter()
+        .find(|(_, name)| !is_read_only_in_tx(name))
+        .map(|(p, _)| p)
+}
+
 /// Позиция первой записи в теле: минимум по `WRITE_MARKERS` и по тексту
 /// `for &dev_id in &added` (в `update` это цикл статус-проверки перед переносом).
 fn first_write(body: &str, include_added_loop: bool) -> Option<usize> {
@@ -251,6 +302,12 @@ fn first_write(body: &str, include_added_loop: bool) -> Option<usize> {
         if let Some(p) = pos(body, m, 0) {
             best = Some(best.map_or(p, |b| b.min(p)));
         }
+    }
+    // B-IN-01: набор записей выводится из ТЕКСТА тела — любой вызов `*_in_tx(`, которого
+    // нет в явном списке читателей, — запись. Новый помощник под любым именем выше
+    // `plan_in_tx` краснит страж, а не остаётся невидимым для рукописного списка.
+    if let Some(p) = derived_first_write(body) {
+        best = Some(best.map_or(p, |b| b.min(p)));
     }
     if include_added_loop {
         if let Some(p) = body.find("for &dev_id in &added") {
@@ -914,4 +971,58 @@ fn plan_order_guard_mutant_14_update_return_plan_after_apply() {
     );
     let d = defects(&m);
     assert!(has(&d, "(d) update_return стадия 0"), "{d:?}");
+}
+
+// (B-IN-01) Набор записей выводится из текста: новый помощник под именем, которого нет
+// в `WRITE_MARKERS`, выше `plan_in_tx` краснит страж.
+#[test]
+fn plan_order_guard_mutant_15_unknown_writer_above_plan_is_red() {
+    let range = fn_range(SRC, SIG_CREATE).expect("range");
+    let mut lines: Vec<String> = SRC.split_inclusive('\n').map(str::to_string).collect();
+    let i = line_of_anchor(&lines, range, "plan_in_tx(", 0);
+    lines.insert(
+        i,
+        "        brand_new_audit_writer_in_tx(&tx, 1)?;\n".to_string(),
+    );
+    let m = lines.concat();
+    assert_eq!(
+        m.matches("brand_new_audit_writer_in_tx(").count(),
+        1,
+        "вставка выполнена ровно один раз"
+    );
+    let d = defects(&m);
+    assert!(has(&d, "(a) create"), "{d:?}");
+    // Контроль: тот же вызов с именем читателя (префикс `get_`) краснить не должен.
+    let ok = m.replace(
+        "brand_new_audit_writer_in_tx(",
+        "get_brand_new_reader_in_tx(",
+    );
+    assert!(
+        defects(&ok).is_empty(),
+        "читатель выше плана — не нарушение"
+    );
+}
+
+// (B-IN-01) Явные записи из `WRITE_MARKERS` не должны попасть в список читателей:
+// иначе освобождение молча сняло бы охрану с известной записи.
+#[test]
+fn plan_order_guard_write_markers_are_not_exempt_readers() {
+    for m in WRITE_MARKERS {
+        if let Some(name) = m.strip_suffix('(') {
+            if name.ends_with("_in_tx") {
+                assert!(
+                    !is_read_only_in_tx(name),
+                    "{name} числится читателем, но он в WRITE_MARKERS"
+                );
+            }
+        }
+    }
+    // Каждый читатель из списка освобождений встречается в файле (устаревшая запись
+    // освобождения не должна копиться).
+    for name in READ_ONLY_IN_TX_NAMES {
+        assert!(
+            SRC.contains(&format!("{name}(")),
+            "освобождение {name} больше не встречается в act_service.rs"
+        );
+    }
 }

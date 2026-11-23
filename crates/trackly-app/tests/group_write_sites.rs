@@ -455,7 +455,22 @@ async fn s1_table_service_update_guard() {
         }
     }
     // невакуумность: таблица содержит и отказы, и успехи
-    assert!(rejected >= 3 && accepted >= 5, "{rejected}/{accepted}");
+    // B-WR-06: счёт известен точно и берётся из самой таблицы, а не «не меньше».
+    let table_rejected = SCENARIOS
+        .iter()
+        .filter(|sc| matches!(sc.expect, Expect::Reject))
+        .count();
+    let table_accepted = SCENARIOS.len() - table_rejected;
+    assert_eq!(
+        (rejected, accepted),
+        (table_rejected, table_accepted),
+        "каждый сценарий таблицы исполнен ровно один раз"
+    );
+    assert_eq!(
+        (rejected, accepted),
+        (3, 6),
+        "состав таблицы сценариев изменился"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1707,6 +1722,44 @@ const BIRTH_EXEMPT_REGISTRY: [(&str, usize); 2] = [
     ("crates/trackly-app/src/services/act_service.rs", 1),
 ];
 
+/// Часть строки до `//`-комментария, который начинается ВНЕ строкового литерала
+/// (B-IN-06): `split("//")` обрывал строку на `//` внутри литерала (`"http://..."`), и
+/// вызов после такого литерала на той же строке становился невидимым для гейта.
+/// Символьные литералы вида `'"'` пропускаются целиком.
+fn strip_line_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut in_str = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_str {
+            if b == b'\\' {
+                i += 2;
+                continue;
+            }
+            if b == b'"' {
+                in_str = false;
+            }
+        } else if b == b'"' {
+            in_str = true;
+        } else if b == b'\'' {
+            // 'x' или '\x': пропускаем символьный литерал, чтобы `'"'` не открыл строку
+            if bytes.get(i + 2) == Some(&b'\'') && bytes.get(i + 1) != Some(&b'\\') {
+                i += 3;
+                continue;
+            }
+            if bytes.get(i + 1) == Some(&b'\\') && bytes.get(i + 3) == Some(&b'\'') {
+                i += 4;
+                continue;
+            }
+        } else if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+            return &line[..i];
+        }
+        i += 1;
+    }
+    line
+}
+
 /// Число вызовов `needles` в исходнике: строки-комментарии (`//`, `///`, `//!`),
 /// хвосты `// ...` и определения (`fn `) не считаются. Вхождение принимается,
 /// только если слева от него нет символа идентификатора (буква, цифра, `_`):
@@ -1715,7 +1768,7 @@ const BIRTH_EXEMPT_REGISTRY: [(&str, usize); 2] = [
 fn count_calls(src: &str, needles: &[&str]) -> usize {
     src.lines()
         .map(|line| {
-            let code = line.split("//").next().unwrap_or("");
+            let code = strip_line_comment(line);
             if code.contains("fn ") {
                 return 0;
             }
@@ -1966,7 +2019,7 @@ const RELEASE_WINDOW: usize = 14;
 const GUARD_WINDOW: usize = 20;
 
 fn code_of(line: &str) -> &str {
-    line.split("//").next().unwrap_or("")
+    strip_line_comment(line)
 }
 
 /// Номера (1-based) строк `update_in_tx(`-сайтов без прикрытия. Сайт покрыт, если
@@ -2105,11 +2158,83 @@ fn place_writing_methods(src: &str) -> Vec<String> {
 /// Есть ли в теле SQL-литерал `INSERT INTO devices` / `UPDATE devices`, в котором
 /// (до закрывающей кавычки) упоминается `place_id`. Параметр функции или
 /// аргумент `params![..]` с именем `place_id` сами по себе записью не считаются.
+///
+/// B-IN-06: регистр SQL, `UPDATE OR IGNORE devices`, `INSERT OR REPLACE INTO devices` и
+/// перенос строки-продолжения (`\` в конце строки литерала) не прячут запись: перед
+/// поиском тело приводится к нижнему регистру, а пробельные серии и продолжения
+/// схлопываются в один пробел. Таблица обязана называться ровно `devices`
+/// (`devices_archive` — другая таблица).
 fn writes_place_id_in_sql(body: &str) -> bool {
-    ["INSERT INTO devices", "UPDATE devices"]
-        .iter()
-        .flat_map(|marker| body.match_indices(marker).map(|(pos, _)| &body[pos..]))
-        .any(|tail| tail.split('"').next().unwrap_or("").contains("place_id"))
+    let norm = body
+        .replace("\\\n", " ")
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    ["insert ", "update "].iter().any(|verb| {
+        norm.match_indices(verb).any(|(pos, _)| {
+            let tail = &norm[pos + verb.len()..];
+            let literal = tail.split('"').next().unwrap_or("");
+            let mut words = literal.split(' ');
+            let mut word = words.next().unwrap_or("");
+            if word == "or" {
+                words.next(); // IGNORE / REPLACE / ...
+                word = words.next().unwrap_or("");
+            }
+            if word == "into" {
+                word = words.next().unwrap_or("");
+            }
+            let table = word.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'));
+            table == "devices" && literal.contains("place_id")
+        })
+    })
+}
+
+#[test]
+fn text_scanning_helpers_edges() {
+    // `//` внутри строкового литерала не обрывает строку; настоящий хвост-комментарий — да.
+    assert_eq!(
+        count_calls(
+            "let u = \"http://x\"; repo.update_in_tx(a);",
+            &["update_in_tx("]
+        ),
+        1
+    );
+    assert_eq!(
+        count_calls(
+            "repo.update_in_tx(a); // update_in_tx(b)",
+            &["update_in_tx("]
+        ),
+        1
+    );
+    assert_eq!(
+        strip_line_comment("let q = '\"'; foo(); // tail"),
+        "let q = '\"'; foo(); "
+    );
+    // SQL: регистр, OR IGNORE, INSERT OR REPLACE INTO, продолжение строки.
+    assert!(writes_place_id_in_sql(
+        "\"UPDATE devices SET place_id = ?1\""
+    ));
+    assert!(writes_place_id_in_sql(
+        "\"update devices set place_id = ?1\""
+    ));
+    assert!(writes_place_id_in_sql(
+        "\"UPDATE OR IGNORE devices SET place_id = ?1\""
+    ));
+    assert!(writes_place_id_in_sql(
+        "\"INSERT OR REPLACE INTO devices (place_id) VALUES (?1)\""
+    ));
+    assert!(writes_place_id_in_sql(
+        "\"UPDATE \\\n    devices SET place_id = ?1\""
+    ));
+    assert!(writes_place_id_in_sql(
+        "\"INSERT INTO devices (name, place_id) VALUES (?1, ?2)\""
+    ));
+    // Контроли: другая таблица и отсутствие place_id не краснят.
+    assert!(!writes_place_id_in_sql(
+        "\"UPDATE devices_archive SET place_id = ?1\""
+    ));
+    assert!(!writes_place_id_in_sql("\"UPDATE devices SET name = ?1\""));
 }
 
 /// (новые, исчезли) относительно `PLACE_WRITER_METHODS`.
@@ -2652,7 +2777,7 @@ fn act_enclosing_if_condition(lines: &[&str], from: usize, at: usize) -> Option<
 }
 
 fn code_of_phase_412(line: &str) -> &str {
-    line.split("//").next().unwrap_or("")
+    strip_line_comment(line)
 }
 
 /// Утверждение `let group_placed = ...;` выше строки `at` в пределах функции читает
@@ -2810,6 +2935,33 @@ fn act_first_release_if_line(lines: &[&str], sig: &str) -> usize {
         .0
 }
 
+/// Замена с проверкой, что якорь встречается в тексте ровно один раз (урок
+/// mutation_test_anchor_must_be_unique): `replacen(.., 1)` по неуникальному якорю молча
+/// мутирует ПЕРВОЕ вхождение, то есть, возможно, соседний путь.
+fn mutate_once(src: &str, anchor: &str, repl: &str) -> String {
+    assert_eq!(
+        src.matches(anchor).count(),
+        1,
+        "якорь мутации должен быть уникален (B-WR-05): {anchor:?}"
+    );
+    src.replacen(anchor, repl, 1)
+}
+
+/// Замена k-го (с 0) вхождения якоря, когда общее число вхождений известно и закреплено.
+fn mutate_nth(src: &str, anchor: &str, total: usize, k: usize, repl: &str) -> String {
+    assert_eq!(
+        src.matches(anchor).count(),
+        total,
+        "число вхождений якоря изменилось (B-WR-05): {anchor:?}"
+    );
+    let at = src
+        .match_indices(anchor)
+        .nth(k)
+        .map(|(i, _)| i)
+        .expect("k-е вхождение якоря");
+    format!("{}{}{}", &src[..at], repl, &src[at + anchor.len()..])
+}
+
 fn act_join(lines: &[String]) -> String {
     let mut s = lines.join("\n");
     s.push('\n');
@@ -2865,6 +3017,17 @@ fn write_site_gate_act_release_is_move_aware() {
     let indent = " ".repeat(act_line_indent(lines[if_line]));
     mutated[if_line] = format!("{indent}if true {{");
     assert!(!release_unconditional_sites(&act_join(&mutated)).is_empty());
+
+    // Мутант 6 (B-IN-02): то же в update_return_with_split — у него два из пяти
+    // прямых release_device_in_tx(, и до этого он не был покрыт мутантом.
+    let if_line = act_first_release_if_line(&lines, "pub async fn update_return_with_split(");
+    let mut mutated: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    let indent = " ".repeat(act_line_indent(lines[if_line]));
+    mutated[if_line] = format!("{indent}if true {{");
+    assert!(
+        !release_unconditional_sites(&act_join(&mutated)).is_empty(),
+        "мутант update_return без moved_device_ids обязан краснеть"
+    );
 
     // Мутант 5: вызов появился в delete_soft (функция вне четырёх путей, без вердикта).
     {
@@ -2943,12 +3106,11 @@ fn write_site_gate_act_restore_release_adjacent() {
     );
 
     // Мутант 2: режим следа убран из вызова в undo (последний аргумент заменён).
-    let m2 = src.replacen(
+    let m2 = mutate_once(
+        src,
         "crate::services::group_membership::ReleaseEffect::Skip,\n                            // D-24 (b): откат акта, события акта удаляются по act_id.\n                            ReleaseHistory::Suppressed,\n                        )?\n                    {\n                        extend_unique(",
         "None::<()>,\n                            ReleaseHistory::Suppressed,\n                        )?\n                    {\n                        extend_unique(",
-        1,
     );
-    assert_ne!(m2, src, "якорь мутанта режима найден в undo");
     assert!(
         !restore_release_far_sites(&m2).is_empty(),
         "вызов без режима следа обязан краснеть"
@@ -2997,11 +3159,21 @@ fn write_site_gate_act_restore_keeps_written_off() {
     );
     // Мутант: имя охраны заменено (якорь встречается ровно в трёх вызовах act_service).
     assert_eq!(src.matches(WRITTEN_OFF_GUARD).count(), 3);
-    let mutated = src.replacen(WRITTEN_OFF_GUARD, "some_other_snapshot_fix_in_tx(", 1);
-    assert!(
-        !restore_without_written_off_guard(&mutated).0.is_empty(),
-        "снятая охрана обязана краснеть"
-    );
+    // B-WR-05: гасим КАЖДОЕ из трёх вхождений по очереди (а не «первое, какое попалось»):
+    // охрана любого из трёх restore-путей обязана держаться.
+    for k in 0..3 {
+        let mutated = mutate_nth(
+            src,
+            WRITTEN_OFF_GUARD,
+            3,
+            k,
+            "some_other_snapshot_fix_in_tx(",
+        );
+        assert!(
+            !restore_without_written_off_guard(&mutated).0.is_empty(),
+            "снятая охрана (вхождение {k}) обязана краснеть"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

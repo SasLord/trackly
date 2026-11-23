@@ -683,8 +683,28 @@ async fn journal_act_package_rows_have_act_source_and_batch_only_for_group_membe
         vec![int(act.id)],
     )
     .await;
-    assert!(total >= 7, "строки акта есть: {total}");
-    assert!(batched >= 7, "строки пакета группы есть: {batched}");
+    // B-WR-06: счёт известен точно — 6 устройств переехавших групп + 1 строка группы
+    // (обе с batch_id) + 1 отдельное устройство (без batch_id). `>=` пропускал бы
+    // регресс «каждое перемещённое устройство записано дважды».
+    assert_eq!(
+        total, 8,
+        "строки акта: 6 устройств групп + строка группы + 1 отдельное"
+    );
+    assert_eq!(
+        batched, 7,
+        "строки пакета: 6 устройств групп + строка группы"
+    );
+    let batched_distinct = scalar_i64(
+        &ctx,
+        "SELECT COUNT(DISTINCT entity_type || ':' || entity_id) FROM place_movements \
+         WHERE act_id = ?1 AND batch_id IS NOT NULL",
+        vec![int(act.id)],
+    )
+    .await;
+    assert_eq!(
+        batched_distinct, batched,
+        "строки пакета без дублей по сущности"
+    );
 
     // Ни одна строка с act_id не носит источник, отличный от `act`.
     let foreign_source = scalar_i64(

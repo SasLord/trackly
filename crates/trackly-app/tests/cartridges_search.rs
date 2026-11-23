@@ -189,6 +189,86 @@ async fn search_by_place() {
     .expect("search_by_place budget")
 }
 
+/// IN-03 (39.1): `search()` отдаёт `place_path_short` картриджа с размещением и
+/// `None` картриджу без места. Трёхсегментный путь + вариант `last` на листе делают
+/// короткую форму отличимой от полной: значение — ровно имя листа.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn search_returns_place_path_short_for_placed_cartridge() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc, "Canon", "FX-10").await;
+
+        let leaf_id = svc
+            .writer
+            .execute(move |conn| {
+                let now = 1_700_000_000_i64;
+                let mut parent: Option<i64> = None;
+                for name in ["Корпус Ц", "Этаж 2", "Кабинет 12"] {
+                    conn.execute(
+                        "INSERT INTO places (parent_id, kind, name, is_storage, created_at_utc, \
+                         updated_at_utc, version) VALUES (?1, 'room', ?2, 0, ?3, ?3, 1)",
+                        rusqlite::params![parent, name, now],
+                    )
+                    .map_err(map_rusqlite)?;
+                    parent = Some(conn.last_insert_rowid());
+                }
+                let leaf = parent.expect("leaf");
+                conn.execute(
+                    "UPDATE places SET path_variant_override = 'last' WHERE id = ?1",
+                    rusqlite::params![leaf],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(leaf)
+            })
+            .await
+            .expect("seed place chain");
+
+        let placed = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                number_input: number_input(&next_test_code()),
+                state_id: None,
+                place_id: Some(leaf_id),
+                notes: None,
+            })
+            .await
+            .expect("create placed")
+            .expect_created("create placed")
+            .code;
+        let unplaced = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                number_input: number_input(&next_test_code()),
+                state_id: None,
+                place_id: None,
+                notes: None,
+            })
+            .await
+            .expect("create unplaced")
+            .expect_created("create unplaced")
+            .code;
+
+        let result = svc
+            .search("FX-10".to_string(), CartridgeFilter::default())
+            .await
+            .expect("search");
+        let placed_row = result
+            .items
+            .iter()
+            .find(|c| c.code == placed)
+            .expect("placed");
+        let unplaced_row = result
+            .items
+            .iter()
+            .find(|c| c.code == unplaced)
+            .expect("unplaced");
+        assert_eq!(placed_row.place_path_short.as_deref(), Some("Кабинет 12"));
+        assert_eq!(unplaced_row.place_path_short, None);
+    })
+    .await
+    .expect("search_place_path_short budget")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn empty_query_returns_all() {
     tokio::time::timeout(Duration::from_secs(30), async {

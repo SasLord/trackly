@@ -550,7 +550,8 @@ async fn seed_audit_log_given_by_name(
         "date_utc": now,
         "given_by_name": given_by_name,
         "given_to_name": "Кому Выдал",
-        "location": "Склад",
+        // Реальная форма `op_payload_json()` (install): место — `place_id`, не строка.
+        "place_id": serde_json::Value::Null,
     })
     .to_string();
     writer
