@@ -889,7 +889,7 @@ impl PlaceService {
                                 now,
                             )?;
 
-                            let device_movement_id = place_movements_repo.record_movement_if_applicable(
+                            place_movements_repo.record_movement_if_applicable(
                                 &tx,
                                 places_repo.as_ref(),
                                 MovementEntityKind::Device,
@@ -903,25 +903,9 @@ impl PlaceService {
                                 now,
                             )?;
 
-                            // Phase 41.10 (D-06, D-25, ST-11): статус здесь не меняется,
-                            // вызов единообразен и при равенстве статусов ничего не пишет.
-                            let operation_id = crate::services::history_events::new_operation_id();
-                            crate::services::history_events::record_status_change_in_tx(
-                                &tx,
-                                item.id,
-                                before.status_id,
-                                before.status_id,
-                                &crate::services::history_events::HistoryCause {
-                                    operation_id: &operation_id,
-                                    source: trackly_core::domain::history_events::HistoryReason::Manual,
-                                    act_id: None,
-                                    request_id: None,
-                                    ref_group: None,
-                                    movement_id: device_movement_id,
-                                    user_id,
-                                    now,
-                                },
-                            )?;
+                            // Phase 41.10 (D-06, ST-11, ревью WR-02): статус здесь не меняется
+                            // (передаётся before.status_id), события статуса нет. Освобождение
+                            // закреплено аргументом в history_write_sites_gate (PINNED_EXEMPTS).
                         }
                         "cartridge" => {
                             let before_place_id: Option<i64> = tx

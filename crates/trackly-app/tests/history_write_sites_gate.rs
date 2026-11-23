@@ -319,7 +319,7 @@ fn writer_diff(
 
 /// (needle, файл, число вызовов): каждый такой вызов сопровождается записью события.
 /// Числа сняты grep'ом по production-коду на момент плана 13 и сверены с SUMMARY 05-10, 18.
-const REQUIRED_CALLS: [(&str, &str, usize); 15] = [
+const REQUIRED_CALLS: [(&str, &str, usize); 14] = [
     // --- статус (D-06) ---
     (
         "update_in_tx(",
@@ -334,11 +334,6 @@ const REQUIRED_CALLS: [(&str, &str, usize); 15] = [
     (
         "update_status_and_place_in_tx(",
         "crates/trackly-app/src/services/group_place.rs",
-        1,
-    ),
-    (
-        "update_status_and_place_in_tx(",
-        "crates/trackly-app/src/services/place_service.rs",
         1,
     ),
     (
@@ -407,7 +402,7 @@ const REQUIRED_CALLS: [(&str, &str, usize); 15] = [
 
 /// Вызовы без требования события: (needle, файл, число, причина >= 40 символов).
 /// Одна пара (needle, файл) не может быть одновременно в `REQUIRED_CALLS`.
-const EXEMPT_CALLS: [(&str, &str, usize, &str); 3] = [
+const EXEMPT_CALLS: [(&str, &str, usize, &str); 4] = [
     (
         "repo.create_in_tx(",
         "crates/trackly-app/src/services/device_service.rs",
@@ -426,7 +421,24 @@ const EXEMPT_CALLS: [(&str, &str, usize, &str); 3] = [
         1,
         "откат/удаление акта (D-24 (b)): события акта удаляются по act_id, новых нет",
     ),
+    (
+        "update_status_and_place_in_tx(",
+        "crates/trackly-app/src/services/place_service.rs",
+        1,
+        "статус не меняется: передаётся before.status_id (ST-11), смены статуса нет (WR-02)",
+    ),
 ];
+
+/// Освобождения «статус не меняется» (WR-02): (needle, файл, функция, число, закреплённый
+/// аргумент). Вызов освобождён, только пока в его аргументах стоит `pin`: настоящая смена
+/// статуса (другой аргумент) снимает освобождение и краснит гейт, а не проходит молча.
+const PINNED_EXEMPTS: [(&str, &str, &str, usize, &str); 1] = [(
+    "update_status_and_place_in_tx(",
+    "crates/trackly-app/src/services/place_service.rs",
+    "move_subtree_contents",
+    1,
+    "before.status_id",
+)];
 
 /// Освобождения, привязанные к ИМЕНИ функции (WR-03): (needle, файл, функция, число).
 /// Каждая строка `EXEMPT_CALLS` с методом не-`BirthExempt` обязана быть здесь, а функция —
@@ -515,12 +527,11 @@ const NEUTRAL_CALLS: [(&str, &str, usize, &str); 1] = [(
 /// пропускается. `record_act_status_event(` — приватная обёртка act_service, зовущая
 /// `record_status_change_in_tx` один раз (7 сайтов -> 1 вызов внутри).
 const STATUS_EVENT_NEEDLE: &str = "record_status_change_in_tx(";
-const STATUS_EVENT_REGISTRY: [(&str, usize); 6] = [
+const STATUS_EVENT_REGISTRY: [(&str, usize); 5] = [
     ("crates/trackly-app/src/services/act_service.rs", 1),
     ("crates/trackly-app/src/services/device_service.rs", 1),
     ("crates/trackly-app/src/services/group_place.rs", 1),
     ("crates/trackly-app/src/services/group_service.rs", 3),
-    ("crates/trackly-app/src/services/place_service.rs", 1),
     ("crates/trackly-app/src/services/repair_service.rs", 1),
 ];
 const ACT_WRAPPER_NEEDLE: &str = "record_act_status_event(";
@@ -743,6 +754,58 @@ fn undo_caller_violations(sources: &[(String, String)]) -> Vec<String> {
             out.push(format!(
                 "у функции отката {callee} нет вызывающих: строка реестра устарела"
             ));
+        }
+    }
+    out
+}
+
+/// Текст аргументов каждого вызова `needle` внутри функции `func` (от вызова до первой
+/// строки с `)?` или `);`), по production-коду.
+fn call_args_in_fn(code_src: &str, needle: &str, func: &str) -> Vec<String> {
+    let lines: Vec<&str> = code_src.lines().collect();
+    let ranges = fn_ranges(&lines);
+    let mut out = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if l.contains("fn ") || line_calls(l, &[needle]) == 0 {
+            continue;
+        }
+        if enclosing_fn(&ranges, i) != Some(func) {
+            continue;
+        }
+        let mut args = String::new();
+        for tail in &lines[i..] {
+            args.push_str(tail);
+            args.push('\n');
+            if tail.contains(")?") || tail.contains(");") {
+                break;
+            }
+        }
+        out.push(args);
+    }
+    out
+}
+
+/// Нарушения закреплённых освобождений (WR-02): число вызовов в функции и аргумент-якорь.
+fn pinned_exempt_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (needle, file, func, want, pin) in PINNED_EXEMPTS {
+        let Some((_, code)) = sources.iter().find(|(r, _)| r == file) else {
+            out.push(format!("{file}: нет в дереве"));
+            continue;
+        };
+        let calls = call_args_in_fn(code, needle, func);
+        if calls.len() != want {
+            out.push(format!(
+                "{file}::{func}: вызовов {needle} {}, в реестре {want}",
+                calls.len()
+            ));
+        }
+        for args in calls {
+            if !args.contains(pin) {
+                out.push(format!(
+                    "{file}::{func}: {needle} без `{pin}` — статус меняется, нужно событие (D-06)"
+                ));
+            }
         }
     }
     out
@@ -1561,10 +1624,15 @@ fn history_write_sites_silent_modes_only_on_undo_paths() {
             .iter()
             .filter(|(sn, sf, _, _)| *sn == n && *sf == f)
             .map(|(_, _, _, sc)| *sc)
-            .sum();
+            .sum::<usize>()
+            + PINNED_EXEMPTS
+                .iter()
+                .filter(|(pn, pf, _, _, _)| *pn == n && *pf == f)
+                .map(|(_, _, _, pc, _)| *pc)
+                .sum::<usize>();
         assert_eq!(
             scoped, c,
-            "{n} в {f}: освобождение без привязки к функции отката (WR-03)"
+            "{n} в {f}: освобождение без привязки к функции отката или аргументу (WR-03, WR-02)"
         );
     }
 }
@@ -1645,4 +1713,25 @@ fn history_write_sites_mutation_edit_path_silence_turns_red() {
             "{f}: снятый {needle} не покраснил гейт"
         );
     }
+}
+
+/// WR-02: «статус не меняется» закреплён аргументом, а не мёртвым вызовом события.
+#[test]
+fn history_write_sites_pinned_exempt_status_unchanged() {
+    let sources = prod_sources();
+    let v = pinned_exempt_violations(&sources);
+    assert!(v.is_empty(), "закреплённые освобождения: {v:#?}");
+    // мутация: в «Местах» появилась настоящая смена статуса — освобождение снимается
+    let f = "crates/trackly-app/src/services/place_service.rs";
+    let raw = raw_of(f);
+    let m = raw.replacen(
+        "item.id,\n                                before.status_id,\n                                Some(target_place_id),",
+        "item.id,\n                                new_status_id,\n                                Some(target_place_id),",
+        1,
+    );
+    assert_ne!(m, raw, "якорь аргумента статуса в place_service найден");
+    assert!(
+        !pinned_exempt_violations(&with_source(&sources, f, &m)).is_empty(),
+        "настоящая смена статуса в «Местах» не покраснила гейт"
+    );
 }
