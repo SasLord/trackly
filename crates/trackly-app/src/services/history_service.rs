@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use trackly_core::auth::{authorize, Action, Identity};
+use trackly_core::domain::history_events::HistoryEventKind;
 use trackly_core::error::AppError;
 use trackly_infra::db::pools::ReaderPool;
 use trackly_infra::repos::history_events_sqlite::HistoryEventRow;
@@ -96,12 +97,22 @@ fn segment_rank(kind: &str) -> u8 {
     }
 }
 
+/// IN-02 (41.10): вид сегмента выводится из `HistoryEventKind` исчерпывающим `match` без
+/// `_` — новый вид события не компилируется, пока ему не назначен сегмент. Неизвестный токен
+/// из БД (событие более новой версии) — "other".
 fn event_segment_kind(kind: &str) -> &'static str {
-    match kind {
-        "status_changed" => "status",
-        "group_joined" | "group_left" | "group_transferred" | "group_formed"
-        | "group_disbanded" | "group_nested" | "group_unnested" => "membership",
-        _ => "other",
+    match HistoryEventKind::from_str_lenient(kind) {
+        Some(HistoryEventKind::StatusChanged) => "status",
+        Some(
+            HistoryEventKind::GroupJoined
+            | HistoryEventKind::GroupLeft
+            | HistoryEventKind::GroupTransferred
+            | HistoryEventKind::GroupFormed
+            | HistoryEventKind::GroupDisbanded
+            | HistoryEventKind::GroupNested
+            | HistoryEventKind::GroupUnnested,
+        ) => "membership",
+        None => "other",
     }
 }
 
@@ -275,4 +286,23 @@ fn assemble(
             .then(b.3.key.cmp(&a.3.key))
     });
     out.into_iter().map(|t| t.3).collect()
+}
+
+#[cfg(test)]
+mod segment_kind_tests {
+    use super::*;
+
+    /// IN-02: каждый вид из `HistoryEventKind::ALL` получает осмысленный сегмент, а не "other".
+    #[test]
+    fn every_known_event_kind_has_a_segment() {
+        for k in HistoryEventKind::ALL {
+            let seg = event_segment_kind(k.as_str());
+            assert!(
+                seg == "status" || seg == "membership",
+                "вид {} попал в {seg}",
+                k.as_str()
+            );
+        }
+        assert_eq!(event_segment_kind("unknown_future_kind"), "other");
+    }
 }

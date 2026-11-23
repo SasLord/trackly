@@ -1713,6 +1713,10 @@ fn history_write_sites_raw_sql_stays_in_repositories() {
         {
             panic!("{rel}: прямая запись в group_devices вне groups_sqlite.rs (MB-8)");
         }
+        // слепая зона 41.10: вложенность групп пишется только репозиторием групп
+        if rel != GROUPS_REPO && writes_parent_group_id(code) {
+            panic!("{rel}: прямой UPDATE groups ... parent_group_id вне groups_sqlite.rs");
+        }
         // статус устройства только через репозиторий устройств
         if !rel.starts_with(REPOS_PREFIX)
             && rel.starts_with("crates/")
@@ -1728,6 +1732,60 @@ fn history_write_sites_raw_sql_stays_in_repositories() {
         {
             panic!("{rel}: прямая запись devices.status_id вне репозитория");
         }
+    }
+}
+
+/// `UPDATE groups SET ... parent_group_id ...` в тексте кода: пробелы и переносы строк
+/// (включая `\`-продолжение строкового литерала) схлопываются, регистр не важен; список
+/// присваиваний берётся до конца строкового литерала.
+fn writes_parent_group_id(code: &str) -> bool {
+    let norm = code
+        .replace("\\\n", " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    norm.match_indices("update groups set").any(|(p, _)| {
+        norm[p..]
+            .split('"')
+            .next()
+            .unwrap_or("")
+            .split(" where ")
+            .next()
+            .unwrap_or("")
+            .contains("parent_group_id")
+    })
+}
+
+#[test]
+fn history_write_sites_parent_group_id_writes_selftest() {
+    assert!(writes_parent_group_id(
+        "tx.execute(\"UPDATE groups SET parent_group_id = ?1 WHERE id = ?2\", p)"
+    ));
+    assert!(writes_parent_group_id(
+        "tx.execute(\"UPDATE   groups\\\n   SET name = ?1,\\\n parent_group_id = NULL\", p)"
+    ));
+    assert!(!writes_parent_group_id(
+        "tx.execute(\"UPDATE groups SET place_id = ?1 WHERE parent_group_id = ?2\", p)"
+    ));
+}
+
+/// IN-02 (41.10): список видов событий не дублируется строковыми литералами в
+/// `history_service.rs` — сегмент выводится из `HistoryEventKind` исчерпывающим `match`.
+#[test]
+fn history_write_sites_event_kinds_not_duplicated_in_history_service() {
+    use trackly_core::domain::history_events::HistoryEventKind;
+    let sources = prod_sources();
+    let (_, code) = sources
+        .iter()
+        .find(|(rel, _)| rel == "crates/trackly-app/src/services/history_service.rs")
+        .expect("history_service.rs найден");
+    for k in HistoryEventKind::ALL {
+        let lit = format!("\"{}\"", k.as_str());
+        assert!(
+            !code.contains(&lit),
+            "history_service.rs: литерал {lit} дублирует HistoryEventKind — вывести из enum"
+        );
     }
 }
 
