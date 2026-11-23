@@ -198,6 +198,22 @@ export function scanSource(files, violations) {
       `(C) ${FILES.body}: confirmGroupRelease не повторяет handleSubmit( — подтверждение ничего не сохраняет.`,
     );
   }
+  if (confirm !== null) {
+    // B-WR-02: связка «подтверждение -> состав». Подпись должна быть ЗАПОМНЕНА до
+    // повторного сохранения (порядок, не наличие): handleSubmit читает
+    // groupReleaseConfirmed() при сборке payload.
+    const signAt = confirm.search(/\bconfirmedItemsSignature\s*=\s*itemsSignature\(\)/);
+    const submitAt = confirm.search(/\bhandleSubmit\(/);
+    if (signAt === -1) {
+      violations.push(
+        `(C) ${FILES.body}: confirmGroupRelease не запоминает \`confirmedItemsSignature = itemsSignature()\` — флаг никогда не станет истинным, попап зациклится (T-41.2-51).`,
+      );
+    } else if (submitAt !== -1 && signAt > submitAt) {
+      violations.push(
+        `(C) ${FILES.body}: confirmGroupRelease запоминает подпись ПОСЛЕ handleSubmit( — повторное сохранение уйдёт без подтверждения (T-41.2-51).`,
+      );
+    }
+  }
 
   // (D) попап: две кнопки, варианты, фокус, текст.
   const buttons = [...popup.matchAll(/<Button\b([^>]*)>([\s\S]*?)<\/Button>/g)].map((m) => ({
@@ -263,6 +279,25 @@ export function scanSource(files, violations) {
     violations.push(
       `(E) ${FILES.body}: groupReleaseConfirmed не сравнивает сигнатуру состава с itemsSignature() — подтверждение переживёт смену позиций (T-41.2-51).`,
     );
+  }
+  // B-WR-02: сама подпись обязана зависеть от состава позиций.
+  const signature = functionBody(body, 'itemsSignature');
+  if (signature === null) {
+    violations.push(`(E) ${FILES.body}: не найдена функция itemsSignature — антивакуум.`);
+  } else {
+    const missing = ['items', 'device_id', 'quantity', 'group_ids'].filter(
+      (id) => !new RegExp(`\\b${id}\\b`).test(signature),
+    );
+    if (missing.length > 0) {
+      violations.push(
+        `(E) ${FILES.body}: itemsSignature не читает ${missing.join(', ')} — подтверждение переживёт смену состава позиций (T-41.2-51).`,
+      );
+    }
+    if (!/^\s*return\s+JSON\.stringify\(/.test(signature)) {
+      violations.push(
+        `(E) ${FILES.body}: itemsSignature не начинается с \`return JSON.stringify(\` — ранний возврат константы отвязывает подпись от состава (T-41.2-51).`,
+      );
+    }
   }
 
   // (F) попап подключён.
@@ -569,6 +604,62 @@ function runSelfTest() {
           ),
         ),
         rule: 'C',
+      },
+      {
+        name: '(15) B-WR-02: из confirmGroupRelease убрано `confirmedItemsSignature = itemsSignature();`',
+        files: withFile(
+          'body',
+          mutateInFn(
+            raw.body,
+            'function confirmGroupRelease(',
+            '    confirmedItemsSignature = itemsSignature();\n',
+            '',
+            'confirm-no-sign',
+          ),
+        ),
+        rule: 'C',
+      },
+      {
+        name: '(16) B-WR-02: ПЕРЕСТАНОВКА (swap) в confirmGroupRelease: подпись запоминается ПОСЛЕ handleSubmit(',
+        files: withFile(
+          'body',
+          mutateInFn(
+            raw.body,
+            'function confirmGroupRelease(',
+            '    confirmedItemsSignature = itemsSignature();\n    activePopup = null;\n    void handleSubmit();\n',
+            '    activePopup = null;\n    void handleSubmit();\n    confirmedItemsSignature = itemsSignature();\n',
+            'confirm-sign-after-submit',
+          ),
+        ),
+        rule: 'C',
+      },
+      {
+        name: '(17) B-WR-02: itemsSignature первым оператором возвращает константу',
+        files: withFile(
+          'body',
+          mutateInFn(
+            raw.body,
+            'function itemsSignature(',
+            '    return JSON.stringify(\n',
+            "    return '';\n    return JSON.stringify(\n",
+            'signature-const',
+          ),
+        ),
+        rule: 'E',
+      },
+      {
+        name: '(18) B-WR-02: itemsSignature перестала читать quantity',
+        files: withFile(
+          'body',
+          mutateInFn(
+            raw.body,
+            'function itemsSignature(',
+            "${it.device_id}:${it.quantity}:${(it.group_ids ?? []).slice(0, it.quantity).join(',')}",
+            "${it.device_id}:${(it.group_ids ?? []).join(',')}",
+            'signature-no-quantity',
+          ),
+        ),
+        rule: 'E',
       },
     ];
   } catch (e) {

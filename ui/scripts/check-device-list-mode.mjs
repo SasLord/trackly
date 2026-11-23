@@ -3074,6 +3074,7 @@ async function selftest(cases) {
         ),
     },
   ];
+  let h7Caught = 0;
   for (const m of h7Mutants) {
     const found = checkListGen(
       m.page ? m.page(realPage) : realPage,
@@ -3096,6 +3097,14 @@ async function selftest(cases) {
       );
       process.exit(1);
     }
+    h7Caught++;
+  }
+  // TD-2 (41.11): счёт ловимости сверяется с объявленным числом, а не «хоть один».
+  if (h7Caught !== h7Mutants.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — [H7] поймано ${h7Caught} мутантов из ${h7Mutants.length} объявленных`,
+    );
+    process.exit(1);
   }
   // Зелёные формы: полная запись listGen={listGen} законна. Без этой проверки
   // строгая регулярка могла бы стать слишком узкой и покраснеть на законном.
@@ -3121,6 +3130,7 @@ async function selftest(cases) {
         ),
     },
   ];
+  let h7GreenOk = 0;
   for (const g of h7Green) {
     const bad = checkListGen(
       g.page ? g.page(realPage) : realPage,
@@ -3133,6 +3143,13 @@ async function selftest(cases) {
       );
       process.exit(1);
     }
+    h7GreenOk++;
+  }
+  if (h7GreenOk !== h7Green.length) {
+    console.error(
+      `${TAG} SELFTEST FAIL — [H7] зелёных форм прошло ${h7GreenOk} из ${h7Green.length}`,
+    );
+    process.exit(1);
   }
   // 4. Режим «страница ещё не подключена»: явный SKIP, не молчание и не красное.
   const unconnected = scanStructural(
@@ -3162,7 +3179,7 @@ async function selftest(cases) {
     process.exit(1);
   }
   console.log(
-    `${TAG} selftest OK — эталон проходит ${cases.length} кейсов, ${SOURCE_MUTANTS.length} мутантов исходника и ${mutants.length} структурных мутантов ловятся; неподключённая страница даёт явный SKIP`,
+    `${TAG} selftest OK — эталон проходит ${cases.length} кейсов, ${SOURCE_MUTANTS.length} мутантов исходника и ${mutants.length} структурных мутантов ловятся; правило [H7] (listGen): ${h7Caught} из ${h7Mutants.length} мутантов пойманы, ${h7GreenOk} из ${h7Green.length} законных форм проходят; неподключённая страница даёт явный SKIP`,
   );
 }
 

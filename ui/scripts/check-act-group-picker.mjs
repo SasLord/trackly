@@ -100,7 +100,48 @@ function callArgs(code, callee) {
   return out;
 }
 
-export function scanSource(raw, violations) {
+const SERVER_FILE = '../crates/trackly-app/src/services/act_service.rs';
+
+/** Серверный исходник (корень репозитория — всегда рядом с ui/, не из --src). */
+function readServerSource() {
+  try {
+    return fs.readFileSync(path.join(UI_ROOT, SERVER_FILE), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * B-IN-05: клиентская константа MAX_ACT_ITEMS и серверный потолок `p.items.len() > N`
+ * (create и update) обязаны совпадать. Правило счёта: клиент суммирует quantity других
+ * строк (согласован с update, который считает единицы; create считает строки, поэтому
+ * клиент строже create — так задумано).
+ */
+function scanServerCeiling(rawClient, server, violations) {
+  if (server === null) {
+    violations.push(
+      `(C) ${SERVER_FILE}: файл не читается — потолок 100 позиций не сверен с клиентом (отсутствие файла — нарушение, не SKIP).`,
+    );
+    return;
+  }
+  const client = /\bconst\s+MAX_ACT_ITEMS\s*=\s*(\d+)\b/.exec(stripComments(rawClient));
+  const ceilings = [...stripComments(server).matchAll(/\bp\.items\.len\(\)\s*>\s*(\d+)\b/g)].map(
+    (m) => Number(m[1]),
+  );
+  if (ceilings.length < 2) {
+    violations.push(
+      `(C) ${SERVER_FILE}: найдено потолков \`p.items.len() > N\`: ${ceilings.length}, нужно не меньше двух (create и update) — антивакуум.`,
+    );
+  }
+  if (client && ceilings.some((n) => n !== Number(client[1]))) {
+    violations.push(
+      `(C) ${FILE}: MAX_ACT_ITEMS=${client[1]} расходится с серверным потолком [${ceilings.join(', ')}] в act_service.rs (B-IN-05).`,
+    );
+  }
+}
+
+export function scanSource(raw, violations, server = readServerSource()) {
+  scanServerCeiling(raw, server, violations);
   const code = stripComments(raw);
 
   // (A) секции в одном Dropdown.
@@ -250,6 +291,45 @@ export function scanSource(raw, violations) {
         `(C) ${FILE}: проверка лимита MAX_ACT_ITEMS стоит ПОСЛЕ первого onChange( — частичная вставка возможна (R-11).`,
       );
     }
+    // B-WR-01: первая встреча MAX_ACT_ITEMS — это вычисление `free`, оно стоит выше
+    // onChange( при любой судьбе отклоняющей ветки. Поэтому проверяем сам отказ:
+    // условие `fresh.length > free`, блок которого завершается `return`, стоит ниже
+    // вычисления `free` и выше первого onChange(.
+    const freeAt = pick.search(/\bconst\s+free\s*=[^;]*\bMAX_ACT_ITEMS\b/);
+    const guard = /\bif\s*\(\s*fresh\.length\s*>\s*free\s*\)\s*\{/.exec(pick);
+    if (freeAt === -1) {
+      violations.push(
+        `(C) ${FILE}: pickGroupHit не вычисляет \`const free = ... MAX_ACT_ITEMS ...\` — нечем ограничить вставку (R-11).`,
+      );
+    }
+    if (guard === null) {
+      violations.push(
+        `(C) ${FILE}: pickGroupHit не содержит отказа \`if (fresh.length > free) {\` — вставка свыше лимита позиций возможна (R-11).`,
+      );
+    } else {
+      const braceOpen = guard.index + guard[0].length - 1;
+      const block = extractBalanced(pick, braceOpen, '{', '}');
+      if (block === null || !/\breturn\s*;/.test(block)) {
+        violations.push(
+          `(C) ${FILE}: блок отказа по лимиту в pickGroupHit не завершается \`return;\` — после тоста вставка продолжится (R-11).`,
+        );
+      }
+      if (block === null || !block.includes('pushToast(')) {
+        violations.push(
+          `(C) ${FILE}: блок отказа по лимиту в pickGroupHit не сообщает пользователю (pushToast) — молчаливый отказ (R-11).`,
+        );
+      }
+      if (freeAt !== -1 && guard.index < freeAt) {
+        violations.push(
+          `(C) ${FILE}: отказ по лимиту стоит ВЫШЕ вычисления free — сравнение идёт со старым значением (R-11).`,
+        );
+      }
+      if (changeAt !== -1 && guard.index > changeAt) {
+        violations.push(
+          `(C) ${FILE}: отказ \`fresh.length > free\` стоит ПОСЛЕ первого onChange( — частичная вставка возможна (R-11).`,
+        );
+      }
+    }
   }
   const row = functionBody(code, 'groupRow');
   if (row === null) {
@@ -320,6 +400,20 @@ function swapLimitAfterOnChange(source) {
     throw new Error('мутант swap: якорь onChange(next) неуникален');
   }
   return without.replace(anchor, () => `    onChange(next);\n${block}    anchorHintIds = hints;`);
+}
+
+/** Мутант (13): блок отказа по лимиту вырезан целиком (якорь начала — ровно один). */
+function deleteLimitBlock(source) {
+  const anchor = '    if (fresh.length > free) {\n';
+  if (source.split(anchor).length - 1 !== 1) {
+    throw new Error('мутант (13): якорь `if (fresh.length > free) {` должен быть уникален');
+  }
+  const start = source.indexOf(anchor);
+  const braceOpen = start + anchor.length - 2;
+  const body = extractBalanced(source, braceOpen, '{', '}');
+  if (body === null) throw new Error('мутант (13): блок не закрыт');
+  const end = braceOpen + body.length + 2; // включая `}`
+  return source.slice(0, start) + source.slice(end).replace(/^\n/, '');
 }
 
 function runSelfTest() {
@@ -451,6 +545,32 @@ function runSelfTest() {
         ),
         rule: 'F',
       },
+      {
+        name: '(13) B-WR-01: удалён весь блок отказа `if (fresh.length > free) { ... return; }`',
+        src: deleteLimitBlock(raw),
+        rule: 'C',
+      },
+      {
+        name: '(14) B-WR-01: после тоста отказа удалён `return;`',
+        src: mutate(
+          raw,
+          'Удалите лишние позиции и попробуйте снова.`,\n      );\n      return;\n    }',
+          'Удалите лишние позиции и попробуйте снова.`,\n      );\n    }',
+          'limit-no-return',
+        ),
+        rule: 'C',
+      },
+      {
+        name: '(15) B-IN-05: серверный потолок в create расходится (> 99)',
+        src: raw,
+        server: mutate(
+          readServerSource() ?? '',
+          'if p.items.len() > 100 {\n            return Err(AppError::Validation {\n                field: "items".into(),\n                message: "Максимум 100 позиций в одном акте".into(),\n            });\n        }\n        // T-03.1-02',
+          'if p.items.len() > 99 {\n            return Err(AppError::Validation {\n                field: "items".into(),\n                message: "Максимум 100 позиций в одном акте".into(),\n            });\n        }\n        // T-03.1-02',
+          'server-ceiling',
+        ),
+        rule: 'C',
+      },
     ];
   } catch (e) {
     console.error(`${TAG} [selftest] FAIL — ${e.message}`);
@@ -460,7 +580,7 @@ function runSelfTest() {
   let failed = 0;
   for (const m of mutants) {
     const v = [];
-    scanSource(m.src, v);
+    scanSource(m.src, v, m.server);
     const hit = v.some((line) => line.startsWith(`(${m.rule})`));
     console.error(
       `${TAG} [selftest] ${hit ? 'PASS' : 'FAIL'} — ${m.name} (ожидалось ${m.rule}, получено ${v.length})`,

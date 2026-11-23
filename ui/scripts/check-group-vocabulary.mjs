@@ -792,6 +792,26 @@ function runSelfTest() {
       ].join('\n'),
       expectViolations: 1,
     },
+    {
+      // IN-05 (41.10): запись historyEvents.ts — инвентарь ОТ ФАЙЛА, а не перечень
+      // допустимого: любой оборот «групп…» вне markers краснит гейт.
+      name: 'негатив (IN-05): оборот «группа» вне markers в historyEvents.ts',
+      file: 'src/lib/historyEvents.ts',
+      src: 'const t = (n: string) => `Переименована группа ${n}`;',
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив (IN-05): «сгруппировано» вне markers в historyEvents.ts',
+      file: 'src/lib/historyEvents.ts',
+      src: "const t = 'Состав сгруппирован';",
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив (IN-05): оборот из markers в historyEvents.ts проходит',
+      file: 'src/lib/historyEvents.ts',
+      src: 'const t = (n: string) => `Включено в группу ${n}`;',
+      expectViolations: 0,
+    },
   ];
 
   let failed = 0;

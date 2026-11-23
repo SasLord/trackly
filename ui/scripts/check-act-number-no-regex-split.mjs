@@ -51,6 +51,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -64,7 +65,13 @@ const EXTENSIONS = new Set(['.svelte', '.ts']);
 // (A) Regex-литерал, начинающийся с anchored digit-prefix: `/^\d`, `/^(\d`,
 // `/^[0-9]` — ловит буквальный литерал ГДЕ УГОДНО в файле (inline внутри
 // `.replace(...)` ИЛИ вынесенный в `const`), независимо от группы/класса.
-const DIGIT_PREFIX_REGEX_LITERAL_RE = /\/\^\(?\\?(?:d|\[0-9\])/g;
+//
+// WR-14 (40.3): обратная косая ОБЯЗАТЕЛЬНА (`/^data:/`, `/^dev\//` — не digit-prefix), а слева
+// от `/` не стоит символ, после которого `/` — деление, а не начало regex-литерала.
+// Комментарии вырезаются до матча (см. scanSource): строка-пояснение, цитирующая шаблон,
+// не нарушение. Строковые литералы НЕ вырезаются: `row['number_raw']` — настоящее
+// употребление, а не текст.
+const DIGIT_PREFIX_REGEX_LITERAL_RE = /(?<![\w)\]])\/\^\(?(?:\\d|\[0-9\])/g;
 
 // (B) Любое употребление `number_raw` вне explicit whitelist.
 const NUMBER_RAW_RE = /\bnumber_raw\b/g;
@@ -107,7 +114,8 @@ function lineAt(src, index) {
  * не трогает fs. Переиспользуется и реальным сканированием файлов (через
  * checkFile), и self-testом (над строками из памяти, без временных файлов).
  */
-function scanSource(relPath, src, violations) {
+function scanSource(relPath, rawSrc, violations) {
+  const src = stripComments(rawSrc); // длина и переводы строк сохраняются (номера строк верны)
   DIGIT_PREFIX_REGEX_LITERAL_RE.lastIndex = 0;
   let m;
   while ((m = DIGIT_PREFIX_REGEX_LITERAL_RE.exec(src)) !== null) {
@@ -139,8 +147,8 @@ function checkFile(root, relPath, violations) {
 }
 
 /**
- * Встроенный self-test: 7 фикстур над строками из памяти (без временных
- * файлов) — 5 позитивных (все известные формы дефекта WR-07/WR-08) + 2
+ * Встроенный self-test: фикстуры над строками из памяти (без временных
+ * файлов) — позитивных (все известные формы дефекта WR-07/WR-08) + 2
  * негативных (чистый код + легитимный whitelisted number_raw).
  */
 function runSelfTest() {
@@ -187,13 +195,47 @@ function runSelfTest() {
       src: 'initialAct!.number_raw',
       expectViolations: 0,
     },
+    // WR-14/IN-07 (40.3): ложные срабатывания прежнего широкого матча.
+    {
+      name: 'WR-14: /^data:/ — не digit-prefix, без обратной косой (негатив)',
+      relPath: 'fixture.ts',
+      src: 'if (/^data:/.test(u)) return;\nif (/^dev\\//.test(p)) return;\nconst d = /^default/.test(k);',
+      expectViolations: 0,
+    },
+    {
+      name: 'WR-14: комментарий, цитирующий /^\\d+/, не нарушение (негатив)',
+      relPath: 'fixture.ts',
+      src: "// раньше было n.replace(/^\\d+/, '')\nconst x = 1;",
+      expectViolations: 0,
+    },
+    {
+      name: 'WR-14: комментарий с number_raw вне whitelist не нарушение (негатив)',
+      relPath: 'src/features/acts/FakeFile.svelte',
+      src: '<!-- number_raw — сырое значение, здесь не используется -->\n<p>{act.number}</p>',
+      expectViolations: 0,
+    },
+    {
+      name: "WR-14: number_raw в строковом доступе row['number_raw'] остаётся нарушением",
+      relPath: 'src/features/acts/FakeFile.svelte',
+      src: "const v = row['number_raw'];",
+      expectViolations: 1,
+    },
+    {
+      name: 'WR-14: номер строки нарушения сохраняется после вырезания комментария',
+      relPath: 'fixture.ts',
+      src: '/* a\nb */\nconst RE = /^\\d+/;',
+      expectViolations: 1,
+      expectLine: 3,
+    },
   ];
 
   let failed = 0;
   for (const f of fixtures) {
     const v = [];
     scanSource(f.relPath, f.src, v);
-    const ok = v.length === f.expectViolations;
+    const ok =
+      v.length === f.expectViolations &&
+      (f.expectLine === undefined || v[0].startsWith(`${f.relPath}:${f.expectLine}:`));
     console.error(
       `${TAG} [selftest] ${ok ? 'PASS' : 'FAIL'} — ${f.name} (expected ${f.expectViolations}, got ${v.length})`,
     );

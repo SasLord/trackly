@@ -335,6 +335,16 @@ const STORAGE_REQUIRED_NAMES = ['membershipLoaded', 'storageIntent', 'isEdit'];
 // уровне `&&`-цепочки: ни `||(…)`, ни `!(…)` перед скобкой не допускаются.
 const EDIT_GUARD_RE =
   /(?:&&|if\()\((?:!isEdit\|\|storageIntent|storageIntent\|\|!isEdit)\)(?:&&|\))/;
+// TD-5 (41.11): остальные конъюнкты условия автостатуса (полярность каждого): инверсия
+// `!lockedByGroup` / `!readonly` / `isStoragePlace` снимала бы охрану молча. Каждый обязан
+// стоять операндом верхнего уровня `&&`-цепочки в ожидаемой полярности.
+const STORAGE_CONJUNCTS = [
+  ['!readonly', /(?:&&|if\()!readonly(?:&&|\))/],
+  ['!lockedByGroup', /(?:&&|if\()!lockedByGroup(?:&&|\))/],
+  ['isStoragePlace', /(?:&&|if\()isStoragePlace(?:&&|\))/],
+  ['storageStatusSuggested', /(?:&&|if\()storageStatusSuggested(?:&&|\))/],
+  ['storageId!==null', /(?:&&|if\()storageId!==null(?:&&|\))/],
+];
 // НИ ОДНО вхождение membershipLoaded не под отрицанием: «хотя бы одно без !» пропустило бы
 // два вхождения, из которых инвертировано одно.
 const NEGATED_MEMBERSHIP_RE = /!membershipLoaded\b|\bmembershipLoaded(?:===false|!==true)/;
@@ -376,6 +386,16 @@ function scanStorageStatusRules(relPath, src, violations) {
           'условие инвертировано или ослаблено: нет конъюнкта (!isEdit || storageIntent) — ' +
             'охрана при создании снята, а при правке оставлена (или наоборот)',
         );
+      }
+      for (const [label, re] of STORAGE_CONJUNCTS) {
+        // конъюнкт по storageId применим, только если эффект вообще читает storageId
+        if (label === 'storageId!==null' && !/\bstorageId\b/.test(flat)) continue;
+        if (!re.test(flat)) {
+          problems.push(
+            `нет конъюнкта ${label} верхнего уровня в ожидаемой полярности (TD-5): условие ` +
+              'инвертировано, ослаблено или оно стало дизъюнктом',
+          );
+        }
       }
       if (NEGATED_MEMBERSHIP_RE.test(flat)) {
         problems.push(
@@ -648,6 +668,67 @@ function runRealFileSelfTest() {
     [
       'мутант: !membershipLoaded',
       mutate(real, 'membershipLoaded &&', '!membershipLoaded &&', 'membershipLoaded'),
+      1,
+    ],
+    // TD-5: полярность остальных конъюнктов. Якоря — многострочные, ровно одно вхождение.
+    [
+      'мутант: readonly вместо !readonly',
+      mutate(
+        real,
+        '      !readonly &&\n      membershipLoaded',
+        '      readonly &&\n      membershipLoaded',
+        'readonly',
+      ),
+      1,
+    ],
+    [
+      'мутант: lockedByGroup вместо !lockedByGroup',
+      mutate(
+        real,
+        '      !lockedByGroup &&\n      isStoragePlace',
+        '      lockedByGroup &&\n      isStoragePlace',
+        'lockedByGroup',
+      ),
+      1,
+    ],
+    [
+      'мутант: !isStoragePlace вместо isStoragePlace',
+      mutate(
+        real,
+        '      isStoragePlace &&\n      storageStatusSuggested',
+        '      !isStoragePlace &&\n      storageStatusSuggested',
+        'isStoragePlace',
+      ),
+      1,
+    ],
+    [
+      'мутант: !storageStatusSuggested',
+      mutate(
+        real,
+        '      storageStatusSuggested &&\n      storageId !== null',
+        '      !storageStatusSuggested &&\n      storageId !== null',
+        'storageStatusSuggested',
+      ),
+      1,
+    ],
+    [
+      'мутант: storageId === null',
+      mutate(
+        real,
+        '      storageStatusSuggested &&\n      storageId !== null',
+        '      storageStatusSuggested &&\n      storageId === null',
+        'storageId',
+      ),
+      1,
+    ],
+    [
+      'мутант: конъюнкт lockedByGroup стал дизъюнктом',
+      mutate(
+        real,
+        '      !lockedByGroup &&\n      isStoragePlace',
+        '      !lockedByGroup ||\n      isStoragePlace',
+        'lockedByGroup-or',
+      ),
       1,
     ],
   ];

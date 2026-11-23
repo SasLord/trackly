@@ -132,7 +132,7 @@ const VERDICTS = [
   {
     path: 'src/features/acts/ActDetail.svelte',
     kind: 'FULL_BY_DESIGN',
-    reason: 'карточка акта: поле «Расположение» показывает полный путь, это не колонка списка',
+    reason: 'карточка акта: поле «Место» показывает полный путь, это не колонка списка',
   },
   {
     path: 'src/features/acts/ReturnModal.svelte',
@@ -359,6 +359,18 @@ function checkRowCell(src) {
         'Текст ячейки обязан читать place_path_short, приходящий с бэкенда.',
     });
     return out;
+  }
+
+  // IN-05 (41.12): ячейка, печатающая ТОЛЬКО полный путь (без SHORT), раньше не
+  // проверялась — INV-3 срабатывал лишь там, где SHORT уже есть. Дефект возвращался
+  // бы без шума, пока в файле остаётся хоть одна правильная ячейка.
+  for (const cell of cells) {
+    if (!SHORT_RE.test(cell.body) && FULL_RE.test(cell.body)) {
+      out.push({
+        message: `INV-5: ячейка <td> (строка ${cell.line}) рендерит полный путь в тексте без place_path_short`,
+        hint: 'В файле с вердиктом ROW_CELL текст ячейки с путём обязан читать place_path_short; полный путь — только в title.',
+      });
+    }
   }
 
   for (const cell of placeCells) {
@@ -1053,6 +1065,25 @@ function selftest(root) {
             ],
           ]),
           verdicts: [...VERDICTS, rowVerdict('src/features/zz_synthetic/Both.svelte')],
+        }),
+      expect: ['P2'],
+    },
+    {
+      // IN-05 (41.12): единственная «плохая» ячейка при наличии правильной. Прежний гейт
+      // проверял только ячейки с SHORT и молчал; здесь всё остальное в файле чисто, поэтому
+      // P2 может прийти только от нового правила INV-5.
+      name: 'INV-5: ячейка печатает только full_path рядом с правильной ячейкой — P2',
+      run: () =>
+        run({
+          extra: ['src/features/zz_synthetic/FullOnly.svelte'],
+          over: new Map([
+            [
+              'src/features/zz_synthetic/FullOnly.svelte',
+              '<table><tbody><tr><td title={x.place_path}>{x.place_path_short}</td>' +
+                '<td title={x.full_path}>{x.full_path}</td></tr></tbody></table>',
+            ],
+          ]),
+          verdicts: [...VERDICTS, rowVerdict('src/features/zz_synthetic/FullOnly.svelte')],
         }),
       expect: ['P2'],
     },

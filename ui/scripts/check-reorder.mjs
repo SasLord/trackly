@@ -16,8 +16,8 @@
 // сравнивает результат с ожидаемым. Дополнительно для `reorder` проверяется,
 // что исходный массив не мутирован и возвращён НОВЫЙ экземпляр.
 //
-// `--selftest` прогоняет те же проверки на встроенных реализациях: верная
-// обязана пройти, три мутанта (без сдвига `to`, лишний сдвиг, нестрогое
+// `--selftest` прогоняет те же проверки на реальном исходнике и его мутантах в памяти:
+// верный обязан пройти, три мутанта (без сдвига `to`, лишний сдвиг, нестрогое
 // сравнение середины строки) — провалиться. Так «гейт зелёный» отличимо от
 // «гейт ничего не ищет».
 //
@@ -145,22 +145,9 @@ function runCases(mod, cases) {
   return failures;
 }
 
-// Эталон для --selftest (идентичен reorder.ts) и три мутанта.
-const GOOD = `
-export function insertionIndex(rects, pointerY) {
-  for (let i = 0; i < rects.length; i++) {
-    if (pointerY < rects[i].top + rects[i].height / 2) return i;
-  }
-  return rects.length;
-}
-export function reorder(items, from, to) {
-  const next = items.slice();
-  if (from < 0 || from >= next.length) return next;
-  const [moved] = next.splice(from, 1);
-  next.splice(to > from ? to - 1 : to, 0, moved);
-  return next;
-}
-`;
+// Мутанты --selftest применяются к РЕАЛЬНОМУ `src/lib/utils/reorder.ts`, прочитанному в
+// память (на диск ничего не пишется; IN-01 фазы 41): встроенная копия-эталон могла бы
+// разойтись с настоящим файлом, и гейт доказывал бы свою чувствительность на чужом коде.
 const MUTANTS = [
   { name: 'без сдвига to при переносе вниз', from: 'to > from ? to - 1 : to', to: 'to' },
   { name: 'лишний сдвиг to при переносе вверх', from: 'to > from ? to - 1 : to', to: 'to - 1' },
@@ -171,38 +158,53 @@ const MUTANTS = [
   },
 ];
 
-async function selftest(cases) {
-  const goodFailures = runCases(await loadModuleFromTs(GOOD, 'good.ts'), cases);
+async function selftest(cases, implPath) {
+  let real;
+  try {
+    real = fs.readFileSync(implPath, 'utf8');
+  } catch {
+    console.error(`${TAG} SELFTEST FAIL — не удалось прочитать реальный источник ${implPath}`);
+    process.exit(1);
+  }
+  const goodFailures = runCases(await loadModuleFromTs(real, 'real.ts'), cases);
   if (goodFailures.length) {
     console.error(
-      `${TAG} SELFTEST FAIL — эталон не прошёл фикстуру:\n  - ${goodFailures.join('\n  - ')}`,
+      `${TAG} SELFTEST FAIL — реальный reorder.ts не прошёл фикстуру:\n  - ${goodFailures.join('\n  - ')}`,
     );
     process.exit(1);
   }
+  let caught = 0;
   for (const m of MUTANTS) {
-    // Якорь обязан быть в эталоне ровно один раз — иначе replace молча
+    // Якорь обязан быть в реальном исходнике ровно один раз — иначе replace молча
     // отключит соседнюю функцию и мутант окажется неотличим от эталона.
-    const occurrences = GOOD.split(m.from).length - 1;
+    const occurrences = real.split(m.from).length - 1;
     if (occurrences !== 1) {
       console.error(
-        `${TAG} SELFTEST FAIL — якорь мутанта «${m.name}» встречается ${occurrences} раз, нужен ровно 1`,
+        `${TAG} SELFTEST FAIL — якорь мутанта «${m.name}» встречается ${occurrences} раз в ${path.relative(UI_ROOT, implPath)}, нужен ровно 1`,
       );
       process.exit(1);
     }
-    const mutated = GOOD.replace(m.from, m.to);
+    const mutated = real.replace(m.from, () => m.to);
     const failures = runCases(await loadModuleFromTs(mutated, 'mutant.ts'), cases);
     if (!failures.length) {
       console.error(`${TAG} SELFTEST FAIL — мутант «${m.name}» прошёл фикстуру: гейт его не ловит`);
       process.exit(1);
     }
+    caught++;
   }
-  console.log(`${TAG} selftest OK — эталон проходит, ${MUTANTS.length} мутанта ловятся`);
+  if (caught !== MUTANTS.length) {
+    console.error(`${TAG} SELFTEST FAIL — поймано ${caught} мутантов из ${MUTANTS.length}`);
+    process.exit(1);
+  }
+  console.log(
+    `${TAG} selftest OK — реальный reorder.ts проходит, ${caught} из ${MUTANTS.length} мутантов ловятся`,
+  );
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cases = loadFixture();
-  if (args.selftest) return selftest(cases);
+  if (args.selftest) return selftest(cases, args.impl);
 
   let tsSource;
   try {

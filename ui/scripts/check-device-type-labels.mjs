@@ -262,7 +262,25 @@ function collectViolations(
     }
     scanned++;
     const text = stripComments(read(rel));
-    if (text.includes(STORE_IMPORT)) consumers.push(rel);
+    if (text.includes(STORE_IMPORT)) {
+      consumers.push(rel);
+      // IN-02 (41.12): потребитель стора обязан его ЗАГРУЖАТЬ — вызывать ensureLoaded
+      // (в том числе под псевдонимом `ensureLoaded as x`): экран, который читает
+      // orderedTypes(), но не зовёт загрузку, показывает пустой список при зелёном гейте.
+      const imp = new RegExp(
+        `import\\s*\\{([^}]*)\\}\\s*from\\s*['"]${STORE_IMPORT.replace(/[.$]/g, '\\$&')}['"]`,
+      ).exec(text);
+      const names = imp ? imp[1].split(',').map((x) => x.trim()) : [];
+      const spec = names.find((x) => /^ensureLoaded\b/.test(x));
+      const local = spec ? (/\bas\s+(\w+)/.exec(spec)?.[1] ?? 'ensureLoaded') : null;
+      if (local === null || !new RegExp(`\\b${local}\\s*\\(`).test(text.replace(imp[0], ''))) {
+        violations.push({
+          code: 'T4',
+          file: rel,
+          msg: 'файл импортирует стор типов, но не вызывает ensureLoaded(): список типов останется пустым при зелёном гейте',
+        });
+      }
+    }
     for (const rule of RULES) {
       for (const re of rule.re) {
         for (const m of text.matchAll(re)) {
@@ -612,6 +630,59 @@ function selftest(root) {
           ],
         ]),
       }),
+    );
+  }
+
+  // (IN-02) потребитель стора обязан вызывать ensureLoaded (в т.ч. под псевдонимом)
+  add(
+    'T4/IN-02: файл читает orderedTypes, но не вызывает ensureLoaded',
+    'T4',
+    run({
+      extra: [
+        [
+          'src/zz/NoLoad.svelte',
+          "<script>import { orderedTypes } from '$lib/stores/deviceTypes.svelte';\nconst t = $derived(orderedTypes());</script>",
+        ],
+      ],
+    }),
+    'не вызывает ensureLoaded',
+  );
+  add(
+    'T4/IN-02: ensureLoaded импортирован, но не вызван (мёртвый импорт)',
+    'T4',
+    run({
+      extra: [
+        [
+          'src/zz/DeadImport.svelte',
+          "<script>import { ensureLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';\nconst t = $derived(orderedTypes());</script>",
+        ],
+      ],
+    }),
+    'не вызывает ensureLoaded',
+  );
+  add(
+    'T4/IN-02: вызов под псевдонимом засчитывается (негатив)',
+    '',
+    run({
+      extra: [
+        [
+          'src/zz/Aliased.svelte',
+          "<script>import { ensureLoaded as load, orderedTypes } from '$lib/stores/deviceTypes.svelte';\nonMount(() => { void load(); });</script>",
+        ],
+      ],
+    }),
+  );
+  {
+    const real = disk(GROUP);
+    add(
+      'T4/IN-02 real: GroupAddDevicesModal без вызова ensureTypesLoaded()',
+      'T4',
+      run({
+        over: new Map([
+          [GROUP, mutate(real, '    void ensureTypesLoaded();\n', '', 'group-no-ensure-types')],
+        ]),
+      }),
+      'не вызывает ensureLoaded',
     );
   }
 
