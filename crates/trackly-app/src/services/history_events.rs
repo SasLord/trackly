@@ -333,6 +333,55 @@ pub(crate) fn record_group_unnested_in_tx(
     )
 }
 
+/// UAT-1 (D-24): правка исключила устройство из акта и восстановила его состояние — стереть
+/// события этого акта по устройству (смена статуса и прочие), КРОМЕ `group_left`. Событие с
+/// `act_id` живёт ровно столько, сколько позиция акта; компенсирующих записей нет,
+/// восстановление идёт молча. `group_left` акта стирается отдельно
+/// ([`erase_act_group_left_in_tx`]) и только если устройство действительно вернулось в
+/// группу: при пропуске возврата вывод остаётся правдой. Вызывается ДО записей правки по
+/// устройству, поэтому следствия, которые правка запишет сама, не задеваются.
+pub(crate) fn erase_act_events_of_device_in_tx(
+    tx: &Transaction<'_>,
+    act_id: i64,
+    device_id: i64,
+) -> Result<usize, AppError> {
+    SqliteHistoryEventsRepository.delete_by_act_and_subject_except_kind_in_tx(
+        tx,
+        act_id,
+        "device",
+        device_id,
+        HistoryEventKind::GroupLeft.as_str(),
+    )
+}
+
+/// UAT-1 (D-24): правка сняла с акта всё покрытие группы, и вложенность восстановлена —
+/// стереть события этого акта по самой группе (отцепление от родителя). Вызывается только
+/// после успешного возврата вложенности: при отказе отцепление остаётся правдой.
+pub(crate) fn erase_act_events_of_group_in_tx(
+    tx: &Transaction<'_>,
+    act_id: i64,
+    group_id: i64,
+) -> Result<usize, AppError> {
+    SqliteHistoryEventsRepository.delete_by_act_and_subject_in_tx(tx, act_id, "group", group_id)
+}
+
+/// UAT-1 (D-24): устройство вернулось в группу, из которой его вывел этот акт — стереть
+/// `group_left` этого акта. Вызывается только после успешного возврата в состав: при правке,
+/// исключившей устройство, и при возврате в группу, когда позиция в акте осталась (D-49).
+pub(crate) fn erase_act_group_left_in_tx(
+    tx: &Transaction<'_>,
+    act_id: i64,
+    device_id: i64,
+) -> Result<usize, AppError> {
+    SqliteHistoryEventsRepository.delete_by_act_subject_and_kind_in_tx(
+        tx,
+        act_id,
+        "device",
+        device_id,
+        HistoryEventKind::GroupLeft.as_str(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

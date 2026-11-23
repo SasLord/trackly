@@ -38,11 +38,11 @@ use trackly_infra::repos::{SqliteDeviceRepository, SqliteGroupRepository, Sqlite
 use crate::services::act_service::device_snapshot_json;
 use crate::services::group_membership::{
     release_device_in_tx, restore_membership_with_policy_in_tx, GroupNotice, GroupRestoreConflict,
-    PlaceConflictPolicy, ReleaseEffect, RestoreResult, RevertHistory,
+    PlaceConflictPolicy, ReleaseEffect, RestoreResult,
 };
 use crate::services::group_place::{propagate_group_place_in_tx, GroupMoveCause, GroupMoveDeps};
 use crate::services::history_events::{
-    new_operation_id, record_group_nested_in_tx, record_group_unnested_in_tx, HistoryCause,
+    erase_act_events_of_group_in_tx, new_operation_id, record_group_unnested_in_tx, HistoryCause,
 };
 use trackly_core::domain::history_events::HistoryReason;
 
@@ -1014,8 +1014,8 @@ fn return_move_target(mv: &GroupMove, return_places: &HashMap<i64, Option<i64>>)
 
 /// Phase 41.10 (D-09, D-25): отцепление группы актом пишет `group_unnested` с причиной act
 /// и `act_id` (иначе откат акта его не удалит, D-24). Вызывается сразу после `set_parent_in_tx(None)`.
-/// Обратный путь (`set_parent_in_tx(Some)`, restore_membership_*) событий не пишет только при
-/// откате акта (`RevertHistory::Undo`, D-24 (b)); правка живого акта пишет `group_nested` (D-24 (a)).
+/// Обратный путь (`revert_detach_effect_in_tx`) событий не пишет ни при откате, ни при правке
+/// акта: он стирает это `group_unnested` (UAT-1, событие живёт, пока жива позиция акта).
 #[allow(clippy::too_many_arguments)]
 fn record_act_unnested(
     tx: &Transaction<'_>,
@@ -1439,17 +1439,7 @@ pub(crate) fn revert_group_moves_in_tx(
                 );
             }
             ActGroupEffectKind::Detach => {
-                absorb(
-                    &mut out,
-                    revert_detach_effect_in_tx(
-                        tx,
-                        deps,
-                        effect,
-                        user_id,
-                        now,
-                        RevertHistory::Undo,
-                    )?,
-                );
+                absorb(&mut out, revert_detach_effect_in_tx(tx, deps, effect, now)?);
             }
             ActGroupEffectKind::Release => {}
         }
@@ -1622,17 +1612,15 @@ pub(crate) fn revert_move_effect_in_tx(
 /// жив, группа корневая и её место совпадает с местом родителя — вложенность
 /// восстанавливается; иначе уведомление.
 ///
-/// `history` (Phase 41.10, D-24): при правке живого акта (`Edit`) возврат вложенности пишет
-/// `group_nested` с `act_id` эффекта — событие отцепления этого акта живёт, и без парной записи
-/// лента группы показывала бы «выведена актом №N» при восстановленной вложенности. При откате
-/// (`Undo`) событий нет: события акта удаляются по `act_id`.
+/// История (Phase 41.10, D-24, UAT-1): возврат вложенности событий не пишет, а стирает события
+/// акта эффекта по этой группе (`group_unnested`): событие с `act_id` живёт, пока группа в акте.
+/// Правка, снявшая покрытие группы, и откат акта ведут себя одинаково; при отказе возврата
+/// отцепление остаётся правдой и не стирается.
 pub(crate) fn revert_detach_effect_in_tx(
     tx: &Transaction<'_>,
     deps: &GroupMoveDeps,
     effect: &ActGroupEffectRow,
-    user_id: Option<i64>,
     now: i64,
-    history: RevertHistory,
 ) -> Result<GroupRevertOutcome, AppError> {
     let mut out = GroupRevertOutcome::default();
     let notice = GroupNotice {
@@ -1662,21 +1650,8 @@ pub(crate) fn revert_detach_effect_in_tx(
         }
         deps.groups
             .set_parent_in_tx(tx, group.id, group.version, Some(parent_id), now)?;
-        // D-24 (a): правка живого акта пишет обычное событие; (b) откат — нет.
-        if history == RevertHistory::Edit {
-            let operation_id = new_operation_id();
-            let cause = HistoryCause {
-                operation_id: &operation_id,
-                source: HistoryReason::Act,
-                act_id: Some(effect.act_id),
-                request_id: None,
-                ref_group: None,
-                movement_id: None,
-                user_id,
-                now,
-            };
-            record_group_nested_in_tx(tx, group.id, &group.name, parent_id, &parent.name, &cause)?;
-        }
+        // UAT-1: вложенность восстановлена молча, отцепление этого акта стирается.
+        erase_act_events_of_group_in_tx(tx, effect.act_id, group.id)?;
         Ok(true)
     });
     match result {
@@ -1794,7 +1769,6 @@ pub(crate) fn restore_released_members_in_tx(
                 user_id,
                 now,
                 policy,
-                RevertHistory::Undo,
             )
         });
         match result {
@@ -1906,7 +1880,6 @@ pub(crate) fn rejoin_released_retained_for_whole_group_in_tx(
                 user_id,
                 now,
                 PlaceConflictPolicy::Skip,
-                RevertHistory::Edit,
             )? {
                 RestoreResult::Skipped(notice) => {
                     tracing::warn!(act_id, group_id = ?notice.group_id, "{}", notice.message);
@@ -2032,7 +2005,6 @@ pub(crate) fn rejoin_released_by_act_in_tx(
                 user_id,
                 now,
                 PlaceConflictPolicy::Skip,
-                RevertHistory::Edit,
             )? {
                 RestoreResult::Skipped(notice) => {
                     tracing::warn!(act_id, group_id = ?notice.group_id, "{}", notice.message);

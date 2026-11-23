@@ -64,9 +64,10 @@ use crate::services::group_act_plan::{
 };
 use crate::services::group_membership::{
     anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, ReleaseHistory,
-    RestoreOutcome, RevertHistory,
+    RestoreOutcome,
 };
 use crate::services::group_place::GroupMoveDeps;
+use crate::services::history_events::erase_act_events_of_device_in_tx;
 use crate::services::number_template_service::{
     ensure_number_free_in_tx, fetch_candidate_rows, normalize_number_key, CandidateRow,
     NumberTemplateService,
@@ -1513,15 +1514,9 @@ impl ActService {
                         .filter(|e| e.kind == ActGroupEffectKind::Detach)
                         .filter(|e| e.group_id == effect.group_id)
                     {
-                        // D-24 (a): правка живого акта — возврат вложенности пишет событие.
-                        let back = revert_detach_effect_in_tx(
-                            &tx,
-                            &group_deps,
-                            detach,
-                            user_id_opt,
-                            now,
-                            RevertHistory::Edit,
-                        )?;
+                        // UAT-1: правка сняла группу с акта — вложенность возвращается молча,
+                        // отцепление этого акта стирается внутри (событие живёт, пока жива позиция).
+                        let back = revert_detach_effect_in_tx(&tx, &group_deps, detach, now)?;
                         reverted.notices.extend(back.notices);
                         reverted.touched_place_ids.extend(back.touched_place_ids);
                         reverted.touched_group_ids.extend(back.touched_group_ids);
@@ -1612,6 +1607,10 @@ impl ActService {
                             place_before_restore.clone()
                         }
                         None => {
+                            // UAT-1 (D-24): позиции больше нет — события акта по устройству
+                            // стираются, восстановление ниже идёт молча. `group_left` акта стирает
+                            // возврат в состав, и только если он состоялся.
+                            erase_act_events_of_device_in_tx(&tx, payload.id, removed_id)?;
                             // D-48: член группы, чей перенос забыт, остаётся на её месте.
                             crate::services::group_act_plan::snapshot_keeping_group_place_in_tx(
                                 &tx,
@@ -1627,8 +1626,7 @@ impl ActService {
                                 removed_id,
                                 &mut snapshot,
                             )?;
-                            // D-24 (a): правка акта, акт жив - статус снятой позиции пишется
-                            // обычным событием ниже (record_act_status_event) после перемещения.
+                            // UAT-1: статус восстанавливается молча, его событие акта стёрто выше.
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                             // Phase 41 D-22: акт выводит устройство из состава группы.
@@ -1642,7 +1640,8 @@ impl ActService {
                                     user_id_opt,
                                     now,
                                     release_mode,
-                                    // D-24 (a): правка живого акта, вывод пишется событием.
+                                    // Вывод при правке — новое следствие акта, а не восстановление:
+                                    // пишется событием с act_id (лента совпадает с составом).
                                     ReleaseHistory::Default,
                                 )?
                             {
@@ -1706,7 +1705,7 @@ impl ActService {
                     // on this act — this is a per-device edit, not a full
                     // act undo (D-03 is act-scoped, not device-scoped).
                     // Конфликт якоря: место не менялось, возвратной строки нет.
-                    let movement_id = if anchor_conflict.is_none() {
+                    if anchor_conflict.is_none() {
                         place_movements_repo.record_movement_if_applicable(
                             &tx,
                             places_repo.as_ref(),
@@ -1719,26 +1718,12 @@ impl ActService {
                             Some(payload.id),
                             user_id_opt,
                             now,
-                        )?
-                    } else {
-                        None
-                    };
-                    if anchor_conflict.is_none() {
+                        )?;
                         touched_place_ids.push(place_before_restore.place_id);
                         touched_place_ids.push(restored.place_id);
                     }
-                    // ST: смена статуса акта; порядок D-25 - после перемещения.
-                    record_act_status_event(
-                        &tx,
-                        removed_id,
-                        place_before_restore.status_id,
-                        restored.status_id,
-                        &history_op_id,
-                        payload.id,
-                        movement_id,
-                        user_id_opt,
-                        now,
-                    )?;
+                    // UAT-1: события статуса нет — смена статуса акта по снятой позиции стёрта
+                    // (erase_act_events_of_device_in_tx), восстановление идёт молча.
 
                     audit_repo.insert(
                         &tx,
@@ -3083,15 +3068,9 @@ impl ActService {
                         .filter(|e| e.kind == ActGroupEffectKind::Detach)
                         .filter(|e| e.group_id == effect.group_id)
                     {
-                        // D-24 (a): правка живого акта — возврат вложенности пишет событие.
-                        let back = revert_detach_effect_in_tx(
-                            &tx,
-                            &group_deps,
-                            detach,
-                            user_id_opt,
-                            now,
-                            RevertHistory::Edit,
-                        )?;
+                        // UAT-1: правка сняла группу с акта — вложенность возвращается молча,
+                        // отцепление этого акта стирается внутри (событие живёт, пока жива позиция).
+                        let back = revert_detach_effect_in_tx(&tx, &group_deps, detach, now)?;
                         reverted.notices.extend(back.notices);
                         reverted.touched_place_ids.extend(back.touched_place_ids);
                         reverted.touched_group_ids.extend(back.touched_group_ids);
@@ -3179,6 +3158,10 @@ impl ActService {
                             place_before_restore.clone()
                         }
                         None => {
+                            // UAT-1 (D-24): позиции больше нет — события акта по устройству
+                            // стираются, восстановление ниже идёт молча. `group_left` акта стирает
+                            // возврат в состав, и только если он состоялся.
+                            erase_act_events_of_device_in_tx(&tx, payload.id, removed_id)?;
                             // D-48: член группы, чей перенос забыт, остаётся на её месте.
                             crate::services::group_act_plan::snapshot_keeping_group_place_in_tx(
                                 &tx,
@@ -3194,8 +3177,7 @@ impl ActService {
                                 removed_id,
                                 &mut snapshot,
                             )?;
-                            // D-24 (a): правка акта, акт жив - статус снятой позиции пишется
-                            // обычным событием ниже (record_act_status_event) после перемещения.
+                            // UAT-1: статус восстанавливается молча, его событие акта стёрто выше.
                             let restored = devices_repo
                                 .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                             // Phase 41 D-22: акт выводит устройство из состава группы.
@@ -3209,7 +3191,8 @@ impl ActService {
                                     user_id_opt,
                                     now,
                                     release_mode,
-                                    // D-24 (a): правка живого акта, вывод пишется событием.
+                                    // Вывод при правке — новое следствие акта, а не восстановление:
+                                    // пишется событием с act_id (лента совпадает с составом).
                                     ReleaseHistory::Default,
                                 )?
                             {
@@ -3271,7 +3254,7 @@ impl ActService {
                     // this return act), so it is not used for this
                     // per-device edit.
                     // Конфликт якоря: место не менялось, возвратной строки нет.
-                    let movement_id = if anchor_conflict.is_none() {
+                    if anchor_conflict.is_none() {
                         place_movements_repo.record_movement_if_applicable(
                             &tx,
                             places_repo.as_ref(),
@@ -3284,26 +3267,12 @@ impl ActService {
                             Some(payload.id),
                             user_id_opt,
                             now,
-                        )?
-                    } else {
-                        None
-                    };
-                    if anchor_conflict.is_none() {
+                        )?;
                         touched_place_ids.push(place_before_restore.place_id);
                         touched_place_ids.push(restored.place_id);
                     }
-                    // ST: смена статуса акта; порядок D-25 - после перемещения.
-                    record_act_status_event(
-                        &tx,
-                        removed_id,
-                        place_before_restore.status_id,
-                        restored.status_id,
-                        &history_op_id,
-                        payload.id,
-                        movement_id,
-                        user_id_opt,
-                        now,
-                    )?;
+                    // UAT-1: события статуса нет — смена статуса акта по снятой позиции стёрта
+                    // (erase_act_events_of_device_in_tx), восстановление идёт молча.
 
                     audit_repo.insert(
                         &tx,

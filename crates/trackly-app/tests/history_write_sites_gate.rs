@@ -6,12 +6,15 @@
 //! сверены с числом вызовов записывающих историю примитивов; освобождения
 //! (рождение устройства, restore отката) кодированы вердиктами с причиной.
 //!
-//! Ревью 41.10 WR-03: счёт по файлам не различает путь вызова. Тот же restore-код идёт и
-//! из отката акта (D-24 (b), событий нет), и из правки живого акта (D-24 (a), события
-//! обычные). Поэтому «тихие» режимы истории (`ReleaseHistory::Suppressed`,
-//! `RevertHistory::Undo`) и освобождения отката привязаны к ИМЕНИ функции
+//! Ревью 41.10 WR-03: счёт по файлам не различает путь вызова. Поэтому «тихий» режим вывода
+//! (`ReleaseHistory::Suppressed`) и освобождения отката привязаны к ИМЕНИ функции
 //! (`SILENT_MODE_TOKENS`, `UNDO_SCOPED_EXEMPTS`), а функции отката — к списку вызывающих
 //! (`UNDO_ONLY_FNS`). Тихий режим на пути правки или вызов отката из правки краснит гейт.
+//!
+//! UAT-1 (решение пользователя, уточняет D-24): событие с `act_id` живёт ровно столько,
+//! сколько позиция акта. Восстановление при исключении позиции правкой (и при откате) пишет
+//! НИЧЕГО, а стирает события акта по субъекту. Такие тихие restore-вызовы освобождены только
+//! вместе со стиранием в той же функции (`ERASE_SCOPED_EXEMPTS`): снятое стирание краснит гейт.
 //!
 //! Гейт слеп к порядку (счёт не видит перестановки), поэтому порядок D-25
 //! «перемещение, потом событие» держит отдельная проверка, а selftest включает
@@ -198,6 +201,9 @@ enum Verdict {
     NoProductionCallers,
     /// состав/статус не меняется, события по решению D-08 нет (см. `NEUTRAL_CALLS`)
     NoEventByDesign,
+    /// восстановление состояния до акта (UAT-1, D-24): событий нет, события акта по субъекту
+    /// стираются (откат — по act_id, правка — `ERASE_SCOPED_EXEMPTS`); см. `EXEMPT_CALLS`
+    RestoreErasesActEvents,
 }
 
 const DEVICES_REPO: &str = "crates/trackly-infra/src/repos/devices_sqlite.rs";
@@ -216,21 +222,21 @@ const STATUS_WRITER_METHODS: [(&str, &str, Verdict); 9] = [
     (DEVICES_REPO, "update_full_in_tx", Verdict::EventRequired),
     (DEVICES_REPO, "create_in_tx", Verdict::BirthExempt),
     (DEVICES_REPO, "clone_device_in_tx", Verdict::BirthExempt),
-    // правка живого акта пишет статус событием (record_act_status_event); вызов отката
-    // освобождён ТОЛЬКО внутри undo_device_mutations_for_act (`UNDO_SCOPED_EXEMPTS`).
+    // UAT-1: и откат, и исключение позиции правкой восстанавливают снимок молча и стирают
+    // события акта по устройству (`UNDO_SCOPED_EXEMPTS`, `ERASE_SCOPED_EXEMPTS`).
     (
         DEVICES_REPO,
         "restore_from_snapshot_in_tx",
-        Verdict::EventRequired,
+        Verdict::RestoreErasesActEvents,
     ),
     (DEVICES_REPO, "create", Verdict::NoProductionCallers),
     (DEVICES_REPO, "update", Verdict::NoProductionCallers),
 ];
 
 /// Методы репозитория групп, пишущие состав (`group_devices`, строки/родитель/якорь `groups`).
-/// `EventRequired` = событие пишет сервисный слой (см. реестры вызовов). Откат акта, где
-/// событий нет (D-24 (b)), отличается от правки режимом истории, а не файлом: см.
-/// `SILENT_MODE_TOKENS` и `UNDO_ONLY_FNS`.
+/// `EventRequired` = событие пишет сервисный слой (см. реестры вызовов). Тихие restore-вызовы
+/// (возврат в состав, возврат вложенности) освобождены поштучно со стиранием события акта
+/// в той же функции: см. `ERASE_SCOPED_EXEMPTS`.
 const MEMBERSHIP_WRITER_METHODS: [(&str, &str, Verdict); 6] = [
     (GROUPS_REPO, "insert_group_in_tx", Verdict::EventRequired),
     (GROUPS_REPO, "delete_group_in_tx", Verdict::EventRequired),
@@ -319,7 +325,7 @@ fn writer_diff(
 
 /// (needle, файл, число вызовов): каждый такой вызов сопровождается записью события.
 /// Числа сняты grep'ом по production-коду на момент плана 13 и сверены с SUMMARY 05-10, 18.
-const REQUIRED_CALLS: [(&str, &str, usize); 14] = [
+const REQUIRED_CALLS: [(&str, &str, usize); 12] = [
     // --- статус (D-06) ---
     (
         "update_in_tx(",
@@ -351,13 +357,6 @@ const REQUIRED_CALLS: [(&str, &str, usize); 14] = [
         "crates/trackly-app/src/services/act_service.rs",
         3,
     ),
-    // правка живого акта (update, update_return): статус снятой позиции пишет
-    // record_act_status_event после перемещения (D-24 (a), D-25)
-    (
-        "restore_from_snapshot_in_tx(",
-        "crates/trackly-app/src/services/act_service.rs",
-        2,
-    ),
     // --- состав (D-08) ---
     (
         "add_device_in_tx(",
@@ -369,19 +368,11 @@ const REQUIRED_CALLS: [(&str, &str, usize); 14] = [
         "crates/trackly-app/src/services/group_membership.rs",
         1,
     ),
-    // restore_membership_with_policy_in_tx: RevertHistory::Edit пишет group_joined (CR-01);
-    // Undo разрешён только в функциях отката (`SILENT_MODE_TOKENS`)
-    (
-        "add_device_in_tx(",
-        "crates/trackly-app/src/services/group_membership.rs",
-        1,
-    ),
-    // 3 отцепления актом (record_act_unnested) + 1 возврат вложенности:
-    // RevertHistory::Edit пишет group_nested (CR-02), Undo — только в откате
+    // 3 отцепления актом (record_act_unnested); возврат вложенности — `EXEMPT_CALLS`
     (
         "set_parent_in_tx(",
         "crates/trackly-app/src/services/group_act_plan.rs",
-        4,
+        3,
     ),
     (
         "set_parent_in_tx(",
@@ -402,7 +393,7 @@ const REQUIRED_CALLS: [(&str, &str, usize); 14] = [
 
 /// Вызовы без требования события: (needle, файл, число, причина >= 40 символов).
 /// Одна пара (needle, файл) не может быть одновременно в `REQUIRED_CALLS`.
-const EXEMPT_CALLS: [(&str, &str, usize, &str); 4] = [
+const EXEMPT_CALLS: [(&str, &str, usize, &str); 7] = [
     (
         "repo.create_in_tx(",
         "crates/trackly-app/src/services/device_service.rs",
@@ -420,6 +411,24 @@ const EXEMPT_CALLS: [(&str, &str, usize, &str); 4] = [
         "crates/trackly-app/src/services/act_service.rs",
         1,
         "откат/удаление акта (D-24 (b)): события акта удаляются по act_id, новых нет",
+    ),
+    (
+        "restore_from_snapshot_in_tx(",
+        "crates/trackly-app/src/services/act_service.rs",
+        2,
+        "правка исключила позицию (UAT-1): события акта по устройству стёрты, снимок молча",
+    ),
+    (
+        "add_device_in_tx(",
+        "crates/trackly-app/src/services/group_membership.rs",
+        1,
+        "возврат в состав (UAT-1, D-24): group_left этого акта стирается, нового события нет",
+    ),
+    (
+        "set_parent_in_tx(",
+        "crates/trackly-app/src/services/group_act_plan.rs",
+        1,
+        "возврат вложенности (UAT-1, D-24): group_unnested этого акта стирается, события нет",
     ),
     (
         "update_status_and_place_in_tx(",
@@ -451,15 +460,68 @@ const UNDO_SCOPED_EXEMPTS: [(&str, &str, &str, usize); 1] = [(
     1,
 )];
 
+/// Где стоит стирание относительно тихого restore-вызова в той же функции.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum EraseAt {
+    /// стирание раньше restore: позиции больше нет, всё, что запишет правка дальше, — новое
+    Before,
+    /// стирание позже restore: стирается только то, что restore действительно отменил
+    After,
+}
+
+const ERASE_DEVICE: &str = "erase_act_events_of_device_in_tx(";
+const ERASE_GROUP: &str = "erase_act_events_of_group_in_tx(";
+const ERASE_GROUP_LEFT: &str = "erase_act_group_left_in_tx(";
+
+/// UAT-1 (D-24): тихие restore-вызовы, освобождённые ТОЛЬКО вместе со стиранием события акта
+/// в той же функции: (needle, файл, функция, число, стирание, порядок). Снятое или
+/// переставленное стирание краснит гейт — иначе в ленте остался бы «вывод актом №N» при
+/// восстановленном составе, а компенсирующих записей нет по решению пользователя.
+const ERASE_SCOPED_EXEMPTS: [(&str, &str, &str, usize, &str, EraseAt); 4] = [
+    (
+        "restore_from_snapshot_in_tx(",
+        ACT_SERVICE,
+        "update",
+        1,
+        ERASE_DEVICE,
+        EraseAt::Before,
+    ),
+    (
+        "restore_from_snapshot_in_tx(",
+        ACT_SERVICE,
+        "update_return_with_split",
+        1,
+        ERASE_DEVICE,
+        EraseAt::Before,
+    ),
+    (
+        "add_device_in_tx(",
+        GROUP_MEMBERSHIP,
+        "restore_membership_with_policy_in_tx",
+        1,
+        ERASE_GROUP_LEFT,
+        EraseAt::After,
+    ),
+    (
+        "set_parent_in_tx(",
+        GROUP_ACT_PLAN,
+        "revert_detach_effect_in_tx",
+        1,
+        ERASE_GROUP,
+        EraseAt::After,
+    ),
+];
+
 const ACT_SERVICE: &str = "crates/trackly-app/src/services/act_service.rs";
 const GROUP_ACT_PLAN: &str = "crates/trackly-app/src/services/group_act_plan.rs";
 const GROUP_MEMBERSHIP: &str = "crates/trackly-app/src/services/group_membership.rs";
 const GROUP_SERVICE: &str = "crates/trackly-app/src/services/group_service.rs";
 
 /// «Тихие» режимы истории (WR-03): (токен, файл, функция, число, причина >= 40 символов).
-/// Инвентарь снимается от исходника: токен в функции без строки — красный гейт. Правка живого
-/// акта обязана писать события (D-24 (a)), поэтому её функций здесь нет и быть не может.
-const SILENT_MODE_TOKENS: [(&str, &str, &str, usize, &str); 5] = [
+/// Инвентарь снимается от исходника: токен в функции без строки — красный гейт. Вывод из
+/// группы при правке акта — новое следствие акта и пишется событием, поэтому функций правки
+/// здесь нет и быть не может.
+const SILENT_MODE_TOKENS: [(&str, &str, &str, usize, &str); 3] = [
     (
         "ReleaseHistory::Suppressed",
         GROUP_MEMBERSHIP,
@@ -480,20 +542,6 @@ const SILENT_MODE_TOKENS: [(&str, &str, &str, usize, &str); 5] = [
         "undo_device_mutations_for_act",
         1,
         "откат/удаление акта (D-24 (b)): события акта удаляются по act_id, новых нет",
-    ),
-    (
-        "RevertHistory::Undo",
-        GROUP_ACT_PLAN,
-        "revert_group_moves_in_tx",
-        1,
-        "откат/удаление акта (D-24 (b)): возврат вложенности без события, события акта удалены",
-    ),
-    (
-        "RevertHistory::Undo",
-        GROUP_ACT_PLAN,
-        "restore_released_members_in_tx",
-        1,
-        "откат/удаление акта (D-24 (b)): возврат в состав без события, события акта удалены",
     ),
 ];
 
@@ -535,8 +583,9 @@ const STATUS_EVENT_REGISTRY: [(&str, usize); 5] = [
     ("crates/trackly-app/src/services/repair_service.rs", 1),
 ];
 const ACT_WRAPPER_NEEDLE: &str = "record_act_status_event(";
+// UAT-1: снятые правкой позиции (update, update_return) события статуса больше не пишут
 const ACT_WRAPPER_REGISTRY: [(&str, usize); 1] =
-    [("crates/trackly-app/src/services/act_service.rs", 7)];
+    [("crates/trackly-app/src/services/act_service.rs", 5)];
 const UNNESTED_WRAPPER_NEEDLE: &str = "record_act_unnested(";
 const UNNESTED_WRAPPER_REGISTRY: [(&str, usize); 1] =
     [("crates/trackly-app/src/services/group_act_plan.rs", 3)];
@@ -550,10 +599,10 @@ const GROUP_EVENT_NEEDLES: [&str; 7] = [
     "record_group_unnested_in_tx(",
 ];
 const GROUP_EVENT_REGISTRY: [(&str, usize); 3] = [
-    // unnested (record_act_unnested) + nested (возврат вложенности при правке акта, CR-02)
-    ("crates/trackly-app/src/services/group_act_plan.rs", 2),
-    // left (release_inner) + joined (возврат в состав при правке живого акта, CR-01)
-    ("crates/trackly-app/src/services/group_membership.rs", 2),
+    // unnested (record_act_unnested); возврат вложенности событий не пишет (UAT-1)
+    ("crates/trackly-app/src/services/group_act_plan.rs", 1),
+    // left (release_inner); возврат в состав событий не пишет (UAT-1)
+    ("crates/trackly-app/src/services/group_membership.rs", 1),
     ("crates/trackly-app/src/services/group_service.rs", 10),
 ];
 const HISTORY_EVENTS_FILE: &str = "crates/trackly-app/src/services/history_events.rs";
@@ -711,7 +760,7 @@ fn silent_mode_violations(sources: &[(String, String)]) -> Vec<String> {
                 .find(|(t, rf, rfn, _, _)| *t == token && rf == rel && rfn == f)
             {
                 None => out.push(format!(
-                    "тихий режим `{token}` в {rel}::{f} ({n}) без вердикта: правка акта обязана писать события (D-24 (a))"
+                    "тихий режим `{token}` в {rel}::{f} ({n}) без вердикта: вывод при правке акта пишется событием"
                 )),
                 Some((_, _, _, want, _)) if want != n => out.push(format!(
                     "число `{token}` в {rel}::{f} изменилось ({n}, в реестре {want})"
@@ -831,6 +880,55 @@ fn scoped_exempt_violations(sources: &[(String, String)]) -> Vec<String> {
         }
         if !UNDO_ONLY_FNS.iter().any(|(f, _)| *f == func) {
             out.push(format!("{func}: освобождение отката вне функции отката"));
+        }
+    }
+    out
+}
+
+/// Номера строк (с 0) вызовов `needle` внутри функции `func` production-кода.
+fn call_lines_in_fn(code_src: &str, needle: &str, func: &str) -> Vec<usize> {
+    let lines: Vec<&str> = code_src.lines().collect();
+    let ranges = fn_ranges(&lines);
+    (0..lines.len())
+        .filter(|&i| !lines[i].contains("fn ") && line_calls(lines[i], &[needle]) > 0)
+        .filter(|&i| enclosing_fn(&ranges, i) == Some(func))
+        .collect()
+}
+
+/// UAT-1: нарушения тихих restore-вызовов — число в функции разошлось, стирания события акта
+/// в той же функции нет или оно стоит не по ту сторону restore.
+fn erase_scoped_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (needle, file, func, want, erase, at) in ERASE_SCOPED_EXEMPTS {
+        let Some((_, code)) = sources.iter().find(|(r, _)| r == file) else {
+            out.push(format!("{file}: нет в дереве"));
+            continue;
+        };
+        let restores = call_lines_in_fn(code, needle, func);
+        if restores.len() != want {
+            out.push(format!(
+                "{file}::{func}: тихих {needle} {}, в реестре {want}",
+                restores.len()
+            ));
+        }
+        let erases = call_lines_in_fn(code, erase, func);
+        if erases.is_empty() {
+            out.push(format!(
+                "{file}::{func}: тихий {needle} без {erase} — событие акта пережило бы восстановление (UAT-1)"
+            ));
+            continue;
+        }
+        for r in restores {
+            let ok = match at {
+                EraseAt::Before => erases.iter().any(|e| *e < r),
+                EraseAt::After => erases.iter().any(|e| *e > r),
+            };
+            if !ok {
+                out.push(format!(
+                    "{file}::{func}: {erase} не {at:?} {needle} (строка {})",
+                    r + 1
+                ));
+            }
         }
     }
     out
@@ -1140,6 +1238,10 @@ fn history_write_sites_verdicts_match_call_registries() {
                     .any(|(n, _, _, r)| n.trim_end_matches('(').ends_with(m)
                         && r.chars().count() >= 40),
                 "{m}: NoEventByDesign без строки с причиной в NEUTRAL_CALLS"
+            ),
+            Verdict::RestoreErasesActEvents => assert!(
+                probe(&exempt) && !probe(&required),
+                "{m}: RestoreErasesActEvents — только освобождённые вызовы со стиранием"
             ),
             Verdict::NoProductionCallers => {
                 assert!(
@@ -1630,7 +1732,7 @@ fn history_write_sites_mutation_anchor_is_unique() {
 }
 
 // ---------------------------------------------------------------------------
-// WR-03: правка живого акта против отката (D-24 (a)/(b))
+// WR-03 / UAT-1: правка живого акта против отката (D-24)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1642,14 +1744,17 @@ fn history_write_sites_silent_modes_only_on_undo_paths() {
     assert!(v.is_empty(), "вызывающие функций отката: {v:#?}");
     let v = scoped_exempt_violations(&sources);
     assert!(v.is_empty(), "освобождения отката: {v:#?}");
+    let v = erase_scoped_violations(&sources);
+    assert!(v.is_empty(), "тихие restore без стирания (UAT-1): {v:#?}");
     for (t, f, func, _, reason) in SILENT_MODE_TOKENS {
         assert!(
             reason.chars().count() >= 40,
             "причина `{t}` в {f}::{func} короче 40 символов"
         );
     }
-    // каждое освобождение не-рождения привязано к функции отката
-    for (n, f, c, _) in EXEMPT_CALLS {
+    // каждое освобождение не-рождения привязано к функции отката, стиранию или аргументу;
+    // пара needle+файл может стоять в нескольких строках EXEMPT_CALLS — сверяется их сумма
+    for (n, f, _, _) in EXEMPT_CALLS {
         let birth = STATUS_WRITER_METHODS
             .iter()
             .chain(MEMBERSHIP_WRITER_METHODS.iter())
@@ -1666,16 +1771,26 @@ fn history_write_sites_silent_modes_only_on_undo_paths() {
                 .iter()
                 .filter(|(pn, pf, _, _, _)| *pn == n && *pf == f)
                 .map(|(_, _, _, pc, _)| *pc)
+                .sum::<usize>()
+            + ERASE_SCOPED_EXEMPTS
+                .iter()
+                .filter(|(en, ef, ..)| *en == n && *ef == f)
+                .map(|(_, _, _, ec, _, _)| *ec)
                 .sum::<usize>();
+        let rows: usize = EXEMPT_CALLS
+            .iter()
+            .filter(|(xn, xf, _, _)| *xn == n && *xf == f)
+            .map(|(_, _, xc, _)| *xc)
+            .sum();
         assert_eq!(
-            scoped, c,
-            "{n} в {f}: освобождение без привязки к функции отката или аргументу (WR-03, WR-02)"
+            scoped, rows,
+            "{n} в {f}: освобождение без привязки к функции отката, стиранию или аргументу (WR-03, WR-02, UAT-1)"
         );
     }
 }
 
-/// Мутации реального исходника: тихий режим на пути правки, вызов отката из правки и
-/// снятая запись события правки краснят гейт.
+/// Мутации реального исходника: тихий вывод на пути правки, вызов отката из правки,
+/// снятое или переставленное стирание события акта (UAT-1) краснят гейт.
 #[test]
 fn history_write_sites_mutation_edit_path_silence_turns_red() {
     let sources = prod_sources();
@@ -1691,22 +1806,7 @@ fn history_write_sites_mutation_edit_path_silence_turns_red() {
         v.iter().any(|m| m.contains("::update ")),
         "тихий вывод в правке акта не покраснил гейт: {v:?}"
     );
-    // (2) правка акта возвращает вложенность без события
-    let m2 = act.replacen("RevertHistory::Edit,", "RevertHistory::Undo,", 1);
-    assert_ne!(m2, act, "якорь RevertHistory::Edit в act_service найден");
-    assert!(
-        !silent_mode_violations(&with_source(&sources, ACT_SERVICE, &m2)).is_empty(),
-        "тихий возврат вложенности в правке акта не покраснил гейт"
-    );
-    // (3) правка возврата возвращает в состав без события
-    let gap = raw_of(GROUP_ACT_PLAN);
-    let m3 = gap.replacen("RevertHistory::Edit,", "RevertHistory::Undo,", 1);
-    assert_ne!(m3, gap, "якорь RevertHistory::Edit в group_act_plan найден");
-    assert!(
-        !silent_mode_violations(&with_source(&sources, GROUP_ACT_PLAN, &m3)).is_empty(),
-        "тихий возврат в состав при правке возврата не покраснил гейт"
-    );
-    // (4) правка акта зовёт функцию отката
+    // (2) правка акта зовёт функцию отката
     let m4 = act.replacen(
         "let back = revert_detach_effect_in_tx(",
         "let back = revert_group_moves_in_tx(",
@@ -1717,7 +1817,7 @@ fn history_write_sites_mutation_edit_path_silence_turns_red() {
         !undo_caller_violations(&with_source(&sources, ACT_SERVICE, &m4)).is_empty(),
         "вызов функции отката из правки не покраснил гейт"
     );
-    // (5) освобождённый вызов restore отката переехал в правку: счёт по файлу тот же,
+    // (3) освобождённый вызов restore отката переехал в правку: счёт по файлу тот же,
     // привязка к функции краснеет
     let m5 = act.replacen(
         "devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?",
@@ -1739,17 +1839,53 @@ fn history_write_sites_mutation_edit_path_silence_turns_red() {
         !scoped_exempt_violations(&ms).is_empty(),
         "освобождение отката, уехавшее в правку, не покраснило гейт"
     );
-    // (6) снятая запись событий правки (CR-01 group_joined, CR-02 group_nested)
-    for (f, needle) in [
-        (GROUP_MEMBERSHIP, "record_group_joined_in_tx("),
-        (GROUP_ACT_PLAN, "record_group_nested_in_tx("),
-    ] {
-        let m = remove_nth_call(raw_of(f), needle, 0).expect("вызов события правки найден");
+    // (4) UAT-1: снятое стирание события акта у каждого тихого restore краснит гейт.
+    // Якорь — единственный вызов стирания в функции реестра (уникальность проверяется).
+    for (_, file, func, _, erase, _) in ERASE_SCOPED_EXEMPTS {
+        let raw = raw_of(file);
+        let code = production_code(raw);
+        let lines = call_lines_in_fn(&code, erase, func);
+        assert_eq!(lines.len(), 1, "{file}::{func}: якорь {erase} уникален");
+        let mut raw_lines: Vec<String> = raw.lines().map(String::from).collect();
+        let before = raw_lines[lines[0]].clone();
+        raw_lines[lines[0]] = before.replacen(erase, "noop_removed(", 1);
+        assert_ne!(
+            raw_lines[lines[0]], before,
+            "{file}::{func}: мутация применена"
+        );
+        let mutated = raw_lines.join("\n");
+        let ms = with_source(&sources, file, &mutated);
         assert!(
-            !event_call_violations(&with_source(&sources, f, &m)).is_empty(),
-            "{f}: снятый {needle} не покраснил гейт"
+            writer_call_violations(&ms).is_empty(),
+            "{file}::{func}: снятое стирание не меняет счёт писателей — нужна привязка"
+        );
+        assert!(
+            erase_scoped_violations(&ms)
+                .iter()
+                .any(|m| m.contains(&format!("::{func}:"))),
+            "{file}::{func}: снятое {erase} не покраснило гейт"
         );
     }
+    // (5) UAT-1: стирание по устройству, переставленное ПОСЛЕ restore в правке, краснит порядок
+    let code = production_code(act);
+    let er = call_lines_in_fn(&code, ERASE_DEVICE, "update");
+    let rs = call_lines_in_fn(&code, "restore_from_snapshot_in_tx(", "update");
+    assert_eq!(
+        (er.len(), rs.len()),
+        (1, 1),
+        "якоря стирания и restore в update уникальны"
+    );
+    let mut raw_lines: Vec<String> = act.lines().map(String::from).collect();
+    let erase_line = raw_lines.remove(er[0]);
+    // после удаления строки стирания restore сдвинулся на одну строку вверх
+    raw_lines.insert(rs[0], erase_line);
+    let ms = with_source(&sources, ACT_SERVICE, &raw_lines.join("\n"));
+    assert!(
+        erase_scoped_violations(&ms)
+            .iter()
+            .any(|m| m.contains("::update:") && m.contains("Before")),
+        "стирание после restore в update не покраснило порядок"
+    );
 }
 
 /// WR-02: «статус не меняется» закреплён аргументом, а не мёртвым вызовом события.

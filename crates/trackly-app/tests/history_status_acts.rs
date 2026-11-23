@@ -290,10 +290,22 @@ async fn history_status_act_edit_remove_item() {
         vec![int(d1)],
     )
     .await;
-    assert_eq!(ev.len(), 2, "создание + снятие позиции: {ev:?}");
-    assert_eq!(ev[1].1, "act");
-    assert_eq!(ev[1].2, Some(act.id));
-    assert_eq!(ev[1].4.as_deref(), Some("в_работе"));
-    assert_eq!(ev[1].5.as_deref(), Some("на_складе"));
-    assert!(ev[1].6 > ev[0].6);
+    // UAT-1: событие с act_id живёт, пока жива позиция акта. Снятая правкой позиция стирает
+    // смену статуса этого акта, восстановление статуса идёт молча — компенсирующей записи нет.
+    assert!(
+        ev.is_empty(),
+        "снятая позиция не несёт событий акта: {ev:?}"
+    );
+    let kept = events(
+        &ctx,
+        "subject_id = ?1 AND kind = 'status_changed'",
+        vec![int(d2)],
+    )
+    .await;
+    assert_eq!(
+        kept.len(),
+        1,
+        "оставшаяся позиция сохраняет событие акта: {kept:?}"
+    );
+    assert_eq!(kept[0].2, Some(act.id));
 }

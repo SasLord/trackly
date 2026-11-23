@@ -1,8 +1,10 @@
-//! Фаза 41.10, ревью CR-01/CR-02 (D-24 (a)): правка ЖИВОГО акта пишет обычные события
-//! состава и вложенности. Когда правка снимает позицию, а устройство или группа
-//! возвращаются в состав, последняя запись ленты должна совпадать с текущим составом.
-//! «Выведено … актом №N» не должно оставаться последней записью, если устройство или
-//! группа уже снова в составе. Префикс тестов: `history_act_edit_`. Фикстуры вымышленные.
+//! Фаза 41.10, UAT-1 (решение пользователя, уточняет D-24): событие с `act_id` живёт ровно
+//! столько, сколько строка акта, которая его породила. Правка, исключающая устройство или
+//! вложенную группу из акта, СТИРАЕТ события этого акта по субъекту, а восстановление
+//! состава, вложенности и статуса идёт молча (как откат). Компенсирующих записей нет: в ленте
+//! не остаётся пары «выведено актом №N» / «включено актом №N». Устройство, добавленное
+//! правкой, получает обычные события акта. Префикс тестов: `history_act_edit_`. Фикстуры
+//! вымышленные.
 
 use rusqlite::params;
 
@@ -184,23 +186,41 @@ async fn edit_keep(ctx: &AppCtx, act_id: i64, keep: &[i64]) {
     }
 }
 
-/// Последнее событие состава/вложенности субъекта: (kind, act_id, группа «из», группа «в»).
-type LastEv = (String, Option<i64>, Option<i64>, Option<i64>);
+/// Виды событий субъекта, порождённых актом `act` (по порядку записи).
+async fn act_kinds(ctx: &AppCtx, subject_type: &'static str, id: i64, act: i64) -> Vec<String> {
+    ctx.writer
+        .execute(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT kind FROM history_events \
+                     WHERE subject_type = ?1 AND subject_id = ?2 AND act_id = ?3 \
+                     ORDER BY created_at_utc, id",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(params![subject_type, id, act], |r| r.get::<_, String>(0))
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
+        })
+        .await
+        .expect("act kinds")
+}
 
-async fn last_membership_event(ctx: &AppCtx, subject_type: &'static str, id: i64) -> LastEv {
+/// Число событий с `act_id = act` во всей таблице.
+async fn count_act_events(ctx: &AppCtx, act: i64) -> i64 {
     ctx.writer
         .execute(move |conn| {
             conn.query_row(
-                "SELECT kind, act_id, from_group_id, to_group_id FROM history_events \
-                 WHERE subject_type = ?1 AND subject_id = ?2 AND kind <> 'status_changed' \
-                 ORDER BY created_at_utc DESC, id DESC LIMIT 1",
-                params![subject_type, id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                "SELECT COUNT(*) FROM history_events WHERE act_id = ?1",
+                params![act],
+                |r| r.get(0),
             )
             .map_err(map_rusqlite)
         })
         .await
-        .expect("last membership event")
+        .expect("count act events")
 }
 
 async fn group_of(ctx: &AppCtx, device: i64) -> Option<i64> {
@@ -234,10 +254,12 @@ async fn parent_of(ctx: &AppCtx, group: i64) -> Option<i64> {
         .expect("parent of")
 }
 
-/// CR-01: акт вывел члена группы (`group_left` с act_id); правка сняла позицию, и устройство
-/// вернулось в группу. Последнее событие состава — `group_joined` этого же акта.
+/// UAT-1 (CR-01): акт по ошибке включил члена группы и вывел его (`group_left` и смена
+/// статуса с act_id). Правка исключила устройство: состав восстановлен, а в ленте
+/// устройства не осталось ни одного события этого акта — ни `group_left`, ни `group_joined`,
+/// ни `status_changed`. События акта по оставшейся позиции живут.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn history_act_edit_restored_member_writes_group_joined() {
+async fn history_act_edit_excluded_member_leaves_no_act_events() {
     let (ctx, _d) = make_test_ctx().await;
     let a = seed_place(&ctx, "Склад А").await;
     let b = seed_place(&ctx, "Кабинет Б").await;
@@ -248,32 +270,48 @@ async fn history_act_edit_restored_member_writes_group_joined() {
     let free = seed_device(&ctx, "Принтер #21", a, None).await;
     let act = create(&ctx, create_dto("HAE-1", &[d1, free], b)).await;
     assert_eq!(group_of(&ctx, d1).await, None, "акт вывел устройство");
-    assert_eq!(
-        last_membership_event(&ctx, "device", d1).await.0,
-        "group_left"
+    let before = act_kinds(&ctx, "device", d1, act).await;
+    assert!(
+        before.iter().any(|k| k == "group_left") && before.iter().any(|k| k == "status_changed"),
+        "предусловие: акт записал вывод и смену статуса: {before:?}"
     );
 
     edit_keep(&ctx, act, &[free]).await;
 
     assert_eq!(group_of(&ctx, d1).await, Some(g), "правка вернула в группу");
-    let (kind, act_id, _, to_group) = last_membership_event(&ctx, "device", d1).await;
     assert_eq!(
-        (kind.as_str(), act_id, to_group),
-        ("group_joined", Some(act), Some(g)),
-        "последняя запись состава обязана совпадать с составом"
+        act_kinds(&ctx, "device", d1, act).await,
+        Vec::<String>::new(),
+        "исключённое правкой устройство не несёт событий акта"
+    );
+    assert!(
+        act_kinds(&ctx, "device", free, act)
+            .await
+            .iter()
+            .any(|k| k == "status_changed"),
+        "события акта по оставшейся позиции не тронуты"
     );
 }
 
-/// CR-01: правка сняла позицию, восстановленное место разошлось с местом группы, в которую
-/// устройство вошло уже после акта. Устройство выходит из группы, и это пишется событием.
+/// UAT-1: правка сняла позицию, восстановленное место разошлось с местом группы, в которую
+/// устройство вошло уже после акта. Смена статуса акта стёрта (статус восстановлен молча),
+/// а вывод из группы — новое следствие правки этого акта, а не восстановление: остаётся одно
+/// событие `group_left` с act_id, и лента совпадает с составом.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn history_act_edit_locked_release_writes_group_left() {
+async fn history_act_edit_locked_release_keeps_only_group_left() {
     let (ctx, _d) = make_test_ctx().await;
     let a = seed_place(&ctx, "Склад А").await;
     let b = seed_place(&ctx, "Кабинет Б").await;
     let d = seed_device(&ctx, "Монитор #22", a, None).await;
     let free = seed_device(&ctx, "Принтер #22", a, None).await;
     let act = create(&ctx, create_dto("HAE-2", &[d, free], b)).await;
+    assert!(
+        act_kinds(&ctx, "device", d, act)
+            .await
+            .iter()
+            .any(|k| k == "status_changed"),
+        "предусловие: акт сменил статус"
+    );
     // После акта устройство вошло в группу на месте Б (ввод вручную, с событием).
     let h = seed_group(&ctx, "АРМ #22", b, None).await;
     ctx.writer
@@ -299,18 +337,17 @@ async fn history_act_edit_locked_release_writes_group_left() {
     edit_keep(&ctx, act, &[free]).await;
 
     assert_eq!(group_of(&ctx, d).await, None, "место разошлось — вывод");
-    let (kind, act_id, from_group, _) = last_membership_event(&ctx, "device", d).await;
     assert_eq!(
-        (kind.as_str(), act_id, from_group),
-        ("group_left", Some(act), Some(h)),
-        "вывод при правке акта не может быть молчаливым"
+        act_kinds(&ctx, "device", d, act).await,
+        vec!["group_left".to_string()],
+        "смена статуса акта стёрта, вывод из группы записан событием"
     );
 }
 
-/// CR-02: акт отцепил вложенную группу (`group_unnested` с act_id); правка сняла всё её
-/// покрытие, и группа снова вложена. Последнее событие вложенности — `group_nested`.
+/// UAT-1 (CR-02): акт отцепил вложенную группу (`group_unnested` с act_id); правка сняла всё
+/// её покрытие. Вложенность восстановлена молча, событий этого акта у группы и у её якоря нет.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn history_act_edit_renested_group_writes_group_nested() {
+async fn history_act_edit_excluded_nested_group_leaves_no_act_events() {
     let (ctx, _d) = make_test_ctx().await;
     let a = seed_place(&ctx, "Склад А").await;
     let b = seed_place(&ctx, "Кабинет Б").await;
@@ -324,8 +361,9 @@ async fn history_act_edit_renested_group_writes_group_nested() {
     let act = create(&ctx, create_dto("HAE-3", &[laptop, free], b)).await;
     assert_eq!(parent_of(&ctx, nested).await, None, "акт отцепил группу");
     assert_eq!(
-        last_membership_event(&ctx, "group", nested).await.0,
-        "group_unnested"
+        act_kinds(&ctx, "group", nested, act).await,
+        vec!["group_unnested".to_string()],
+        "предусловие: отцепление записано событием акта"
     );
 
     edit_keep(&ctx, act, &[free]).await;
@@ -335,10 +373,114 @@ async fn history_act_edit_renested_group_writes_group_nested() {
         Some(container),
         "правка вернула вложенность"
     );
-    let (kind, act_id, _, to_group) = last_membership_event(&ctx, "group", nested).await;
     assert_eq!(
-        (kind.as_str(), act_id, to_group),
-        ("group_nested", Some(act), Some(container)),
-        "последняя запись вложенности обязана совпадать с вложенностью"
+        act_kinds(&ctx, "group", nested, act).await,
+        Vec::<String>::new(),
+        "у исключённой группы нет событий акта"
+    );
+    assert_eq!(
+        act_kinds(&ctx, "device", laptop, act).await,
+        Vec::<String>::new(),
+        "у якоря исключённой группы нет событий акта"
+    );
+}
+
+/// UAT-1: устройство, ДОБАВЛЕННОЕ правкой, получает обычные события акта (вывод из группы и
+/// смену статуса с act_id).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_added_device_gets_act_events() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let g = seed_group(&ctx, "АРМ #24", a, None).await;
+    let d = seed_device(&ctx, "Системный блок #24", a, Some(g)).await;
+    seed_device(&ctx, "Монитор #24", a, Some(g)).await;
+    let free = seed_device(&ctx, "Принтер #24", a, None).await;
+    let act = create(&ctx, create_dto("HAE-4", &[free], b)).await;
+    assert_eq!(
+        act_kinds(&ctx, "device", d, act).await,
+        Vec::<String>::new()
+    );
+
+    edit_keep(&ctx, act, &[free, d]).await;
+
+    assert_eq!(
+        group_of(&ctx, d).await,
+        None,
+        "акт вывел добавленное устройство"
+    );
+    let kinds = act_kinds(&ctx, "device", d, act).await;
+    assert!(
+        kinds.iter().any(|k| k == "group_left") && kinds.iter().any(|k| k == "status_changed"),
+        "добавленное правкой устройство получает события акта: {kinds:?}"
+    );
+}
+
+/// UAT-1 / D-24: удаление акта после правок (исключение и добавление) не оставляет ни одного
+/// события с его act_id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_then_delete_leaves_no_act_events() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let g = seed_group(&ctx, "АРМ #25", a, None).await;
+    let d1 = seed_device(&ctx, "Системный блок #25", a, Some(g)).await;
+    seed_device(&ctx, "Монитор #25", a, Some(g)).await;
+    let d2 = seed_device(&ctx, "Ноутбук #25", a, None).await;
+    let free = seed_device(&ctx, "Принтер #25", a, None).await;
+    let act = create(&ctx, create_dto("HAE-5", &[d1, free], b)).await;
+    edit_keep(&ctx, act, &[free, d2]).await;
+    assert!(
+        count_act_events(&ctx, act).await > 0,
+        "предусловие: события акта есть"
+    );
+
+    let live = ctx.acts.get(act).await.expect("get act");
+    ctx.acts
+        .delete_soft(live.id, live.version)
+        .await
+        .expect("delete");
+
+    assert_eq!(
+        count_act_events(&ctx, act).await,
+        0,
+        "события удалённого акта стёрты"
+    );
+    assert_eq!(group_of(&ctx, d1).await, Some(g), "состав цел");
+}
+
+/// UAT-1: правка исключила устройство, но в группу оно не вернулось (группу перенесли после
+/// акта). Смена статуса акта стёрта, а `group_left` акта остаётся: вывод по-прежнему правда.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_skipped_rejoin_keeps_group_left() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let c = seed_place(&ctx, "Кабинет В").await;
+    let g = seed_group(&ctx, "АРМ #26", a, None).await;
+    let d1 = seed_device(&ctx, "Системный блок #26", a, Some(g)).await;
+    seed_device(&ctx, "Монитор #26", a, Some(g)).await;
+    let free = seed_device(&ctx, "Принтер #26", a, None).await;
+    let act = create(&ctx, create_dto("HAE-6", &[d1, free], b)).await;
+    // После акта группу перенесли в другое место.
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE groups SET place_id = ?1 WHERE id = ?2",
+                params![c, g],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("move group");
+
+    edit_keep(&ctx, act, &[free]).await;
+
+    assert_eq!(group_of(&ctx, d1).await, None, "возврат в группу пропущен");
+    assert_eq!(
+        act_kinds(&ctx, "device", d1, act).await,
+        vec!["group_left".to_string()],
+        "вывод актом остаётся правдой, смена статуса стёрта"
     );
 }

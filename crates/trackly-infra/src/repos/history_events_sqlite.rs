@@ -3,7 +3,7 @@
 //! Все записи идут на транзакции вызывающего (`*_in_tx`), чтобы событие попадало в ту же
 //! транзакцию, что и мутация (D-01). Только `params!`, без форматирования SQL (T-41.10-01).
 //! Токены `kind`/`source` читаются сырыми строками: разбор — забота читателя через
-//! `from_str_lenient` (D-23). Единственный владелец SQL удаления по акту (D-24).
+//! `from_str_lenient` (D-23). Единственный владелец SQL удаления по акту (D-24, UAT-1).
 
 use rusqlite::{params, Connection, Row, Transaction};
 use trackly_core::error::AppError;
@@ -199,6 +199,60 @@ impl SqliteHistoryEventsRepository {
         tx.execute(
             "DELETE FROM history_events WHERE act_id = ?1",
             params![act_id],
+        )
+        .map_err(map_rusqlite)
+    }
+
+    /// UAT-1 (D-24): события акта `act_id` по одному субъекту — правка исключила его из
+    /// акта, и событие живёт ровно столько, сколько позиция акта. Возвращает число строк.
+    pub fn delete_by_act_and_subject_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        subject_type: &str,
+        subject_id: i64,
+    ) -> Result<usize, AppError> {
+        tx.execute(
+            "DELETE FROM history_events \
+             WHERE act_id = ?1 AND subject_type = ?2 AND subject_id = ?3",
+            params![act_id, subject_type, subject_id],
+        )
+        .map_err(map_rusqlite)
+    }
+
+    /// UAT-1 (D-24): события акта `act_id` по одному субъекту, КРОМЕ вида `keep_kind`:
+    /// правка исключила устройство, но одно следствие акта (вывод из группы) может пережить
+    /// исключение, если состав не восстановился. Возвращает число строк.
+    pub fn delete_by_act_and_subject_except_kind_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        subject_type: &str,
+        subject_id: i64,
+        keep_kind: &str,
+    ) -> Result<usize, AppError> {
+        tx.execute(
+            "DELETE FROM history_events \
+             WHERE act_id = ?1 AND subject_type = ?2 AND subject_id = ?3 AND kind <> ?4",
+            params![act_id, subject_type, subject_id, keep_kind],
+        )
+        .map_err(map_rusqlite)
+    }
+
+    /// UAT-1 (D-24): события акта `act_id` одного вида по одному субъекту — правка отменила
+    /// одно следствие акта (например, вывод из группы), а сама позиция в акте осталась.
+    pub fn delete_by_act_subject_and_kind_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        subject_type: &str,
+        subject_id: i64,
+        kind: &str,
+    ) -> Result<usize, AppError> {
+        tx.execute(
+            "DELETE FROM history_events \
+             WHERE act_id = ?1 AND subject_type = ?2 AND subject_id = ?3 AND kind = ?4",
+            params![act_id, subject_type, subject_id, kind],
         )
         .map_err(map_rusqlite)
     }
