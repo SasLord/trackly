@@ -453,7 +453,8 @@ const GROUP_EVENT_NEEDLES: [&str; 7] = [
     "record_group_unnested_in_tx(",
 ];
 const GROUP_EVENT_REGISTRY: [(&str, usize); 3] = [
-    ("crates/trackly-app/src/services/group_act_plan.rs", 1),
+    // unnested (record_act_unnested) + nested (возврат вложенности при правке акта, CR-02)
+    ("crates/trackly-app/src/services/group_act_plan.rs", 2),
     // left (release_inner) + joined (возврат в состав при правке живого акта, CR-01)
     ("crates/trackly-app/src/services/group_membership.rs", 2),
     ("crates/trackly-app/src/services/group_service.rs", 10),

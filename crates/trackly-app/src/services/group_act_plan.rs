@@ -42,7 +42,7 @@ use crate::services::group_membership::{
 };
 use crate::services::group_place::{propagate_group_place_in_tx, GroupMoveCause, GroupMoveDeps};
 use crate::services::history_events::{
-    new_operation_id, record_group_unnested_in_tx, HistoryCause,
+    new_operation_id, record_group_nested_in_tx, record_group_unnested_in_tx, HistoryCause,
 };
 use trackly_core::domain::history_events::HistoryReason;
 
@@ -1014,7 +1014,8 @@ fn return_move_target(mv: &GroupMove, return_places: &HashMap<i64, Option<i64>>)
 
 /// Phase 41.10 (D-09, D-25): отцепление группы актом пишет `group_unnested` с причиной act
 /// и `act_id` (иначе откат акта его не удалит, D-24). Вызывается сразу после `set_parent_in_tx(None)`.
-/// Обратный путь (`set_parent_in_tx(Some)` при откате, restore_membership_*) событий не пишет (D-24).
+/// Обратный путь (`set_parent_in_tx(Some)`, restore_membership_*) событий не пишет только при
+/// откате акта (`RevertHistory::Undo`, D-24 (b)); правка живого акта пишет `group_nested` (D-24 (a)).
 #[allow(clippy::too_many_arguments)]
 fn record_act_unnested(
     tx: &Transaction<'_>,
@@ -1435,7 +1436,14 @@ pub(crate) fn revert_group_moves_in_tx(
             ActGroupEffectKind::Detach => {
                 absorb(
                     &mut out,
-                    revert_detach_effect_in_tx(tx, deps, effect, user_id, now)?,
+                    revert_detach_effect_in_tx(
+                        tx,
+                        deps,
+                        effect,
+                        user_id,
+                        now,
+                        RevertHistory::Undo,
+                    )?,
                 );
             }
             ActGroupEffectKind::Release => {}
@@ -1608,12 +1616,18 @@ pub(crate) fn revert_move_effect_in_tx(
 /// Обратить ОДИН эффект `detach` (вызывается ПОСЛЕ обращения `move` той же группы): родитель
 /// жив, группа корневая и её место совпадает с местом родителя — вложенность
 /// восстанавливается; иначе уведомление.
+///
+/// `history` (Phase 41.10, D-24): при правке живого акта (`Edit`) возврат вложенности пишет
+/// `group_nested` с `act_id` эффекта — событие отцепления этого акта живёт, и без парной записи
+/// лента группы показывала бы «выведена актом №N» при восстановленной вложенности. При откате
+/// (`Undo`) событий нет: события акта удаляются по `act_id`.
 pub(crate) fn revert_detach_effect_in_tx(
     tx: &Transaction<'_>,
     deps: &GroupMoveDeps,
     effect: &ActGroupEffectRow,
-    _user_id: Option<i64>,
+    user_id: Option<i64>,
     now: i64,
+    history: RevertHistory,
 ) -> Result<GroupRevertOutcome, AppError> {
     let mut out = GroupRevertOutcome::default();
     let notice = GroupNotice {
@@ -1641,9 +1655,23 @@ pub(crate) fn revert_detach_effect_in_tx(
         if group.parent_group_id.is_some() || group.place_id != parent.place_id {
             return Ok(false);
         }
-        // D-24: возврат вложенности при откате акта событий не пишет.
         deps.groups
             .set_parent_in_tx(tx, group.id, group.version, Some(parent_id), now)?;
+        // D-24 (a): правка живого акта пишет обычное событие; (b) откат — нет.
+        if history == RevertHistory::Edit {
+            let operation_id = new_operation_id();
+            let cause = HistoryCause {
+                operation_id: &operation_id,
+                source: HistoryReason::Act,
+                act_id: Some(effect.act_id),
+                request_id: None,
+                ref_group: None,
+                movement_id: None,
+                user_id,
+                now,
+            };
+            record_group_nested_in_tx(tx, group.id, &group.name, parent_id, &parent.name, &cause)?;
+        }
         Ok(true)
     });
     match result {

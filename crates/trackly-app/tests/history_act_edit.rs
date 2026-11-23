@@ -1,4 +1,4 @@
-//! Фаза 41.10, ревью CR-01 (D-24 (a)): правка ЖИВОГО акта пишет обычные события
+//! Фаза 41.10, ревью CR-01/CR-02 (D-24 (a)): правка ЖИВОГО акта пишет обычные события
 //! состава и вложенности. Когда правка снимает позицию, а устройство или группа
 //! возвращаются в состав, последняя запись ленты должна совпадать с текущим составом.
 //! «Выведено … актом №N» не должно оставаться последней записью, если устройство или
@@ -106,6 +106,20 @@ async fn seed_device(ctx: &AppCtx, name: &str, place: i64, group: Option<i64>) -
         .expect("seed device")
 }
 
+async fn set_anchor(ctx: &AppCtx, group: i64, device: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE groups SET anchor_device_id = ?1 WHERE id = ?2",
+                params![device, group],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set anchor");
+}
+
 fn create_dto(number: &str, ids: &[i64], place: i64) -> ActCreateDto {
     ActCreateDto {
         number_input: NumberFieldInput {
@@ -206,6 +220,20 @@ async fn group_of(ctx: &AppCtx, device: i64) -> Option<i64> {
         .expect("group of")
 }
 
+async fn parent_of(ctx: &AppCtx, group: i64) -> Option<i64> {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT parent_group_id FROM groups WHERE id = ?1",
+                params![group],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("parent of")
+}
+
 /// CR-01: акт вывел члена группы (`group_left` с act_id); правка сняла позицию, и устройство
 /// вернулось в группу. Последнее событие состава — `group_joined` этого же акта.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -276,5 +304,41 @@ async fn history_act_edit_locked_release_writes_group_left() {
         (kind.as_str(), act_id, from_group),
         ("group_left", Some(act), Some(h)),
         "вывод при правке акта не может быть молчаливым"
+    );
+}
+
+/// CR-02: акт отцепил вложенную группу (`group_unnested` с act_id); правка сняла всё её
+/// покрытие, и группа снова вложена. Последнее событие вложенности — `group_nested`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_renested_group_writes_group_nested() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let container = seed_group(&ctx, "АРМ #23", a, None).await;
+    seed_device(&ctx, "Монитор #23", a, Some(container)).await;
+    let nested = seed_group(&ctx, "Замена #23", a, Some(container)).await;
+    let laptop = seed_device(&ctx, "Ноутбук #23", a, Some(nested)).await;
+    set_anchor(&ctx, nested, laptop).await;
+    seed_device(&ctx, "Адаптер #23", a, Some(nested)).await;
+    let free = seed_device(&ctx, "Принтер #23", a, None).await;
+    let act = create(&ctx, create_dto("HAE-3", &[laptop, free], b)).await;
+    assert_eq!(parent_of(&ctx, nested).await, None, "акт отцепил группу");
+    assert_eq!(
+        last_membership_event(&ctx, "group", nested).await.0,
+        "group_unnested"
+    );
+
+    edit_keep(&ctx, act, &[free]).await;
+
+    assert_eq!(
+        parent_of(&ctx, nested).await,
+        Some(container),
+        "правка вернула вложенность"
+    );
+    let (kind, act_id, _, to_group) = last_membership_event(&ctx, "group", nested).await;
+    assert_eq!(
+        (kind.as_str(), act_id, to_group),
+        ("group_nested", Some(act), Some(container)),
+        "последняя запись вложенности обязана совпадать с вложенностью"
     );
 }

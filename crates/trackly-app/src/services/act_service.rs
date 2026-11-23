@@ -64,7 +64,7 @@ use crate::services::group_act_plan::{
 };
 use crate::services::group_membership::{
     anchor_restore_conflict_in_tx, GroupNotice, GroupRestoreConflict, ReleaseHistory,
-    RestoreOutcome,
+    RestoreOutcome, RevertHistory,
 };
 use crate::services::group_place::GroupMoveDeps;
 use crate::services::number_template_service::{
@@ -1511,8 +1511,15 @@ impl ActService {
                         .filter(|e| e.kind == ActGroupEffectKind::Detach)
                         .filter(|e| e.group_id == effect.group_id)
                     {
-                        let back =
-                            revert_detach_effect_in_tx(&tx, &group_deps, detach, user_id_opt, now)?;
+                        // D-24 (a): правка живого акта — возврат вложенности пишет событие.
+                        let back = revert_detach_effect_in_tx(
+                            &tx,
+                            &group_deps,
+                            detach,
+                            user_id_opt,
+                            now,
+                            RevertHistory::Edit,
+                        )?;
                         reverted.notices.extend(back.notices);
                         reverted.touched_place_ids.extend(back.touched_place_ids);
                         reverted.touched_group_ids.extend(back.touched_group_ids);
@@ -3073,8 +3080,15 @@ impl ActService {
                         .filter(|e| e.kind == ActGroupEffectKind::Detach)
                         .filter(|e| e.group_id == effect.group_id)
                     {
-                        let back =
-                            revert_detach_effect_in_tx(&tx, &group_deps, detach, user_id_opt, now)?;
+                        // D-24 (a): правка живого акта — возврат вложенности пишет событие.
+                        let back = revert_detach_effect_in_tx(
+                            &tx,
+                            &group_deps,
+                            detach,
+                            user_id_opt,
+                            now,
+                            RevertHistory::Edit,
+                        )?;
                         reverted.notices.extend(back.notices);
                         reverted.touched_place_ids.extend(back.touched_place_ids);
                         reverted.touched_group_ids.extend(back.touched_group_ids);
