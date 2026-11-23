@@ -9,6 +9,8 @@
 // тестов остаются самодостаточными и не правились при сборке в suite.
 #![allow(clippy::duplicate_mod)]
 
+#[path = "../audit_author_p2.rs"]
+mod audit_author_p2;
 #[path = "../device_statuses_lifecycle.rs"]
 mod device_statuses_lifecycle;
 #[path = "../device_types_dictionary.rs"]

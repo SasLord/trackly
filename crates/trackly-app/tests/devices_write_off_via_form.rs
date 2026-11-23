@@ -650,3 +650,47 @@ async fn u11_release_history_cause_is_write_off() {
         "причина списания одна на всех экранах"
     );
 }
+
+/// Долг v1.4 П2 (хвост R8-05): списание из карточки с выбором «вывести» — смена статуса и
+/// вывод из группы входят в ОДНУ операцию (общий `operation_id`), как при списании через
+/// группу, — лента показывает одну запись.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn u11_release_shares_operation_id_with_status_change() {
+    let (ctx, _d) = make_ctx().await;
+    let g = seed_group(&ctx, "container", "АРМ #32", None).await;
+    let dev = seed_device(&ctx, "Монитор", "INV-WR05-2", None, "в_работе", Some(g)).await;
+    let written = status_id(&ctx, "списано").await;
+
+    update_ok(
+        &ctx,
+        dev,
+        write_off_patch(written, Some(GroupWriteOffChoice::Release)),
+    )
+    .await;
+
+    let ops: Vec<(String, String)> = ctx
+        .writer
+        .execute(move |conn| {
+            let mut st = conn
+                .prepare(
+                    "SELECT kind, operation_id FROM history_events \
+                     WHERE subject_type = 'device' AND subject_id = ?1 ORDER BY kind",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = st
+                .query_map(params![dev], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
+        })
+        .await
+        .expect("events");
+    assert_eq!(ops.len(), 2, "group_left + status_changed: {ops:?}");
+    assert_eq!(ops[0].0, "group_left");
+    assert_eq!(ops[1].0, "status_changed");
+    assert_eq!(
+        ops[0].1, ops[1].1,
+        "смена статуса и вывод из группы — одна операция"
+    );
+}

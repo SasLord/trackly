@@ -55,7 +55,7 @@ pub async fn build_devices_create(
     new: DeviceNew,
 ) -> Result<DeviceSaveOutcome, AppError> {
     authorize(caller, &Action::MutateDevices)?;
-    ctx.devices.create(new).await
+    ctx.devices.with_author(caller.user_id).create(new).await
 }
 
 /// Мутация: требует `caller` с правом `MutateDevices`.
@@ -84,6 +84,7 @@ pub async fn build_devices_create_single_with_number_check(
 ) -> Result<DeviceSaveOutcome, AppError> {
     authorize(caller, &Action::MutateDevices)?;
     ctx.devices
+        .with_author(caller.user_id)
         .create_single_with_number_check_with_printer(device, number_input, context, printer)
         .await
 }
@@ -96,7 +97,10 @@ pub async fn build_devices_delete(
     version: i64,
 ) -> Result<(), AppError> {
     authorize(caller, &Action::MutateDevices)?;
-    ctx.devices.delete_soft(id, version).await
+    ctx.devices
+        .with_author(caller.user_id)
+        .delete_soft(id, version)
+        .await
 }
 
 pub async fn build_devices_state_hints(
@@ -185,7 +189,10 @@ pub async fn build_devices_bulk_create(
     count: u32,
 ) -> Result<Vec<DeviceDto>, AppError> {
     authorize(caller, &Action::MutateDevices)?;
-    ctx.devices.bulk_create(device, count).await
+    ctx.devices
+        .with_author(caller.user_id)
+        .bulk_create(device, count)
+        .await
 }
 
 // ---------------------------------------------------------------------------

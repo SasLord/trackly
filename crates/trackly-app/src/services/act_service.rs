@@ -249,6 +249,11 @@ pub struct ActService {
     /// UX hint, not a correctness requirement (`let _ = tx.send(...)`
     /// pattern used everywhere else in this codebase for the same reason).
     pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
+    /// Автор действия для `audit_log.user_id` (WARNING-8, П2 v1.4). `None` у обычного
+    /// экземпляра сервиса; транспорты берут `with_author(caller.user_id)` — копию,
+    /// несущую автора (клонирование `Arc`-полей дёшево). Автор нужен только путям, у
+    /// которых нет параметра `caller` в сигнатуре.
+    pub(crate) author: Option<i64>,
 }
 
 impl ActService {
@@ -277,7 +282,16 @@ impl ActService {
             org_db: None,
             number_templates,
             ws_tx: None,
+            author: None,
         }
+    }
+
+    /// Копия сервиса, пишущая `user_id` в `audit_log` путей без параметра `caller`
+    /// (создание, массовое создание, мягкое удаление). Не хранить: на время одного вызова.
+    pub fn with_author(&self, user_id: Option<i64>) -> Self {
+        let mut s = self.clone();
+        s.author = user_id;
+        s
     }
 
     /// Builder: wire the shared WS broadcast sender (D-14). Used by
@@ -4185,7 +4199,7 @@ impl ActService {
         let acts_repo = self.acts_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let place_movements_repo = self.place_movements_repo.clone();
-        let user_id_opt: Option<i64> = None;
+        let user_id_opt: Option<i64> = self.author;
 
         let run = self
             .writer

@@ -302,6 +302,11 @@ pub struct DeviceService {
     /// via `with_ws_tx`. Optional builder field, mirrors `ActService`/
     /// `CartridgeService`'s own `ws_tx` field.
     pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
+    /// Автор действия для `audit_log.user_id` (WARNING-8, П2 v1.4). `None` у обычного
+    /// экземпляра сервиса; транспорты берут `with_author(caller.user_id)` — копию,
+    /// несущую автора (клонирование `Arc`-полей дёшево). Автор нужен только путям, у
+    /// которых нет параметра `caller` в сигнатуре.
+    pub(crate) author: Option<i64>,
 }
 
 /// Потолок блока АРМ над свёртками (T-41.9-10): выше — `truncated = true`.
@@ -617,7 +622,16 @@ impl DeviceService {
             csv_sessions: Arc::new(ImportSessionStore::new()),
             number_templates,
             ws_tx: None,
+            author: None,
         }
+    }
+
+    /// Копия сервиса, пишущая `user_id` в `audit_log` путей без параметра `caller`
+    /// (создание, массовое создание, мягкое удаление). Не хранить: на время одного вызова.
+    pub fn with_author(&self, user_id: Option<i64>) -> Self {
+        let mut s = self.clone();
+        s.author = user_id;
+        s
     }
 
     /// Builder: wire the shared WS broadcast sender (D-14). Used by
@@ -875,7 +889,7 @@ impl DeviceService {
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
         let domain_new: trackly_core::domain::devices::DeviceNew = new.into();
-        let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
+        let user_id_opt: Option<i64> = self.author;
 
         let id = self
             .writer
@@ -1622,6 +1636,9 @@ impl DeviceService {
                         }
                     }
                 }
+                // R8-05 (П2 v1.4): одна операция истории на правку — смена статуса и вывод
+                // из группы при списании делят `operation_id` (одна запись ленты).
+                let operation_id = crate::services::history_events::new_operation_id();
                 // Phase 41.8 (D-26): выбор «вывести» — той же транзакцией, ПОСЛЕ охраны места
                 // и блока D-17 (иначе вывод снял бы блокировку места до её проверки).
                 if write_off_choice == Some(GroupWriteOffChoice::Release)
@@ -1637,9 +1654,10 @@ impl DeviceService {
                         None,
                         user_id_opt,
                         now,
-                        crate::services::group_membership::ReleaseHistory::Reason {
+                        crate::services::group_membership::ReleaseHistory::ReasonInOperation {
                             source: trackly_core::domain::history_events::HistoryReason::DeviceWriteOff,
                             ref_group: None,
+                            operation_id: &operation_id,
                         },
                     )?;
                     after = repo.get_in_tx(&tx, id)?;
@@ -1750,7 +1768,6 @@ impl DeviceService {
                     trackly_core::domain::history_events::HistoryReason::Manual
                 };
                 if let Some(before_status) = before_status_id {
-                    let operation_id = crate::services::history_events::new_operation_id();
                     crate::services::history_events::record_status_change_in_tx(
                         &tx,
                         id,
@@ -1837,7 +1854,7 @@ impl DeviceService {
         let repo = self.repo.clone();
         let groups = self.groups.clone();
         let audit_repo = self.audit_repo.clone();
-        let user_id_opt: Option<i64> = None;
+        let user_id_opt: Option<i64> = self.author;
 
         let before_place_id: Option<i64> = self
             .writer
@@ -2948,7 +2965,7 @@ impl DeviceService {
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
         let domain_new: trackly_core::domain::devices::DeviceNew = new.into();
-        let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
+        let user_id_opt: Option<i64> = self.author;
 
         let origin_group = domain_new.origin_group_id;
         let (ids, group_places): (Vec<i64>, Vec<i64>) = self

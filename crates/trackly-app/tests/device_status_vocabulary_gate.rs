@@ -40,10 +40,8 @@
 //!   отдельный справочник, D-07; освобождены по правилам `[R1]`, `[R3]`, `[R4]`.
 //! * `translate_request_status` — подпись статуса ЗАЯВКИ, не устройства.
 //! * `LEGACY_REPAIR_LABEL_LOWER` — псевдоним старой подписи для CSV (план 21).
-//! * `tauri_cmds/printers.rs`: `status_id: 1` при автосоздании устройства из
-//!   SNMP-опроса. НЕ переведён на code (вне файлов плана 21). Освобождение
-//!   временное и точное: переведёшь сайт на code -> гейт сам потребует снять
-//!   запись.
+//! * `tauri_cmds/printers.rs` больше не освобождён: автосоздание устройства из
+//!   SNMP-приёмки берёт статус по code (долг v1.4 П2, 41.1-08).
 //!
 //! # Чего гейт не видит (честно)
 //!
@@ -128,14 +126,6 @@ const EXEMPT: &[Exempt] = &[
         context: "LEGACY_REPAIR_LABEL_LOWER",
         count: 1,
         reason: "псевдоним старой подписи в CSV (обратная совместимость, план 21)",
-    },
-    Exempt {
-        file: "crates/trackly-app/src/tauri_cmds/printers.rs",
-        rule: "R3",
-        matched: "status_id: 1",
-        context: "status_id: 1,",
-        count: 1,
-        reason: "автосоздание устройства из SNMP: id «На складе» пока числом; перевести на code",
     },
     Exempt {
         file: "crates/trackly-core/src/domain/cartridges.rs",

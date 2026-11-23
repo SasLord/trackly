@@ -16,12 +16,32 @@ use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::domain::devices::PRINTER_TYPE_ID;
 use trackly_core::domain::printers::{Pagination as CorePagination, PrinterFilter as CoreFilter};
+use trackly_core::domain::repairs::DEVICE_STATUS_CODE_IN_STORAGE;
 use trackly_core::error::AppError;
 use trackly_core::ports::printers::PrinterRepository;
 
 // ---------------------------------------------------------------------------
 // build_* helpers (shared with axum handlers)
 // ---------------------------------------------------------------------------
+
+/// 41.1-08: id статуса «на складе» по коду справочника, а не литералом `1`: им
+/// автосоздаётся устройство из SNMP-приёмки (как и обычное создание по умолчанию).
+async fn default_device_status_id(ctx: &AppCtx) -> Result<i64, AppError> {
+    let readers = ctx.readers.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT id FROM device_statuses WHERE code = ?1",
+            [DEVICE_STATUS_CODE_IN_STORAGE],
+            |r| r.get::<_, i64>(0),
+        )
+        .map_err(trackly_infra::error_conversions::map_rusqlite)
+    })
+    .await
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("spawn_blocking status lookup: {e}"),
+    })?
+}
 
 /// INT-13: следующий номер запомненного шаблона контекста «Новый принтер» —
 /// тот же, что подставило бы окно создания принтера. Нет запомненного
@@ -116,7 +136,7 @@ pub async fn build_printers_discover(
 /// Для каждого выбранного IP:
 ///   1. Проверяет дубликат по IP в таблице printers — пропускает если уже есть.
 ///   2. Probe через SNMP для получения sys_name/model (если probe не ответил — заводит минимальный принтер).
-///   3. Создаёт device (`type_id` = PRINTER_TYPE_ID, status_id=1) через DeviceService ВМЕСТЕ со
+///   3. Создаёт device (`type_id` = PRINTER_TYPE_ID, статус «на складе» по коду) через DeviceService ВМЕСТЕ со
 ///      строкой printers (IP + community) — одна транзакция, `sync_printer_row_in_tx`.
 ///
 /// Quick 261105-s6s (INT-26): отдельного шага `create_from_device` больше нет —
@@ -188,12 +208,13 @@ pub async fn build_printers_admit(
         // предыдущей вставки счётчик уже сдвинулся.
         let inventory_no = next_printer_create_number(ctx).await;
 
-        // --- Create device type=Принтер (PRINTER_TYPE_ID, INT-31; status_id=1) ---
+        // --- Create device type=Принтер (PRINTER_TYPE_ID, INT-31; статус по умолчанию по коду) ---
         // Phase 40.2 Plan 08: `create_with_printer_block` returns
         // `DeviceSaveOutcome`; it never runs the script-mix check (only
         // `reject_if_occupied` for a non-empty number), so `NeedsConfirmation`
         // is structurally unreachable here; handled defensively rather than
         // panicking in production code.
+        let default_status_id = default_device_status_id(ctx).await?;
         let new_device = DeviceNew {
             type_id: PRINTER_TYPE_ID,
             name: device_name,
@@ -209,7 +230,7 @@ pub async fn build_printers_admit(
             // (no PlacePicker-selected payload — device is auto-created from
             // an IP probe); place stays unassigned, D-07 (place optional).
             place_id: None,
-            status_id: 1,
+            status_id: default_status_id,
             origin_group_id: None,
         };
         let printer_block = PrinterCreateBlockDto {
@@ -217,15 +238,15 @@ pub async fn build_printers_admit(
             community: Some(community.clone()),
             usb_host_device_id: None,
         };
-        let device_outcome = match ctx
-            .devices
+        let devices = ctx.devices.with_author(caller.user_id);
+        let device_outcome = match devices
             .create_with_printer_block(new_device.clone(), Some(printer_block.clone()))
             .await
         {
             // Номер заняли между peek и вставкой (гонка) — принтер не теряем:
             // один повтор без номера.
             Err(AppError::Conflict { .. }) if inventory_no.is_some() => {
-                ctx.devices
+                devices
                     .create_with_printer_block(
                         DeviceNew {
                             inventory_no: None,

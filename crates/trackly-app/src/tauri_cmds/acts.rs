@@ -118,6 +118,7 @@ pub async fn build_acts_delete(
 ) -> Result<ActDeleteResultDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts
+        .with_author(caller.user_id)
         .delete_soft_with_choices(id, version, &group_choices, moved_choice)
         .await
 }

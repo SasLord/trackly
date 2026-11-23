@@ -298,6 +298,7 @@ pub const REGISTRY: &[Entry] = &[
     // ---- act_service -------------------------------------------------------
     ro(ACT, "new"),
     ro(ACT, "with_ws_tx"),
+    ro(ACT, "with_author"),
     ro(ACT, "with_pdf_pipeline"),
     ro(ACT, "with_org_db"),
     b(ACT, "create"),
@@ -349,6 +350,7 @@ pub const REGISTRY: &[Entry] = &[
     // ---- device_service ----------------------------------------------------
     ro(DEVICE, "new"),
     ro(DEVICE, "with_ws_tx"),
+    ro(DEVICE, "with_author"),
     exw(
         DEVICE,
         "insert_new_and_get",
