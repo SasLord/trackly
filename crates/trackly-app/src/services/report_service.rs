@@ -1788,6 +1788,11 @@ fn movement_reason(
                 _ => base,
             }
         }
+        // UAT-3 (фаза 41.10): возврат при удалении акта; `act_id` нет, номер — в `note`.
+        Some(MovementSource::ActDelete) => match note {
+            Some(n) if !n.is_empty() => format!("при удалении акта №{n}"),
+            _ => "при удалении акта".to_string(),
+        },
         None => source.to_string(),
     }
 }

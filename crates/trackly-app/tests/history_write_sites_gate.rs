@@ -22,6 +22,13 @@
 //! а правка, исключившая позицию, обязана забыть строки акта ДО возвратной строки, и та — ДО
 //! вывода из группы с её movement_id (`EDIT_EXCLUSION_SITES`, D-25).
 //!
+//! UAT-3 (решение пользователя): удаление акта, когда устройства акта перемещали после акта.
+//! Новые места записи и стирания закодированы явно: `erase_rows_after_in_tx` (стереть
+//! перемещения после акта) — только вместе со стиранием событий с их `movement_id`; забывание
+//! строк акта в откате; одна строка «при удалении акта» и событие статуса после неё
+//! (`ACT_DELETE_RECONCILE_FN`, D-25); каскад удаления вынесен в `delete_cascade_in_tx`, и откат
+//! в нём стоит раньше удаления строк акта (`DELETE_CASCADE_ORDER`).
+//!
 //! Гейт слеп к порядку (счёт не видит перестановки), поэтому порядок D-25
 //! «перемещение, потом событие» держит отдельная проверка, а selftest включает
 //! мутацию-ПЕРЕСТАНОВКУ реального исходника. Источник конструкции: `group_write_sites.rs`
@@ -553,11 +560,10 @@ const SILENT_MODE_TOKENS: [(&str, &str, &str, usize, &str); 3] = [
 
 /// Функции пути отката и единственные допустимые вызывающие (WR-03). Вызов функции отката
 /// из правки акта (или откуда-либо ещё) краснит гейт: там тихий режим стал бы дырой ленты.
-const UNDO_ONLY_FNS: [(&str, &[&str]); 3] = [
-    (
-        "undo_device_mutations_for_act",
-        &["delete_soft_with_choices"],
-    ),
+const UNDO_ONLY_FNS: [(&str, &[&str]); 4] = [
+    // UAT-3: каскад удаления вынесен из delete_soft_with_choices (пробный прогон + настоящий)
+    ("delete_cascade_in_tx", &["delete_soft_with_choices"]),
+    ("undo_device_mutations_for_act", &["delete_cascade_in_tx"]),
     (
         "revert_group_moves_in_tx",
         &["undo_device_mutations_for_act"],
@@ -582,7 +588,8 @@ const NEUTRAL_CALLS: [(&str, &str, usize, &str); 1] = [(
 /// `record_status_change_in_tx` один раз (7 сайтов -> 1 вызов внутри).
 const STATUS_EVENT_NEEDLE: &str = "record_status_change_in_tx(";
 const STATUS_EVENT_REGISTRY: [(&str, usize); 5] = [
-    ("crates/trackly-app/src/services/act_service.rs", 1),
+    // record_act_status_event (обёртка) + reconcile_moved_after_in_tx (UAT-3, «при удалении акта»)
+    ("crates/trackly-app/src/services/act_service.rs", 2),
     ("crates/trackly-app/src/services/device_service.rs", 1),
     ("crates/trackly-app/src/services/group_place.rs", 1),
     ("crates/trackly-app/src/services/group_service.rs", 3),
@@ -949,7 +956,7 @@ const MOVEMENT_ERASE_SQL: [&str; 2] = ["DELETE FROM place_movements", "UPDATE pl
 
 /// Функции репозитория перемещений, удаляющие или переписывающие строки (инвентарь ОТ
 /// РЕПОЗИТОРИЯ): (имя, вердикт >= 40 символов). Новая функция без строки краснит гейт.
-const MOVEMENT_ERASER_METHODS: [(&str, &str); 4] = [
+const MOVEMENT_ERASER_METHODS: [(&str, &str); 5] = [
     (
         "delete_by_act_id_in_tx",
         "откат/удаление акта (D-03, D-24 (b)): все строки акта удаляются, компенсаций нет",
@@ -966,17 +973,36 @@ const MOVEMENT_ERASER_METHODS: [(&str, &str); 4] = [
         "rebase_successors",
         "помощник двух forget_*: преемник забытой строки получает её «откуда» (D-48)",
     ),
+    (
+        "erase_rows_after_in_tx",
+        "UAT-3: удаление акта с выбором «стереть перемещения после акта» — строки позже акта",
+    ),
 ];
 
 /// Вызовы стирателей перемещений в production-коде вне репозитория: (needle, файл, функция,
 /// число). `delete_by_act_id_in_tx` есть и у репозитория истории, поэтому его needle
 /// квалифицирован получателем.
-const MOVEMENT_ERASER_CALLS: [(&str, &str, &str, usize); 5] = [
+const MOVEMENT_ERASER_CALLS: [(&str, &str, &str, usize); 7] = [
     (
         "place_movements_repo.delete_by_act_id_in_tx(",
         ACT_SERVICE,
-        "delete_soft_with_choices",
+        DELETE_CASCADE_FN,
         3,
+    ),
+    // UAT-3: «Вернуть» без стирания и «Оставить» — строки акта по перемещённому устройству
+    // забываются в точке каскада (до delete_by_act_id_in_tx), преемник получает их «откуда»
+    (
+        "forget_act_entity_rows_in_tx(",
+        ACT_SERVICE,
+        "undo_device_mutations_for_act",
+        1,
+    ),
+    // UAT-3: «Вернуть» + «Стереть из истории перемещения после акта»
+    (
+        "erase_rows_after_in_tx(",
+        ACT_SERVICE,
+        "delete_soft_with_choices",
+        1,
     ),
     (
         "forget_group_move_rows_in_tx(",
@@ -1065,6 +1091,128 @@ fn movement_eraser_call_violations(sources: &[(String, String)]) -> Vec<String> 
             out.push(format!(
                 "{file}::{func}: строка реестра {needle} ({want}) без вызова"
             ));
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// UAT-3: удаление акта с устройствами, которые перемещали после акта
+// ---------------------------------------------------------------------------
+
+const DELETE_CASCADE_FN: &str = "delete_cascade_in_tx";
+/// Единственное место записи «при удалении акта»: одна строка перемещения и событие статуса.
+const ACT_DELETE_RECONCILE_FN: &str = "reconcile_moved_after_in_tx";
+/// Пины записи «при удалении акта»: источник строки, отсутствие act_id у строки и события,
+/// причина события и его movement_id (D-25).
+const ACT_DELETE_RECONCILE_PINS: [&str; 4] = [
+    "MovementSource::ActDelete,",
+    "HistoryReason::ActDelete,",
+    "act_id: None,",
+    "            movement_id,\n",
+];
+const ERASE_AFTER: &str = "erase_rows_after_in_tx(";
+const ERASE_EVENTS_BY_MOVEMENT: &str = "delete_by_movement_ids_in_tx(";
+const UNDO_CALL: &str = "undo_device_mutations_for_act(";
+const ACT_ROWS_DELETE: &str = "place_movements_repo.delete_by_act_id_in_tx(";
+
+/// Нарушения UAT-3 на заданных исходниках:
+/// - в `reconcile_moved_after_in_tx` ровно одна строка перемещения и одно событие статуса,
+///   строка раньше события, пины источника/причины/movement_id/act_id на месте;
+/// - вне неё `MovementSource::ActDelete` / `HistoryReason::ActDelete` в сервисах нет;
+/// - каждое стирание перемещений после акта сопровождается стиранием событий с их movement_id
+///   (в той же функции, ниже);
+/// - в каскаде удаления каждое удаление строк акта стоит после своего отката.
+fn act_delete_moved_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some((_, code)) = sources.iter().find(|(r, _)| r == ACT_SERVICE) else {
+        return vec![format!("{ACT_SERVICE}: нет в дереве")];
+    };
+    let lines: Vec<&str> = code.lines().collect();
+    let ranges = fn_ranges(&lines);
+    let Some((_, s, e)) = ranges
+        .iter()
+        .find(|(n, _, _)| n == ACT_DELETE_RECONCILE_FN)
+        .cloned()
+    else {
+        return vec![format!(
+            "{ACT_SERVICE}: функции {ACT_DELETE_RECONCILE_FN} нет"
+        )];
+    };
+    let mv = call_lines_in_fn(
+        code,
+        "record_movement_if_applicable(",
+        ACT_DELETE_RECONCILE_FN,
+    );
+    let ev = call_lines_in_fn(code, STATUS_EVENT_NEEDLE, ACT_DELETE_RECONCILE_FN);
+    if mv.len() != 1 || ev.len() != 1 {
+        out.push(format!(
+            "{ACT_DELETE_RECONCILE_FN}: строк перемещения {}, событий статуса {} (нужно по 1)",
+            mv.len(),
+            ev.len()
+        ));
+    } else if mv[0] > ev[0] {
+        out.push(format!(
+            "{ACT_DELETE_RECONCILE_FN}: событие (строка {}) раньше перемещения (D-25)",
+            ev[0] + 1
+        ));
+    }
+    let body = lines[s..e].join("\n");
+    for pin in ACT_DELETE_RECONCILE_PINS {
+        if !body.contains(pin) {
+            out.push(format!(
+                "{ACT_DELETE_RECONCILE_FN}: нет пина `{}`",
+                pin.trim()
+            ));
+        }
+    }
+    // запись (аргумент/поле), а не чтение: подпись отчёта `Some(MovementSource::ActDelete) =>`
+    for token in ["MovementSource::ActDelete,", "HistoryReason::ActDelete,"] {
+        for (rel, c) in sources
+            .iter()
+            .filter(|(r, _)| r.starts_with("crates/trackly-app/src/services/"))
+        {
+            for (f, n) in occurrences_by_fn(c, token) {
+                if !(rel == ACT_SERVICE && f == ACT_DELETE_RECONCILE_FN) {
+                    out.push(format!(
+                        "{rel}::{f}: {token} ({n}) вне {ACT_DELETE_RECONCILE_FN} (UAT-3)"
+                    ));
+                }
+            }
+        }
+    }
+    let erases = call_lines_in_fn(code, ERASE_AFTER, "delete_soft_with_choices");
+    let event_erases = call_lines_in_fn(code, ERASE_EVENTS_BY_MOVEMENT, "delete_soft_with_choices");
+    if erases.is_empty() {
+        out.push(format!(
+            "delete_soft_with_choices: нет {ERASE_AFTER} — вакуумно"
+        ));
+    }
+    for er in &erases {
+        if !event_erases.iter().any(|ee| ee > er) {
+            out.push(format!(
+                "delete_soft_with_choices: {ERASE_AFTER} (строка {}) без стирания событий с их movement_id",
+                er + 1
+            ));
+        }
+    }
+    let undos = call_lines_in_fn(code, UNDO_CALL, DELETE_CASCADE_FN);
+    let deletes = call_lines_in_fn(code, ACT_ROWS_DELETE, DELETE_CASCADE_FN);
+    if undos.len() != 3 || deletes.len() != 3 {
+        out.push(format!(
+            "{DELETE_CASCADE_FN}: откатов {}, удалений строк акта {} (нужно по 3)",
+            undos.len(),
+            deletes.len()
+        ));
+    } else {
+        for (u, d) in undos.iter().zip(deletes.iter()) {
+            if u > d {
+                out.push(format!(
+                    "{DELETE_CASCADE_FN}: строки акта удалены (строка {}) раньше отката — \
+                     забывание UAT-3 не увидит их",
+                    d + 1
+                ));
+            }
         }
     }
     out
@@ -2265,5 +2413,116 @@ fn history_write_sites_mutation_movement_erasers_turn_red() {
             .iter()
             .any(|m| m.contains("сырой")),
         "сырой DELETE place_movements в сервисе не покраснил гейт"
+    );
+}
+
+/// UAT-3: удаление акта, когда устройства перемещали после акта — новые места записи и
+/// стирания закодированы явными вердиктами.
+#[test]
+fn history_write_sites_act_delete_moved_after_registry() {
+    let sources = prod_sources();
+    let v = act_delete_moved_violations(&sources);
+    assert!(v.is_empty(), "UAT-3: {v:#?}");
+}
+
+/// Проверка гейта над набором исходников (для мутаций UAT-3).
+type GateCheck = dyn Fn(&[(String, String)]) -> Vec<String>;
+
+/// UAT-3: мутации реального исходника краснят гейт.
+#[test]
+fn history_write_sites_mutation_act_delete_moved_after_turns_red() {
+    let sources = prod_sources();
+    let act = raw_of(ACT_SERVICE);
+    let red = |label: &str, mutated: &str, check: &GateCheck| {
+        assert_ne!(mutated, act, "{label}: мутация не применилась");
+        let v = check(&with_source(&sources, ACT_SERVICE, mutated));
+        assert!(!v.is_empty(), "{label}: гейт не покраснел");
+    };
+    let once = |anchor: &str| {
+        assert_eq!(
+            act.matches(anchor).count(),
+            1,
+            "якорь «{anchor}» обязан быть уникальным"
+        );
+    };
+    // (1) снятое стирание событий у стёртых строк
+    let a1 = ".delete_by_movement_ids_in_tx(&tx, &erased)?;";
+    once(a1);
+    red(
+        "(1) без стирания событий",
+        &act.replacen(a1, ";", 1),
+        &act_delete_moved_violations,
+    );
+    // (2) снятое стирание перемещений после акта
+    let a2 = "place_movements_repo.erase_rows_after_in_tx(";
+    once(a2);
+    red(
+        "(2) без стирания перемещений",
+        &act.replacen(a2, "place_movements_repo.noop_removed(", 1),
+        &movement_eraser_call_violations,
+    );
+    // (3) снятое забывание строк акта в откате
+    let a3 = "SqlitePlaceMovementsRepository.forget_act_entity_rows_in_tx(";
+    once(a3);
+    red(
+        "(3) без забывания в откате",
+        &act.replacen(a3, "SqlitePlaceMovementsRepository.noop_removed(", 1),
+        &movement_eraser_call_violations,
+    );
+    // (4) строка «при удалении акта» с чужим источником
+    let a4 = "            MovementSource::ActDelete,\n";
+    once(a4);
+    red(
+        "(4) источник Manual",
+        &act.replacen(a4, "            MovementSource::Manual,\n", 1),
+        &act_delete_moved_violations,
+    );
+    // (5) снятое событие статуса после строки
+    let code = production_code(act);
+    let ev = call_lines_in_fn(&code, STATUS_EVENT_NEEDLE, ACT_DELETE_RECONCILE_FN);
+    assert_eq!(
+        ev.len(),
+        1,
+        "якорь события в {ACT_DELETE_RECONCILE_FN} уникален"
+    );
+    let mut raw_lines: Vec<String> = act.lines().map(String::from).collect();
+    raw_lines[ev[0]] = raw_lines[ev[0]].replacen(STATUS_EVENT_NEEDLE, "noop_removed(", 1);
+    red(
+        "(5) без события статуса",
+        &raw_lines.join("\n"),
+        &act_delete_moved_violations,
+    );
+    // (6) событие без movement_id строки
+    let a6 = "            movement_id,\n            user_id,\n            now,\n        };";
+    once(a6);
+    red(
+        "(6) событие без movement_id",
+        &act.replacen(
+            a6,
+            "            movement_id: None,\n            user_id,\n            now,\n        };",
+            1,
+        ),
+        &act_delete_moved_violations,
+    );
+    // (7) ПЕРЕСТАНОВКА в каскаде: строки handover удаляются раньше его отката
+    let a7 = "            // Now undo handover's own device mutations.\n";
+    once(a7);
+    let delete_line = "            place_movements_repo.delete_by_act_id_in_tx(tx, id)?;\n";
+    let undo_at = act.find(a7).expect("откат handover");
+    let first_delete = act[undo_at..]
+        .find(delete_line)
+        .map(|p| p + undo_at)
+        .expect("удаление строк handover после его отката");
+    assert!(undo_at < first_delete);
+    let swapped = format!(
+        "{}{delete_line}{}{}",
+        &act[..undo_at],
+        &act[undo_at..first_delete],
+        &act[first_delete + delete_line.len()..]
+    );
+    red(
+        "(7) удаление строк раньше отката",
+        &swapped,
+        &act_delete_moved_violations,
     );
 }

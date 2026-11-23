@@ -15,7 +15,7 @@ use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDeleteResultDto, ActDto, ActFilter, ActListResponse, ActReturnDto,
     ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupRestoreChoiceDto,
-    GroupSplitChoiceDto, Pagination, ReturnGroupSplitWarningDto,
+    GroupSplitChoiceDto, MovedAfterActChoiceDto, Pagination, ReturnGroupSplitWarningDto,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::services::act_service::{UpdateReturnOutcome, UpdateReturnSplit};
@@ -114,10 +114,11 @@ pub async fn build_acts_delete(
     id: i64,
     version: i64,
     group_choices: Vec<GroupRestoreChoiceDto>,
+    moved_choice: Option<MovedAfterActChoiceDto>,
 ) -> Result<ActDeleteResultDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts
-        .delete_soft_with_choices(id, version, &group_choices)
+        .delete_soft_with_choices(id, version, &group_choices, moved_choice)
         .await
 }
 
@@ -288,6 +289,7 @@ pub async fn acts_delete(
     id: i32,
     version: i32,
     group_choices: Option<Vec<GroupRestoreChoiceDto>>,
+    moved_choice: Option<MovedAfterActChoiceDto>,
 ) -> Result<ActDeleteResultDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_acts_delete(
@@ -296,6 +298,7 @@ pub async fn acts_delete(
         id as i64,
         version as i64,
         group_choices.unwrap_or_default(),
+        moved_choice,
     )
     .await
 }

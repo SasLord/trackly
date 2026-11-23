@@ -15,7 +15,7 @@
 //! opens its own (D-01) — the movement row must land in the same transaction as the
 //! mutation that caused it.
 
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trackly_core::domain::place_movements::{
     is_reportable_place_change, MovementEntityKind, MovementSource,
 };
@@ -408,6 +408,104 @@ impl SqlitePlaceMovementsRepository {
         })
     }
 
+    /// UAT-3 (фаза 41.10): сущности, которые акты `act_ids` (удаляемый акт и его каскад)
+    /// перемещали и которые ПОСЛЕ этого перемещали ещё раз — строкой другого акта или без
+    /// акта, с id больше первой строки этих актов по сущности. Итог: `(entity_id, id первой
+    /// строки актов)` по возрастанию entity_id. Пустой `act_ids` — пустой итог.
+    pub fn entities_moved_after_acts_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        entity_type: MovementEntityKind,
+        act_ids: &[i64],
+    ) -> Result<Vec<(i64, i64)>, AppError> {
+        if act_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list = in_list(act_ids);
+        let sql = format!(
+            "SELECT own.entity_id, own.first_id FROM \
+                    (SELECT entity_id, MIN(id) AS first_id FROM place_movements \
+                      WHERE entity_type = ?1 AND act_id IN ({list}) \
+                      GROUP BY entity_id) own \
+              WHERE EXISTS (SELECT 1 FROM place_movements later \
+                             WHERE later.entity_type = ?1 AND later.entity_id = own.entity_id \
+                               AND later.id > own.first_id \
+                               AND (later.act_id IS NULL OR later.act_id NOT IN ({list}))) \
+              ORDER BY own.entity_id"
+        );
+        let mut stmt = tx.prepare(&sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![entity_type.as_str()], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .map_err(map_rusqlite)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(map_rusqlite)?;
+        Ok(rows)
+    }
+
+    /// UAT-3 (выбор «Вернуть на место до акта» + «Стереть из истории перемещения после
+    /// акта»): удалить строки сущности с id больше `after_id`, кроме строк актов `keep_act_ids`
+    /// (их удаляет `delete_by_act_id_in_tx` в своей точке каскада). Возвращает id удалённых
+    /// строк — по ним вызывающий стирает события с этими `movement_id`.
+    pub fn erase_rows_after_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        entity_type: MovementEntityKind,
+        entity_id: i64,
+        after_id: i64,
+        keep_act_ids: &[i64],
+    ) -> Result<Vec<i64>, AppError> {
+        let keep = if keep_act_ids.is_empty() {
+            String::from("NULL")
+        } else {
+            in_list(keep_act_ids)
+        };
+        let filter = format!(
+            "entity_type = ?1 AND entity_id = ?2 AND id > ?3 \
+             AND (act_id IS NULL OR act_id NOT IN ({keep}))"
+        );
+        let ids: Vec<i64> = {
+            let mut stmt = tx
+                .prepare(&format!(
+                    "SELECT id FROM place_movements WHERE {filter} ORDER BY id"
+                ))
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(params![entity_type.as_str(), entity_id, after_id], |r| {
+                    r.get(0)
+                })
+                .map_err(map_rusqlite)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(map_rusqlite)?;
+            rows
+        };
+        tx.execute(
+            &format!("DELETE FROM place_movements WHERE {filter}"),
+            params![entity_type.as_str(), entity_id, after_id],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(ids)
+    }
+
+    /// UAT-3: «куда» последней строки журнала сущности (где журнал её оставляет); `None`,
+    /// если строк нет.
+    pub fn journal_end_place_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        entity_type: MovementEntityKind,
+        entity_id: i64,
+    ) -> Result<Option<i64>, AppError> {
+        tx.query_row(
+            "SELECT to_place_id FROM place_movements \
+              WHERE entity_type = ?1 AND entity_id = ?2 ORDER BY id DESC LIMIT 1",
+            params![entity_type.as_str(), entity_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)
+    }
+
     /// HST-02/HST-17 timeline read: all movements for one `(entity_type, entity_id)`
     /// pair, newest-first (D-20), unpaginated (no `LIMIT` — D-20/RESEARCH's scale note:
     /// movements per item are "единицы за годы" at this org's scale).
@@ -484,6 +582,12 @@ impl ForgottenActRows {
             self.first_from_place_id
         }
     }
+}
+
+/// Список id для `IN (...)`: только целые числа, поэтому подстановка в текст запроса
+/// безопасна (значения не приходят строкой от пользователя).
+fn in_list(ids: &[i64]) -> String {
+    ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",")
 }
 
 /// Строка, которую можно «забыть»: (id, entity_type, entity_id, to, from, from_path).

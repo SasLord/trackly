@@ -360,7 +360,7 @@ async fn scenario_delete_soft_with_choices() {
         // Откат акта возвращает устройство с места акта на прежнее.
         let touched = ctx
             .acts
-            .delete_soft_with_choices(act.id, act.version, &[])
+            .delete_soft_with_choices(act.id, act.version, &[], None)
             .await
             .expect("delete_soft")
             .changed_place_ids;
@@ -490,7 +490,7 @@ async fn group_ids_delete_soft_names_the_group_that_goes_back() {
 
         let touched = ctx
             .acts
-            .delete_soft_with_choices(act.id, act.version, &[])
+            .delete_soft_with_choices(act.id, act.version, &[], None)
             .await
             .expect("delete_soft")
             .changed_place_ids;

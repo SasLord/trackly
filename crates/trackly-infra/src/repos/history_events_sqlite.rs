@@ -203,6 +203,25 @@ impl SqliteHistoryEventsRepository {
         .map_err(map_rusqlite)
     }
 
+    /// UAT-3 (фаза 41.10): события, приклеенные к стёртым строкам перемещений (выбор «стереть
+    /// из истории перемещения после акта»). Возвращает число строк.
+    pub fn delete_by_movement_ids_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        movement_ids: &[i64],
+    ) -> Result<usize, AppError> {
+        let mut n = 0;
+        for id in movement_ids {
+            n += tx
+                .execute(
+                    "DELETE FROM history_events WHERE movement_id = ?1",
+                    params![id],
+                )
+                .map_err(map_rusqlite)?;
+        }
+        Ok(n)
+    }
+
     /// UAT-1 (D-24): события акта `act_id` по одному субъекту — правка исключила его из
     /// акта, и событие живёт ровно столько, сколько позиция акта. Возвращает число строк.
     pub fn delete_by_act_and_subject_in_tx(

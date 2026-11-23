@@ -18,7 +18,7 @@
 //! (V042) remains the final DB-level backstop against the resulting small
 //! TOCTOU window (T-40.2-14).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rusqlite::{params, OptionalExtension};
@@ -47,8 +47,8 @@ use crate::dto::act::{
     ActItemDto, ActListResponse, ActNoticeDto, ActReturnDto, ActReturnItemDto, ActSaveOutcome,
     ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, GroupReleaseItemDto, GroupReleaseWarningDto,
     GroupRestoreChoiceDto, GroupRestoreConflictDto, GroupRestoreDeviceDto, GroupRestoreWarningDto,
-    GroupSplitChoiceDto, Pagination, ReturnGroupPlaceConflictDto, ReturnGroupSplitItemDto,
-    ReturnGroupSplitWarningDto,
+    GroupSplitChoiceDto, MovedAfterActChoiceDto, MovedAfterActDeviceDto, MovedAfterActWarningDto,
+    Pagination, ReturnGroupPlaceConflictDto, ReturnGroupSplitItemDto, ReturnGroupSplitWarningDto,
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
 use crate::dto::printer::WsEvent;
@@ -4161,23 +4161,28 @@ impl ActService {
     /// devices back to a prior place just as surely as `create`/`update`/
     /// `do_return`/`update_return` move them forward.
     pub async fn delete_soft(&self, id: i64, version: i64) -> Result<ActDeleteResultDto, AppError> {
-        self.delete_soft_with_choices(id, version, &[]).await
+        self.delete_soft_with_choices(id, version, &[], None).await
     }
 
     /// D-42: удаление с выбором по группам, перенесённым после акта. Весь каскад идёт в
     /// одной транзакции writer'а; если остались конфликты без выбора, транзакция НЕ
     /// коммитится (rollback при drop), события не шлются, ответ несёт `needs_group_restore`.
+    ///
+    /// UAT-3 (фаза 41.10): если устройства акта перемещали после акта, без `moved_choice`
+    /// удаление так же не коммитится и ответ несёт `needs_moved_after_choice`. Выбор один на
+    /// все такие устройства; устройства, которые после акта не перемещали, откатываются как
+    /// раньше.
     pub async fn delete_soft_with_choices(
         &self,
         id: i64,
         version: i64,
         choices: &[GroupRestoreChoiceDto],
+        moved_choice: Option<MovedAfterActChoiceDto>,
     ) -> Result<ActDeleteResultDto, AppError> {
         let choice_map: HashMap<i64, bool> =
             choices.iter().map(|c| (c.group_id, c.restore)).collect();
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
-        let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = None;
@@ -4187,13 +4192,6 @@ impl ActService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let choices = &choice_map;
-                let mut conflicts: Vec<GroupRestoreConflict> = Vec::new();
-                let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
-                // Phase 41.2 (D-09): группы, затронутые откатом, и уведомления о том,
-                // что обратить не удалось. Уведомление НЕ делает удаление ошибкой.
-                let group_deps = GroupMoveDeps::new();
-                let mut touched_group_ids: Vec<i64> = Vec::new();
-                let mut notices: Vec<GroupNotice> = Vec::new();
 
                 // Optimistic-lock check + load row (включая deleted_at_utc).
                 let act = acts_repo.fetch_full_in_tx(&tx, id)?;
@@ -4209,153 +4207,115 @@ impl ActService {
                     });
                 }
 
-                match act.act_type {
-                    ActType::Handover => {
-                        // Cascade-undo всех активных returns в обратном порядке
-                        // (LIFO — последний return undo'ится первым), затем
-                        // handover. После каждого return-undo делаем
-                        // soft-delete return-акта и пишем audit.
-                        let returns = acts_repo.list_returns_for_parent_in_tx(&tx, id)?;
-                        // Reverse order для LIFO.
-                        for ret in returns.iter().rev() {
-                            let undone = undo_device_mutations_for_act(
-                                &tx,
-                                &group_deps,
-                                &devices_repo,
-                                &audit_repo,
-                                choices,
-                                ret.id,
-                                user_id_opt,
-                                now,
-                            )?;
-                            conflicts.extend(undone.conflicts);
-                            touched_place_ids.extend(undone.touched_place_ids);
-                            extend_unique(&mut touched_group_ids, undone.touched_group_ids);
-                            notices.extend(undone.notices);
-                            // Soft-delete return-акт + DELETE items (CASCADE
-                            // не сработает на soft-delete — делаем явно через
-                            // helper repo).
-                            acts_repo.soft_delete_in_tx(&tx, ret.id, ret.version, now)?;
-                            // D-03/HST-03: undo means the movement never
-                            // effectively happened — delete its own rows,
-                            // scoped strictly to this return's act_id, at
-                            // this point in the LIFO loop (Pitfall 5).
-                            place_movements_repo.delete_by_act_id_in_tx(&tx, ret.id)?;
-                            // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
-                            trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
-                                .delete_by_act_id_in_tx(&tx, ret.id)?;
-                            audit_repo.insert(
-                                &tx,
-                                AuditEntry {
-                                    entity_type: "act",
-                                    entity_id: ret.id,
-                                    action: "delete",
-                                    user_id: user_id_opt,
-                                    before_json: None,
-                                    after_json: None,
-                                    payload_json: Some(
-                                        serde_json::json!({
-                                            "cascade_from_handover": id,
-                                        })
-                                        .to_string(),
-                                    ),
-                                    created_at_utc: now,
-                                },
-                            )?;
-                        }
-
-                        // Now undo handover's own device mutations.
-                        let undone = undo_device_mutations_for_act(
+                // UAT-3: устройства, которые удаляемый акт (с каскадом возвратов) перемещал и
+                // которые после этого перемещали ещё раз. Определяются ДО любых изменений.
+                let cascade_ids: Vec<i64> = match act.act_type {
+                    ActType::Handover => std::iter::once(id)
+                        .chain(
+                            acts_repo
+                                .list_returns_for_parent_in_tx(&tx, id)?
+                                .iter()
+                                .map(|r| r.id),
+                        )
+                        .collect(),
+                    ActType::Return => vec![id],
+                };
+                let candidates = moved_after_act_devices_in_tx(
+                    &tx,
+                    &place_movements_repo,
+                    &devices_repo,
+                    &cascade_ids,
+                )?;
+                // Пробный прогон обычного отката под SAVEPOINT: спрашивать надо только о тех,
+                // кого откат действительно сдвинет. Члены группы, перенесённой после акта,
+                // остаются на её месте и без вопроса (D-09, D-48).
+                let moved_after = if candidates.is_empty() {
+                    Vec::new()
+                } else {
+                    tx.execute_batch("SAVEPOINT uat3_probe")
+                        .map_err(map_rusqlite)?;
+                    let probe = delete_cascade_in_tx(
+                        &tx,
+                        &act,
+                        id,
+                        version,
+                        choices,
+                        &MovedAfterPlan::default(),
+                        user_id_opt,
+                        now,
+                    )
+                    .and_then(|_| moved_by_rollback_in_tx(&tx, &devices_repo, candidates));
+                    tx.execute_batch("ROLLBACK TO uat3_probe; RELEASE uat3_probe")
+                        .map_err(map_rusqlite)?;
+                    probe?
+                };
+                let moved_plan = MovedAfterPlan::new(&moved_after, moved_choice);
+                if moved_choice == Some(MovedAfterActChoiceDto::ReturnErase) {
+                    // «Стереть из истории перемещения после акта»: строки позже первой строки
+                    // акта (кроме строк самого каскада — их удаляет delete_by_act_id_in_tx в
+                    // своей точке) и события, приклеенные к ним.
+                    for m in &moved_after {
+                        let erased = place_movements_repo.erase_rows_after_in_tx(
                             &tx,
-                            &group_deps,
-                            &devices_repo,
-                            &audit_repo,
-                            choices,
-                            id,
-                            user_id_opt,
-                            now,
+                            MovementEntityKind::Device,
+                            m.device_id,
+                            m.first_act_row_id,
+                            &cascade_ids,
                         )?;
-                        conflicts.extend(undone.conflicts);
-                        touched_place_ids.extend(undone.touched_place_ids);
-                        extend_unique(&mut touched_group_ids, undone.touched_group_ids);
-                        notices.extend(undone.notices);
-                        acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
-                        // D-03/HST-03: the handover's own delete, at its own
-                        // point in the flow, scoped to its own act_id.
-                        place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
-                        // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
                         trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
-                            .delete_by_act_id_in_tx(&tx, id)?;
-                        audit_repo.insert(
-                            &tx,
-                            AuditEntry {
-                                entity_type: "act",
-                                entity_id: id,
-                                action: "delete",
-                                user_id: user_id_opt,
-                                before_json: None,
-                                after_json: None,
-                                payload_json: None,
-                                created_at_utc: now,
-                            },
-                        )?;
-                    }
-                    ActType::Return => {
-                        // Undo own device mutations → soft-delete → recompute parent.
-                        let undone = undo_device_mutations_for_act(
-                            &tx,
-                            &group_deps,
-                            &devices_repo,
-                            &audit_repo,
-                            choices,
-                            id,
-                            user_id_opt,
-                            now,
-                        )?;
-                        conflicts.extend(undone.conflicts);
-                        touched_place_ids.extend(undone.touched_place_ids);
-                        extend_unique(&mut touched_group_ids, undone.touched_group_ids);
-                        notices.extend(undone.notices);
-                        acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
-                        // D-03/HST-03: standalone return's own delete, scoped
-                        // to its own act_id.
-                        place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
-                        // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
-                        trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
-                            .delete_by_act_id_in_tx(&tx, id)?;
-                        if let Some(parent_id) = act.parent_act_id {
-                            // Phase 40.5 (D-01/D-05/WR-01): the displays of the
-                            // remaining live returns do NOT change, and `others`
-                            // is untouched, so deleting a return cannot CREATE a
-                            // display collision — a family post-check has nothing
-                            // to catch here. In an already-conflicting DB
-                            // (legacy rows) it would only block cleaning up.
-                            // The family post-check lives only in the parent
-                            // rename cascade (`update`); `do_return` relies on
-                            // the allocator instead.
-                            recompute_parent_archived(&tx, parent_id, now)?;
-                        }
-                        audit_repo.insert(
-                            &tx,
-                            AuditEntry {
-                                entity_type: "act",
-                                entity_id: id,
-                                action: "delete",
-                                user_id: user_id_opt,
-                                before_json: None,
-                                after_json: None,
-                                payload_json: None,
-                                created_at_utc: now,
-                            },
-                        )?;
+                            .delete_by_movement_ids_in_tx(&tx, &erased)?;
                     }
                 }
 
-                if !conflicts.is_empty() {
-                    // D-42: выбора по этим группам нет — НИЧЕГО не коммитим; транзакция
+                let cascade = delete_cascade_in_tx(
+                    &tx,
+                    &act,
+                    id,
+                    version,
+                    choices,
+                    &moved_plan,
+                    user_id_opt,
+                    now,
+                )?;
+                let conflicts = cascade.conflicts;
+                let mut touched_place_ids = cascade.touched_place_ids;
+                let touched_group_ids = cascade.touched_group_ids;
+                let notices = cascade.notices;
+
+                // UAT-3: после каскада — предупреждение (выбора нет) либо сведение журнала с
+                // местом (выборы «Вернуть» без стирания и «Оставить»).
+                let moved_warning = match moved_choice {
+                    _ if moved_after.is_empty() => None,
+                    None => Some(build_moved_after_warning(&tx, &moved_after)?),
+                    Some(MovedAfterActChoiceDto::ReturnErase) => None,
+                    Some(MovedAfterActChoiceDto::ReturnMark | MovedAfterActChoiceDto::Keep) => {
+                        let act_number =
+                            crate::services::act_number_display::resolve_movement_act_number(
+                                &tx,
+                                Some(id),
+                            );
+                        touched_place_ids.extend(reconcile_moved_after_in_tx(
+                            &tx,
+                            &place_movements_repo,
+                            &devices_repo,
+                            &moved_after,
+                            act_number.as_deref(),
+                            user_id_opt,
+                            now,
+                        )?);
+                        None
+                    }
+                };
+
+                if !conflicts.is_empty() || moved_warning.is_some() {
+                    // D-42 / UAT-3: выбора нет — НИЧЕГО не коммитим; транзакция
                     // откатывается при drop. Имена мест читаем до выхода.
-                    let warning = build_group_restore_warning(&tx, &conflicts)?;
-                    return Ok(DeleteRun::NeedsChoice(warning));
+                    let group_warning = if conflicts.is_empty() {
+                        None
+                    } else {
+                        Some(build_group_restore_warning(&tx, &conflicts)?)
+                    };
+                    return Ok(DeleteRun::NeedsChoice(group_warning, moved_warning));
                 }
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(DeleteRun::Done(
@@ -4366,11 +4326,12 @@ impl ActService {
             })
             .await?;
         let (touched, touched_group_ids, notices) = match run {
-            DeleteRun::NeedsChoice(warning) => {
+            DeleteRun::NeedsChoice(group_warning, moved_warning) => {
                 return Ok(ActDeleteResultDto {
                     changed_place_ids: Vec::new(),
                     notices: Vec::new(),
-                    needs_group_restore: Some(warning),
+                    needs_group_restore: group_warning,
+                    needs_moved_after_choice: moved_warning,
                 });
             }
             DeleteRun::Done(a, b, c) => (a, b, c),
@@ -4398,6 +4359,7 @@ impl ActService {
                 })
                 .collect(),
             needs_group_restore: None,
+            needs_moved_after_choice: None,
         })
     }
 
@@ -5011,7 +4973,369 @@ struct UndoOutcome {
 /// Итог прогона удаления акта в транзакции writer'а (D-42).
 enum DeleteRun {
     Done(Vec<i64>, Vec<i64>, Vec<GroupNotice>),
-    NeedsChoice(GroupRestoreWarningDto),
+    NeedsChoice(
+        Option<GroupRestoreWarningDto>,
+        Option<MovedAfterActWarningDto>,
+    ),
+}
+
+/// Итог каскада отката при удалении акта (D-42, D-09, UAT-3).
+#[derive(Default)]
+struct DeleteCascadeOutcome {
+    conflicts: Vec<GroupRestoreConflict>,
+    touched_place_ids: Vec<Option<i64>>,
+    touched_group_ids: Vec<i64>,
+    notices: Vec<GroupNotice>,
+}
+
+/// Каскад удаления акта внутри транзакции: откат возвратов (LIFO), затем самого акта, их
+/// soft-delete, удаление строк журнала мест и событий по act_id, audit. Вынесен из
+/// `delete_soft_with_choices`, потому что UAT-3 прогоняет его дважды: пробой под SAVEPOINT
+/// (какие устройства откат действительно сдвинет) и по-настоящему.
+#[allow(clippy::too_many_arguments)]
+fn delete_cascade_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    act: &ActRow,
+    id: i64,
+    version: i64,
+    choices: &HashMap<i64, bool>,
+    moved_plan: &MovedAfterPlan,
+    user_id_opt: Option<i64>,
+    now: i64,
+) -> Result<DeleteCascadeOutcome, AppError> {
+    let acts_repo = SqliteActRepository;
+    let audit_repo = SqliteAuditLogRepository;
+    let devices_repo = SqliteDeviceRepository;
+    let place_movements_repo = SqlitePlaceMovementsRepository;
+    let group_deps = GroupMoveDeps::new();
+    let mut out = DeleteCascadeOutcome::default();
+    let conflicts = &mut out.conflicts;
+    let touched_place_ids = &mut out.touched_place_ids;
+    let touched_group_ids = &mut out.touched_group_ids;
+    let notices = &mut out.notices;
+    match act.act_type {
+        ActType::Handover => {
+            // Cascade-undo всех активных returns в обратном порядке
+            // (LIFO — последний return undo'ится первым), затем
+            // handover. После каждого return-undo делаем
+            // soft-delete return-акта и пишем audit.
+            let returns = acts_repo.list_returns_for_parent_in_tx(tx, id)?;
+            // Reverse order для LIFO.
+            for ret in returns.iter().rev() {
+                let undone = undo_device_mutations_for_act(
+                    tx,
+                    &group_deps,
+                    &devices_repo,
+                    &audit_repo,
+                    choices,
+                    moved_plan,
+                    ret.id,
+                    user_id_opt,
+                    now,
+                )?;
+                conflicts.extend(undone.conflicts);
+                touched_place_ids.extend(undone.touched_place_ids);
+                extend_unique(touched_group_ids, undone.touched_group_ids);
+                notices.extend(undone.notices);
+                // Soft-delete return-акт + DELETE items (CASCADE
+                // не сработает на soft-delete — делаем явно через
+                // helper repo).
+                acts_repo.soft_delete_in_tx(tx, ret.id, ret.version, now)?;
+                // D-03/HST-03: undo means the movement never
+                // effectively happened — delete its own rows,
+                // scoped strictly to this return's act_id, at
+                // this point in the LIFO loop (Pitfall 5).
+                place_movements_repo.delete_by_act_id_in_tx(tx, ret.id)?;
+                // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
+                trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
+                    .delete_by_act_id_in_tx(tx, ret.id)?;
+                audit_repo.insert(
+                    tx,
+                    AuditEntry {
+                        entity_type: "act",
+                        entity_id: ret.id,
+                        action: "delete",
+                        user_id: user_id_opt,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: Some(
+                            serde_json::json!({
+                                "cascade_from_handover": id,
+                            })
+                            .to_string(),
+                        ),
+                        created_at_utc: now,
+                    },
+                )?;
+            }
+
+            // Now undo handover's own device mutations.
+            let undone = undo_device_mutations_for_act(
+                tx,
+                &group_deps,
+                &devices_repo,
+                &audit_repo,
+                choices,
+                moved_plan,
+                id,
+                user_id_opt,
+                now,
+            )?;
+            conflicts.extend(undone.conflicts);
+            touched_place_ids.extend(undone.touched_place_ids);
+            extend_unique(touched_group_ids, undone.touched_group_ids);
+            notices.extend(undone.notices);
+            acts_repo.soft_delete_in_tx(tx, id, version, now)?;
+            // D-03/HST-03: the handover's own delete, at its own
+            // point in the flow, scoped to its own act_id.
+            place_movements_repo.delete_by_act_id_in_tx(tx, id)?;
+            // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
+            trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
+                .delete_by_act_id_in_tx(tx, id)?;
+            audit_repo.insert(
+                tx,
+                AuditEntry {
+                    entity_type: "act",
+                    entity_id: id,
+                    action: "delete",
+                    user_id: user_id_opt,
+                    before_json: None,
+                    after_json: None,
+                    payload_json: None,
+                    created_at_utc: now,
+                },
+            )?;
+        }
+        ActType::Return => {
+            // Undo own device mutations → soft-delete → recompute parent.
+            let undone = undo_device_mutations_for_act(
+                tx,
+                &group_deps,
+                &devices_repo,
+                &audit_repo,
+                choices,
+                moved_plan,
+                id,
+                user_id_opt,
+                now,
+            )?;
+            conflicts.extend(undone.conflicts);
+            touched_place_ids.extend(undone.touched_place_ids);
+            extend_unique(touched_group_ids, undone.touched_group_ids);
+            notices.extend(undone.notices);
+            acts_repo.soft_delete_in_tx(tx, id, version, now)?;
+            // D-03/HST-03: standalone return's own delete, scoped
+            // to its own act_id.
+            place_movements_repo.delete_by_act_id_in_tx(tx, id)?;
+            // D-24: откат акта удаляет и события истории; компенсирующей записи нет.
+            trackly_infra::repos::history_events_sqlite::SqliteHistoryEventsRepository
+                .delete_by_act_id_in_tx(tx, id)?;
+            if let Some(parent_id) = act.parent_act_id {
+                // Phase 40.5 (D-01/D-05/WR-01): the displays of the
+                // remaining live returns do NOT change, and `others`
+                // is untouched, so deleting a return cannot CREATE a
+                // display collision — a family post-check has nothing
+                // to catch here. In an already-conflicting DB
+                // (legacy rows) it would only block cleaning up.
+                // The family post-check lives only in the parent
+                // rename cascade (`update`); `do_return` relies on
+                // the allocator instead.
+                recompute_parent_archived(tx, parent_id, now)?;
+            }
+            audit_repo.insert(
+                tx,
+                AuditEntry {
+                    entity_type: "act",
+                    entity_id: id,
+                    action: "delete",
+                    user_id: user_id_opt,
+                    before_json: None,
+                    after_json: None,
+                    payload_json: None,
+                    created_at_utc: now,
+                },
+            )?;
+        }
+    }
+
+    Ok(out)
+}
+
+/// UAT-3: устройство удаляемого акта, которое перемещали после акта.
+struct MovedAfterDevice {
+    device_id: i64,
+    /// id первой строки `place_movements` каскада по устройству: «после акта» — позже неё.
+    first_act_row_id: i64,
+    name: String,
+    /// Место и статус до удаления (для предупреждения и записи «при удалении акта»).
+    initial_place_id: Option<i64>,
+    initial_status_id: i64,
+    /// Куда устройство ставит обычный откат (пробный прогон) — место «до акта».
+    before_place_id: Option<i64>,
+}
+
+/// UAT-3: что откат делает с такими устройствами в каждой точке каскада.
+#[derive(Default)]
+struct MovedAfterPlan {
+    /// «Оставить на текущем месте»: снимок, вывод из группы и возврат в состав пропускаются.
+    kept: HashSet<i64>,
+    /// Строки акта по устройству «забываются» (D-48, преемник получает «откуда» акта),
+    /// а не просто удаляются: выборы «Вернуть» без стирания и «Оставить».
+    forget: HashSet<i64>,
+}
+
+impl MovedAfterPlan {
+    fn new(moved: &[MovedAfterDevice], choice: Option<MovedAfterActChoiceDto>) -> Self {
+        let ids = || moved.iter().map(|m| m.device_id).collect::<HashSet<i64>>();
+        match choice {
+            Some(MovedAfterActChoiceDto::Keep) => Self {
+                kept: ids(),
+                forget: ids(),
+            },
+            Some(MovedAfterActChoiceDto::ReturnMark) => Self {
+                kept: HashSet::new(),
+                forget: ids(),
+            },
+            // Без выбора транзакция откатится; «стереть» удаляет строки целиком.
+            None | Some(MovedAfterActChoiceDto::ReturnErase) => Self::default(),
+        }
+    }
+}
+
+/// UAT-3: устройства каскада `cascade_ids`, которые перемещали после акта (журнал мест), с
+/// их местом и статусом до удаления. Удалённые устройства пропускаются.
+fn moved_after_act_devices_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    movements: &SqlitePlaceMovementsRepository,
+    devices_repo: &SqliteDeviceRepository,
+    cascade_ids: &[i64],
+) -> Result<Vec<MovedAfterDevice>, AppError> {
+    let mut out = Vec::new();
+    for (device_id, first_act_row_id) in
+        movements.entities_moved_after_acts_in_tx(tx, MovementEntityKind::Device, cascade_ids)?
+    {
+        let Ok(row) = devices_repo.get_in_tx(tx, device_id) else {
+            continue;
+        };
+        if row.deleted_at_utc.is_some() {
+            continue;
+        }
+        out.push(MovedAfterDevice {
+            device_id,
+            first_act_row_id,
+            name: row.name.clone(),
+            initial_place_id: row.place_id,
+            initial_status_id: row.status_id,
+            before_place_id: None,
+        });
+    }
+    Ok(out)
+}
+
+/// Полный путь места для предупреждения; `None` — без места.
+fn place_full_path_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    place_id: Option<i64>,
+) -> Result<Option<String>, AppError> {
+    match place_id {
+        Some(p) => Ok(Some(SqlitePlaceRepository.full_path(tx, p)?)),
+        None => Ok(None),
+    }
+}
+
+/// UAT-3: из кандидатов (журнал: перемещали после акта) оставить тех, кого пробный откат
+/// поставил на другое место, и запомнить это место как «до акта». Вызывается внутри SAVEPOINT
+/// после пробного каскада.
+fn moved_by_rollback_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    devices_repo: &SqliteDeviceRepository,
+    candidates: Vec<MovedAfterDevice>,
+) -> Result<Vec<MovedAfterDevice>, AppError> {
+    let mut out = Vec::new();
+    for mut m in candidates {
+        let restored = devices_repo.get_in_tx(tx, m.device_id)?;
+        if restored.place_id != m.initial_place_id {
+            m.before_place_id = restored.place_id;
+            out.push(m);
+        }
+    }
+    Ok(out)
+}
+
+/// UAT-3: предупреждение «устройства перемещали после акта»: текущее место и место «до акта»
+/// (куда его поставит откат).
+fn build_moved_after_warning(
+    tx: &rusqlite::Transaction<'_>,
+    moved: &[MovedAfterDevice],
+) -> Result<MovedAfterActWarningDto, AppError> {
+    let mut devices = Vec::with_capacity(moved.len());
+    for m in moved {
+        devices.push(MovedAfterActDeviceDto {
+            device_id: m.device_id,
+            name: m.name.clone(),
+            current_place_path: place_full_path_in_tx(tx, m.initial_place_id)?,
+            before_place_path: place_full_path_in_tx(tx, m.before_place_id)?,
+        });
+    }
+    Ok(MovedAfterActWarningDto { devices })
+}
+
+/// UAT-3: после каскада журнал устройства сводится с его местом. Строки каскада по нему уже
+/// «забыты», поэтому журнал заканчивается там, где устройство было до удаления; если откат
+/// поставил устройство в другое место («Вернуть» без стирания), пишется ОДНА строка
+/// «при удалении акта №N» (без `act_id`: акт удалён, номер — в примечании), затем — событие
+/// статуса с её `movement_id` (D-25). При «Оставить» место и статус не менялись, и строка
+/// пишется, только если журнал всё же разошёлся с местом. Возвращает затронутые места.
+#[allow(clippy::too_many_arguments)]
+fn reconcile_moved_after_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    movements: &SqlitePlaceMovementsRepository,
+    devices_repo: &SqliteDeviceRepository,
+    moved: &[MovedAfterDevice],
+    act_number: Option<&str>,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<Vec<Option<i64>>, AppError> {
+    let mut touched = Vec::new();
+    let operation_id = crate::services::history_events::new_operation_id();
+    for m in moved {
+        let journal_end =
+            movements.journal_end_place_in_tx(tx, MovementEntityKind::Device, m.device_id)?;
+        let row = devices_repo.get_in_tx(tx, m.device_id)?;
+        let movement_id = movements.record_movement_if_applicable(
+            tx,
+            &SqlitePlaceRepository,
+            MovementEntityKind::Device,
+            m.device_id,
+            journal_end,
+            row.place_id,
+            MovementSource::ActDelete,
+            act_number,
+            None,
+            user_id,
+            now,
+        )?;
+        touched.push(journal_end);
+        touched.push(row.place_id);
+        let cause = crate::services::history_events::HistoryCause {
+            operation_id: &operation_id,
+            source: trackly_core::domain::history_events::HistoryReason::ActDelete,
+            act_id: None,
+            request_id: None,
+            ref_group: None,
+            movement_id,
+            user_id,
+            now,
+        };
+        crate::services::history_events::record_status_change_in_tx(
+            tx,
+            m.device_id,
+            m.initial_status_id,
+            row.status_id,
+            &cause,
+        )?;
+    }
+    Ok(touched)
 }
 
 /// Собрать предупреждение по конфликтам, сгруппировав их по группе (порядок появления).
@@ -5158,6 +5482,7 @@ fn undo_device_mutations_for_act(
     devices_repo: &SqliteDeviceRepository,
     audit_repo: &SqliteAuditLogRepository,
     choices: &HashMap<i64, bool>,
+    moved: &MovedAfterPlan,
     act_id: i64,
     user_id_opt: Option<i64>,
     now: i64,
@@ -5189,6 +5514,10 @@ fn undo_device_mutations_for_act(
         earliest_row.entry(*device_id).or_insert(i);
     }
     for (row_index, (device_id, before_json)) in rows.into_iter().enumerate().rev() {
+        // UAT-3: «Оставить на текущем месте» — место, статус и состав устройства не трогаются.
+        if moved.kept.contains(&device_id) {
+            continue;
+        }
         let is_final_restore = earliest_row.get(&device_id) == Some(&row_index);
         let mut snapshot: serde_json::Value =
             serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
@@ -5284,12 +5613,27 @@ fn undo_device_mutations_for_act(
     }
 
     // (3) Членство возвращается ПОСЛЕ снимков: место читается уже восстановленное.
-    let members = restore_released_members_in_tx(tx, deps, choices, act_id, user_id_opt, now)?;
+    let members =
+        restore_released_members_in_tx(tx, deps, choices, &moved.kept, act_id, user_id_opt, now)?;
     out.conflicts.extend(members.conflicts);
     out.touched_place_ids
         .extend(members.touched_place_ids.into_iter().map(Some));
     extend_unique(&mut out.touched_group_ids, members.touched_group_ids);
     out.notices.extend(members.notices);
+
+    // UAT-3: строки этого акта по устройствам, которые перемещали после акта, «забываются»
+    // (преемник получает «откуда» акта), а не просто удаляются следом delete_by_act_id_in_tx:
+    // иначе более поздняя строка начиналась бы с места, где устройство по журналу не было.
+    let mut forget: Vec<i64> = moved.forget.iter().copied().collect();
+    forget.sort_unstable();
+    for device_id in forget {
+        SqlitePlaceMovementsRepository.forget_act_entity_rows_in_tx(
+            tx,
+            act_id,
+            MovementEntityKind::Device,
+            device_id,
+        )?;
+    }
 
     // (4) Следы акта стираются, только когда по ним всё сделано (порядок важен).
     deps.groups.delete_act_group_effects_in_tx(tx, act_id)?;

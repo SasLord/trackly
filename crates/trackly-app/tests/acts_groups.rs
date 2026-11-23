@@ -2411,7 +2411,7 @@ async fn undo_act_with(
 ) -> trackly_app::dto::act::ActDeleteResultDto {
     let version = act_version(ctx, act).await;
     ctx.acts
-        .delete_soft_with_choices(act, version, choices)
+        .delete_soft_with_choices(act, version, choices, None)
         .await
         .expect("delete_soft_with_choices")
 }
@@ -3281,6 +3281,9 @@ async fn undo_return_act_that_moved_container_then_manual_move_keeps_members() {
 }
 
 // Страж: группа вернулась вручную на место акта - откат обычный, ручная история цела.
+// UAT-3 (фаза 41.10): члены группы перемещались после акта (строки переноса группы), и откат
+// возвращает их на место «до акта» — без выбора сервер спрашивает и ничего не меняет; выбор
+// «Вернуть» без стирания даёт прежний обычный откат с ручной историей.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn undo_act_when_group_came_back_to_the_acts_place_reverts_normally_and_keeps_manual_history()
 {
@@ -3299,7 +3302,33 @@ async fn undo_act_when_group_came_back_to_the_acts_place_reverts_normally_and_ke
                 .expect("manual move");
         }
 
-        let result = undo_act(&ctx, act).await;
+        let asked = undo_act(&ctx, act).await;
+        let moved = asked
+            .needs_moved_after_choice
+            .expect("UAT-3: члены группы перемещались после акта");
+        assert_eq!(moved.devices.len(), arm.devices.len());
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM acts WHERE id = ?1 AND deleted_at_utc IS NULL",
+                vec![int(act)]
+            )
+            .await,
+            1,
+            "без выбора ничего не удалено"
+        );
+
+        let version = act_version(&ctx, act).await;
+        let result = ctx
+            .acts
+            .delete_soft_with_choices(
+                act,
+                version,
+                &[],
+                Some(trackly_app::dto::act::MovedAfterActChoiceDto::ReturnMark),
+            )
+            .await
+            .expect("удаление с выбором");
 
         assert!(result.notices.is_empty(), "{:?}", notice_texts(&result));
         assert_arm_in_group_at(&ctx, &arm, a).await;

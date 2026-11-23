@@ -1727,6 +1727,7 @@ pub(crate) fn restore_released_members_in_tx(
     tx: &Transaction<'_>,
     deps: &GroupMoveDeps,
     choices: &HashMap<i64, bool>,
+    kept_devices: &HashSet<i64>,
     act_id: i64,
     user_id: Option<i64>,
     now: i64,
@@ -1740,6 +1741,10 @@ pub(crate) fn restore_released_members_in_tx(
         let Some(device_id) = effect.device_id else {
             continue;
         };
+        // UAT-3: «Оставить на текущем месте» — состав следует месту, членство не возвращается.
+        if kept_devices.contains(&device_id) {
+            continue;
+        }
         let device: Option<(String, Option<i64>)> = tx
             .query_row(
                 "SELECT name, place_id FROM devices WHERE id = ?1 AND deleted_at_utc IS NULL",
@@ -3177,9 +3182,16 @@ mod apply_tests {
         assert!(reverted.notices.is_empty(), "{:?}", reverted.notices);
         tx.execute("UPDATE devices SET place_id = 1 WHERE id = 4", [])
             .unwrap();
-        let restored =
-            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW)
-                .expect("restore");
+        let restored = restore_released_members_in_tx(
+            &tx,
+            &deps(),
+            &HashMap::new(),
+            &HashSet::new(),
+            ACT,
+            None,
+            NOW,
+        )
+        .expect("restore");
         assert!(restored.notices.is_empty(), "{:?}", restored.notices);
         tx.commit().unwrap();
 
@@ -3278,9 +3290,16 @@ mod apply_tests {
 
         let reverted = revert_group_moves_in_tx(&tx, &deps(), ACT, None, NOW).expect("revert");
         assert!(reverted.notices.is_empty(), "{:?}", reverted.notices);
-        let restored =
-            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW)
-                .expect("restore");
+        let restored = restore_released_members_in_tx(
+            &tx,
+            &deps(),
+            &HashMap::new(),
+            &HashSet::new(),
+            ACT,
+            None,
+            NOW,
+        )
+        .expect("restore");
         assert!(restored.notices.is_empty(), "{:?}", restored.notices);
         tx.commit().unwrap();
         assert_eq!(group_place(&conn, 1), Some(1));
@@ -3611,9 +3630,16 @@ mod apply_tests {
             [NOW],
         )
         .unwrap();
-        let restored =
-            restore_released_members_in_tx(&tx, &deps(), &HashMap::new(), ACT, None, NOW)
-                .expect("restore");
+        let restored = restore_released_members_in_tx(
+            &tx,
+            &deps(),
+            &HashMap::new(),
+            &HashSet::new(),
+            ACT,
+            None,
+            NOW,
+        )
+        .expect("restore");
         tx.commit().unwrap();
         assert_eq!(restored.notices.len(), 1);
         assert_eq!(

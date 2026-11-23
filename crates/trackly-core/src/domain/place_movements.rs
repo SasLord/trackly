@@ -34,17 +34,22 @@ pub enum MovementSource {
     Group,
     /// Перемещение по ремонтной заявке (Phase 41.4); id заявки — `place_movements.request_id`.
     Repair,
+    /// UAT-3 (фаза 41.10): удаление акта вернуло на место «до акта» устройство, которое
+    /// перемещали после акта (выбор «Вернуть» без стирания), или свело журнал с местом
+    /// при выборе «Оставить». `act_id` нет — акт удалён; номер акта в `note`.
+    ActDelete,
 }
 
 impl MovementSource {
     /// Every variant, in declaration order (INT-09: drives the label-coverage tests).
-    pub const ALL: [MovementSource; 6] = [
+    pub const ALL: [MovementSource; 7] = [
         Self::Manual,
         Self::Act,
         Self::Map,
         Self::Workstation,
         Self::Group,
         Self::Repair,
+        Self::ActDelete,
     ];
 
     /// Returns the DB token corresponding to this source (inverse of `from_str_lenient`).
@@ -56,6 +61,7 @@ impl MovementSource {
             Self::Workstation => "workstation",
             Self::Group => "group",
             Self::Repair => "repair",
+            Self::ActDelete => "act_delete",
         }
     }
 
@@ -71,6 +77,7 @@ impl MovementSource {
             "workstation" => Some(Self::Workstation),
             "group" => Some(Self::Group),
             "repair" => Some(Self::Repair),
+            "act_delete" => Some(Self::ActDelete),
             _ => None,
         }
     }
@@ -172,14 +179,23 @@ mod tests {
 
     #[test]
     fn movement_source_all_lists_every_variant_and_round_trips() {
-        assert_eq!(MovementSource::ALL.len(), 6);
+        assert_eq!(MovementSource::ALL.len(), 7);
         for v in MovementSource::ALL {
             assert_eq!(MovementSource::from_str_lenient(v.as_str()), Some(v));
         }
         let mut tokens: Vec<&str> = MovementSource::ALL.iter().map(|v| v.as_str()).collect();
         tokens.sort_unstable();
         tokens.dedup();
-        assert_eq!(tokens.len(), 6, "токены источников должны быть уникальны");
+        assert_eq!(tokens.len(), 7, "токены источников должны быть уникальны");
+    }
+
+    #[test]
+    fn movement_source_act_delete_token_round_trips() {
+        assert_eq!(MovementSource::ActDelete.as_str(), "act_delete");
+        assert_eq!(
+            MovementSource::from_str_lenient("act_delete"),
+            Some(MovementSource::ActDelete)
+        );
     }
 
     #[test]

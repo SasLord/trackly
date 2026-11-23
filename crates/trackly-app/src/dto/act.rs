@@ -422,6 +422,41 @@ pub struct ActDeleteResultDto {
     /// по перечисленным группам; повторный вызов с `choices` его выполнит.
     #[serde(default)]
     pub needs_group_restore: Option<GroupRestoreWarningDto>,
+    /// UAT-3 (фаза 41.10): при `Some` удаление НЕ выполнено — устройства акта перемещали
+    /// после акта, нужен выбор `MovedAfterActChoiceDto`; повторный вызов с выбором выполнит.
+    #[serde(default)]
+    pub needs_moved_after_choice: Option<MovedAfterActWarningDto>,
+}
+
+/// UAT-3: что делать при удалении акта с устройствами, которые перемещали после акта.
+/// Выбор один на все перечисленные устройства.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MovedAfterActChoiceDto {
+    /// «Вернуть на место до акта» + «Стереть из истории перемещения после акта».
+    ReturnErase,
+    /// «Вернуть на место до акта» без стирания: в истории запись о возврате.
+    ReturnMark,
+    /// «Оставить на текущем месте»: место, статус и состав не восстанавливаются.
+    Keep,
+}
+
+/// UAT-3: устройство акта, которое перемещали после акта.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct MovedAfterActDeviceDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub name: String,
+    /// Полный путь текущего места; `None` — без места.
+    pub current_place_path: Option<String>,
+    /// Полный путь места до акта (куда его вернёт удаление); `None` — без места.
+    pub before_place_path: Option<String>,
+}
+
+/// UAT-3: предупреждение «устройства перемещали после акта».
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct MovedAfterActWarningDto {
+    pub devices: Vec<MovedAfterActDeviceDto>,
 }
 
 /// Выбор пользователя по одной группе (D-42): `restore = true` — вернуть устройства в

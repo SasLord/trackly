@@ -69,10 +69,14 @@ pub enum HistoryReason {
     DeviceWriteOff,
     GroupWriteOff,
     Teardown,
+    /// UAT-3 (фаза 41.10): удаление акта вернуло устройство, которое перемещали после акта,
+    /// на место «до акта» с отметкой в истории. `act_id` у записи нет (акт удалён), номер
+    /// акта несёт примечание строки перемещения.
+    ActDelete,
 }
 
 impl HistoryReason {
-    pub const ALL: [HistoryReason; 9] = [
+    pub const ALL: [HistoryReason; 10] = [
         Self::Manual,
         Self::Act,
         Self::Repair,
@@ -82,6 +86,7 @@ impl HistoryReason {
         Self::DeviceWriteOff,
         Self::GroupWriteOff,
         Self::Teardown,
+        Self::ActDelete,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -95,6 +100,7 @@ impl HistoryReason {
             Self::DeviceWriteOff => "device_write_off",
             Self::GroupWriteOff => "group_write_off",
             Self::Teardown => "teardown",
+            Self::ActDelete => "act_delete",
         }
     }
 
@@ -109,6 +115,7 @@ impl HistoryReason {
             "device_write_off" => Some(Self::DeviceWriteOff),
             "group_write_off" => Some(Self::GroupWriteOff),
             "teardown" => Some(Self::Teardown),
+            "act_delete" => Some(Self::ActDelete),
             _ => None,
         }
     }
