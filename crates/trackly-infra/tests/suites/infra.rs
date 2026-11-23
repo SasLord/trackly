@@ -53,6 +53,8 @@ mod devices_list_filters;
 mod devices_place_path_short;
 #[path = "../devices_place_search.rs"]
 mod devices_place_search;
+#[path = "../devices_restore_snapshot.rs"]
+mod devices_restore_snapshot;
 #[path = "../devices_status_origin.rs"]
 mod devices_status_origin;
 #[path = "../group_types_repo.rs"]

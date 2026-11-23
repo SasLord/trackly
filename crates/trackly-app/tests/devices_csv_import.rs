@@ -562,6 +562,38 @@ async fn import_commit_collects_affected_place_ids() {
     .expect("timeout");
 }
 
+/// Долг v1.4 П2 (WR-05): `affected_place_ids` отдаётся по возрастанию независимо от
+/// порядка строк и от порядка обхода хеш-набора.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_commit_affected_place_ids_sorted() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let mut places = Vec::new();
+        for n in 1..=8 {
+            places.push(seed_place(&svc, &format!("Кабинет {n}")).await);
+        }
+        let mut csv = String::from("Наименование,Место\n");
+        for n in (1..=8).rev() {
+            csv.push_str(&format!("Устройство {n},Кабинет {n}\n"));
+        }
+        let preview = svc
+            .import_csv_preview(csv.into_bytes())
+            .await
+            .expect("preview");
+        let mapping = auto_map(&preview.headers);
+        let report = svc
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit");
+        assert_eq!(report.inserted, 8, "{:?}", report.failed);
+        let mut expected = places.clone();
+        expected.sort_unstable();
+        assert_eq!(report.affected_place_ids, expected);
+    })
+    .await
+    .expect("timeout");
+}
+
 /// Regression: a row that fails to insert (place text unresolved against the
 /// place tree) must NOT contribute its place_id to `affected_place_ids` —
 /// only successfully inserted rows count.

@@ -951,10 +951,13 @@ impl SqliteDeviceRepository {
     /// `audit_log.before_json` (D-Undo-01).
     ///
     /// snapshot — это `serde_json::Value`, который содержит как минимум
-    /// поля `status_id`, `place_id`, `state` (= condition), `kit`
-    /// (= complectation), `version`. Дополнительные поля (`name`, `model`,
-    /// `serial_no`, `specs`, `type_id`) применяются, если
-    /// присутствуют, иначе COALESCE сохраняет текущее значение в БД.
+    /// поле `status_id` (обязательно); остальные ключи опциональны.
+    /// `name`/`type_id` — COALESCE (не обнуляемые): отсутствие ключа ИЛИ null
+    /// сохраняет текущее значение.
+    /// `serial_no`/`model`/`state` (= condition)/`kit` (= complectation)/`specs`/
+    /// `place_id` — presence-based `CASE WHEN`: ключа нет — колонка не меняется;
+    /// ключ есть со значением null — колонка очищается (WR-03: для `place_id`
+    /// тоже).
     /// `inventory_no` из снимка НЕ восстанавливается (BE-WR-06).
     ///
     /// Semantics:
@@ -978,6 +981,9 @@ impl SqliteDeviceRepository {
             .ok_or_else(|| AppError::Internal {
                 source_chain: format!("undo: snapshot for device {device_id} lacks status_id"),
             })?;
+        // WR-03: presence-флаг читается ДО `.and_then`: ключа нет — место не трогаем,
+        // `"place_id": null` — обнуляем.
+        let place_present = snapshot.get("place_id").is_some() as i64;
         let place_id: Option<i64> = snapshot.get("place_id").and_then(|v| v.as_i64());
         // NEW-1 (Phase 40.4 Plan 01): presence-флаг обязан читаться НАПРЯМУЮ
         // из snapshot.get(key), ДО .and_then(|v| v.as_str()) — иначе «ключ
@@ -1016,10 +1022,10 @@ impl SqliteDeviceRepository {
                    complectation    = CASE WHEN ?9 = 1 THEN ?10 ELSE complectation END, \
                    notes            = CASE WHEN ?11 = 1 THEN ?12 ELSE notes END, \
                    status_id        = ?13, \
-                   place_id         = ?14, \
+                   place_id         = CASE WHEN ?16 = 1 THEN ?14 ELSE place_id END, \
                    version          = version + 1, \
                    updated_at_utc   = ?15 \
-                 WHERE id = ?16 AND deleted_at_utc IS NULL",
+                 WHERE id = ?17 AND deleted_at_utc IS NULL",
                 rusqlite::params![
                     type_id,
                     name,
@@ -1036,6 +1042,7 @@ impl SqliteDeviceRepository {
                     status_id,
                     place_id,
                     now_utc,
+                    place_present,
                     device_id,
                 ],
             )

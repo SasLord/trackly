@@ -41,7 +41,7 @@ use trackly_infra::repos::{
     SqlitePrinterRepository, SqliteRepairRepository,
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::csv::session_store::ImportSessionStore;
 use crate::csv::{decode_to_string, detect, parse_rows, ImportSession};
@@ -989,10 +989,10 @@ impl DeviceService {
         Ok(outcome)
     }
 
-    /// N-3 (Phase 40.4 Plan 02, T-40.4-03): identical body to `create()`
-    /// EXCEPT it never broadcasts — the caller decides when/how often to
-    /// call `broadcast_number_space_changed()`. `create()` itself is now a
-    /// thin wrapper around this (single-row broadcast-after-insert);
+    /// N-3 (Phase 40.4 Plan 02, T-40.4-03): весь прежний код `create()`, но без
+    /// рассылки — вызывающий сам решает, когда и сколько раз звать
+    /// `broadcast_number_space_changed()`. `create()` — тонкая обёртка вокруг
+    /// этого метода (рассылка после вставки одной строки);
     /// `import_csv_commit`'s per-row loop calls this directly and batches
     /// ONE broadcast after the whole loop (mirrors
     /// `bulk_create_with_printer`'s single-broadcast-after-loop pattern) —
@@ -2382,8 +2382,7 @@ impl DeviceService {
         // successfully inserted row — flushed into report.affected_place_ids
         // after the loop, so the client can invalidate just the affected
         // place-tree nodes instead of a full refresh.
-        let mut affected_place_ids: std::collections::HashSet<i64> =
-            std::collections::HashSet::new();
+        let mut affected_place_ids: HashSet<i64> = HashSet::new();
 
         // N-3 (Phase 40.4 Plan 02, T-40.4-03): tracks whether ANY row in
         // this import set an inventory number — drives a single
@@ -2544,7 +2543,10 @@ impl DeviceService {
             }
         }
 
-        report.affected_place_ids = affected_place_ids.into_iter().collect();
+        // WR-05 (П2 v1.4): порядок обхода HashSet недетерминирован — отдаём по возрастанию.
+        let mut sorted_place_ids: Vec<i64> = affected_place_ids.into_iter().collect();
+        sorted_place_ids.sort_unstable();
+        report.affected_place_ids = sorted_place_ids;
 
         // Unconditional: sent regardless of `any_number_set` (trap P4). Nothing
         // inserted (all rows failed) -> both lists are empty -> nothing is sent.
