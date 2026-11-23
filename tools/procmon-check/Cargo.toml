@@ -29,5 +29,5 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 # makes snmp2 0.5.0's `mac.update()` ambiguous (Mac vs DynDigest) and breaks its
 # Windows build via workspace feature unification. ProcessMonitor.zip is plain
 # deflate, so "deflate" alone is sufficient.
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 sha2 = "0.10"

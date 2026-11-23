@@ -29,8 +29,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"]
 tracing-appender = "0.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "fs", "net", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-rusqlite = { version = "0.38", features = ["bundled", "serde_json", "backup", "functions"] }
-refinery = { version = "0.9", features = ["rusqlite-bundled"] }
+rusqlite = { version = "0.41", features = ["bundled", "serde_json", "backup", "functions"] }
+refinery = { version = "0.10", features = ["rusqlite-bundled"] }
 toml = "0.8"
 tempfile = "3"
 zeroize = { version = "1", features = ["derive"] }
@@ -47,7 +47,6 @@ argon2 = { version = "0.5", features = ["std"] }
 tower-sessions = "0.15"
 tokio-rustls = "0.26"
 rcgen = "0.14"
-rustls-pemfile = "2"
 # LAN-IP SAN detection for self-signed certs (wildcard bind host). Pure-Rust,
 # cross-platform (Windows/macOS/Linux), no OpenSSL/DLL — portable-friendly.
 if-addrs = "0.15"

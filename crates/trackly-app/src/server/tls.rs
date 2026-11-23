@@ -444,13 +444,12 @@ pub fn load_from_files(cert_path: &str, key_path: &str) -> anyhow::Result<TlsBun
 /// Вычисляет fingerprint из первого сертификата в PEM.
 pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle> {
     ensure_crypto_provider();
-    use rustls_pemfile::{certs, private_key};
+    use rustls::pki_types::pem::PemObject;
+    use rustls::pki_types::PrivateKeyDer;
 
     // Parse certificates
-    let cert_bytes = cert_pem.as_bytes();
-    let mut cert_reader = std::io::BufReader::new(cert_bytes);
     let cert_ders: Vec<CertificateDer<'static>> =
-        certs(&mut cert_reader).collect::<Result<Vec<_>, _>>()?;
+        CertificateDer::pem_slice_iter(cert_pem.as_bytes()).collect::<Result<Vec<_>, _>>()?;
 
     if cert_ders.is_empty() {
         anyhow::bail!("load_from_pem: no certificates found in cert_pem");
@@ -460,10 +459,8 @@ pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle>
     let fingerprint_hex = compute_fingerprint(cert_ders[0].as_ref());
 
     // Parse private key
-    let key_bytes = key_pem.as_bytes();
-    let mut key_reader = std::io::BufReader::new(key_bytes);
-    let key_der = private_key(&mut key_reader)?
-        .ok_or_else(|| anyhow::anyhow!("load_from_pem: no private key found in key_pem"))?;
+    let key_der = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())
+        .map_err(|_| anyhow::anyhow!("load_from_pem: no private key found in key_pem"))?;
 
     let mut config = ServerConfig::builder()
         .with_no_client_auth()
