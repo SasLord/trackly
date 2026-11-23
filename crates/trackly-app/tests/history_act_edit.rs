@@ -5,6 +5,11 @@
 //! не остаётся пары «выведено актом №N» / «включено актом №N». Устройство, добавленное
 //! правкой, получает обычные события акта. Префикс тестов: `history_act_edit_`. Фикстуры
 //! вымышленные.
+//!
+//! UAT-2 (решение пользователя): строки `place_movements` акта живут по тому же правилу —
+//! правка, исключившая позицию, удаляет их, а не дописывает возвратную строку. Исключение:
+//! устройство перемещали после акта, и правка возвращает его на место «до акта» — это
+//! настоящее изменение, оно пишется строкой с act_id, а вывод из группы — после неё (D-25).
 
 use rusqlite::params;
 
@@ -13,6 +18,7 @@ use trackly_app::dto::act::{
     ActCreateDto, ActItemNewDto, ActNumberEditInput, ActSaveOutcome, ActUpdateDto, ActUpdateItemDto,
 };
 use trackly_app::dto::number_template::NumberFieldInput;
+use trackly_app::dto::reports::{PeriodDto, ReportFilter};
 use trackly_core::auth::Identity;
 use trackly_infra::error_conversions::map_rusqlite;
 
@@ -483,4 +489,253 @@ async fn history_act_edit_skipped_rejoin_keeps_group_left() {
         vec!["group_left".to_string()],
         "вывод актом остаётся правдой, смена статуса стёрта"
     );
+}
+
+// ---------------------------------------------------------------------------
+// UAT-2: строки перемещений акта по исключённой позиции
+// ---------------------------------------------------------------------------
+
+/// Строки журнала мест устройства по порядку записи: (id, from, to, source, act_id).
+async fn device_movements(ctx: &AppCtx, device: i64) -> Vec<(i64, i64, i64, String, Option<i64>)> {
+    ctx.writer
+        .execute(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, from_place_id, to_place_id, source, act_id FROM place_movements \
+                     WHERE entity_type = 'device' AND entity_id = ?1 ORDER BY id",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(params![device], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                })
+                .map_err(map_rusqlite)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
+        })
+        .await
+        .expect("device movements")
+}
+
+async fn scalar(ctx: &AppCtx, sql: &'static str, act: i64) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(sql, params![act], |r| r.get(0))
+                .map_err(map_rusqlite)
+        })
+        .await
+        .expect("scalar")
+}
+
+/// События, ссылающиеся на несуществующую строку журнала мест.
+async fn dangling_movement_refs(ctx: &AppCtx) -> i64 {
+    scalar(
+        ctx,
+        "SELECT COUNT(*) FROM history_events e WHERE e.movement_id IS NOT NULL \
+         AND ?1 = ?1 AND NOT EXISTS (SELECT 1 FROM place_movements m WHERE m.id = e.movement_id)",
+        0,
+    )
+    .await
+}
+
+fn wide_period() -> PeriodDto {
+    PeriodDto {
+        mode: "range".to_string(),
+        year: None,
+        month: None,
+        date_from: Some("2000-01-01".to_string()),
+        date_to: Some("2099-12-31".to_string()),
+    }
+}
+
+/// Имена устройств в отчёте «Перемещения» (HST-04).
+async fn report_device_names(ctx: &AppCtx) -> Vec<String> {
+    ctx.reports
+        .list_movements(ReportFilter::default(), wide_period())
+        .await
+        .expect("отчёт перемещений")
+        .rows
+        .into_iter()
+        .filter_map(|r| r.device_name)
+        .collect()
+}
+
+/// UAT-2: акт переместил два устройства А -> Б, правка исключила одно. У исключённого нет ни
+/// строки акта, ни возвратной строки: лента места и отчёт «Перемещения» о нём молчат. Строка
+/// оставшейся позиции жива.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_excluded_device_leaves_no_act_movements() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let d = seed_device(&ctx, "Монитор #27", a, None).await;
+    let free = seed_device(&ctx, "Принтер #27", a, None).await;
+    let act = create(&ctx, create_dto("HAE-7", &[d, free], b)).await;
+    assert_eq!(
+        device_movements(&ctx, d).await.len(),
+        1,
+        "предусловие: А -> Б актом"
+    );
+
+    edit_keep(&ctx, act, &[free]).await;
+
+    assert_eq!(
+        device_movements(&ctx, d).await,
+        Vec::new(),
+        "исключённое устройство «не перемещалось»: ни строки акта, ни возвратной"
+    );
+    let kept = device_movements(&ctx, free).await;
+    assert_eq!(kept.len(), 1, "строка оставшейся позиции жива");
+    assert_eq!((kept[0].1, kept[0].2, kept[0].4), (a, b, Some(act)));
+    let timeline = ctx
+        .history
+        .get_timeline(&admin(), "device", d)
+        .await
+        .expect("лента");
+    assert!(
+        timeline.iter().all(|e| e.act_id != Some(act)),
+        "в ленте исключённого устройства нет записей акта: {timeline:?}"
+    );
+    let names = report_device_names(&ctx).await;
+    assert!(
+        !names.iter().any(|n| n == "Монитор #27"),
+        "отчёт «Перемещения» не показывает исключённое устройство: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n == "Принтер #27"),
+        "отчёт показывает оставшуюся позицию: {names:?}"
+    );
+    assert_eq!(dangling_movement_refs(&ctx).await, 0);
+}
+
+/// UAT-2 (исключение, подтверждено пользователем): после акта устройство вручную ввели в группу
+/// на новом месте В. Правка вернула его на место «до акта» А — это настоящее изменение: строка
+/// акта А -> Б забыта (ручная строка стала А -> В), возврат В -> А пишется строкой с act_id, а
+/// вывод из группы — после неё и с её movement_id (D-25).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_real_change_writes_return_movement_then_group_left() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let c = seed_place(&ctx, "Кабинет В").await;
+    let d = seed_device(&ctx, "Монитор #28", a, None).await;
+    let free = seed_device(&ctx, "Принтер #28", a, None).await;
+    let act = create(&ctx, create_dto("HAE-8", &[d, free], b)).await;
+    let h = seed_group(&ctx, "АРМ #28", c, None).await;
+    ctx.groups
+        .add_devices(&admin(), h, vec![d])
+        .await
+        .expect("ввод в группу на месте В");
+    assert_eq!(group_of(&ctx, d).await, Some(h));
+    let before = device_movements(&ctx, d).await;
+    assert_eq!(
+        before.iter().map(|m| (m.1, m.2)).collect::<Vec<_>>(),
+        vec![(a, b), (b, c)],
+        "предусловие: А -> Б актом, Б -> В вводом в группу"
+    );
+
+    edit_keep(&ctx, act, &[free]).await;
+
+    assert_eq!(
+        group_of(&ctx, d).await,
+        None,
+        "место разошлось с группой — вывод"
+    );
+    let after = device_movements(&ctx, d).await;
+    assert_eq!(
+        after.len(),
+        2,
+        "строка акта забыта, возврат записан: {after:?}"
+    );
+    assert_eq!(
+        (after[0].1, after[0].2),
+        (a, c),
+        "преемник забытой строки получил её «откуда»"
+    );
+    assert_ne!(after[0].4, Some(act));
+    let (ret_id, from, to, source, act_id) = after[1].clone();
+    assert_eq!(
+        (from, to, source.as_str(), act_id),
+        (c, a, "act", Some(act))
+    );
+    let left: (i64, Option<i64>) = ctx
+        .writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), MAX(movement_id) FROM history_events \
+                 WHERE subject_type = 'device' AND subject_id = ?1 AND act_id = ?2 \
+                   AND kind = 'group_left'",
+                params![d, act],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("group_left");
+    assert_eq!(
+        left,
+        (1, Some(ret_id)),
+        "вывод из группы записан после возврата и несёт его movement_id (D-25)"
+    );
+    assert_eq!(
+        act_kinds(&ctx, "device", d, act).await,
+        vec!["group_left".to_string()],
+        "события акта, кроме нового вывода, стёрты"
+    );
+    assert_eq!(dangling_movement_refs(&ctx).await, 0);
+}
+
+/// UAT-2 / D-03: удаление акта после правки (исключение и добавление) не оставляет ни строк
+/// журнала мест, ни событий с его act_id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn history_act_edit_then_delete_leaves_no_act_movements() {
+    let (ctx, _d) = make_test_ctx().await;
+    let a = seed_place(&ctx, "Склад А").await;
+    let b = seed_place(&ctx, "Кабинет Б").await;
+    let d1 = seed_device(&ctx, "Монитор #29", a, None).await;
+    let d2 = seed_device(&ctx, "Ноутбук #29", a, None).await;
+    let free = seed_device(&ctx, "Принтер #29", a, None).await;
+    let act = create(&ctx, create_dto("HAE-9", &[d1, free], b)).await;
+    edit_keep(&ctx, act, &[free, d2]).await;
+    assert!(
+        scalar(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1",
+            act
+        )
+        .await
+            > 0,
+        "предусловие: строки акта есть"
+    );
+
+    let live = ctx.acts.get(act).await.expect("get act");
+    ctx.acts
+        .delete_soft(live.id, live.version)
+        .await
+        .expect("delete");
+
+    assert_eq!(
+        scalar(
+            &ctx,
+            "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1",
+            act
+        )
+        .await,
+        0,
+        "строк удалённого акта нет"
+    );
+    assert_eq!(
+        count_act_events(&ctx, act).await,
+        0,
+        "событий удалённого акта нет"
+    );
+    for dev in [d1, d2, free] {
+        assert_eq!(
+            device_movements(&ctx, dev).await,
+            Vec::new(),
+            "устройство «не перемещалось»"
+        );
+    }
+    assert_eq!(dangling_movement_refs(&ctx).await, 0);
 }

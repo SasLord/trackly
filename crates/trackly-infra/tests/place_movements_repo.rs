@@ -357,6 +357,136 @@ async fn delete_by_act_id_removes_only_matching_rows() {
 }
 
 // ---------------------------------------------------------------------------
+// UAT-2: forget_act_entity_rows_in_tx — строки акта по одной сущности
+// ---------------------------------------------------------------------------
+
+fn record(
+    tx: &rusqlite::Transaction<'_>,
+    entity_id: i64,
+    from: i64,
+    to: i64,
+    act_id: Option<i64>,
+    at: i64,
+) -> i64 {
+    SqlitePlaceMovementsRepository
+        .record_movement_if_applicable(
+            tx,
+            &SqlitePlaceRepository,
+            MovementEntityKind::Device,
+            entity_id,
+            Some(from),
+            Some(to),
+            if act_id.is_some() {
+                MovementSource::Act
+            } else {
+                MovementSource::Manual
+            },
+            None,
+            act_id,
+            None,
+            at,
+        )
+        .expect("record")
+        .expect("row written")
+}
+
+fn rows_of(conn: &Connection, entity_id: i64) -> Vec<(i64, i64, Option<i64>)> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT from_place_id, to_place_id, act_id FROM place_movements \
+             WHERE entity_type = 'device' AND entity_id = ?1 ORDER BY id",
+        )
+        .expect("prepare");
+    stmt.query_map(params![entity_id], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    })
+    .expect("query")
+    .collect::<Result<Vec<_>, _>>()
+    .expect("rows")
+}
+
+/// Без перемещения после акта: строки акта по сущности удалены, чужие строки целы, место
+/// возврата — «откуда» забытой строки (возврат туда перемещением не является).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn forget_act_entity_rows_without_later_move() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let (place_a, place_b) = seed_two_places(&mut conn);
+        let act = seed_act(&conn, 11);
+        let other = seed_act(&conn, 12);
+        let tx = conn.transaction().expect("tx");
+        // строка другого акта — РАНЬШЕ строки забываемого акта (не преемник)
+        record(&tx, 1, place_b, place_a, Some(other), NOW - 10);
+        record(&tx, 1, place_a, place_b, Some(act), NOW);
+        record(&tx, 2, place_a, place_b, Some(act), NOW);
+        let out = SqlitePlaceMovementsRepository
+            .forget_act_entity_rows_in_tx(&tx, act, MovementEntityKind::Device, 1)
+            .expect("forget");
+        tx.commit().expect("commit");
+        assert_eq!(out.deleted, 1);
+        assert!(!out.moved_after);
+        assert_eq!(out.first_from_place_id, Some(place_a));
+        assert_eq!(out.return_from_place(Some(place_b)), Some(place_a));
+        assert_eq!(rows_of(&conn, 1), vec![(place_b, place_a, Some(other))]);
+        assert_eq!(rows_of(&conn, 2), vec![(place_a, place_b, Some(act))]);
+    })
+    .await
+    .expect("test timed out");
+}
+
+/// Перемещение после акта: строка акта удалена, ближайший преемник получил её «откуда»,
+/// итог сообщает настоящее изменение, место возврата — текущее.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn forget_act_entity_rows_rebases_later_move() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let (place_a, place_b) = seed_two_places(&mut conn);
+        let place_c = SqlitePlaceRepository
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание В"),
+                NOW,
+            )
+            .expect("place C");
+        let act = seed_act(&conn, 13);
+        let tx = conn.transaction().expect("tx");
+        record(&tx, 1, place_a, place_b, Some(act), NOW);
+        record(&tx, 1, place_b, place_c, None, NOW + 1);
+        let out = SqlitePlaceMovementsRepository
+            .forget_act_entity_rows_in_tx(&tx, act, MovementEntityKind::Device, 1)
+            .expect("forget");
+        tx.commit().expect("commit");
+        assert_eq!(out.deleted, 1);
+        assert!(out.moved_after);
+        assert_eq!(out.return_from_place(Some(place_c)), Some(place_c));
+        assert_eq!(rows_of(&conn, 1), vec![(place_a, place_c, None)]);
+    })
+    .await
+    .expect("test timed out");
+}
+
+/// Строк акта по сущности нет: ничего не удаляется, место возврата — текущее.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn forget_act_entity_rows_noop_without_act_rows() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let (place_a, place_b) = seed_two_places(&mut conn);
+        let act = seed_act(&conn, 14);
+        let tx = conn.transaction().expect("tx");
+        record(&tx, 1, place_a, place_b, None, NOW);
+        let out = SqlitePlaceMovementsRepository
+            .forget_act_entity_rows_in_tx(&tx, act, MovementEntityKind::Device, 1)
+            .expect("forget");
+        tx.commit().expect("commit");
+        assert_eq!(out, Default::default());
+        assert_eq!(out.return_from_place(Some(place_b)), Some(place_b));
+        assert_eq!(rows_of(&conn, 1), vec![(place_a, place_b, None)]);
+    })
+    .await
+    .expect("test timed out");
+}
+
+// ---------------------------------------------------------------------------
 // Task 2: get_history — newest-first (D-20), empty Vec on no rows, no LIMIT
 // ---------------------------------------------------------------------------
 

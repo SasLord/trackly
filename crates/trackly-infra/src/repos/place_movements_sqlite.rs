@@ -345,53 +345,67 @@ impl SqlitePlaceMovementsRepository {
         act_id: i64,
         group_id: i64,
     ) -> Result<usize, AppError> {
-        let rows: Vec<(i64, String, i64, i64, i64, String)> = {
-            let mut stmt = tx
-                .prepare(
-                    "SELECT id, entity_type, entity_id, to_place_id, from_place_id, from_place_path \
-                       FROM place_movements WHERE act_id = ?1 AND group_id = ?2 ORDER BY id",
-                )
-                .map_err(map_rusqlite)?;
-            let mapped = stmt
-                .query_map(params![act_id, group_id], |r| {
-                    Ok((
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                    ))
-                })
-                .map_err(map_rusqlite)?
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(map_rusqlite)?;
-            mapped
-        };
-        for (id, entity_type, entity_id, to_place, from_place, from_path) in rows {
-            tx.execute(
-                "UPDATE place_movements SET from_place_id = ?1, from_place_path = ?2 \
-                  WHERE id = (SELECT MIN(id) FROM place_movements \
-                               WHERE id > ?3 AND entity_type = ?4 AND entity_id = ?5 \
-                                 AND from_place_id = ?6 \
-                                 AND (act_id IS NULL OR act_id != ?7))",
-                params![
-                    from_place,
-                    from_path,
-                    id,
-                    entity_type,
-                    entity_id,
-                    to_place,
-                    act_id
-                ],
-            )
-            .map_err(map_rusqlite)?;
-        }
+        let rows = forgettable_rows(
+            tx,
+            "SELECT id, entity_type, entity_id, to_place_id, from_place_id, from_place_path \
+               FROM place_movements WHERE act_id = ?1 AND group_id = ?2 ORDER BY id",
+            params![act_id, group_id],
+        )?;
+        rebase_successors(tx, act_id, &rows)?;
         tx.execute(
             "DELETE FROM place_movements WHERE act_id = ?1 AND group_id = ?2",
             params![act_id, group_id],
         )
         .map_err(map_rusqlite)
+    }
+
+    /// UAT-2 (фаза 41.10, D-24 в прочтении пользователя): строки перемещений акта по одной
+    /// сущности живут, пока жива её позиция в акте. Правка, исключившая позицию, «забывает» их
+    /// тем же способом, что D-48: ближайшая более поздняя строка той же сущности ДРУГОГО акта
+    /// или без акта, чьё «откуда» равно «куда» забываемой строки, получает «откуда» забываемой,
+    /// затем строки акта по сущности удаляются. Возвратная строка не пишется — устройство
+    /// «не перемещалось». Итог сообщает, было ли перемещение после акта (настоящее изменение,
+    /// возвратную строку тогда пишет вызывающий) и откуда сущность уходила актом.
+    pub fn forget_act_entity_rows_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        entity_type: MovementEntityKind,
+        entity_id: i64,
+    ) -> Result<ForgottenActRows, AppError> {
+        let kind = entity_type.as_str();
+        let rows = forgettable_rows(
+            tx,
+            "SELECT id, entity_type, entity_id, to_place_id, from_place_id, from_place_path \
+               FROM place_movements \
+              WHERE act_id = ?1 AND entity_type = ?2 AND entity_id = ?3 ORDER BY id",
+            params![act_id, kind, entity_id],
+        )?;
+        let Some(last_id) = rows.last().map(|r| r.0) else {
+            return Ok(ForgottenActRows::default());
+        };
+        let moved_after: bool = tx
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM place_movements \
+                  WHERE id > ?1 AND entity_type = ?2 AND entity_id = ?3 \
+                    AND (act_id IS NULL OR act_id != ?4))",
+                params![last_id, kind, entity_id, act_id],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        rebase_successors(tx, act_id, &rows)?;
+        let deleted = tx
+            .execute(
+                "DELETE FROM place_movements \
+                  WHERE act_id = ?1 AND entity_type = ?2 AND entity_id = ?3",
+                params![act_id, kind, entity_id],
+            )
+            .map_err(map_rusqlite)?;
+        Ok(ForgottenActRows {
+            deleted,
+            moved_after,
+            first_from_place_id: rows.first().map(|r| r.4),
+        })
     }
 
     /// HST-02/HST-17 timeline read: all movements for one `(entity_type, entity_id)`
@@ -444,4 +458,85 @@ impl SqlitePlaceMovementsRepository {
         }
         Ok(out)
     }
+}
+
+/// Итог [`SqlitePlaceMovementsRepository::forget_act_entity_rows_in_tx`] (UAT-2).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ForgottenActRows {
+    /// Сколько строк акта по сущности удалено.
+    pub deleted: usize,
+    /// После строк акта есть строки той же сущности другого акта или без акта: сущность
+    /// перемещали после акта, и возврат к состоянию «до акта» — настоящее изменение.
+    pub moved_after: bool,
+    /// «Откуда» первой забытой строки — место сущности до акта по журналу.
+    pub first_from_place_id: Option<i64>,
+}
+
+impl ForgottenActRows {
+    /// Откуда считать возвратное перемещение после забывания строк акта. Если строк акта не
+    /// было или сущность перемещали после акта, — её текущее место `current`: журнал после
+    /// пересадки преемника заканчивается там же. Иначе журнал заканчивается на месте до акта
+    /// (строк акта больше нет), и возврат на это место перемещением не является.
+    pub fn return_from_place(&self, current: Option<i64>) -> Option<i64> {
+        if self.deleted == 0 || self.moved_after {
+            current
+        } else {
+            self.first_from_place_id
+        }
+    }
+}
+
+/// Строка, которую можно «забыть»: (id, entity_type, entity_id, to, from, from_path).
+type ForgettableRow = (i64, String, i64, i64, i64, String);
+
+fn forgettable_rows(
+    tx: &Transaction<'_>,
+    sql: &str,
+    args: impl rusqlite::Params,
+) -> Result<Vec<ForgettableRow>, AppError> {
+    let mut stmt = tx.prepare(sql).map_err(map_rusqlite)?;
+    let rows = stmt
+        .query_map(args, |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        })
+        .map_err(map_rusqlite)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(map_rusqlite)?;
+    Ok(rows)
+}
+
+/// D-48: ближайшая более поздняя строка той же сущности другого акта или без акта, чьё
+/// «откуда» равно «куда» забываемой строки, получает «откуда» забываемой строки.
+fn rebase_successors(
+    tx: &Transaction<'_>,
+    act_id: i64,
+    rows: &[ForgettableRow],
+) -> Result<(), AppError> {
+    for (id, entity_type, entity_id, to_place, from_place, from_path) in rows {
+        tx.execute(
+            "UPDATE place_movements SET from_place_id = ?1, from_place_path = ?2 \
+              WHERE id = (SELECT MIN(id) FROM place_movements \
+                           WHERE id > ?3 AND entity_type = ?4 AND entity_id = ?5 \
+                             AND from_place_id = ?6 \
+                             AND (act_id IS NULL OR act_id != ?7))",
+            params![
+                from_place,
+                from_path,
+                id,
+                entity_type,
+                entity_id,
+                to_place,
+                act_id
+            ],
+        )
+        .map_err(map_rusqlite)?;
+    }
+    Ok(())
 }

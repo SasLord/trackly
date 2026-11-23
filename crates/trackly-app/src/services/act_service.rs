@@ -1494,6 +1494,16 @@ impl ActService {
                     }
                     let mut reverted =
                         revert_move_effect_in_tx(&tx, &group_deps, effect, user_id_opt, now)?;
+                    // UAT-2 (D-24): правка сняла всё покрытие группы, и перенос обращён
+                    // (возвращён или забыт) — строки перемещений акта по группе, включая только
+                    // что записанный возврат, забываются: группа и её состав «не перемещались».
+                    if reverted.kept_in_place_group_ids.contains(&effect.group_id) {
+                        place_movements_repo.forget_group_move_rows_in_tx(
+                            &tx,
+                            payload.id,
+                            effect.group_id,
+                        )?;
+                    }
                     // D-48: группы, чей перенос забыт, - члены убранных позиций остаются в них.
                     for group in &reverted.kept_in_place_group_ids {
                         if !kept_groups.contains(group) {
@@ -1589,12 +1599,9 @@ impl ActService {
                         now,
                     )?;
                     // CR-01: capture the device's CURRENT place (while still
-                    // part of this act) BEFORE the restore mutates it, so the
-                    // movement recorded below reflects the real
-                    // in-act-place -> restored-place reversion. Using the
-                    // snapshot's own place_id for both sides (as an earlier
-                    // draft of this fix did) would be a no-op: the snapshot
-                    // IS what `restored.place_id` becomes.
+                    // part of this act) BEFORE the restore mutates it: UAT-2 writes
+                    // a return row from it only when the device was moved after the
+                    // act (a real change); otherwise the act's rows are forgotten.
                     let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
                     let restored = match &anchor_conflict {
                         Some(notice) => {
@@ -1619,6 +1626,19 @@ impl ActService {
                                 &mut snapshot,
                                 &kept_groups,
                             )?;
+                            // UAT-2 (D-24): строки перемещений акта по устройству забываются;
+                            // возвратная строка — только при настоящем изменении, ДО вывода из
+                            // группы (D-25). Место «после» — место снимка (D-48 уже учтён), его
+                            // ставит restore.
+                            let excluded_movement_id = forget_excluded_device_movements_in_tx(
+                                &tx,
+                                payload.id,
+                                removed_id,
+                                place_before_restore.place_id,
+                                snapshot.get("place_id").and_then(|v| v.as_i64()),
+                                user_id_opt,
+                                now,
+                            )?;
                             // D-27: списанное после акта остаётся списанным.
                             crate::services::group_act_plan::snapshot_keeping_written_off_in_tx(
                                 &tx,
@@ -1642,13 +1662,15 @@ impl ActService {
                                     release_mode,
                                     // Вывод при правке — новое следствие акта, а не восстановление:
                                     // пишется событием с act_id (лента совпадает с составом).
-                                    ReleaseHistory::Default,
+                                    ReleaseHistory::AfterMovement(excluded_movement_id),
                                 )?
                             {
                                 if !touched_group_ids.contains(&group_id) {
                                     touched_group_ids.push(group_id);
                                 }
                             }
+                            touched_place_ids.push(place_before_restore.place_id);
+                            touched_place_ids.push(restored.place_id);
                             restored
                         }
                     };
@@ -1696,32 +1718,9 @@ impl ActService {
                             source_chain: format!("update remove after_json: {e}"),
                         })?;
 
-                    // HST-03/CR-01: the act edit dropped this device, so its
-                    // place reverted from the in-act place back to its prior
-                    // place — record that reversion (D-04/D-06 guard inside).
-                    // `delete_by_act_id_in_tx` is NOT used here: it deletes
-                    // ALL movement rows for this act_id, which would also
-                    // erase legitimate history for the OTHER devices still
-                    // on this act — this is a per-device edit, not a full
-                    // act undo (D-03 is act-scoped, not device-scoped).
-                    // Конфликт якоря: место не менялось, возвратной строки нет.
-                    if anchor_conflict.is_none() {
-                        place_movements_repo.record_movement_if_applicable(
-                            &tx,
-                            places_repo.as_ref(),
-                            MovementEntityKind::Device,
-                            removed_id,
-                            place_before_restore.place_id,
-                            restored.place_id,
-                            MovementSource::Act,
-                            None,
-                            Some(payload.id),
-                            user_id_opt,
-                            now,
-                        )?;
-                        touched_place_ids.push(place_before_restore.place_id);
-                        touched_place_ids.push(restored.place_id);
-                    }
+                    // UAT-2: строки перемещений акта по снятой позиции забыты выше (вместе с
+                    // восстановлением снимка); при конфликте якоря место не менялось — строки
+                    // акта остаются правдой.
                     // UAT-1: события статуса нет — смена статуса акта по снятой позиции стёрта
                     // (erase_act_events_of_device_in_tx), восстановление идёт молча.
 
@@ -3048,6 +3047,16 @@ impl ActService {
                     }
                     let mut reverted =
                         revert_move_effect_in_tx(&tx, &group_deps, effect, user_id_opt, now)?;
+                    // UAT-2 (D-24): правка сняла всё покрытие группы, и перенос обращён
+                    // (возвращён или забыт) — строки перемещений акта по группе, включая только
+                    // что записанный возврат, забываются: группа и её состав «не перемещались».
+                    if reverted.kept_in_place_group_ids.contains(&effect.group_id) {
+                        place_movements_repo.forget_group_move_rows_in_tx(
+                            &tx,
+                            payload.id,
+                            effect.group_id,
+                        )?;
+                    }
                     // D-48: группы, чей перенос забыт, - члены убранных позиций остаются в них.
                     for group in &reverted.kept_in_place_group_ids {
                         if !kept_groups.contains(group) {
@@ -3143,9 +3152,8 @@ impl ActService {
                         now,
                     )?;
                     // CR-01: capture the current (in-act) place BEFORE the
-                    // restore, so the movement recorded below is a real
-                    // in-act-place -> restored-place reversion rather than a
-                    // no-op comparison against the snapshot's own value.
+                    // restore: UAT-2 writes a return row from it only when the
+                    // device was moved after the act (a real change).
                     let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
                     let restored = match &anchor_conflict {
                         Some(notice) => {
@@ -3170,6 +3178,19 @@ impl ActService {
                                 &mut snapshot,
                                 &kept_groups,
                             )?;
+                            // UAT-2 (D-24): строки перемещений акта по устройству забываются;
+                            // возвратная строка — только при настоящем изменении, ДО вывода из
+                            // группы (D-25). Место «после» — место снимка (D-48 уже учтён), его
+                            // ставит restore.
+                            let excluded_movement_id = forget_excluded_device_movements_in_tx(
+                                &tx,
+                                payload.id,
+                                removed_id,
+                                place_before_restore.place_id,
+                                snapshot.get("place_id").and_then(|v| v.as_i64()),
+                                user_id_opt,
+                                now,
+                            )?;
                             // D-27: списанное после акта остаётся списанным.
                             crate::services::group_act_plan::snapshot_keeping_written_off_in_tx(
                                 &tx,
@@ -3193,13 +3214,15 @@ impl ActService {
                                     release_mode,
                                     // Вывод при правке — новое следствие акта, а не восстановление:
                                     // пишется событием с act_id (лента совпадает с составом).
-                                    ReleaseHistory::Default,
+                                    ReleaseHistory::AfterMovement(excluded_movement_id),
                                 )?
                             {
                                 if !touched_group_ids.contains(&group_id) {
                                     touched_group_ids.push(group_id);
                                 }
                             }
+                            touched_place_ids.push(place_before_restore.place_id);
+                            touched_place_ids.push(restored.place_id);
                             restored
                         }
                     };
@@ -3247,30 +3270,8 @@ impl ActService {
                             source_chain: format!("update_return remove after_json: {e}"),
                         })?;
 
-                    // HST-03/CR-01: un-returning this device reverted its
-                    // place — record that reversion (D-04/D-06 guard
-                    // inside). `delete_by_act_id_in_tx` is act-scoped (would
-                    // also erase movement history for OTHER devices still on
-                    // this return act), so it is not used for this
-                    // per-device edit.
-                    // Конфликт якоря: место не менялось, возвратной строки нет.
-                    if anchor_conflict.is_none() {
-                        place_movements_repo.record_movement_if_applicable(
-                            &tx,
-                            places_repo.as_ref(),
-                            MovementEntityKind::Device,
-                            removed_id,
-                            place_before_restore.place_id,
-                            restored.place_id,
-                            MovementSource::Act,
-                            None,
-                            Some(payload.id),
-                            user_id_opt,
-                            now,
-                        )?;
-                        touched_place_ids.push(place_before_restore.place_id);
-                        touched_place_ids.push(restored.place_id);
-                    }
+                    // UAT-2: строки перемещений возврата по снятой позиции забыты выше (вместе
+                    // с восстановлением снимка); при конфликте якоря место не менялось.
                     // UAT-1: события статуса нет — смена статуса акта по снятой позиции стёрта
                     // (erase_act_events_of_device_in_tx), восстановление идёт молча.
 
@@ -5055,6 +5056,43 @@ fn extend_unique(into: &mut Vec<i64>, more: Vec<i64>) {
             into.push(id);
         }
     }
+}
+
+/// UAT-2 (фаза 41.10, решение пользователя к D-24): правка акта исключила позицию устройства.
+/// Строки `place_movements` этого акта по устройству живут, пока жива позиция, — они
+/// забываются (ближайший преемник получает их «откуда», D-48), возвратная строка не пишется:
+/// устройство «не перемещалось». Если устройство перемещали после акта, возврат на место «до
+/// акта» — настоящее изменение: пишется строка с `act_id` из текущего места в `restored_place`
+/// (D-04/D-06 внутри). Возвращает id этой строки — его несёт вывод из группы (D-25).
+fn forget_excluded_device_movements_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    act_id: i64,
+    device_id: i64,
+    current_place: Option<i64>,
+    restored_place: Option<i64>,
+    user_id: Option<i64>,
+    now: i64,
+) -> Result<Option<i64>, AppError> {
+    let movements = SqlitePlaceMovementsRepository;
+    let forgotten = movements.forget_act_entity_rows_in_tx(
+        tx,
+        act_id,
+        MovementEntityKind::Device,
+        device_id,
+    )?;
+    movements.record_movement_if_applicable(
+        tx,
+        &SqlitePlaceRepository,
+        MovementEntityKind::Device,
+        device_id,
+        forgotten.return_from_place(current_place),
+        restored_place,
+        MovementSource::Act,
+        None,
+        Some(act_id),
+        user_id,
+        now,
+    )
 }
 
 /// Событие `status_changed` с причиной «акт» (ST-2/3/4). Порядок D-25: вызывается после

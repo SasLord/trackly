@@ -48,6 +48,10 @@ pub(crate) enum ReleaseEffect {
 pub(crate) enum ReleaseHistory<'a> {
     /// Причина по умолчанию: `act` при заданном `act_id`, иначе `manual`.
     Default,
+    /// Как `Default`, плюс `movement_id` строки перемещения, записанной той же операцией
+    /// РАНЬШЕ события (D-25). UAT-2: правка акта, исключившая позицию, когда устройство
+    /// перемещали после акта, пишет возвратную строку, а вывод из группы — после неё.
+    AfterMovement(Option<i64>),
     /// Особая причина (например, списание группы) с группой-основанием.
     Reason {
         source: HistoryReason,
@@ -56,7 +60,7 @@ pub(crate) enum ReleaseHistory<'a> {
     /// «Тихий» режим только для двух путей: перенос из группы в группу (D-05, событие
     /// переноса пишет вызывающий) и откат/удаление акта (D-24 (b), события акта удаляются
     /// по `act_id`). Правка живого акта сюда НЕ относится: вывод из группы при правке —
-    /// новое следствие акта, там `Default`. Места использования закреплены гейтом
+    /// новое следствие акта, там `AfterMovement`. Места использования закреплены гейтом
     /// `history_write_sites_gate` (`SILENT_MODE_TOKENS`).
     Suppressed,
 }
@@ -168,17 +172,21 @@ fn release_inner(
     }
     // Phase 41.10 (D-08, D-24): событие со стороны устройства; act_id обязателен в причине,
     // иначе откат акта его не удалит.
-    let (source, ref_group) = match history {
+    let (source, ref_group, movement_id) = match history {
         ReleaseHistory::Suppressed => return Ok(Some(group.id)),
-        ReleaseHistory::Default => (
+        ReleaseHistory::Default | ReleaseHistory::AfterMovement(_) => (
             if act_id.is_some() {
                 HistoryReason::Act
             } else {
                 HistoryReason::Manual
             },
             None,
+            match history {
+                ReleaseHistory::AfterMovement(movement_id) => movement_id,
+                _ => None,
+            },
         ),
-        ReleaseHistory::Reason { source, ref_group } => (source, ref_group),
+        ReleaseHistory::Reason { source, ref_group } => (source, ref_group, None),
     };
     let operation_id = new_operation_id();
     let cause = HistoryCause {
@@ -187,7 +195,7 @@ fn release_inner(
         act_id,
         request_id: None,
         ref_group,
-        movement_id: None,
+        movement_id,
         user_id,
         now,
     };

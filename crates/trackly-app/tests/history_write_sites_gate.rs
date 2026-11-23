@@ -16,6 +16,12 @@
 //! НИЧЕГО, а стирает события акта по субъекту. Такие тихие restore-вызовы освобождены только
 //! вместе со стиранием в той же функции (`ERASE_SCOPED_EXEMPTS`): снятое стирание краснит гейт.
 //!
+//! UAT-2 (решение пользователя): строки `place_movements` акта живут по тому же правилу.
+//! Методы репозитория перемещений, удаляющие или переписывающие строки, инвентаризуются ОТ
+//! РЕПОЗИТОРИЯ (`MOVEMENT_ERASER_METHODS`), их вызовы — по функциям (`MOVEMENT_ERASER_CALLS`),
+//! а правка, исключившая позицию, обязана забыть строки акта ДО возвратной строки, и та — ДО
+//! вывода из группы с её movement_id (`EDIT_EXCLUSION_SITES`, D-25).
+//!
 //! Гейт слеп к порядку (счёт не видит перестановки), поэтому порядок D-25
 //! «перемещение, потом событие» держит отдельная проверка, а selftest включает
 //! мутацию-ПЕРЕСТАНОВКУ реального исходника. Источник конструкции: `group_write_sites.rs`
@@ -935,6 +941,204 @@ fn erase_scoped_violations(sources: &[(String, String)]) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// UAT-2: удаление и переписывание строк place_movements
+// ---------------------------------------------------------------------------
+
+const MOVEMENTS_REPO: &str = "crates/trackly-infra/src/repos/place_movements_sqlite.rs";
+const MOVEMENT_ERASE_SQL: [&str; 2] = ["DELETE FROM place_movements", "UPDATE place_movements"];
+
+/// Функции репозитория перемещений, удаляющие или переписывающие строки (инвентарь ОТ
+/// РЕПОЗИТОРИЯ): (имя, вердикт >= 40 символов). Новая функция без строки краснит гейт.
+const MOVEMENT_ERASER_METHODS: [(&str, &str); 4] = [
+    (
+        "delete_by_act_id_in_tx",
+        "откат/удаление акта (D-03, D-24 (b)): все строки акта удаляются, компенсаций нет",
+    ),
+    (
+        "forget_group_move_rows_in_tx",
+        "D-48 / UAT-2: перенос группы актом забыт или правка сняла всё покрытие группы",
+    ),
+    (
+        "forget_act_entity_rows_in_tx",
+        "UAT-2: правка сняла позицию — строки акта по сущности забываются, возврата нет",
+    ),
+    (
+        "rebase_successors",
+        "помощник двух forget_*: преемник забытой строки получает её «откуда» (D-48)",
+    ),
+];
+
+/// Вызовы стирателей перемещений в production-коде вне репозитория: (needle, файл, функция,
+/// число). `delete_by_act_id_in_tx` есть и у репозитория истории, поэтому его needle
+/// квалифицирован получателем.
+const MOVEMENT_ERASER_CALLS: [(&str, &str, &str, usize); 5] = [
+    (
+        "place_movements_repo.delete_by_act_id_in_tx(",
+        ACT_SERVICE,
+        "delete_soft_with_choices",
+        3,
+    ),
+    (
+        "forget_group_move_rows_in_tx(",
+        GROUP_ACT_PLAN,
+        "revert_move_effect_in_tx",
+        1,
+    ),
+    ("forget_group_move_rows_in_tx(", ACT_SERVICE, "update", 1),
+    (
+        "forget_group_move_rows_in_tx(",
+        ACT_SERVICE,
+        "update_return_with_split",
+        1,
+    ),
+    (
+        "forget_act_entity_rows_in_tx(",
+        ACT_SERVICE,
+        EXCLUSION_HELPER_FN,
+        1,
+    ),
+];
+
+/// Нарушения инвентаря функций репозитория перемещений, стирающих или переписывающих строки.
+fn movement_eraser_method_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some((_, code)) = sources.iter().find(|(r, _)| r == MOVEMENTS_REPO) else {
+        return vec![format!("{MOVEMENTS_REPO}: нет в дереве")];
+    };
+    let found = writing_methods(code, &MOVEMENT_ERASE_SQL, None);
+    for name in &found {
+        if !MOVEMENT_ERASER_METHODS.iter().any(|(n, _)| n == name) {
+            out.push(format!(
+                "{MOVEMENTS_REPO}::{name} стирает/переписывает place_movements без вердикта (UAT-2)"
+            ));
+        }
+    }
+    for (name, _) in MOVEMENT_ERASER_METHODS {
+        if !found.iter().any(|f| f == name) {
+            out.push(format!(
+                "строка реестра {name} больше не стирает place_movements"
+            ));
+        }
+    }
+    out
+}
+
+/// Нарушения реестра вызовов стирателей: вызов без строки, разошедшееся число, строка без
+/// вызова. Сырой SQL удаления/переписывания вне репозитория — тоже нарушение.
+fn movement_eraser_call_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut needles: Vec<&str> = MOVEMENT_ERASER_CALLS.iter().map(|(n, ..)| *n).collect();
+    needles.sort();
+    needles.dedup();
+    for (rel, code) in sources
+        .iter()
+        .filter(|(r, _)| r.starts_with("crates/") && r != MOVEMENTS_REPO)
+    {
+        if MOVEMENT_ERASE_SQL.iter().any(|m| code.contains(m)) {
+            out.push(format!(
+                "{rel}: сырой DELETE/UPDATE place_movements вне репозитория"
+            ));
+        }
+        for needle in &needles {
+            for (f, n) in occurrences_by_fn(code, needle) {
+                match MOVEMENT_ERASER_CALLS
+                    .iter()
+                    .find(|(cn, cf, cfn, _)| cn == needle && cf == rel && *cfn == f)
+                {
+                    None => out.push(format!(
+                        "{rel}::{f}: {needle} ({n}) без строки реестра (UAT-2)"
+                    )),
+                    Some((_, _, _, want)) if *want != n => {
+                        out.push(format!("{rel}::{f}: {needle} {n}, в реестре {want}"))
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    for (needle, file, func, want) in MOVEMENT_ERASER_CALLS {
+        let got = sources
+            .iter()
+            .find(|(r, _)| r == file)
+            .map_or(0, |(_, code)| call_lines_in_fn(code, needle, func).len());
+        if got == 0 {
+            out.push(format!(
+                "{file}::{func}: строка реестра {needle} ({want}) без вызова"
+            ));
+        }
+    }
+    out
+}
+
+/// Пути правки, исключающие позицию (UAT-2): (файл, функция). Каждый зовёт помощника
+/// забывания ровно раз и раньше вывода из группы с movement_id (D-25).
+const EDIT_EXCLUSION_SITES: [(&str, &str); 2] = [
+    (ACT_SERVICE, "update"),
+    (ACT_SERVICE, "update_return_with_split"),
+];
+const EXCLUSION_HELPER_FN: &str = "forget_excluded_device_movements_in_tx";
+const EXCLUSION_HELPER: &str = "forget_excluded_device_movements_in_tx(";
+const FORGET_ENTITY: &str = "forget_act_entity_rows_in_tx(";
+const AFTER_MOVEMENT: &str = "ReleaseHistory::AfterMovement(";
+/// Аргумент возвратной строки: «откуда» решает итог забывания (настоящее изменение или нет).
+const RETURN_FROM_PIN: &str = "return_from_place(";
+
+/// Нарушения порядка исключения позиции: в пути правки помощник (забывание строк акта ->
+/// возвратная строка с «откуда» из итога забывания) стоит раньше вывода из группы с
+/// movement_id (D-25); в помощнике забывание раньше возвратной строки.
+fn edit_exclusion_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some((_, code)) = sources.iter().find(|(r, _)| r == ACT_SERVICE) else {
+        return vec![format!("{ACT_SERVICE}: нет в дереве")];
+    };
+    for (_, func) in EDIT_EXCLUSION_SITES {
+        let helpers = call_lines_in_fn(code, EXCLUSION_HELPER, func);
+        let releases = call_lines_in_fn(code, AFTER_MOVEMENT, func);
+        if helpers.len() != 1 || releases.len() != 1 {
+            out.push(format!(
+                "{func}: вызовов {EXCLUSION_HELPER} {} и выводов с movement_id {} (нужно по 1)",
+                helpers.len(),
+                releases.len()
+            ));
+            continue;
+        }
+        if helpers[0] > releases[0] {
+            out.push(format!(
+                "{func}: вывод из группы (строка {}) раньше возвратной строки (D-25)",
+                releases[0] + 1
+            ));
+        }
+    }
+    let lines: Vec<&str> = code.lines().collect();
+    let forgets = call_lines_in_fn(code, FORGET_ENTITY, EXCLUSION_HELPER_FN);
+    let Some(&f) = forgets.first() else {
+        out.push(format!("{EXCLUSION_HELPER_FN}: нет забывания строк акта"));
+        return out;
+    };
+    let Some(m) = call_lines_in_fn(code, "record_movement_if_applicable(", EXCLUSION_HELPER_FN)
+        .into_iter()
+        .find(|m| *m > f)
+    else {
+        out.push(format!(
+            "{EXCLUSION_HELPER_FN}: после забывания нет возвратной строки"
+        ));
+        return out;
+    };
+    let args: String = lines[m..]
+        .iter()
+        .take_while(|l| !l.contains(')') || l.contains(','))
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !args.contains(RETURN_FROM_PIN) {
+        out.push(format!(
+            "{EXCLUSION_HELPER_FN}: возвратная строка без `{RETURN_FROM_PIN}` — пишется и без настоящего изменения"
+        ));
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Порядок D-25: перемещение РАНЬШЕ события
 // ---------------------------------------------------------------------------
 
@@ -1796,10 +2000,14 @@ fn history_write_sites_mutation_edit_path_silence_turns_red() {
     let sources = prod_sources();
     let act = raw_of(ACT_SERVICE);
     // (1) правка акта выводит устройство «тихо»
-    let m1 = act.replacen("ReleaseHistory::Default,", "ReleaseHistory::Suppressed,", 1);
+    let m1 = act.replacen(
+        "ReleaseHistory::AfterMovement(excluded_movement_id),",
+        "ReleaseHistory::Suppressed,",
+        1,
+    );
     assert_ne!(
         m1, act,
-        "якорь ReleaseHistory::Default в act_service найден"
+        "якорь ReleaseHistory::AfterMovement в act_service найден"
     );
     let v = silent_mode_violations(&with_source(&sources, ACT_SERVICE, &m1));
     assert!(
@@ -1948,5 +2156,114 @@ fn history_write_sites_nesting_event_after_group_move() {
     assert!(
         !nesting_order_violations(&ms).is_empty(),
         "событие вложения раньше переноса места не покраснило проверку"
+    );
+}
+
+/// UAT-2: стиратели place_movements инвентаризованы от репозитория, вызовы — по функциям,
+/// исключение позиции правкой держит порядок «забыть -> вернуть -> вывести» (D-25).
+#[test]
+fn history_write_sites_movement_erasers_match_registry() {
+    let sources = prod_sources();
+    let v = movement_eraser_method_violations(&sources);
+    assert!(v.is_empty(), "стиратели репозитория перемещений: {v:#?}");
+    let v = movement_eraser_call_violations(&sources);
+    assert!(v.is_empty(), "вызовы стирателей перемещений: {v:#?}");
+    let v = edit_exclusion_violations(&sources);
+    assert!(v.is_empty(), "исключение позиции правкой: {v:#?}");
+    for (name, reason) in MOVEMENT_ERASER_METHODS {
+        assert!(
+            reason.chars().count() >= 40,
+            "вердикт {name} короче 40 символов"
+        );
+    }
+}
+
+/// UAT-2: мутации реального исходника краснят гейт — снятый вызов помощника в пути правки,
+/// снятое забывание, возвратная строка без итога забывания, вывод без movement_id, новый
+/// стиратель в репозитории, сырой SQL в сервисе.
+#[test]
+fn history_write_sites_mutation_movement_erasers_turn_red() {
+    let sources = prod_sources();
+    let act = raw_of(ACT_SERVICE);
+    let code = production_code(act);
+    // (1) снятый вызов помощника в каждом пути правки
+    for (_, func) in EDIT_EXCLUSION_SITES {
+        let lines = call_lines_in_fn(&code, EXCLUSION_HELPER, func);
+        assert_eq!(lines.len(), 1, "{func}: якорь {EXCLUSION_HELPER} уникален");
+        let mut raw_lines: Vec<String> = act.lines().map(String::from).collect();
+        let before = raw_lines[lines[0]].clone();
+        raw_lines[lines[0]] = before.replacen(EXCLUSION_HELPER, "noop_removed(", 1);
+        assert_ne!(raw_lines[lines[0]], before, "{func}: мутация применена");
+        let ms = with_source(&sources, ACT_SERVICE, &raw_lines.join("\n"));
+        assert!(
+            edit_exclusion_violations(&ms)
+                .iter()
+                .any(|m| m.starts_with(&format!("{func}:"))),
+            "{func}: снятый вызов помощника не покраснил гейт"
+        );
+    }
+    // (2) снятое забывание в помощнике
+    let lines = call_lines_in_fn(&code, FORGET_ENTITY, EXCLUSION_HELPER_FN);
+    assert_eq!(lines.len(), 1, "якорь {FORGET_ENTITY} в помощнике уникален");
+    let mut raw_lines: Vec<String> = act.lines().map(String::from).collect();
+    let before = raw_lines[lines[0]].clone();
+    raw_lines[lines[0]] = before.replacen(FORGET_ENTITY, "noop_removed(", 1);
+    assert_ne!(raw_lines[lines[0]], before, "мутация забывания применена");
+    let ms = with_source(&sources, ACT_SERVICE, &raw_lines.join("\n"));
+    assert!(
+        movement_eraser_call_violations(&ms)
+            .iter()
+            .any(|m| m.contains(EXCLUSION_HELPER_FN)),
+        "снятое забывание не покраснило реестр вызовов"
+    );
+    assert!(
+        !edit_exclusion_violations(&ms).is_empty(),
+        "снятое забывание не покраснило порядок исключения"
+    );
+    // (3) возвратная строка без итога забывания (пишется всегда, как до UAT-2)
+    let pin = "forgotten.return_from_place(current_place),";
+    assert_eq!(act.matches(pin).count(), 1, "якорь аргумента уникален");
+    let m3 = act.replacen(pin, "current_place,", 1);
+    let v = edit_exclusion_violations(&with_source(&sources, ACT_SERVICE, &m3));
+    assert!(
+        v.iter().any(|m| m.contains(RETURN_FROM_PIN)),
+        "возвратная строка без итога забывания не покраснила гейт: {v:?}"
+    );
+    // (4) вывод из группы без movement_id возвратной строки
+    let anchor = "ReleaseHistory::AfterMovement(excluded_movement_id),";
+    assert_eq!(
+        act.matches(anchor).count(),
+        2,
+        "якорь вывода — по одному на путь"
+    );
+    let m4 = act.replacen(anchor, "ReleaseHistory::Default,", 1);
+    let v = edit_exclusion_violations(&with_source(&sources, ACT_SERVICE, &m4));
+    assert!(
+        v.iter().any(|m| m.starts_with("update:")),
+        "вывод без movement_id не покраснил гейт: {v:?}"
+    );
+    // (5) новый стиратель в репозитории без вердикта
+    let repo = raw_of(MOVEMENTS_REPO);
+    let m5 = format!(
+        "{repo}\nfn sneaky(tx: &Transaction<'_>) {{ tx.execute(\"DELETE FROM place_movements\", []); }}\n"
+    );
+    assert!(
+        movement_eraser_method_violations(&with_source(&sources, MOVEMENTS_REPO, &m5))
+            .iter()
+            .any(|m| m.contains("sneaky")),
+        "новый стиратель без вердикта не покраснил гейт"
+    );
+    // (6) сырой DELETE в сервисе
+    let m6 = act.replacen(
+        "    let movements = SqlitePlaceMovementsRepository;\n",
+        "    let movements = SqlitePlaceMovementsRepository;\n    let _x = tx.execute(\"DELETE FROM place_movements WHERE act_id = 1\", []);\n",
+        1,
+    );
+    assert_ne!(m6, act, "якорь сырого SQL найден");
+    assert!(
+        movement_eraser_call_violations(&with_source(&sources, ACT_SERVICE, &m6))
+            .iter()
+            .any(|m| m.contains("сырой")),
+        "сырой DELETE place_movements в сервисе не покраснил гейт"
     );
 }

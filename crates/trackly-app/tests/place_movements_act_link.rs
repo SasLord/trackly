@@ -129,9 +129,8 @@ async fn count_movements_for_entities(
 }
 
 /// Read the LATEST `place_movements` row for a single `(entity_type='device',
-/// entity_id)` — used by the CR-01 regression tests below, where an act edit
-/// records a SECOND row on top of the one created at handover/return time and
-/// only the newest one is under test.
+/// entity_id)` — used by the UAT-2 edit tests below to check the surviving
+/// position's own row.
 async fn latest_movement_for_device(
     readers: Arc<trackly_infra::db::pools::ReaderPool>,
     device_id: i64,
@@ -478,17 +477,15 @@ async fn place_movements_act_undo_deletes() {
 }
 
 // ---------------------------------------------------------------------------
-// place_movements_act_edit_remove_records_reversion (CR-01 gap closure)
+// place_movements_act_edit_remove_forgets_act_rows (UAT-2, пересматривает CR-01)
 // ---------------------------------------------------------------------------
 
-/// Editing an already-created handover act to drop one device must record
-/// the resulting place reversion, not just mutate `devices.place_id` silently
-/// (CR-01). `create` moves the device place_a -> place_b (recorded); `update`
-/// then drops the device, which `restore_from_snapshot_in_tx` reverts back to
-/// place_a — a SECOND real place->place change that must get its own
-/// `place_movements` row, linked to the SAME act (the edit, not a new act).
+/// UAT-2 (решение пользователя, D-24): строки перемещений акта живут, пока жива позиция.
+/// `create` перемещает устройство place_a -> place_b; правка снимает позицию, снимок
+/// возвращает place_a, и строка акта по устройству УДАЛЯЕТСЯ — возвратной строки нет,
+/// устройство «не перемещалось». Строка оставшейся позиции жива.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn place_movements_act_edit_remove_records_reversion() {
+async fn place_movements_act_edit_remove_forgets_act_rows() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let place_a = seed_place(&svc.writer, "Каб. 501").await;
@@ -565,44 +562,37 @@ async fn place_movements_act_edit_remove_records_reversion() {
             .expect("update: remove dev_id from the act, keep kept_id")
             .expect_created("update: remove dev_id from the act, keep kept_id");
 
-        // CR-01: the reversion b -> a must now be recorded too, linked to
-        // the SAME act (this was an edit of the handover, not a new act).
+        // UAT-2: ни строки акта, ни возвратной строки по снятой позиции.
         assert_eq!(
             count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
-            2,
-            "CR-01: removing a device from an act edit must record the place reversion"
+            0,
+            "UAT-2: снятая правкой позиция не оставляет строк перемещений"
         );
-
+        assert_eq!(
+            count_movements_for_act(svc.readers.clone(), handover.id).await,
+            1,
+            "строка оставшейся позиции жива"
+        );
         let (source, from_place_id, to_place_id, act_id) =
-            latest_movement_for_device(svc.readers.clone(), dev_id).await;
-        assert_eq!(source, "act");
+            latest_movement_for_device(svc.readers.clone(), kept_id).await;
         assert_eq!(
-            from_place_id, place_b,
-            "reversion starts where the device was IN the act"
+            (source.as_str(), from_place_id, to_place_id, act_id),
+            ("act", place_a, place_b, Some(handover.id))
         );
-        assert_eq!(
-            to_place_id, place_a,
-            "reversion lands back at the pre-act place"
-        );
-        assert_eq!(act_id, Some(handover.id));
     })
     .await
-    .expect("place_movements_act_edit_remove_records_reversion exceeded 30s budget");
+    .expect("place_movements_act_edit_remove_forgets_act_rows exceeded 30s budget");
 }
 
 // ---------------------------------------------------------------------------
-// place_movements_return_edit_unreturn_records_reversion (CR-01 gap closure)
+// place_movements_return_edit_unreturn_forgets_return_rows (UAT-2, пересматривает CR-01)
 // ---------------------------------------------------------------------------
 
-/// Editing an existing RETURN act to un-return one device must likewise
-/// record the resulting place reversion (CR-01's second code path,
-/// `ActService::update_return`). Device starts at place_a (handover is a
-/// same-place no-op), `do_return` moves it to place_b (recorded), then
-/// `update_return` un-returns it, which restores it back to place_a — a
-/// second real place->place change that must get its own row, linked to the
-/// return act being edited.
+/// UAT-2, второй путь (`ActService::update_return`): передача на месте place_a (строк нет),
+/// возврат перемещает оба устройства в place_b, правка возврата снимает одно. Его строка
+/// возврата УДАЛЯЕТСЯ, возвратной строки нет; строка оставшейся позиции жива.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn place_movements_return_edit_unreturn_records_reversion() {
+async fn place_movements_return_edit_unreturn_forgets_return_rows() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let place_a = seed_place(&svc.writer, "Склад №6").await;
@@ -709,27 +699,24 @@ async fn place_movements_return_edit_unreturn_records_reversion() {
             .await
             .expect("update_return: un-return dev_id, keep kept_id");
 
-        // CR-01: the reversion b -> a must now be recorded, linked to the
-        // return act being edited.
+        // UAT-2: ни строки возврата, ни возвратной строки по снятой позиции.
         assert_eq!(
             count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
-            2,
-            "CR-01: un-returning a device via act edit must record the place reversion"
+            0,
+            "UAT-2: снятая правкой возврата позиция не оставляет строк перемещений"
         );
-
+        assert_eq!(
+            count_movements_for_act(svc.readers.clone(), ret.id).await,
+            1,
+            "строка оставшейся позиции возврата жива"
+        );
         let (source, from_place_id, to_place_id, act_id) =
-            latest_movement_for_device(svc.readers.clone(), dev_id).await;
-        assert_eq!(source, "act");
+            latest_movement_for_device(svc.readers.clone(), kept_id).await;
         assert_eq!(
-            from_place_id, place_b,
-            "reversion starts at the returned-to place"
+            (source.as_str(), from_place_id, to_place_id, act_id),
+            ("act", place_a, place_b, Some(ret.id))
         );
-        assert_eq!(
-            to_place_id, place_a,
-            "reversion lands back at the pre-return place"
-        );
-        assert_eq!(act_id, Some(ret.id));
     })
     .await
-    .expect("place_movements_return_edit_unreturn_records_reversion exceeded 30s budget");
+    .expect("place_movements_return_edit_unreturn_forgets_return_rows exceeded 30s budget");
 }

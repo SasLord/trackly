@@ -1150,6 +1150,93 @@ async fn update_removing_whole_group_returns_it_to_the_old_place() {
     .await;
 }
 
+// UAT-2 (D-24): убраны все позиции переехавшей группы — у акта нет строк перемещений ни по
+// группе, ни по её составу, ни обратного переноса: группа «не перемещалась». Строка оставшейся
+// позиции жива, ссылок событий на удалённые строки нет.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_removing_whole_group_leaves_no_act_movements() {
+    timed(async {
+        let (ctx, _dir) = make_test_ctx().await;
+        let a = seed_place(&ctx, "Склад А").await;
+        let b = seed_place(&ctx, "Склад Б").await;
+        let solo = seed_device(&ctx, dev("Ноутбук #1", Some(a), None)).await;
+        let arm = seed_arm(&ctx, a).await;
+        let mut all = vec![solo];
+        all.extend(&arm.devices);
+        let act = create_ok(&ctx, dto("UAT2-G", &all, Some(b), false)).await;
+        assert!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 AND group_id = ?2",
+                vec![int(act), int(arm.group)],
+            )
+            .await
+                > 0,
+            "предусловие: перенос группы записан строками акта"
+        );
+
+        update_ok(&ctx, act, &[solo], false).await;
+
+        assert_eq!(group_place(&ctx, arm.group).await, Some(a), "группа вернулась");
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements WHERE act_id = ?1 AND group_id = ?2",
+                vec![int(act), int(arm.group)],
+            )
+            .await,
+            0,
+            "ни переноса, ни обратного переноса группы актом"
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements WHERE entity_type = 'group' AND entity_id = ?1",
+                vec![int(arm.group)],
+            )
+            .await,
+            0,
+            "в журнале группы пусто"
+        );
+        for d in &arm.devices {
+            assert_eq!(
+                scalar_i64(
+                    &ctx,
+                    "SELECT COUNT(*) FROM place_movements \
+                     WHERE entity_type = 'device' AND entity_id = ?1",
+                    vec![int(*d)],
+                )
+                .await,
+                0,
+                "член снятой группы не перемещался"
+            );
+        }
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM place_movements \
+                 WHERE act_id = ?1 AND entity_type = 'device' AND entity_id = ?2",
+                vec![int(act), int(solo)],
+            )
+            .await,
+            1,
+            "строка оставшейся позиции жива"
+        );
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM history_events e WHERE e.movement_id IS NOT NULL \
+                 AND NOT EXISTS (SELECT 1 FROM place_movements m WHERE m.id = e.movement_id)",
+                vec![],
+            )
+            .await,
+            0,
+            "событий со ссылкой на удалённую строку нет"
+        );
+    })
+    .await;
+}
+
 // (u3) убрана одна позиция переехавшей группы: устройство выведено, след release записан.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn update_removing_one_of_moved_group_releases_it_and_records_the_effect() {
