@@ -21,7 +21,6 @@ pub mod health;
 pub mod history;
 pub mod number_templates;
 pub mod organization;
-pub mod place_movements;
 pub mod places;
 pub mod printers;
 pub mod repairs;

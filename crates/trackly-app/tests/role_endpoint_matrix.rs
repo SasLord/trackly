@@ -141,11 +141,9 @@
 //! one Tauri Case (per the IN-02 lesson above — Case 45-48's own precedent —
 //! a gate proven on only one transport is a real, previously-shipped gap in
 //! this codebase).
-//! 52. Manager session (HTTP) → POST /api/v1/place_movements_get_timeline →
-//!     not 401/403; Employee session (HTTP) → same → 403 Forbidden
-//!     (Action::ReadPlaces, D-12).
-//! 53. Manager Identity (Tauri path) → build_place_movements_get_timeline →
-//!     Ok; Employee Identity → same → Err(AppError::Forbidden).
+//! 52–53. (R8-02, quick 261123-vn3) Эндпоинт `place_movements_get_timeline` удалён как мёртвый —
+//!     UI читает ленту через `history_get_timeline` (его ворота — кейсы ниже); номера
+//!     не переиспользуются.
 //! 54. Manager session (HTTP) → POST /api/v1/reports_list_movements → 200;
 //!     Employee session (HTTP) → same → 403 Forbidden.
 //! 55. Manager Identity (Tauri path) → build_reports_list_movements → Ok;
@@ -220,6 +218,9 @@ use trackly_app::dto::request::RequestCreateDto;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_app::tauri_cmds::cartridges::{
+    build_cartridges_operation_default_place, build_cartridges_to_refill_last_send,
+};
 use trackly_app::tauri_cmds::devices::{build_devices_create, build_devices_update};
 use trackly_app::tauri_cmds::history::build_history_get_timeline;
 use trackly_app::tauri_cmds::number_templates::{
@@ -229,7 +230,6 @@ use trackly_app::tauri_cmds::number_templates::{
     build_number_templates_list_by_context, build_number_templates_peek_next,
     build_number_templates_update_mask,
 };
-use trackly_app::tauri_cmds::place_movements::build_place_movements_get_timeline;
 use trackly_app::tauri_cmds::places::{
     build_places_archive, build_places_create, build_places_delete, build_places_move,
     build_places_move_subtree_contents, build_places_rename, build_places_set_path_variant,
@@ -2065,87 +2065,9 @@ async fn role_endpoint_matrix_test() {
             );
         }
 
-        // =====================================================================
-        // Case 52 (Phase 40 Plan 14, HST-02, D-12/IN-02): Manager session
-        // (HTTP) → POST /api/v1/place_movements_get_timeline → not 401/403;
-        // Employee session (HTTP) → same endpoint → 403 Forbidden.
-        // `build_place_movements_get_timeline` (Plan 40-10) gates on
-        // `Action::ReadPlaces` (Admin|Manager). A nonexistent entity_id is
-        // fine — the gate fires before any DB lookup (same pattern as Case 45
-        // / Case 31), so this is a genuine success path, not an error the
-        // Employee-deny half would be riding on.
-        // =====================================================================
-        {
-            let timeline_payload = json!({ "entityType": "device", "entityId": 999_999 });
-
-            let status = post_with_cookie(
-                new_app!(),
-                "/api/v1/place_movements_get_timeline",
-                timeline_payload.clone(),
-                Some(&manager_cookie),
-            )
-            .await;
-            assert!(
-                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
-                "Case 52: Manager → place_movements_get_timeline → expected not 401/403, got {status}"
-            );
-
-            let status = post_with_cookie(
-                new_app!(),
-                "/api/v1/place_movements_get_timeline",
-                timeline_payload,
-                Some(&employee_cookie),
-            )
-            .await;
-            assert_eq!(
-                status,
-                StatusCode::FORBIDDEN,
-                "Case 52: Employee → place_movements_get_timeline → expected 403 \
-                 (Action::ReadPlaces, D-12), got {status}"
-            );
-        }
-
-        // =====================================================================
-        // Case 53 (Phase 40 Plan 14, HST-02, D-12/IN-02): Manager Identity
-        // (Tauri path) → build_place_movements_get_timeline (the exact
-        // function the #[tauri::command] wrapper delegates to) → Ok;
-        // Employee Identity → same call → Err(AppError::Forbidden). Mirrors
-        // Case 52 on the second transport — the IN-02 lesson this plan
-        // exists to prevent: a gate proven on only one transport is a real,
-        // previously-shipped gap in this codebase.
-        // =====================================================================
-        {
-            let manager_id = Identity {
-                user_id: Some(manager_dto.id),
-                role: Role::Manager,
-            };
-            let employee_id = Identity {
-                user_id: Some(employee_dto.id),
-                role: Role::Employee,
-            };
-
-            let result =
-                build_place_movements_get_timeline(&ctx, &manager_id, "device".to_string(), 999_999)
-                    .await;
-            assert!(
-                result.is_ok(),
-                "Case 53: Manager (Tauri path) → build_place_movements_get_timeline → \
-                 expected Ok, got {result:?}"
-            );
-
-            let result = build_place_movements_get_timeline(
-                &ctx,
-                &employee_id,
-                "device".to_string(),
-                999_999,
-            )
-            .await;
-            assert!(
-                matches!(result, Err(AppError::Forbidden)),
-                "Case 53: Employee (Tauri path) → build_place_movements_get_timeline → \
-                 expected Err(AppError::Forbidden), got {result:?}"
-            );
-        }
+        // Cases 52/53 (R8-02, quick 261123-vn3): эндпоинт `place_movements_get_timeline`
+        // удалён вместе с маршрутом и Tauri-командой; ворота ReadPlaces для ленты места
+        // держит `history_get_timeline`.
 
         // =====================================================================
         // Case 54 (Phase 40 Plan 14, HST-04, D-12/IN-02): Manager session
@@ -2572,6 +2494,61 @@ async fn role_endpoint_matrix_test() {
             assert!(
                 status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
                 "Case 63: Manager → cartridges_to_refill_last_send → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 63a/63b (WARNING-01 фазы 40, quick 261123-vn3): Tauri-половина Cases 60-63 —
+        // `build_cartridges_operation_default_place` / `build_cartridges_to_refill_last_send`
+        // (функции, которые делегируют Tauri-обёртки). Employee → Forbidden, Manager → не
+        // Forbidden: инвариант T-40-28 «оба транспорта» для двух поздних эндпоинтов.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+            let employee_id = Identity {
+                user_id: Some(employee_dto.id),
+                role: Role::Employee,
+            };
+
+            let result = build_cartridges_operation_default_place(
+                &ctx,
+                &employee_id,
+                "from_refill".to_string(),
+                None,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 63a: Employee (Tauri path) → build_cartridges_operation_default_place → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+            let result = build_cartridges_operation_default_place(
+                &ctx,
+                &manager_id,
+                "from_refill".to_string(),
+                None,
+            )
+            .await;
+            assert!(
+                !matches!(result, Err(AppError::Forbidden)),
+                "Case 63a: Manager (Tauri path) → build_cartridges_operation_default_place → \
+                 expected not Forbidden, got {result:?}"
+            );
+
+            let result = build_cartridges_to_refill_last_send(&ctx, &employee_id).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 63b: Employee (Tauri path) → build_cartridges_to_refill_last_send → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+            let result = build_cartridges_to_refill_last_send(&ctx, &manager_id).await;
+            assert!(
+                !matches!(result, Err(AppError::Forbidden)),
+                "Case 63b: Manager (Tauri path) → build_cartridges_to_refill_last_send → \
+                 expected not Forbidden, got {result:?}"
             );
         }
 
@@ -7256,7 +7233,6 @@ fn http_routes_covered_by_role_matrix() {
         include_str!("../src/http/health.rs"),
         include_str!("../src/http/number_templates.rs"),
         include_str!("../src/http/organization.rs"),
-        include_str!("../src/http/place_movements.rs"),
         include_str!("../src/http/places.rs"),
         include_str!("../src/http/printers.rs"),
         include_str!("../src/http/repairs.rs"),
