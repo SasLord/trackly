@@ -185,7 +185,8 @@
    *  строку). Стёртое поле — это ПРАВКА (D-14): ни WS-инвалидация, ни смена
    *  контекста в режиме D-14 не заполняют его заново. Любая программная
    *  подстановка/очистка сбрасывает флаг. */
-  let clearedByUser = false;
+  // $state (WR-09, 40.4): isValueUnedited() читает флаг внутри эффекта.
+  let clearedByUser = $state(false);
 
   function setValueProgrammatically(next: string) {
     clearedByUser = false;

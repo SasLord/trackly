@@ -257,6 +257,18 @@
       ? loadDeviceCreateDefaults(authStore.user?.id)
       : { placeId: null, statusId: null },
   );
+  // R7-05 (долг v1.4): терминальный и ремонтный статусы не запоминаются и не
+  // подставляются как умолчание нового устройства — определяем по code
+  // справочника, не по id. «На списание» входит сознательно: это очередь на
+  // списание, умолчанием для нового устройства она быть не должна.
+  const NON_REMEMBERED_STATUS_CODES: readonly string[] = ['списано'];
+  function isRememberableStatus(id: number | null): boolean {
+    if (id === null) return false;
+    const code = statusById(id)?.code;
+    // Неизвестный справочнику id (справочник ещё не загружен) — не запоминаем.
+    if (code === undefined) return false;
+    return !isRepairExemptStatusCode(code) && !NON_REMEMBERED_STATUS_CODES.includes(code);
+  }
   let rememberedStatusApplied = false;
   $effect(() => {
     if (rememberedStatusApplied || presetStatusCode || rememberedDefaults.statusId === null) return;
@@ -266,6 +278,8 @@
     // Пользователь уже выбрал сам — не перетираем.
     if (statusId !== '') return;
     if (statusById(rememberedDefaults.statusId) === undefined) return;
+    // Запомненное прежними версиями «Списано»/ремонтный статус игнорируется.
+    if (!isRememberableStatus(rememberedDefaults.statusId)) return;
     statusId = String(rememberedDefaults.statusId);
   });
   function rememberCreateDefaults() {
@@ -274,7 +288,10 @@
     if (originGroup !== null) return;
     saveDeviceCreateDefaults(authStore.user?.id, {
       placeId,
-      statusId: statusId === '' ? null : parseInt(statusId, 10),
+      statusId:
+        statusId !== '' && isRememberableStatus(parseInt(statusId, 10))
+          ? parseInt(statusId, 10)
+          : null,
     });
   }
   // Фаза 41.1 (D-16): происхождение — ссылка на запись разбора (не на
@@ -1428,6 +1445,13 @@
       />
     </div>
   </div>
+  {#if !isEdit && !readonly && quantity > 1 && inventoryNo.trim() !== ''}
+    <!-- WR-08 (40.4): при «Количество» > 1 инвентарный номер не передаётся —
+         не молчим об этом, поле остаётся серым с прежним значением. -->
+    <p class="qty-note" role="status">
+      При количестве больше 1 инвентарный номер не задаётся: устройства создадутся без номера.
+    </p>
+  {/if}
 
   <!-- 5. Optional: Модель (with autocomplete, contextual) -->
   <div class="field">
@@ -1859,6 +1883,12 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--tr-space-2xs);
+  }
+
+  .qty-note {
+    margin: 0;
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
   }
 
   .hint-chip {
