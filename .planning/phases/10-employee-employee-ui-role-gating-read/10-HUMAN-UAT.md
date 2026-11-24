@@ -1,9 +1,10 @@
 ---
-status: partial
+status: accepted
 phase: 10-employee-employee-ui-role-gating-read
 source: [10-VERIFICATION.md]
 started: 2026-06-21
 updated: 2026-06-21
+status_note: "partial → accepted (quick-261124-umn, 2026-11-24): 2 сценария (рендер в LAN-браузере) построчно не отмечены; веха v1.1 закрыта 2026-06-26, принято при закрытии; milestones/v1.1-MILESTONE-AUDIT.md (status tech_debt) и STATE.md «Deferred Items». Не закрыто: подтверждения нет"
 ---
 
 ## Current Test

@@ -1,9 +1,10 @@
 ---
-status: diagnosed
+status: complete
 phase: 30-quality-a11y-platform-parity
 source: [30-01-SUMMARY.md, 30-02-SUMMARY.md, 30-04-SUMMARY.md, 30-05-SUMMARY.md, 30-06-SUMMARY.md, 30-REVIEW-FIX.md]
 started: 2026-07-25T00:00:00Z
 updated: 2026-07-25T10:00:00Z
+status_note: "diagnosed → complete (quick-261124-umn, 2026-11-24): 5 пробелов diagnosed закрыты: 30-VERIFICATION.md passed 2026-07-29 (UAT 30-03 подписан пользователем в обеих темах)"
 ---
 
 ## Current Test

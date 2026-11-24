@@ -1,9 +1,10 @@
 ---
-status: passed
+status: complete
 phase: 16-documents-html-print
 source: [16-VERIFICATION.md]
 started: "2026-07-05T10:35:00Z"
 updated: "2026-07-05T14:50:00Z"
+status_note: "passed → complete (quick-261124-umn, 2026-11-24): нормализация: passed 3/3"
 ---
 
 ## Current Test

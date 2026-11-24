@@ -1,9 +1,10 @@
 ---
-status: passed
+status: complete
 phase: 39-place-tree
 source: [39-20-PLAN.md checkpoint, deferred-items.md]
 started: 2026-08-25
 updated: 2026-08-26
+status_note: "passed → complete (quick-261124-umn, 2026-11-24): нормализация: passed 11/11"
 ---
 
 # UAT фазы 39 «Дерево мест»

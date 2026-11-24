@@ -1,9 +1,10 @@
 ---
 phase: 11-requests-employee-ux-gaps
 verified: 2026-06-22T00:20:28Z
-status: human_needed
+status: accepted
 score: 11/11 must-haves verified
 overrides_applied: 0
+status_note: "human_needed → accepted (quick-261124-umn, 2026-11-24): human-пункты — 11-HUMAN-UAT.md (accepted); веха v1.1 закрыта 2026-06-26, принято при закрытии; milestones/v1.1-MILESTONE-AUDIT.md (status tech_debt) и STATE.md «Deferred Items»"
 ---
 
 # Phase 11: Requests/Employee UX Gap-Closure Verification Report

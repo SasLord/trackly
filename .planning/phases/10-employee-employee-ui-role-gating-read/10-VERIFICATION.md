@@ -1,7 +1,7 @@
 ---
 phase: 10-employee-employee-ui-role-gating-read
 verified: 2026-06-21T11:10:00Z
-status: human_needed
+status: accepted
 score: 8/8 must-haves verified
 overrides_applied: 0
 re_verification:
@@ -19,6 +19,7 @@ human_verification:
   - test: "While logged in as employee, directly navigate via hash to each of the 8 forbidden routes (#/devices, #/acts, #/printers, #/cartridges, #/reports, #/users, #/settings, #/map) and confirm AccessDenied.svelte renders for every one (not the admin/manager target page, not a generic 404)."
     expected: "Every forbidden hash resolves to the 'Нет доступа' screen with the 'К заявкам' button returning to #/requests; attempting a 403-triggering action (e.g. a stale fetch to a gated endpoint) shows a toast 'Недостаточно прав для этого действия' without crashing the app or logging the user out."
     why_human: "employeeRoutes' catch-all '*' -> AccessDenied is confirmed at the source level (routes.ts), and client.ts's 403 toast branch is confirmed at the source level, but actual browser navigation behavior and toast rendering require a live session — no test runner exists to assert this programmatically."
+status_note: "human_needed → accepted (quick-261124-umn, 2026-11-24): human-пункты — 10-HUMAN-UAT.md (accepted); веха v1.1 закрыта 2026-06-26, принято при закрытии; milestones/v1.1-MILESTONE-AUDIT.md (status tech_debt) и STATE.md «Deferred Items»"
 ---
 
 # Phase 10: Ограничение роли employee — Verification Report

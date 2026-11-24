@@ -1,7 +1,7 @@
 ---
 phase: 16-documents-html-print
 verified: 2026-07-05T10:30:00Z
-status: human_needed
+status: passed
 score: 10/10 must-haves verified
 overrides_applied: 0
 human_verification:
@@ -14,6 +14,7 @@ human_verification:
   - test: "Edit templates/act_handover.html by hand (e.g. in Notepad) while the app is running, save, then re-generate the act without restarting"
     expected: "The new generation reflects the hand edit immediately (read-on-render, D-08)"
     why_human: "Requires interacting with a running instance and a real filesystem edit, not just unit-test-level TempDir manipulation"
+status_note: "human_needed → passed (quick-261124-umn, 2026-11-24): 3 human-пункта пройдены в 16-HUMAN-UAT.md (passed 3/3)"
 ---
 
 # Phase 16: documents-html-print Verification Report

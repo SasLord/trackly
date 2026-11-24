@@ -1,9 +1,10 @@
 ---
-status: passed
+status: complete
 phase: 07-reports-dashboard-settings
 source: [07-VERIFICATION.md]
 started: 2026-06-17
 updated: 2026-06-17
+status_note: "passed → complete (quick-261124-umn, 2026-11-24): нормализация вердикта passed: построчные отметки раунда 1 (13) не проставлялись; раунд 2 (R2-1..R2-6) passed, раунд 3 закрыт quick 260618-vtm"
 ---
 
 ## Current Test

@@ -1,9 +1,10 @@
 ---
-status: resolved
+status: complete
 phase: 41-groups-model-and-editor
 source: [41-VERIFICATION.md, 41-VALIDATION.md]
 started: 2026-10-04T23:00:58
 updated: 2026-11-24T00:00:00Z
+status_note: "resolved → complete (quick-261124-umn, 2026-11-24): нормализация: resolved — тест 24 закрыт (d0cf391a, стенд LAN 2026-11-24, коммит 19ceb1fc)"
 ---
 
 > Статус приведён к факту 2026-11-24 (quick-261124-u2k): единственный пробел (тест 24, счётчики

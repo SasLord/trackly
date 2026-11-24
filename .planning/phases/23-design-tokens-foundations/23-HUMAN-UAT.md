@@ -1,9 +1,10 @@
 ---
-status: passed
+status: complete
 phase: 23-design-tokens-foundations
 source: [23-VERIFICATION.md]
 started: 2026-07-18T00:00:00Z
 updated: 2026-07-18T00:00:00Z
+status_note: "passed → complete (quick-261124-umn, 2026-11-24): нормализация: passed 5/5"
 ---
 
 ## Current Test

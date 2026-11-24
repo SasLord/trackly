@@ -1,9 +1,10 @@
 ---
-status: resolved
+status: complete
 phase: 34-document-header
 source: [34-VERIFICATION.md]
 started: 2026-08-11T06:45:00Z
 updated: 2026-08-11T07:30:00Z
+status_note: "resolved → complete (quick-261124-umn, 2026-11-24): нормализация: resolved, 2/2 passed (пользователь 2026-08-11)"
 ---
 
 ## Current Test

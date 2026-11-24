@@ -1,10 +1,11 @@
 ---
-status: resolved
+status: complete
 phase: 40-movement-history
 source: [40-VERIFICATION.md]
 started: 2026-09-03T07:05:00Z
 updated: 2026-09-04T18:00:00Z
 build: 1.4.0-phase40 (draft, untagged-e8e506645b4ab18903ec)
+status_note: "resolved → complete (quick-261124-umn, 2026-11-24): нормализация: resolved — все замечания раундов 3–5 закрыты (итоговая таблица в файле; 40-VERIFICATION passed 20/20). Строки status: failed/open у отдельных UAT3/UAT4 — исторические, итог в таблице"
 ---
 
 ## Current Test

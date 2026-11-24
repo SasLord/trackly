@@ -1,9 +1,10 @@
 ---
-status: resolved
+status: complete
 phase: 17-html-krilla
 source: [17-VERIFICATION.md]
 started: 2026-07-07
 updated: 2026-07-07
+status_note: "resolved → complete (quick-261124-umn, 2026-11-24): нормализация: resolved, 3/3 passed"
 ---
 
 ## Current Test

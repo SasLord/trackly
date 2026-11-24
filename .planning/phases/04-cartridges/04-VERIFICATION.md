@@ -1,7 +1,7 @@
 ---
 phase: 04-cartridges
 verified: 2026-06-12T00:00:00Z
-status: human_needed
+status: passed
 score: 12/12 must-haves verified
 overrides_applied: 0
 deferred:
@@ -21,6 +21,7 @@ human_verification:
   - test: "Operaion Task 3 из 04-06-PLAN.md — полный сценарий human-verify checkpoint"
     expected: "Все 15 шагов сценария из PLAN 04-06 Task 3 выполняются успешно"
     why_human: "Это явный human-verify checkpoint из плана — ждёт ручного запуска приложения и подтверждения «approved»"
+status_note: "human_needed → passed (quick-261124-umn, 2026-11-24): 4 human-пункта пройдены в 04-HUMAN-UAT.md (passed 4/4, раунды 1–4)"
 ---
 
 # Phase 04: Картриджи — Verification Report

@@ -1,9 +1,10 @@
 ---
-status: passed
+status: complete
 phase: 04-cartridges
 source: [04-VERIFICATION.md, 04-06-PLAN.md]
 started: "2026-06-12T00:00:00Z"
 updated: "2026-06-12T00:00:00Z"
+status_note: "passed → complete (quick-261124-umn, 2026-11-24): нормализация: passed 4/4, 0 pending"
 ---
 
 ## Current Test

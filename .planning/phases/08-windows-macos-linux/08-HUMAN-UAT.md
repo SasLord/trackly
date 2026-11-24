@@ -1,9 +1,10 @@
 ---
-status: passed
+status: complete
 phase: 08-windows-macos-linux
 source: [08-VERIFICATION.md]
 started: 2026-06-19
 updated: 2026-06-19
+status_note: "passed → complete (quick-261124-umn, 2026-11-24): нормализация: passed 3/5, 2 skipped, 0 pending"
 ---
 
 ## Current Test

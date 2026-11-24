@@ -1,9 +1,10 @@
 ---
-status: testing
+status: complete
 phase: 05-auth-server-mode
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md, 05-04-SUMMARY.md, 05-05-SUMMARY.md, 05-06-SUMMARY.md]
 started: 2026-06-14T00:00:00Z
 updated: 2026-06-14T00:00:00Z
+status_note: "testing → complete (quick-261124-umn, 2026-11-24): статус testing устарел: в файле 11/11 pass, 0 pending"
 ---
 
 ## Current Test

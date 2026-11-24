@@ -1,9 +1,10 @@
 ---
-status: resolved
+status: complete
 phase: 40-movement-history
 source: [40-01-SUMMARY.md, 40-02-SUMMARY.md, 40-03-SUMMARY.md, 40-04-SUMMARY.md, 40-05-SUMMARY.md, 40-06-SUMMARY.md, 40-07-SUMMARY.md, 40-08-SUMMARY.md, 40-09-SUMMARY.md, 40-10-SUMMARY.md, 40-11-SUMMARY.md, 40-12-SUMMARY.md, 40-13-SUMMARY.md, 40-14-SUMMARY.md, 40-15-SUMMARY.md, 40-16-SUMMARY.md, 40-17-SUMMARY.md, 40-18-SUMMARY.md, 40-19-SUMMARY.md, 40-20-SUMMARY.md]
 started: 2026-09-02T15:37:51Z
 updated: 2026-11-24T00:00:00Z
+status_note: "resolved → complete (quick-261124-umn, 2026-11-24): нормализация: resolved — 6 пробелов закрыты (см. примечание u2k); тест 17 skipped, живая проверка перенесена в v1.5-DISCUSSION-SEEDS.md (е)"
 ---
 
 > Статус приведён к факту 2026-11-24 (quick-261124-u2k): все шесть пробелов `failed` закрыты планами
@@ -179,7 +180,7 @@ analysis: |
 
 ### 17. Сотрудник не видит историю и отчёт «Перемещения» (D-12)
 expected: Зайти под ролью «Сотрудник» (LAN-браузер). Секции истории перемещений в карточках нет, группы отчётов «Перемещения» нет, прямой вызов не отдаёт данные (403). Менеджер и админ видят всё.
-result: [pending]
+result: skipped — живьём не прогонялся; серверный отказ держит role_endpoint_matrix.rs (кейс 54). Живая проверка скрытия в UI перенесена в .planning/v1.5-DISCUSSION-SEEDS.md, раздел (е) (quick-261124-umn, 2026-11-24)
 
 ### 18. LAN-браузер: те же проверки после сборки UI (D-29)
 expected: Выполнить `pnpm --dir ui build`, открыть приложение в браузере из локальной сети под менеджером. Таймлайн в карточках устройства/картриджа/принтера и отчёт «Перемещения» работают так же, как в десктопе. Печать отчёта из браузера не ломает вёрстку страницы приложения (нет протечки print-каскада в DOM).
@@ -200,10 +201,10 @@ note: |
 ## Summary
 
 total: 18
-passed: 13
+passed: 12
 issues: 5
 pending: 0
-skipped: 0
+skipped: 1
 blocked: 0
 
 ## Gaps

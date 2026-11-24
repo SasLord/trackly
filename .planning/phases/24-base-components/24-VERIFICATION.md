@@ -1,7 +1,7 @@
 ---
 phase: 24-base-components
 verified: 2026-07-18T00:00:00Z
-status: gaps_found
+status: passed
 score: 5/8 must-haves verified
 overrides_applied: 0
 gaps:
@@ -46,6 +46,7 @@ human_verification:
   - test: "Быстро переключить тему light→dark→system несколько раз подряд, наблюдая Button/Tabs/Badge"
     expected: "Не должно быть видимого цветового 'размазывания' (D-09)"
     why_human: "Визуальный эффект transition; УЖЕ известно как FAILED по коду (см. gap #3), человеческая проверка подтвердит на глаз, но не изменит вердикт"
+status_note: "gaps_found → passed (quick-261124-umn, 2026-11-24): 3 пробела закрыты планами 24-08 (9da4af2c bind:value, 83055dbc D-09) и 24-09 (ee6f0f84 count-тона), доработка 24-13; human-подпись витрины — 24-11 (общее подтверждение пользователя, не построчно); 24-UAT.md complete"
 ---
 
 # Phase 24: Базовые компоненты — отчёт о верификации

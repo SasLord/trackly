@@ -1,7 +1,7 @@
 ---
 phase: 03-pdf
 verified: 2026-05-30T20:30:00Z
-status: human_needed
+status: accepted
 score: 16/16 requirements satisfied
 overrides_applied: 0
 re_verification:
@@ -37,6 +37,7 @@ human_verification:
   - test: "Manual UAT — ACT-13 cross-tx race на запущенной системе"
     expected: "Открыть два окна с одним handover-актом → в одном оформить полный возврат (success) → во втором (с устаревшим cache) попытаться оформить возврат тех же позиций → backend отвергает с понятным сообщением (HTTP 409 Conflict / AppError::Conflict «уже не в работе»); UI показывает toast/alert, не «тихое сохранение»."
     why_human: "Cross-tab race condition с реальной задержкой между cache-read и tx-write нельзя стабильно воспроизвести в integration test (тест моделирует двойной вызов внутри одного процесса)"
+status_note: "human_needed → accepted (quick-261124-umn, 2026-11-24): human-проверка выполнена в 03-UAT.md (complete): найденные issues ушли в фазу 03.1, ACT-13 blocked; веха v1.0 (фазы 1–8, отгружена 2026-06-19), принято при закрытии v1.1 2026-06-26; STATE.md «Deferred Items», milestones/v1.1-MILESTONE-AUDIT.md"
 ---
 
 # Phase 3: PDF + Acts Verification Report (Re-verified)
