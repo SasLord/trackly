@@ -21,6 +21,17 @@ export function makeRepeatTableHeadHandler(Handler: HandlerCtor) {
       this.savedThead = sourceThead ? sourceThead.cloneNode(true) : null;
     }
 
+    // Шапку снимаем с разобранного содержимого (afterParsed; в beforeParsed
+    // приходит ещё HTML-строка), а не только с `document`: в
+    // LAN-печати (PdfPreviewModal → printViaTopLevel) HTML акта ещё не в DOM,
+    // когда Previewer конструирует обработчики, — снимок из конструктора
+    // пуст, и шапка не повторялась (стенд LAN v1.4, D7).
+    afterParsed(parsed: Pick<HTMLElement, 'querySelector'>) {
+      if (typeof parsed?.querySelector !== 'function') return;
+      const thead = parsed.querySelector('table.appendix-table thead');
+      if (thead) this.savedThead = thead.cloneNode(true);
+    }
+
     afterPageLayout(pageElement: HTMLElement) {
       if (!this.savedThead) return;
       pageElement.querySelectorAll('table.appendix-table').forEach((table) => {

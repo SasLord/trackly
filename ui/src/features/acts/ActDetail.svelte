@@ -122,7 +122,6 @@
               <li>Акт возврата #{rid}</li>
             {/each}
           </ul>
-          <p class="hint">Подробная история появится в plan 03.</p>
         </DetailSection>
       {/if}
     {/if}
@@ -155,10 +154,5 @@
     padding-left: var(--tr-space-xl);
     color: var(--tr-text-primary);
     line-height: 1.6;
-  }
-  .hint {
-    margin-top: var(--tr-space-2xs);
-    color: var(--tr-text-tertiary);
-    font-size: var(--tr-font-size-label);
   }
 </style>

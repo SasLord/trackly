@@ -65,6 +65,13 @@
       this.savedThead = sourceThead ? sourceThead.cloneNode(true) : null;
     }
 
+    // Зеркало repeatTableHeadHandler.ts: снимок с разбираемого содержимого.
+    afterParsed(parsed) {
+      if (!parsed || typeof parsed.querySelector !== 'function') return;
+      var thead = parsed.querySelector('table.appendix-table thead');
+      if (thead) this.savedThead = thead.cloneNode(true);
+    }
+
     afterPageLayout(pageElement) {
       if (!this.savedThead) return;
       var savedThead = this.savedThead;
