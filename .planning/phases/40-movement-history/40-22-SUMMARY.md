@@ -73,7 +73,7 @@ Each task was committed atomically:
 
 ## Decisions Made
 
-See `key-decisions` in frontmatter. Notably: the fallback is scoped to `is_storage=1` places only (not "any prior place"), matching the user's product decision recorded in `.planning/debug/return-to-stock-empty-place-field.md` that auto-return should restore a cartridge to its last known *warehouse* location.
+See `key-decisions` in frontmatter. Notably: the fallback is scoped to `is_storage=1` places only (not "any prior place"), matching the user's product decision recorded in `.planning/debug/resolved/return-to-stock-empty-place-field.md` that auto-return should restore a cartridge to its last known *warehouse* location.
 
 ## Deviations from Plan
 

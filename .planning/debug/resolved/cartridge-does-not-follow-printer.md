@@ -1,8 +1,11 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Установленный в принтер картридж не следует за принтером при смене места принтера, и сама установка не даёт записи перемещения."
 created: 2026-09-03T00:00:00Z
 updated: 2026-09-03T00:00:00Z
+resolved_at: 2026-11-24  # статус приведён к факту (quick-261124-umn); исправление в main
+fixed_by: "b370e0d4, 95a81fc9 (план 40-21), 0dcd8e03 (план 40-23)"
+confirmed_by: "40-UAT.md тест 5 — resolved; 40-VERIFICATION.md passed 20/20"
 ---
 
 ## Current Focus

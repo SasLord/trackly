@@ -1,8 +1,11 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Клик по ссылке документа в таймлайне перемещений открывает не тот подраздел раздела «Акты» и не выделяет строку."
 created: 2026-09-03T00:00:00Z
 updated: 2026-09-03T00:00:00Z
+resolved_at: 2026-11-24  # статус приведён к факту (quick-261124-umn); исправление в main
+fixed_by: "29655512, f4baf26f (план 40-24)"
+confirmed_by: "40-UAT.md тест 7 — resolved; 40-VERIFICATION.md passed 20/20"
 ---
 
 ## Current Focus

@@ -1,8 +1,11 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "grouped-device-list-place-inversion — В сгруппированном списке устройств колонка «Место» показывает путь у строки-группы и прочерк у самих устройств"
 created: 2026-09-03
 updated: 2026-09-03
+resolved_at: 2026-11-24  # статус приведён к факту (quick-261124-umn); исправление в main
+fixed_by: "1145eda7, fa006236 (план 40-26)"
+confirmed_by: "40-UAT.md тест 13 (колонка «Место») — resolved; 40-VERIFICATION.md passed 20/20"
 ---
 
 ## Current Focus

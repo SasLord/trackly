@@ -1,8 +1,11 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Печать отчёта «Перемещения» из LAN-браузера добавляет третий лист — дубликат первого; из десктопа та же печать работает верно."
 created: 2026-09-03T00:00:00Z
 updated: 2026-09-03T13:10:00Z
+resolved_at: 2026-11-24  # статус приведён к факту (quick-261124-umn); исправление в main
+fixed_by: "08e56c25 (UAT3-02); ранее d411a1f0 (план 40-27)"
+confirmed_by: "40-HUMAN-UAT.md раунд 3: UAT3-02 закрыто живым прогоном; 40-UAT.md тест 18 — resolved"
 ---
 
 ## Current Focus

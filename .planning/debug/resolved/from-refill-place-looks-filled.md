@@ -1,8 +1,11 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "UAT5-02: в диалоге «Получение с заправки» у картриджа без истории места поле «Место» ВЫГЛЯДИТ заполненным, но при отправке валидация говорит «Заполните это поле»."
 created: 2026-09-04T13:38:47Z
 updated: 2026-09-04T14:01:41Z
+resolved_at: 2026-11-24  # статус приведён к факту (quick-261124-umn); исправление в main
+fixed_by: "c8e9940b (подсказка), d67c6d1f (резолвер источника)"
+confirmed_by: "40-HUMAN-UAT.md UAT5-02 — resolved, живой UAT пользователя на Windows 2026-09-04"
 ---
 
 ## Current Focus

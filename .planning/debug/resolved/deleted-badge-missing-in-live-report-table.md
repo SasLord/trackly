@@ -1,8 +1,11 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Маркер «удалено» (D-25) присутствует в экспорте CSV/PDF отчёта «Перемещения», но не отображается в живой таблице отчёта внутри приложения."
 created: 2026-09-03T00:00:00Z
 updated: 2026-09-03T00:00:00Z
+resolved_at: 2026-11-24  # статус приведён к факту (quick-261124-umn); исправление в main
+fixed_by: "99f067ec (план 40-25)"
+confirmed_by: "40-UAT.md тест 13 (бейдж) — resolved; 40-VERIFICATION.md passed 20/20"
 ---
 
 ## Current Focus

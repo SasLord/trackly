@@ -246,7 +246,7 @@ blocked: 0
     - "Согласовать с решением по D-06: на принтерах без места каскад иначе будет молчать"
     - "Сделать поле «Место» при установке необязательным"
     - "Добавить обратную запись devices.place_id, когда у принтера места нет, а пользователь указал место картриджу"
-  debug_session: ".planning/debug/cartridge-does-not-follow-printer.md"
+  debug_session: ".planning/debug/resolved/cartridge-does-not-follow-printer.md"
 
 - truth: "Клик по ссылке документа в таймлайне открывает нужный подраздел Актов (Акты / Возвраты / Архив) и выделяет нужную строку в списке"
   status: resolved
@@ -278,7 +278,7 @@ blocked: 0
     - "ActsPage: при initialFocusId вывести вкладку из act_type/archived, не дублируя правило baseFilter третьей копией"
     - "place_movement_service: звать format_act_number вместо SELECT number"
     - "Тест на номер возврата: «20в» при одном возврате и «20в2» при нескольких"
-  debug_session: ".planning/debug/timeline-act-link-wrong-subsection.md"
+  debug_session: ".planning/debug/resolved/timeline-act-link-wrong-subsection.md"
 
 - truth: "Бейдж «Удалено» (D-25) виден в живой таблице отчёта «Перемещения» в приложении, а не только в экспорте"
   status: resolved
@@ -305,7 +305,7 @@ blocked: 0
     - "Передавать reportType={reportTypeKey()} (проп используется ровно в одном месте) либо ввести отдельный проп reportDomain по образцу ReportFilters"
     - "Гейт ui/scripts/check-*.mjs: строка-литерал в showDeletedBadge обязана входить в множество значений reportTypeKey() — иначе расхождение «экран vs экспорт» снова пройдёт все компиляционные проверки молча"
   test: 13
-  debug_session: ".planning/debug/deleted-badge-missing-in-live-report-table.md"
+  debug_session: ".planning/debug/resolved/deleted-badge-missing-in-live-report-table.md"
 
 - truth: "В сгруппированном списке устройств колонка «Место» показывает место у каждого устройства, а у строки-группы — только когда оно одинаково у всех её устройств"
   status: resolved
@@ -344,7 +344,7 @@ blocked: 0
     - "(A) Проверить, не питают ли списочные ячейки другие «не-списочные» пути"
     - "(B) Добавить COUNT(DISTINCT COALESCE(d.place_id, -1)) AS place_distinct_count в три ветки list_grouped, протянуть до DeviceGroup симметрично condition_distinct_count, при значении > 1 не отдавать место у repr"
     - "Интеграционный тест уровня репозитория: устройство с местом через list_by_ids несёт непустой place_path_short; плюс тест на неоднородную группу. Структурный JS-гейт check-place-path-short.mjs этот класс не ловит по построению"
-  debug_session: ".planning/debug/grouped-device-list-place-inversion.md"
+  debug_session: ".planning/debug/resolved/grouped-device-list-place-inversion.md"
 
 - truth: "Операция «Возвращён на склад» проставляет картриджу складское место, и это перемещение фиксируется в истории"
   status: resolved
@@ -390,7 +390,7 @@ blocked: 0
     - "Поверх — quick-pick складских мест из cartridge_storage_place_ids по образцу ReturnModal"
     - "Решить, вводить ли на уровне домена семантику «оставить место прежним» — PlacePicker её не имеет, null сейчас двусмыслен"
     - "Накопленный эффект: в dev-БД 12 из 15 картриджей без места, 8 из них со статусом «На складе»"
-  debug_session: ".planning/debug/return-to-stock-empty-place-field.md"
+  debug_session: ".planning/debug/resolved/return-to-stock-empty-place-field.md"
 
 - truth: "Первая установка картриджа в принтер наблюдаема в истории перемещений"
   status: wontfix_by_decision
@@ -440,4 +440,4 @@ blocked: 0
     - "In-flight guard в handlePrint + disabled/спиннер на кнопке на время пагинации"
     - "Не регистрировать RepeatTableHeadHandler повторно при каждом вызове"
     - "Попутные риски (не причина, зафиксировать): _header.html эмитит <style> внутри <body>, а printViaTopLevel собирает только head > style; #act-print-root с height:auto рвёт цепочку height:100% из печатного base-CSS Paged.js"
-  debug_session: ".planning/debug/lan-print-duplicate-first-page.md"
+  debug_session: ".planning/debug/resolved/lan-print-duplicate-first-page.md"
