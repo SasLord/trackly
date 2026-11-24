@@ -424,3 +424,10 @@ _Depth: standard_
   svelte-check 0 ошибок · pnpm lint PASS · сборка успешна.
 
 - **WR-01, WR-02, INFO-01, INFO-02 — не исправлялись**, вынесены в долг вехи.
+
+## Отметки закрытого (quick-261124-u2k, 2026-11-24)
+
+- **WR-01** ✓ закрыто — a101b4d7 (quick 261123-vn6): «Обновить» в `PlaceTree` вызывает `refreshTree()` (новое поколение, сброс `statsCache`), проверено 2026-11-24 (quick-261124-u2k).
+- **WR-02** ✓ закрыто — a101b4d7 (vn6): `searchSeq` и сверка запроса в `PlacePicker`/`PlaceTree`, проверено 2026-11-24 (quick-261124-u2k).
+- **IN-01** ✓ закрыто — 353eb57f (quick 261121-heg): `PlaceTreeNodeDto` удалён, в `crates/` и `ui/src` ссылок нет, проверено 2026-11-24 (quick-261124-u2k).
+- **IN-02** — перенесено в обсуждение v1.5 (quick 261123-vn5: кириллицу `lower()`/`NOCASE` SQLite не сворачивают) — `.planning/v1.5-DISCUSSION-SEEDS.md`.
