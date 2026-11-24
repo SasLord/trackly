@@ -1,10 +1,17 @@
 ---
-status: diagnosed
+status: resolved
 phase: 40-movement-history
 source: [40-01-SUMMARY.md, 40-02-SUMMARY.md, 40-03-SUMMARY.md, 40-04-SUMMARY.md, 40-05-SUMMARY.md, 40-06-SUMMARY.md, 40-07-SUMMARY.md, 40-08-SUMMARY.md, 40-09-SUMMARY.md, 40-10-SUMMARY.md, 40-11-SUMMARY.md, 40-12-SUMMARY.md, 40-13-SUMMARY.md, 40-14-SUMMARY.md, 40-15-SUMMARY.md, 40-16-SUMMARY.md, 40-17-SUMMARY.md, 40-18-SUMMARY.md, 40-19-SUMMARY.md, 40-20-SUMMARY.md]
 started: 2026-09-02T15:37:51Z
-updated: 2026-09-03T21:05:00Z
+updated: 2026-11-24T00:00:00Z
 ---
+
+> Статус приведён к факту 2026-11-24 (quick-261124-u2k): все шесть пробелов `failed` закрыты планами
+> gap-closure фазы и подтверждены `40-VERIFICATION.md` (passed, 20/20, раунды живой UAT 3–5):
+> тест 5 — 40-21/40-23; тест 7 — 40-24; тест 13 (бейдж «Удалено») — 40-25; тест 13 (колонка «Место»
+> в свёртке) — 40-26; тест 16 — 40-22/40-23; тест 18 (LAN-печать) — 08e56c25 (UAT3-02). Хвост:
+> тест 17 (сотрудник) живьём не прогонялся — серверный отказ держит `role_endpoint_matrix.rs`
+> (кейс 54, `reports_list_movements` → 403 для Employee), скрытие в UI вживую не записано.
 
 ## Current Test
 
@@ -204,7 +211,8 @@ blocked: 0
 <!-- root_cause / artifacts / missing заполнены параллельными debug-агентами 2026-09-03 -->
 
 - truth: "Установка картриджа в принтер и последующее перемещение принтера фиксируются в истории перемещений картриджа; место картриджа следует за местом привязанного принтера"
-  status: failed
+  status: resolved
+  fixed_by: "планы 40-21, 40-23; подтверждено 40-VERIFICATION.md (passed) — проверено 2026-11-24 (quick-261124-u2k)"
   reason: |
     User reported: установка картриджа в принтер не создаёт записи перемещения; при смене
     места принтера запись появляется только у принтера. В списке картриджей место старое.
@@ -241,7 +249,8 @@ blocked: 0
   debug_session: ".planning/debug/cartridge-does-not-follow-printer.md"
 
 - truth: "Клик по ссылке документа в таймлайне открывает нужный подраздел Актов (Акты / Возвраты / Архив) и выделяет нужную строку в списке"
-  status: failed
+  status: resolved
+  fixed_by: "план 40-24; подтверждено 40-VERIFICATION.md (passed) — проверено 2026-11-24 (quick-261124-u2k)"
   reason: |
     User reported: у записи о возврате ссылка ведёт на исходный акт передачи; архивный акт
     открывается в подразделе «Акты», карточка детали открывается, строка не выделяется.
@@ -272,7 +281,8 @@ blocked: 0
   debug_session: ".planning/debug/timeline-act-link-wrong-subsection.md"
 
 - truth: "Бейдж «Удалено» (D-25) виден в живой таблице отчёта «Перемещения» в приложении, а не только в экспорте"
-  status: failed
+  status: resolved
+  fixed_by: "план 40-25; подтверждено 40-VERIFICATION.md (passed) — проверено 2026-11-24 (quick-261124-u2k)"
   reason: |
     User reported: в экспорте PDF суффикс «(удалено)» проставляется, в таблице отчёта
     внутри приложения бейдж не отображается.
@@ -298,7 +308,8 @@ blocked: 0
   debug_session: ".planning/debug/deleted-badge-missing-in-live-report-table.md"
 
 - truth: "В сгруппированном списке устройств колонка «Место» показывает место у каждого устройства, а у строки-группы — только когда оно одинаково у всех её устройств"
-  status: failed
+  status: resolved
+  fixed_by: "план 40-26; подтверждено 40-VERIFICATION.md (passed) — проверено 2026-11-24 (quick-261124-u2k)"
   reason: |
     User reported: инверсия — у строки-группы показывается реальный путь, а у устройств
     внутри группы прочерк.
@@ -336,7 +347,8 @@ blocked: 0
   debug_session: ".planning/debug/grouped-device-list-place-inversion.md"
 
 - truth: "Операция «Возвращён на склад» проставляет картриджу складское место, и это перемещение фиксируется в истории"
-  status: failed
+  status: resolved
+  fixed_by: "планы 40-22, 40-23; подтверждено 40-VERIFICATION.md (passed) — проверено 2026-11-24 (quick-261124-u2k)"
   reason: |
     User reported: часть операций с картриджем не попадает в «Перемещения». Уточнение:
     при замене пользователь СОЗНАТЕЛЬНО не заполнил место для снимаемого картриджа, ожидая
@@ -398,7 +410,8 @@ blocked: 0
   debug_session: ""
 
 - truth: "Печать отчёта «Перемещения» из LAN-браузера даёт тот же результат, что и из десктопа"
-  status: failed
+  status: resolved
+  fixed_by: "коммит 08e56c25 (UAT3-02); подтверждено 40-VERIFICATION.md (passed) — проверено 2026-11-24 (quick-261124-u2k)"
   reason: |
     User reported: предпросмотр показывает корректные 2 страницы, но при отправке на принтер
     или сохранении в PDF появляется третий лист — дубликат первого. Из десктопного

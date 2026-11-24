@@ -1,10 +1,16 @@
 ---
-status: diagnosed
+status: resolved
 phase: 41-groups-model-and-editor
 source: [41-VERIFICATION.md, 41-VALIDATION.md]
 started: 2026-10-04T23:00:58
-updated: 2026-10-06T20:10:00Z
+updated: 2026-11-24T00:00:00Z
 ---
+
+> Статус приведён к факту 2026-11-24 (quick-261124-u2k): единственный пробел (тест 24, счётчики
+> «Отчётов» по LAN) закрыт в коде — маршрут `/api/v1/reports_get_report_counts` (d0cf391a,
+> quick 261121-hei), `spa_fallback` отвечает 404 на `/api/*` (Фаза 41.7, F17), гейт паритета
+> маршрутов `http_route_parity.rs`. Отдельной живой перепроверки счётчиков по LAN не записано
+> (hei — UNVERIFIED в своём SUMMARY).
 
 ## Current Test
 
@@ -141,7 +147,9 @@ blocked: 0
   root_cause: "Не баг бэкенда: по D-13 пустое свойство удаляется физически. Дефект — копирайт «Скрыть»/«можно вернуть» для необратимого действия"
 
 - truth: "Счётчики на вкладках «Отчётов» показывают реальные числа в обоих транспортах"
-  status: failed
+  status: resolved
+  fixed_by: "d0cf391a (quick 261121-hei: маршрут счётчиков + гейт http_route_parity); spa_fallback 404 для /api/* — Фаза 41.7 (F17)"
+  verified_by: "код и тесты (report_requests.rs, http_route_parity.rs, role_endpoint_matrix.rs); живая перепроверка по LAN не записана — проверено 2026-11-24 (quick-261124-u2k)"
   reason: |
     User reported: только по LAN через браузер все счётчики вкладок «Отчётов»
     равны 0 (Устройства/Картриджи/Заявки/Перемещения); в десктопе верно.

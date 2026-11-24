@@ -1469,19 +1469,18 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-2 pending — `/gsd-capture --list` для просмотра.
+1 pending — `/gsd-capture --list` для просмотра.
 
-- **2026-08-08 — Rework act templates: единая шапка + переработка тела акта приёма-передачи**
-  (`.planning/todos/pending/2026-08-08-rework-act-templates-shared-header-handover-body-redesign.md`).
-  ⚠️ Доработанная пользователем шапка лежит только в `target/debug/templates/` (gitignored,
-  умрёт от `cargo clean`) — переносить в `crates/trackly-app/templates/` первым делом.
-  Размер задачи — фаза, не quick.
+- **2026-11-21 — Хвост WR-02 ревью 41.7: сервисные методы с несколькими `writer.execute`
+  (транзакционный редизайн) + живая UAT остановки сервера**
+  (`.planning/todos/pending/2026-11-21-wr02-multi-execute-transactional.md`). Правка WR-02 —
+  смягчение (DRAIN_GRACE 3 с), а не устранение; полное закрытие — редизайн нескольких сервисных
+  методов, объём фазы. → обсуждение v1.5 (см. `.planning/v1.5-DISCUSSION-SEEDS.md`).
 
-- **2026-09-23 — Редактирование сетевых параметров принтера (IP / SNMP community)**
-  (`.planning/todos/pending/2026-09-23-printer-network-params-editable.md`). Сквозная фича на
-  6 слоёв — `PrinterRepo` вообще не имеет метода обновления сетевых параметров; найдено во время
-  живого чекпоинта 40.3-07. Пользователь явно выбрал отдельную фазу после закрытия 40.3, не
-  заплатку внутри 40.3-07. Размер задачи — фаза (`/gsd-spec-phase`), не quick.
+Сняты 2026-11-24 (quick-261124-u2k), оба лежат в `.planning/todos/completed/` с полем `resolved`
+(перенесены коммитом 1a665bd7): 2026-08-08 rework act templates — закрыт Фазами 34–36 вехи v1.3.3
+(resolved 2026-08-19); 2026-09-23 сетевые параметры принтера — закрыт Фазой 41.13, планы
+41.13-09…12 (resolved 2026-11-05).
 
 ### Blockers/Concerns
 
@@ -1492,10 +1491,12 @@ Spike-зоны, требующие внимания во время планир
 - **Phase 6:** host-side механизм для Pantum hang detection — local agent vs remote WMI/RPC (требует реального BM5100ADN, ~неделя)
 - **Phase 8:** валидация LDAP-bind против реального Windows Server 2022 с channel binding enforced (½ дня с реальным DC)
 - Phase 36: real-print, LAN-транспорт end-to-end, print-DOM isolation (SC#4), N=1 один лист (SC#1) — явно отложено пользователем 2026-08-13, НЕ пройдено. Нужна отдельная UAT-сессия перед закрытием фазы.
-- 39-11: cargo test -p trackly-app --lib fails to compile (missing 'places' field in AppCtx test fixtures in http/health.rs:126 and tauri_cmds/health.rs:142, introduced by Plan 39-05, never backfilled) — blocks unit tests, unrelated to 39-22's integration-test scope
-- 40.2-01 (D-15): cargo test -p trackly-infra имеет 16 красных тестов (acts_sqlite::increment_counter_returns_one_first + 15x cartridges_sqlite::*) — «no such table: counters», ожидаемо после DROP TABLE counters в V041; чинится планами 40.2-06 (акты) и 40.2-07 (картриджи/фотобарабаны)
-- 40.3-03: живая UAT-проверка тоста возврата (шаблон номеров, cargo tauri dev) не выполнена — статус UNVERIFIED, шаги воспроизведения в 40.3-03-SUMMARY.md
-- 40.3-05: живая проверка «Завести принтер» через DeviceFormModal НЕ выполнена (чекпоинт закрыт авто-approve AUTO_MODE) — требуется human UAT перед закрытием фазы 40.3-audit-debt, шаги см. 40.3-05-SUMMARY.md
+- Сняты 2026-11-24 (quick-261124-u2k, сверка по коду и git log): блокер 39-11 — поле `places`
+  в фикстурах AppCtx `http/health.rs` и `tauri_cmds/health.rs` на месте (aea1a6e7); блокер 40.2-01 —
+  тесты trackly-infra к таблице `counters` больше не обращаются (только проверка её отсутствия),
+  планы 40.2-06/07 исполнены (92d54159, 487ceb6c), сплошные прогоны после того зелёные; блокеры
+  40.3-03 и 40.3-05 — живые проверки пройдены в раунде 2 верификации фазы
+  (`40.3-VERIFICATION.md`, раздел «Human Verification — Closed This Round», планы 40.3-07/08).
 - 41.11-12 (снято 2026-10-19): сплошной прогон AR-25 ЗЕЛЁНЫЙ с третьей попытки (CHAIN_EXIT=0, 184 бинарника, 1929 passed, 0 failed, 4 ч 30 мин, SHA 35b86fd5); регрессия entities_changed_gate закрыта 196c1071.
 
 ### Явные решения по приватности
