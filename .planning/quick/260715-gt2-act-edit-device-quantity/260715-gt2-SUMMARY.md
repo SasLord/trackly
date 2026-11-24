@@ -50,6 +50,7 @@ requirements-completed: []
 # Metrics
 duration: 20min
 completed: 2026-07-15
+status: complete
 ---
 
 # Quick Task 260715-gt2: Allow qty>1 for newly-added positions when editing an act

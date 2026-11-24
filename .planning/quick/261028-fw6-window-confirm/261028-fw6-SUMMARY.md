@@ -25,6 +25,7 @@ key-decisions:
 requirements-completed: [QUICK-261028-fw6]
 duration: ~25 мин
 completed: 2026-10-28
+status: complete
 ---
 
 # Quick 261028-fw6: подтверждение удаления акта в собственном окне

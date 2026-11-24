@@ -32,6 +32,7 @@ requirements-completed: []
 # Metrics
 duration: 2min
 completed: 2026-08-19
+status: complete
 ---
 
 # Quick Task 260819-vit: Showcase page scroll fix Summary

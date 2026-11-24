@@ -37,6 +37,7 @@ requirements-completed: []
 # Metrics
 duration: 25min
 completed: 2026-07-04
+status: complete
 ---
 
 # Quick Task 260704-uw3: Auto-upgrade bundled default act templates on existing DBs Summary

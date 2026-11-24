@@ -26,6 +26,7 @@ requirements-completed: []
 
 duration: ~20min
 completed: 2026-07-18
+status: complete
 ---
 
 # Quick Task 260718-x8t: Segmented-вариант вкладок обжимает подложку по содержимому Summary

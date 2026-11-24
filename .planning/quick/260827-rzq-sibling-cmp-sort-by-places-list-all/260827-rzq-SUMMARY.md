@@ -35,6 +35,7 @@ requirements-completed: [RZQ-01, RZQ-02, RZQ-03]
 
 duration: ~90min
 completed: 2026-08-27
+status: complete
 ---
 
 # Quick 260827-rzq: sibling_cmp total-order fix Summary

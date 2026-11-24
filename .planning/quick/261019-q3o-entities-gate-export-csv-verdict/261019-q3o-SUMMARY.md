@@ -8,6 +8,7 @@ key-files:
     - crates/trackly-app/tests/entities_support/registry.rs
 metrics:
   completed: 2026-10-19
+status: complete
 ---
 
 # Quick 261019-q3o: вердикт ReadOnly для export_csv_with_limit

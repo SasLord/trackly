@@ -32,6 +32,7 @@ requirements-completed: [VFG-01]
 # Metrics
 duration: 5min
 completed: 2026-08-19
+status: complete
 ---
 
 # Quick Task 260819-vfg: Объединение вкладок «Хранилище» и «Бэкапы» Summary

@@ -38,6 +38,7 @@ requirements-completed: [WK1-01, WK1-02]
 # Metrics
 duration: 26min
 completed: 2026-08-06
+status: complete
 ---
 
 # Quick Task 260806-wk1: Admin-login ФИО sync Summary

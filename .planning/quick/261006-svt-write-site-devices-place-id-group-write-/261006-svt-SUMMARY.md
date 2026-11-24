@@ -11,6 +11,7 @@ metrics:
   tasks: 3
   files: 1
   tests: "group_write_sites: 30 passed, 0 failed"
+status: complete
 ---
 
 # Quick 261006-svt: полный инвентарь-гейт write-site'ов devices.place_id

@@ -1,3 +1,8 @@
+---
+quick_id: 261107-jcg
+status: complete
+---
+
 # Quick 261107-jcg: A-WR-01 — вход планировщика = состав act_items
 
 **One-liner:** в `ActService::create` планировщик групп получает через хелпер `create_item_device_ids` ровно те устройства, что станут позициями акта; лишний `device_id` вне непустого `device_ids` больше не двигает и не выводит из состава свою группу.

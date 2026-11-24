@@ -44,6 +44,7 @@ requirements-completed: [WQ5-01, WQ5-02, WQ5-03, WQ5-04]
 
 duration: ~55min (active coding + task-scoped test runs); full-workspace regression run (cargo test -p trackly-core -p trackly-infra -p trackly-app, all 87 trackly-app integration binaries) was started but killed by the environment after ~50min mid-run and not completed — see Issues Encountered
 completed: 2026-08-20
+status: complete
 ---
 
 # Quick Task 260819-wq5: Порог низкого остатка — выбор базы подсчёта Summary

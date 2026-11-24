@@ -42,6 +42,7 @@ requirements-completed: [UI3-01, UI3-02]
 
 duration: ~25min (Tasks 1-2; Task 3 is a blocking human-verify checkpoint, not yet resolved)
 completed: 2026-08-27
+status: complete
 ---
 
 # Quick 260827-ui3: Configurable place-path display variant Summary

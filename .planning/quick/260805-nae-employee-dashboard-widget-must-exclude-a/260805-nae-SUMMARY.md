@@ -33,6 +33,7 @@ requirements-completed: [NAE-01]
 # Metrics
 duration: 8min
 completed: 2026-08-05
+status: complete
 ---
 
 # Quick Task 260805-nae: Employee dashboard widget must exclude ad_register Summary

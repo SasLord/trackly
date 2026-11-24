@@ -65,6 +65,7 @@ requirements-completed: [VAD-01, VAD-02, VAD-03, VAD-04]
 # Metrics
 duration: ~90min
 completed: 2026-08-21
+status: complete
 ---
 
 # Quick Task 260820-vad: Домен «Заявки» в разделе «Отчёты» Summary

@@ -39,6 +39,7 @@ requirements-completed: [D-28]
 # Metrics
 duration: ~45min
 completed: 2026-08-26
+status: complete
 ---
 
 # Quick Task 260826-rbe: Extend D-28 subtree place filter to cartridges/requests Summary

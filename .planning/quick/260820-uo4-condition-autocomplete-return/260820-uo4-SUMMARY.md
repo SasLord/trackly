@@ -38,6 +38,7 @@ requirements-completed: [UO4-01, UO4-02]
 # Metrics
 duration: 12min
 completed: 2026-08-20
+status: complete
 ---
 
 # Quick Task 260820-uo4: Автокомплит «Состояния» со стандартными дефолтами Summary

@@ -58,6 +58,7 @@ requirements-completed: []
 # Metrics
 duration: 15min
 completed: 2026-07-19
+status: complete
 ---
 
 # Quick Task 260719-ocq: Закрыть BL-01 — унифицировать сброс drill-in состояния между openPanel() и handleInput()

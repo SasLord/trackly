@@ -30,6 +30,7 @@ requirements-completed: [LRS-01]
 # Metrics
 duration: 6min
 completed: 2026-08-05
+status: complete
 ---
 
 # Quick 260805-lrs: Employee header full name uses available width Summary

@@ -22,6 +22,7 @@ decisions:
 metrics:
   duration: ~10 min
   completed: "2026-07-02"
+status: complete
 ---
 
 # Quick Task 260702-vtf-01: ChartWidget grouped bar chart with Y-axis and tooltip

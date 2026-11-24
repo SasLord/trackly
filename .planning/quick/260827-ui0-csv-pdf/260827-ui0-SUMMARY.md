@@ -33,6 +33,7 @@ requirements-completed: [UI0-01, UI0-02]
 
 duration: ~20min
 completed: 2026-08-27
+status: complete
 ---
 
 # Quick Task 260827-ui0: Fix broken CSV export in Reports Summary

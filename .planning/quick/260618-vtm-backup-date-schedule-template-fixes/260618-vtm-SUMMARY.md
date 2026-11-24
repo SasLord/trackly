@@ -26,6 +26,7 @@ decisions:
 metrics:
   duration: 2 min
   completed: 2026-06-18
+status: complete
 ---
 
 # Phase quick-260618-vtm Plan 01: Backup date / schedule / template fixes Summary

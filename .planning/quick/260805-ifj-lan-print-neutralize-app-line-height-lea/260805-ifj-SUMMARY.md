@@ -36,6 +36,7 @@ requirements-completed: [IFJ-01]
 # Metrics
 duration: ~15min
 completed: 2026-08-05
+status: complete
 ---
 
 # Quick Task 260805-ifj: Neutralize app line-height leak in LAN print Summary

@@ -34,6 +34,7 @@ requirements-completed: [THX-01, THX-02, THX-03]
 
 duration: 5min
 completed: 2026-08-19
+status: complete
 ---
 
 # Phase 260819-thx: Три точечных UI-фикса в разделе «Картриджи» Summary

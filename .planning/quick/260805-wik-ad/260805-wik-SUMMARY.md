@@ -40,6 +40,7 @@ requirements-completed: [WIK-01, WIK-02]
 # Metrics
 duration: ~30min
 completed: 2026-08-05
+status: complete
 ---
 
 # Quick Task 260805-wik: AD active-user ФИО sync Summary

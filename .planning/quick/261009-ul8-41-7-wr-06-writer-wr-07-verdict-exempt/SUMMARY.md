@@ -24,6 +24,7 @@ metrics:
   tests_before: 34
   tests_after: 49
   registry_rows: "118 (31 Broadcasts / 21 Exempt / 66 ReadOnly), unchanged"
+status: complete
 ---
 
 # Quick 261009-ul8: WR-06 / WR-07 registry gate strengthening Summary

@@ -34,6 +34,7 @@ requirements-completed: [UBV-01, UBV-02]
 
 duration: ~15min
 completed: 2026-08-19
+status: complete
 ---
 
 # Quick 260819-ubv: Фильтр моделей + однострочная ячейка «Модель» Summary

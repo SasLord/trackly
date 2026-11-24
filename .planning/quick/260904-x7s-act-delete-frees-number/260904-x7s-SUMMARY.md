@@ -42,6 +42,7 @@ requirements-completed: [X7S-01, X7S-02]
 # Metrics
 duration: ~25min
 completed: 2026-09-05
+status: complete
 ---
 
 # Quick Task 260904-x7s: Удаление акта освобождает номер Summary
