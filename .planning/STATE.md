@@ -1,33 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Карта и осмысленное размещение
-status: Awaiting next milestone
-last_updated: "2026-11-25T00:00:00Z"
-last_activity: 2026-11-25 — Milestone v1.4 completed and archived
+milestone: v1.5
+milestone_name: Trackly Link — клиент и Чат
+status: planning
+last_updated: "2026-11-25T16:35:27.349Z"
+last_activity: 2026-11-25
 progress:
-  total_phases: 23
-  completed_phases: 23
-  total_plans: 443
-  completed_plans: 443
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-25 after v1.4 milestone)
+See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** веха v1.4 закрыта; следующая — v1.5 (описывает пользователь, `/gsd-new-milestone`), кандидаты — `.planning/v1.5-DISCUSSION-SEEDS.md`
+**Current focus:** веха v1.5 «Trackly Link — клиент и Чат» — определение требований и дорожной карты
 
 ## Current Position
 
-Phase: Milestone v1.4 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-25 — Milestone v1.4 completed and archived
+Status: Defining requirements
+Last activity: 2026-11-25 — Milestone v1.5 started
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
