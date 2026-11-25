@@ -477,17 +477,24 @@ Capability: `"permissions": ["core:default", "window-state:default"]`.
 | A10 | CSP `connect-src 'self' ipc: http://ipc.localhost` достаточна в WebView2 | tauri.conf | Белый экран/ошибки IPC; проверить первой сборкой Windows |
 | A11 | `identifier` `org.trackly.link` приемлем | Tauri | Менять нельзя после первой раскатки - подтвердить |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Канонический путь установки: `...\Programs\Trackly Link` (D-09) или штатный `...\Trackly Link`?**
    - Известно: штатно Tauri кладёт без `Programs`; `/D=` переопределяет. Неизвестно: предпочтение пользователя для AppLocker-правил.
    - Рекомендация: оставить D-09 (`/D=` в скрипте GPO), зафиксировать в ADR; пилот проверит.
+   - RESOLVED: D-09 — `%LOCALAPPDATA%\Programs\Trackly Link` через `/D=` в скрипте тихой установки; ADR 0005 (план 42-03), скрипт и чек-лист (план 42-04).
 2. **Как ограничить охват `svelte-check`/eslint на packages?** Решается спайком в первом плане (A4).
+   - RESOLVED: спайк плана 42-09 подключает eslint/svelte-check к `packages/`; гейты обязаны покрывать пакеты.
 3. **Допустимы ли данные Link (`window-state`) в `%APPDATA%`?** Ожидаемо да (не portable); подтвердить у пользователя.
+   - RESOLVED (оркестратор, 2026-11-26): да — portable-правило относится к серверу/десктопу Trackly, Link — устанавливаемый клиент на пользователя; данные window-state в каталоге данных ОС пользователя; фиксируется в ADR 0005 (план 42-03).
 4. **Где остаются `auth.svelte.ts`/`userScoped.svelte.ts`?** Рекомендация: `userScoped` - в kit (универсальный механизм сброса), `auth` - в `ui/`, в Link свой вход (Ф.44).
+   - RESOLVED: так и сделано в планах 42-12 (kit) и 42-15 (transport через хуки 401/403).
 5. **Пилотная сборка подписана?** Рекомендация (a): подпись установленного exe на ПК оператора; CI-подпись - Ф.45.
+   - RESOLVED: вариант (a) — подпись на ПК оператора, ключи вне репозитория и CI; план 42-04, ADR 0004/0005.
 6. **Включать ли в 42 `trackly-proto`/`proto-ts` и гейт дрейфа** (SUMMARY перечисляет в Ф.42, CONTEXT - нет)? CONTEXT не требует; рекомендация - НЕ включать (нет новых DTO до Ф.43/47), отметить в ADR.
+   - RESOLVED: не включать в Ф.42 (нет в CONTEXT); отметка в ADR (план 42-03).
 7. **Спайки ROADMAP (pin SPKI на reqwest/ring+tungstenite, keyring на 3 ОС):** CONTEXT сводит фазу к ADR; рекомендация - FTS5 проверен здесь; pin и keyring оформить в ADR как «проверить в Ф.44», без кода в 42.
+   - RESOLVED: FTS5 trigram проверен экспериментом исследования; pin SPKI и keyring-core — в ADR как «проверить в Ф.44» (план 42-03), кода в 42 нет.
 
 ## Environment Availability
 

@@ -150,26 +150,57 @@
   4. Пилот на реальных доменных ПК проведён (запуск из пользовательского каталога под AppLocker/SRP, WebView2, тихая установка), итог лежит в документации обезличенно, ADR принят. Проверка требует живого прогона на доменных Windows-ПК.
 
 **Plans**: 19 plans (номер плана не равен порядку волны: 10 -> в.4, 18 -> в.5, 16/17 -> в.10)
-
 Plans:
+**Wave 1**
+
 - [ ] 42-01-PLAN.md — baseline покрытия гейтов, _roots.mjs, check-gate-coverage (в.1)
 - [ ] 42-02-PLAN.md — стенд D-21 и baseline консоли до переезда (в.1)
 - [ ] 42-03-PLAN.md — ADR 0001-0005 (в.1)
 - [ ] 42-04-PLAN.md — набор для пилота: скрипты, чек-лист, шаблон результата (в.1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 42-05-PLAN.md — перевод гейтов группы A на общий walk() (в.2)
 - [ ] 42-06-PLAN.md — перевод гейтов группы B на общий walk() (в.2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 42-07-PLAN.md — per-gate baseline и правила [C4]-[C6] (в.3)
 - [ ] 42-08-PLAN.md — pnpm workspace, единый lockfile, каркасы пакетов, CI-кеш (в.3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 42-09-PLAN.md — спайк kit/Button, кодмод, покрытие lint/svelte-check, гейт границ (в.4)
 - [ ] 42-10-PLAN.md — крейт link-app: конфиг, окно, window-state, link_info, иконки (в.4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 42-11-PLAN.md — packages/design и гейты стилей (в.5)
+- [ ] 42-18-PLAN.md — release-link.yml (dry-run), гейт изоляции выпусков, ci-fast (в.5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 42-12-PLAN.md — kit: сторы, утилиты, _rune-harness (в.6)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 42-13-PLAN.md — kit: компоненты, связанные с гейтами (в.7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
 - [ ] 42-14-PLAN.md — kit: остальные компоненты и иконки (в.8)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
 - [ ] 42-15-PLAN.md — packages/transport с хуками 401/403 (в.9)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
 - [ ] 42-16-PLAN.md — link-ui: каркас окна и гейт раскладки (в.10)
 - [ ] 42-17-PLAN.md — packages/attachments (в.10)
-- [ ] 42-18-PLAN.md — release-link.yml (dry-run), гейт изоляции выпусков, ci-fast (в.5)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
 - [ ] 42-19-PLAN.md — сплошной прогон, стенд «после», dry-run, human-UAT, аудит (в.11)
 
 **UI hint**: yes

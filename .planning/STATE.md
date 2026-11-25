@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
-status: planning
-last_updated: "2026-11-25T16:35:27.349Z"
-last_activity: 2026-11-25
+status: executing
+last_updated: "2026-11-25T18:56:35.661Z"
+last_activity: 2026-11-25 -- Phase 42 planning complete
 progress:
   total_phases: 11
   completed_phases: 0
-  total_plans: 0
+  total_plans: 19
   completed_plans: 0
   percent: 0
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 
 Phase: 42 — Основа монорепо, ADR и пилот на доменных ПК
 Plan: —
-Status: Context gathered — ready to plan
-Last activity: 2026-11-26 — Phase 42 context gathered (42-CONTEXT.md, D-01..D-22)
+Status: Ready to execute
+Last activity: 2026-11-25 -- Phase 42 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
