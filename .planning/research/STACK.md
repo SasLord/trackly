@@ -1,363 +1,200 @@
-# Stack Research
+# Technology Stack — milestone v1.5 «Trackly Link — клиент и Чат»
 
-**Domain:** Rust + Tauri + Svelte desktop+server hybrid asset tracker (SQLite, SNMP, AD/LDAP, embedded HTTP API)
-**Researched:** 2026-05-24
-**Confidence:** HIGH for core layers (Tauri 2, Svelte 5, axum, sqlx, snmp2, ldap3, tracing, argon2); MEDIUM for PDF generation (real-world Cyrillic verification still needed); MEDIUM for SQLite write-concurrency strategy (architectural pattern, not library); LOW-MEDIUM for Windows 7 32-bit (Tauri supports the toolchain but WebView2 deployment on Win7 is fragile in 2026).
+**Project:** Trackly (SUBSEQUENT milestone: only NEW capabilities)
+**Researched:** 2026-11-25
+**Scope:** новый крейт-клиент Link, трей/автозапуск, NSIS per-user, апдейтер, SPNEGO-клиент, pinning, rich-text чат, эмодзи, FTS5, надёжная WS-доставка.
+**Overall confidence:** MEDIUM-HIGH (версии сверены с crates.io/npm 2026-11-25; SSPI-клиент и pinning-схема — требуют спайка).
 
-The user fixed the high-level stack (Rust + Tauri + Svelte + SCSS + SQLite). This file picks **opinionated, current** libraries for each layer, with rationale tuned to the two hard constraints: **portable mode** (no APPDATA writes, DB+config beside the .exe) and **server mode** (axum LAN HTTP server sharing the same SQLite + business logic that the Tauri commands use).
+Базовые факты репозитория (Cargo.toml / package.json, не CLAUDE.md): Rust 1.92.0, rusqlite 0.41, refinery 0.10, tauri 2 (lock — 2.12.x), specta `=2.0.0-rc.22`, tauri-specta `=2.0.0-rc.21`, tokio-rustls 0.26, rustls 0.23 (feature `ring`), ldap3 0.12.1 `tls-rustls-ring`, tower-sessions 0.15, `windows` 0.62 (только `UI_Notifications`), svelte ^5.55, vite ^6, @sveltejs/vite-plugin-svelte ^5.1, svelte-spa-router, pnpm 10.17.
 
----
+## Recommended Stack — Rust (Link client + server additions)
 
-## Recommended Stack
+### Tauri-плагины клиента (все официальные, v2, MIT/Apache-2.0)
 
-### Core Technologies
+| Crate / npm | Версия (проверено) | Purpose | Why / интеграция |
+|---|---|---|---|
+| `tauri` | `2` (актуальна 2.12.7; уже в workspace) | Оболочка Link | Трей — встроенная фича `tray-icon` (добавить в features клиента); смена иконки трея `TrayIcon::set_icon` для «точки непрочитанного». Никакого отдельного плагина трея. |
+| `tauri-plugin-autostart` / `@tauri-apps/plugin-autostart` | 2.7.0 | Автозапуск | Windows: ключ `HKCU\...\Run` (per-user, без админа — совпадает с моделью per-user NSIS); macOS: `MacosLauncher::LaunchAgent` (user LaunchAgent; при желании login item), Linux: `~/.config/autostart/*.desktop`. Передавать аргумент `--hidden`, чтобы старт с системой не показывал окно. |
+| `tauri-plugin-single-instance` | 2 (2.5.5; уже в workspace) | Один экземпляр | Колбэк второго запуска -> показать/вывести окно из трея. Уже используется в Trackly — переиспользовать. |
+| `tauri-plugin-updater` / `@tauri-apps/plugin-updater` | 2.14.1 (MSRV 1.90 — ок для 1.92) | Автообновление | Только в Link (в Trackly portable — по-прежнему НЕ подключать). См. раздел «Updater». |
+| `tauri-plugin-notification` | 2 (2.8.1; уже в workspace) | Системные уведомления | Уже решены грабли 41.5 (клик по тосту, `POWERSHELL_APP_ID` для unpackaged). Link установлен через NSIS -> AUMID/ярлык в меню «Пуск» создаёт установщик, это упрощает toast по сравнению с portable; всё равно проверить на Windows. Вынести `notify_desktop` в общий крейт. |
+| `tauri-plugin-window-state` | 2.5.0 | Запоминание размера/позиции окна чата | Опционально; флаги без `VISIBLE`, чтобы не ломать «старт скрытым». |
+| `tauri-plugin-opener` | 2.7.3 | Открытие внешних ссылок из сообщений | Для Link заменяет `shell.open` (в Trackly остаётся shell). Ограничить схемы http/https через capability. |
+| `keyring-core` + `windows-native-keyring-store` + `apple-native-keyring-store` + `zbus-secret-service-keyring-store` | 1.1.0 / 1.1.0 / 1.0.3 / 1.0.1 | Хранение токена в ОС | keyring 4.x (4.2.0) — тонкий фасад; рекомендуемый путь авторов — `keyring-core` + отдельный крейт хранилища под платформу (`cfg(target_os)`). Альтернатива «keyring 4 с default feature `v1`» проще, но тянет лишнее; брать модульный вариант. Windows Credential Manager (DPAPI) — per-user, без админа. На Linux без Secret Service (headless/WSL) — fallback: токен только в памяти + повторный вход (НЕ писать токен в файл открытым текстом). MEDIUM: API v4 менялся — проверить спайком. |
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| **Tauri** | `2.x` (currently `tauri ^2.11`, `tauri-bundler ^2.9`, `wry ^0.55`, `tao ^0.35`) | Desktop shell, packaging, system integration | Tauri 2 is GA since Oct 2024; v1 is EOL. v2 gives us a stable plugin system (`tauri-plugin-fs`, `tauri-plugin-shell`, `tauri-plugin-os`, `tauri-plugin-updater`, `tauri-plugin-log`), proper multi-window support, capability/ACL model, mobile targets we don't need but won't fight us. The bundler emits MSI + NSIS for Windows, DMG for macOS, AppImage/deb/rpm for Linux from one config. |
-| **Svelte** | `5.x` (currently `5.55+`) | UI framework | Svelte 5 ships runes (`$state`, `$derived`, `$effect`, `$props`) as the explicit reactivity model, stable since Oct 2024. Runes scale to the kind of cross-cutting state this app has (filters, switch-bars, dashboard widgets, AD/role context) much better than Svelte 4 stores would. |
-| **Build tool** | **Vite** `6.x` | Dev server, bundler for the Svelte frontend | Tauri's official Svelte template uses Vite. HMR works inside the Tauri webview during dev. No reason to deviate. |
-| **Frontend framework** | **Vanilla Svelte 5 (no SvelteKit)** | SPA shell for both Tauri webview and LAN browser | The Svelte frontend has to run in two webviews (Tauri's WebView2/WKWebView **and** any LAN browser via the axum server). Vanilla Svelte compiles to a flat SPA — same `index.html` + JS bundle works in both. SvelteKit (even with `adapter-static` + `ssr=false` + `prerender=false`) adds the router and conventions but no value here: routing is light, we don't need file-system routes, and we'd just have to disable everything that makes SvelteKit "Kit." Pick `svelte-spa-router` or `svelte-routing` for the ~10 sections. |
-| **Styling** | **SCSS** via `svelte-preprocess` (or `vitePreprocess`+`sass`) | Component styles | User-fixed. Set up via `vitePreprocess({ scss: { prependData: '@use "src/styles/_tokens.scss" as *;' } })` so design tokens are auto-available in every `<style lang="scss">` block. |
-| **Database** | **SQLite** via `rusqlite 0.39` with the `bundled` feature | Embedded relational DB | User-fixed. `bundled` ships SQLite source compiled in — no system dependency, no DLL hunt on Windows, portable mode actually portable. We **deliberately pick `rusqlite` over `sqlx-sqlite`** — see "What NOT to Use" for the write-lock-starvation rationale. |
-| **HTTP server (server mode)** | **axum** `0.8.x` (on `tokio` `1.x`) | LAN HTTP API + static asset serving + WebSocket | Tower ecosystem, modular middleware, first-class WebSocket via `axum::extract::ws`, first-class static serving via `tower-http::services::ServeDir`. Cleaner integration with the rest of the Rust async world than actix-web's actor model, and the perf gap (~10–15% raw throughput in benches) is irrelevant at 20 concurrent LAN users. |
-| **Async runtime** | **tokio** `1.x` (multi-thread) | Underlies axum, ldap3 async, snmp2 async, tracing | Already required by every async lib in the stack. |
-| **SQL migrations** | **`sqlx-cli`-style isn't in scope (we don't use sqlx) — use `refinery 0.8.x` with the `rusqlite` driver** | Schema versioning, embed migrations in the binary | Refinery embeds `.sql` files at compile time, runs them in a single transaction by default, works with `rusqlite` natively. Portable mode bonus: no separate `migrations/` directory needs to ship beside the .exe — they're in the binary. |
+Overlay (v1.6, полноэкранное always-on-top): осуществимо на чистом Tauri 2 `WebviewWindowBuilder` (`always_on_top(true)`, `fullscreen(true)`/`maximized`, `decorations(false)`, `skip_taskbar(true)`, `focused`), отдельная метка окна и отдельный route SPA. Windows — работает; macOS — поверх fullscreen-приложений требует NSWindow level/`visible_on_all_workspaces` (частично через Tauri, остаток — `objc2` вручную); Linux/Wayland — always-on-top ненадёжен (X11 ок). Вердикт: YES на Windows (primary), MAYBE macOS/Linux. Новых зависимостей в v1.5 не нужно. (HIGH для Windows, LOW для Wayland.)
 
-### Supporting Libraries
+### Сетевой слой клиента (Rust-сторона): pinning + SPNEGO + WS
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `tokio` | `1.x` (`rt-multi-thread`, `macros`, `signal`, `sync`, `fs`, `net`, `time`) | Async runtime | Always (in `main.rs` via `#[tokio::main]`). |
-| `tower` / `tower-http` | `0.5+` / `0.6+` | Middleware: tracing, CORS, compression, static files, request limits | Always with axum. Use `tower-http::services::ServeDir` to serve the Svelte build to LAN browsers. |
-| `tower-sessions` | `0.13+` | Session middleware for axum (cookie-based) | Use for LAN web auth. **Prefer over JWT** for this app — sessions are revocable, simpler, and you don't need cross-domain stateless tokens on a single-org LAN. |
-| `tower-sessions-sqlx-store` | latest compatible | **Skip — we're on rusqlite, not sqlx**. Use the in-process `MemoryStore` for sessions, or write a tiny `SessionStore` impl backed by `rusqlite` (~80 LoC). | Server mode only. |
-| `serde` / `serde_json` | `1.x` | JSON serialization for both Tauri `invoke` and HTTP API | Always — payload schemas should be defined **once** and used by both transports. |
-| `thiserror` | `1.x` | Error types in the domain/data layer | Always. |
-| `anyhow` | `1.x` | Top-level error handling in `main` and CLI/cron paths | At boundaries only — never in the library/domain crate. |
-| `tracing` | `0.1.x` | Structured logging | Always. |
-| `tracing-subscriber` | `0.3.x` (with `env-filter`, `fmt`, `json`) | Subscriber config: stdout + file | Always. |
-| `tracing-appender` | `0.2.x` (`RollingFileAppender`, `non_blocking`) | File rotation (daily) — writes to `./logs/` next to the executable in portable mode | Always. Keep a `WorkerGuard` alive for the process lifetime. |
-| `snmp2` | `0.4.x` (`crypto-rust` feature) | SNMPv1/v2c/v3 client; supports `get`, `getnext`, `getbulk`, walk, trap reception (sync + async sessions) | Printer monitoring (toner levels, status OIDs, ifTable for discovery). Pick `crypto-rust` over `crypto-openssl` so portable build has no OpenSSL DLL dependency. |
-| `ldap3` | `0.12.x` (default features incl. `tls-native`) | LDAP/AD bind for username + password | AD-login phase. Use simple bind (`user@domain.tld` or `DOMAIN\user`) over LDAPS — that's how `us100`-style logins map. Defer `gssapi`/Kerberos feature until SSO milestone. |
-| `argon2` (RustCrypto) | `0.5.x` | Password hashing for local users | Always. Pick `argon2id`, defaults: `m=19456 KiB, t=2, p=1` (matches OWASP 2024+). Pure Rust — works in portable build, no system crypto deps. |
-| `rand` / `rand_core` | `0.8.x` / `0.6.x` | Salt generation for Argon2 (`OsRng`) | Always. |
-| `uuid` | `1.x` (`v4`, `v7`, `serde`) | Public IDs for devices/acts/cartridges if we want non-sequential IDs alongside human numbers | Recommended for primary keys; keep human "C-000001" numbers as a separate column. |
-| `time` | `0.3.x` | Date/time arithmetic, formatting, timezones | Prefer over `chrono` — smaller, no `time` zone DB headaches for a Russia/Moscow single-tz app. |
-| `csv` | `1.3.x` | CSV import/export of devices | Always for the import/export feature. |
-| `calamine` | `0.27+` | Read .xlsx (if users have legacy Excel inventories to import) | Optional, add only if users actually have .xlsx to import. Read-only — fast. |
-| `rust_xlsxwriter` | `0.78+` | Write .xlsx (if reports need Excel output) | Optional — defer until users ask. CSV covers most "give me a list" needs. |
-| `krilla` | `0.7+` | PDF generation with first-class OpenType + subsetting (Cyrillic-safe) | **Primary PDF choice.** Embed a Cyrillic-capable TTF (DejaVu Sans, PT Sans, or Roboto) in the binary via `include_bytes!`. Modern, actively maintained (April 2026 release), MSRV 1.92. |
-| `typst` / `typst-as-lib` | latest | Alternative: render Typst templates → PDF | **Backup plan** if document templates need a designer-friendly markup language for users. `typst-as-lib` removes CLI startup overhead. Cyrillic works fine with a Cyrillic-capable font in the font path. |
-| `which` | `7.x` | Locate system executables (e.g., for SNMP fallback, optional WMI shellouts) | Optional, only if we shell out. |
-| `regex` | `1.x` | Used by tracing-subscriber env-filter and ad-hoc parsing | Transitive — keep version unified to avoid duplicate compiles. |
-| `dirs` | `5.x` | **AVOID in portable mode** — it returns APPDATA paths | Use only if we add a non-portable install option later. Default code path must resolve config + DB relative to the executable (`std::env::current_exe().parent()`). |
-| `notify` | `6.x` | Watch DB file path for the "DB moved" setting flow | Optional. |
-| `rustls` + `rustls-pemfile` | `0.23` / `2.x` | TLS for the LAN axum server when HTTPS is required | Use **rustls**, not `native-tls`/OpenSSL — pure Rust, no DLL drama on Windows, ships in portable build cleanly. Provide a self-signed cert generator (`rcgen 0.13+`) on first server-mode launch. |
-| `rcgen` | `0.13+` | Generate self-signed TLS cert for first run | Pair with rustls. |
-| `paraglide-js` (deferred) | latest | i18n for Svelte when added | Officially recommended by SvelteKit team, compile-time, tree-shakable. For v1 (Russian only) we still skip it; flag for the i18n milestone. |
+| Crate | Версия | Purpose | Why |
+|---|---|---|---|
+| `reqwest` | 0.13.5, `default-features = false`, features `rustls` (или `rustls-tls`-эквивалент 0.13), `json`, `stream`, `multipart` | HTTP-клиент Link (REST, загрузка вложений, апдейтер использует свой внутренний) | Проверить точные имена фич TLS в 0.13 (в 0.13 rustls стал дефолтным бэкендом, провайдер по умолчанию — aws-lc). Проект везде на `ring` -> принудительно использовать `use_preconfigured_tls(rustls::ClientConfig)` с ring-провайдером и своим verifier, `native-tls` не включать. |
+| `rustls` (уже есть, 0.23.46) | 0.23 + `dangerous_configuration` API (`ServerCertVerifier`) | Pinning самоподписанного сертификата | Кастомный `ServerCertVerifier`: сравнивает SHA-256 DER-сертификата (или SPKI) листа с сохранённым отпечатком; chain/hostname не проверяются (LAN-хост по IP/имени). `sha2` уже в workspace. Модель: отпечаток вводится/подтверждается пользователем при первом подключении (TOFU с показом отпечатка) либо передаётся в конфиге установщика/GPO-скрипта; смена отпечатка = жёсткая ошибка + явное подтверждение. Серверный сертификат генерирует `rcgen` (уже есть). |
+| `tokio-tungstenite` | 0.30.0 (в dev-deps сейчас 0.29 — выровнять) | WS-клиент Link | `Connector::Rustls(ClientConfig)` с тем же verifier -> один pinned-конфиг на HTTP и WS. Feature `rustls-tls-native-roots` НЕ нужна (корни не используются). |
+| `windows` (уже 0.62, расширить features) | 0.62 | SPNEGO через родной SSPI | Фичи `Win32_Security_Authentication_Identity`, `Win32_Security_Credentials`, `Win32_Foundation`. `AcquireCredentialsHandleW("Negotiate", SECPKG_CRED_OUTBOUND, NULL identity)` -> `InitializeSecurityContextW` с SPN `HTTP/<fqdn сервера>` -> base64 -> `Authorization: Negotiate`. Текущие креды сеанса — ровно то, что нужно (без пароля). ~150 LOC под `cfg(windows)`, свой тонкий модуль + mock-трейт для macOS-разработки (как AD_MOCK). Рекомендовано. |
 
-### Tauri Plugins (official `plugins-workspace`, all v2)
+Рассмотренные и отклонённые для SPNEGO-клиента:
+- **`sspi` 0.23.1** (Devolutions, MSRV 1.93!) — pure-Rust Kerberos/NTLM; на Windows умеет обёртку над нативным SSPI, но документация про «текущего пользователя без пароля» скупа, API генераторов тяжёл, MSRV 1.93 > тулчейна 1.92. Не брать.
+- **`kenobi` 0.4.2 / `kenobi-windows` 0.3.1** — кроссплатформенный Negotiate-клиент (SSPI/GSSAPI), маленький автор, документация 9%. LOW. Только как референс реализации.
+- `cross-krb5` / `libgssapi` — для macOS/Linux Kerberos; в v1.5 НЕ нужны (там логин/пароль; AD-пользователи с Mac/Linux — редкий случай, отложить).
+- `reqwest` «negotiate» из коробки отсутствует; обработку 401 `WWW-Authenticate: Negotiate` + многошаговый обмен делать вручную (сервер уже реализует SPNEGO в `http/sso.rs` — клиентский токен должен быть совместим с его обработчиком; проверить, что серверный путь принимает токен из не-браузерного клиента, и что результат — сессионный токен, а не cookie).
+- Почему не SSO через webview: WebView2 сам умеет Negotiate только для интранет-зон и не даёт получить токен для хранения; на самоподписанном сертификате webview вообще отказывает.
 
-| Plugin | Use |
-|--------|-----|
-| `tauri-plugin-fs` | File picker for "выбрать расположение БД", export DB |
-| `tauri-plugin-dialog` | Native open/save dialogs |
-| `tauri-plugin-shell` | "Open containing folder" (БД, логи), open print preview in default app |
-| `tauri-plugin-os` | OS info for diagnostics |
-| `tauri-plugin-log` | Optional bridge: pipe `tracing` to the webview console during dev |
-| `tauri-plugin-process` | Graceful restart from settings |
-| `tauri-plugin-updater` | **Skip / make optional** — incompatible with portable mode by default. If we ship a non-portable installer variant, enable updater only for that variant. |
-| `tauri-plugin-single-instance` | Prevent two desktop instances racing on the same DB file |
+### Все запросы идут через Rust, а не через fetch из webview (архитектурное решение)
 
-### Development Tools
+Рекомендация: в Link webview НЕ ходит в сеть сам. Причины: (1) WebView2/WKWebView отвергают самоподписанный серверный сертификат, обход есть только на Windows (`ServerCertificateErrorDetected`), нет в WKWebView — единый путь возможен только через Rust; (2) pinning и SPNEGO живут в Rust; (3) токен из keyring не попадает в JS; (4) CSP можно закрыть `connect-src 'self' ipc:`.
+- Общий фронтенд получает интерфейс `Transport` (`request(method, path, body)`, `subscribe(ws)`): `BrowserTransport` (fetch + cookie, как сейчас в Trackly) и `TauriTransport` (`invoke('api_request')`, события `ws:event` через `Channel`/`emit`). Расширить существующий слой `ui/src/lib/api` под эту абстракцию; специфичные для Tauri-десктопа Trackly «команды» остаются как есть.
+- Картинки/вложения в `<img>`/`<video>`: зарегистрировать custom URI scheme (`register_asynchronous_uri_scheme_protocol("link", ...)`), который берёт ресурс через pinned-клиент. Без этого вложения чата в клиенте не отобразятся.
+- НЕ использовать `tauri-plugin-http` 2.9.0: поверх reqwest, но без хука под кастомный `ClientConfig` — pinning не подключить.
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `cargo` (Rust ≥ **1.85**) | Build, test | MSRV pinned by `ldap3 0.12` (NTLM needs 1.85; non-NTLM 1.82). Pick 1.85 to leave NTLM door open. |
-| `cargo-watch` | Backend hot reload during dev | Optional dev dep. |
-| `cargo clippy` | Lints | CI gate on every push. `-D warnings` in CI. |
-| `cargo fmt` | Formatting | CI gate. |
-| `cargo nextest` | Faster test runner | Optional but recommended for the data-layer test suite. |
-| `cargo deny` | License + advisory audit | CI weekly job. |
-| `cross` / `cargo-zigbuild` | Cross-compile from macOS dev box | `cargo-zigbuild` for **Linux** targets from macOS; **GitHub Actions Windows runners** for Windows builds (don't try cross-building MSVC from mac — zig can do `*-windows-gnu` but Tauri's WebView2 bindings prefer MSVC). |
-| `pnpm` (or `npm`) | Frontend deps | Tauri docs are agnostic; pick one and stick. |
-| `svelte-check` | Type checks across `.svelte` + TS | CI gate. |
-| `vite-plugin-checker` | Optional in-editor TS+svelte-check overlay | Dev only. |
-| `prettier` + `prettier-plugin-svelte` | Formatting | CI gate. |
-| `eslint` + `eslint-plugin-svelte` | Lint | CI gate. |
+### Updater: схема, подпись, откат, per-user
 
-### CI / Release
+| Решение | Детали |
+|---|---|
+| Endpoint | `plugins.updater.endpoints = ["https://<сервер>/api/v1/link/update/{{target}}/{{arch}}/{{current_version}}"]` — динамический, отвечает 204 или 200 JSON `{version,url,signature,notes,pub_date}` (проверено по официальной документации). Канал определяется ТОЛЬКО на сервере по identity клиента (токен пользователя + идентификатор ПК) — в URL/клиенте канала нет, что и требует PROJECT.md. Кастомные переменные URL не поддерживаются — идентичность передавать заголовками (`UpdaterBuilder::header`) из Rust. |
+| TLS апдейтера | Updater использует собственный reqwest; самоподписанный сертификат сервера не пройдёт. Варианты: (a) собирать апдейтер в Rust через `app.updater_builder()` и добавлять доверенный корень (`UpdaterBuilder` принимает `proxy/headers/timeout`, но не rustls-конфиг — проверить спайком, LOW); (b) надёжнее: Rust-код Link сам делает `GET` метаданных через pinned-клиент, скачивает артефакт во временный файл, проверяет minisign-подпись `minisign-verify` 0.3.0 и запускает установщик (NSIS `/S`). Это потеря удобства плагина, но снимает проблему TLS и упрощает откат. Рекомендация: **спайк в первой фазе клиента, на выходе — выбор (a)/(b)**; закладывать (b) как запасной план. |
+| Откат (downgrade) | Поддержан официально: `updater_builder().version_comparator(\|current, update\| update.version != current)` — сервер сам решает, какую версию отдать (в том числе старую). Комбинируется с динамическим endpoint. |
+| Подпись | `tauri signer generate` -> ed25519 (minisign-формат). Публичный ключ — в `tauri.conf.json` (`plugins.updater.pubkey`, строка, не путь). Приватный — только секрет CI (`TAURI_SIGNING_PRIVATE_KEY` + `_PASSWORD`), `bundle.createUpdaterArtifacts: true`. Серверу нужны `.sig` и артефакт; сервер НЕ подписывает. |
+| Windows per-user | `bundle.windows.nsis.installMode = "currentUser"` (дефолт; ставит в `%LOCALAPPDATA%`, админ не нужен — подтверждено документацией). Апдейтер `windows.installMode = "passive"` (дефолт) или `"quiet"`: quiet работает без админа именно для user-wide установок — наш случай. Переход перемашинной установки -> per-user не поддерживать (ломает апдейтер: правка в Program Files требует админа). |
+| Тихая установка для GPO | NSIS-установщик Tauri принимает стандартные `/S` (тихо), `/D=<путь>` (последним). Документация Tauri их не перечисляет — проверить на реальном Windows (MEDIUM). Скрипт входа: «если нет `%LOCALAPPDATA%\Link\` -> `\\share\Link-setup.exe /S`». WebView2: `webviewInstallMode = embedBootstrapper` (1.8 МБ) либо `offlineInstaller` (+127 МБ) для ПК без интернета — решить по сети организации (Windows 10/11 обычно уже имеют WebView2). Идентификатор приложения Link — отдельный от Trackly (`identifier`), иначе общие хранилища webview/конфликты NSIS. |
+| macOS / Linux | `.app`/DMG (ручная установка, автозапуск плагином), AppImage (self-update плагина работает с AppImage). Подпись macOS — как сейчас (`signingIdentity: "-"`), апдейтер на macOS с ad-hoc подписью — проверить поведение Gatekeeper (LOW; допустимо «обновление только Windows» в v1.5). |
+| CI | `tauri-apps/tauri-action@v0` с `includeUpdaterJson: false` (JSON-манифест генерирует сервер), артефакты и `.sig` загружаются как релиз-ассеты и импортируются сервером (раздел «Link» -> релизы/каналы). Теги клиента отдельным префиксом (`link-v*`), чтобы не триггерить `release.yml` Trackly (`v*.*.*`). |
 
-| Tool | Purpose |
-|------|---------|
-| GitHub Actions matrix | `windows-latest` (MSVC, x86_64), `windows-latest` + `rustup target add i686-pc-windows-msvc` (32-bit, optional), `macos-latest` (aarch64-apple-darwin), `ubuntu-latest` (x86_64-unknown-linux-gnu) |
-| `tauri-apps/tauri-action@v0` | Drives `tauri build`, uploads artifacts to a draft release on tag push |
-| `dtolnay/rust-toolchain@stable` + `swatinem/rust-cache@v2` | Toolchain + cache |
-| Windows 7 32-bit | **Best-effort only.** Tauri's NSIS installer with `webviewInstallMode = "embedBootstrapper"` is the only viable path; MSI does not work on Win7 because the WebView2 bootstrapper download path needs TLS 1.2. Mark this build as "experimental" in release notes. |
+### Серверная часть: надёжная доставка, чат, поиск
 
----
+| Что | Решение | Why |
+|---|---|---|
+| Порядковые номера и догрузка | Без новых крейтов. Таблица `chat_events`/поле `seq INTEGER` per-conversation (монотонный счётчик, выдаётся внутри single-writer транзакции) + per-user `event_seq` для личных сигналов (прочитано, упоминание); WS-пуш содержит `seq`; клиент хранит курсор и после `Lagged`/реконнекта/сна запрашивает `GET /sync?cursor=...`. | `tokio::sync::broadcast(128)` остаётся каналом «пинка»; источник истины — БД. `Lagged` -> просто триггер ресинка. Single-writer уже гарантирует отсутствие дыр. |
+| Валидация rich-text JSON | Без внешнего крейта: строго типизированная модель в `trackly-core` (`serde` enum `Node`/`Mark` с `#[serde(tag="type")]`, `deny_unknown_fields`, белый список типов/атрибутов, лимиты глубины/размера/числа узлов, allowlist схем URL `http/https/mailto`, `src` картинок — только ссылки на вложения Trackly), округляющая «десериализация = валидация». Из дерева же извлекается plain-text для FTS5 и превью в уведомлениях. DTO — через `specta` (уже есть) -> TS-типы. | Крейт `prosemirror` 0.5.2 (Rust-порт модели) — молодой, избыточен; `jsonschema` 0.63.1 + `schemars` 1.2.3 — альтернатива для декларативной схемы, но хуже сообщения об ошибках и дубль с serde-типами. Не брать. |
+| Санитизация | Рендер на клиенте из JSON (собственный Svelte-рендерер узлов или `@tiptap/html` `generateHTML` + DOMPurify) — НЕ хранить HTML. Серверу `ammonia` 4.2.5 нужен только если сервер когда-либо отдаёт HTML (письма/печать) — в v1.5 не добавлять. | JSON-схема сводит XSS-поверхность к рендереру; HTML в БД не нужен. |
+| Поиск по сообщениям | SQLite FTS5 (уже в проекте с кириллическим токенайзером): виртуальная таблица `chat_messages_fts` (external content + триггеры или явное обновление из single-writer), индексируется plain-text из JSON. Права: фильтровать по участию в диалоге/комнате ДО выдачи (JOIN с членством). Без новых зависимостей; миграция refinery + `PRAGMA user_version` (см. память про V050). | |
+| Реакции/прочтения/упоминания | Обычные таблицы SQLite; лимит «3 реакции» и «самая старая снимается» — в транзакции сервиса. | |
 
-## Installation
+## Recommended Stack — Frontend
 
-### Rust dependencies (`src-tauri/Cargo.toml` — illustrative)
+### Монорепо / общий пакет
+- **pnpm workspace** (`pnpm-workspace.yaml`): пакеты `packages/ui-core` (общие компоненты, токены SCSS, API-клиент `Transport`, чат-фича, сгенерированные specta-биндинги), `ui/` (Trackly), `link-ui/` (Link, свой `vite.config`, свой роутинг/окна). Биндинги: один `bindings.ts` из `tests/export_bindings.rs` (сейчас `prebuild` в `ui/package.json` запускает cargo test) — общий пакет импортирует его; экспорт DTO для Link делать тем же тестом (или `trackly-core` держит DTO, оба приложения подтягивают). Важный риск: линт-скрипты `ui/scripts/check-*.mjs` ищут файлы по путям `ui/src/...` — при переносе в `packages/` их пути ломаются (память про JS-зеркала и гейты); переносить поэтапно с правкой путей и `check-lint-selftest-wiring`.
+- Новых инструментов сборки не нужно (Vite 6 + `@sveltejs/vite-plugin-svelte` ^5 + `svelte-spa-router` — остаются).
 
-```toml
-[dependencies]
-tauri            = { version = "2", features = ["devtools"] }
-tauri-plugin-fs        = "2"
-tauri-plugin-dialog    = "2"
-tauri-plugin-shell     = "2"
-tauri-plugin-os        = "2"
-tauri-plugin-single-instance = "2"
+### Rich-text редактор: TipTap 3 (все MIT, версии 3.35.0 на 2026-11-25)
 
-tokio            = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "fs", "net", "time"] }
-axum             = { version = "0.8", features = ["macros", "ws"] }
-tower            = "0.5"
-tower-http       = { version = "0.6", features = ["fs", "trace", "cors", "compression-gzip", "limit"] }
-tower-sessions   = "0.13"
+| npm | Версия | Назначение |
+|---|---|---|
+| `@tiptap/core`, `@tiptap/pm` | ^3.35 | Ядро, ProseMirror (single `@tiptap/pm` — обязателен, иначе дубли prosemirror-* и сломанные плагины) |
+| `@tiptap/starter-kit` | ^3.35 | В v3 включает bold/italic/strike/code/heading/blockquote/lists/code-block/history, а также Underline и Link (TipTap 3 перенёс их в StarterKit; проверить `configure`/`false`-отключение на спайке — страница доков при проверке вернула 404, MEDIUM) |
+| `@tiptap/extension-table` (экспортирует Table, TableRow, TableCell, TableHeader, TableKit) | ^3.35 | Таблицы; `mergeCells`/`splitCell`/`toggleHeaderRow` — команды на базе `prosemirror-tables` (MIT, OSS) — объединение ячеек покрыто БЕСПЛАТНО |
+| `@tiptap/extension-subscript`, `@tiptap/extension-superscript` | ^3.35 | Индексы |
+| `@tiptap/extension-text-align` | ^3.35 | Выравнивание |
+| `@tiptap/extension-image` | ^3.35 | Картинки (src ограничить схемой вложений; настроить node view) |
+| `@tiptap/extension-mention` + `@tiptap/suggestion` | ^3.35 | @упоминания (popup — свой Svelte-компонент + `@floating-ui/dom` ^1.8) |
+| `@tiptap/extension-text-style` (при необходимости) | ^3.35 | Не нужен, если нет цветов/размеров — не брать |
+| `@tiptap/extension-code-block-lowlight` + `lowlight` 3.3.0 | ^3.35 / ^3.3 | Подсветка кода — ОПЦИОНАЛЬНО (в списке требований просто «код»); по умолчанию обойтись StarterKit CodeBlock без подсветки |
+| `svelte-tiptap` | 3.0.2 (peer: svelte ^5, @tiptap ^3, `@floating-ui/dom`, bubble/floating-menu) | Обёртка под Svelte 5. Это тонкая обвязка (`createEditor`, `EditorContent`) — допустимо, но можно и без неё: `new Editor({ element })` + `$effect` cleanup. Рекомендация: взять напрямую `@tiptap/core` (без обёртки), чтобы не зависеть от темпа обновлений стороннего пакета; MEDIUM. |
+| Отступ (indent) | Собственное расширение `Indent` (глобальный атрибут на paragraph/heading, ограничение 0..N) ~40 LOC; готовое — только в Pro/сторонних. | Не брать Pro-расширения: `@tiptap-pro/*` и «Tiptap Cloud» — платные/реестр с токеном; в публичном репо недопустимо. |
+| Ответ на сообщение | Не расширение редактора — отдельное поле `reply_to_message_id` в модели сообщения + UI-панель над редактором. | |
 
-rusqlite         = { version = "0.39", features = ["bundled", "chrono", "serde_json", "backup"] }
-refinery         = { version = "0.8", features = ["rusqlite"] }
+Хранение: `editor.getJSON()` -> ProseMirror JSON -> сервер валидирует (см. выше) -> рендер на клиенте. Версия схемы документа (`schema_version`) хранить в строке сообщения для будущих миграций.
+Версионирование: зафиксировать все `@tiptap/*` на ОДНУ версию (pnpm `overrides`/exact), иначе v3 минорные расхождения ломают типы.
 
-serde            = { version = "1", features = ["derive"] }
-serde_json       = "1"
-thiserror        = "1"
-anyhow           = "1"
+### Эмодзи: Twemoji (jdecked fork)
 
-tracing          = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
-tracing-appender = "0.2"
+| Вариант | Лицензия | Вердикт |
+|---|---|---|
+| **Twemoji jdecked v17.0.3** (Emoji 17, релиз 2026-06-01) | код MIT, графика **CC-BY 4.0** (нужна атрибуция) | **Выбор.** Единый SVG-набор, знакомый вид, поддерживается, npm `@twemoji/api` 17.0.3 / `@twemoji/parser` 17.0.2 (MIT). Атрибуция -> `THIRD-PARTY-NOTICES.md` (уже ресурс бандла) + экран «О программе». |
+| Fluent Emoji (Microsoft) | MIT | Хорош визуально («Flat»), но большие наборы, нестандартные имена файлов, более громоздкий пайплайн; запасной вариант. |
+| OpenMoji | CC-BY-SA 4.0 | ShareAlike — избегать. |
+| Noto Emoji (Google) | OFL/Apache-2.0 (шрифт) / Apache-2.0 | Работает, но тяжелее; не нужен. |
 
-snmp2            = { version = "0.4", default-features = false, features = ["crypto-rust", "async"] }
-ldap3            = { version = "0.12", default-features = false, features = ["tls-rustls"] }
+- Доставка: SVG не тянуть из CDN (LAN без интернета). Положить подмножество `assets/svg/*.svg` (~3.7k файлов, единицы МБ) в статику (`public/emoji/`), копируя по скрипту из версии-тега при сборке (НЕ коммитить 3.7k файлов вручную без скрипта/хэша — решить: коммит прюненного набора + `THIRD-PARTY-NOTICES`). Отдавать с `Cache-Control: immutable`; грузить лениво (`loading="lazy"`), в Link — через `link://`-протокол или встроить в ресурсы приложения. Embedded в `rust-embed` бинарь сервера — +несколько МБ, приемлемо.
+- Парсинг текста -> эмодзи: `@twemoji/parser` (MIT) даёт позиции и пути к SVG; в сообщении хранить Unicode-символы (поиск/копирование работают), подменять на `<img class="emoji" alt="😀">` при рендере и в редакторе (inline atom-ноду `emoji` с `alt`). `emoji-regex-xs` 2.0.1 — лёгкая альтернатива для детекции.
+- Данные и русский поиск для пикера: `emojibase-data` 18.0.0 (MIT) — локаль `ru` с названиями и тегами, группы, `skins`. Фильтровать по `version <= 17`, чтобы не показывать эмодзи без SVG (Emojibase 18 новее Twemoji 17).
+- Компонент пикера: **писать свой** на Svelte 5 (виртуализованная сетка по категориям, недавние/частые в localStorage, поиск по ru-тегам, тон кожи). `emoji-picker-element` 1.29.1 (Apache-2.0, web component, IndexedDB) рендерит нативные глифы — не даёт единый SVG-вид без обходов; не брать.
 
-argon2           = "0.5"
-rand             = "0.8"
-rand_core        = { version = "0.6", features = ["std"] }
+### Прочее на фронте
 
-time             = { version = "0.3", features = ["serde", "macros", "formatting", "parsing"] }
-uuid             = { version = "1", features = ["v4", "v7", "serde"] }
+| npm | Версия | Зачем |
+|---|---|---|
+| `@tauri-apps/api` | ^2.12 | `Channel`, события, `invoke` для `TauriTransport` (уже есть ^2.11) |
+| `@tauri-apps/plugin-autostart` / `-updater` / `-opener` / `-window-state` | 2.7.0 / 2.14.1 / 2.7.3 / 2.5.0 | Только в `link-ui` |
+| `dompurify` 3.5.0 (MPL-2.0 OR Apache-2.0) | ^3.5 | Защитный слой, если рендер идёт через HTML-строку; если свой рендер узлов — не нужен. Предпочтительно свой рендерер (нет HTML-строк). |
+| `@tauri-apps/cli` | ^2.12 (сейчас ^2.11) | Тот же CLI для обоих приложений; `link-ui` вызывает через `pnpm --filter`. |
 
-csv              = "1.3"
+## Структура workspace (интеграция)
 
-krilla           = "0.7"
-
-rustls           = "0.23"
-rustls-pemfile   = "2"
-rcgen            = "0.13"
-```
-
-### Frontend (`package.json` — illustrative)
-
-```bash
-pnpm create vite trackly-ui -- --template svelte-ts
-pnpm add -D @tauri-apps/cli@^2 @tauri-apps/api@^2 svelte@^5
-pnpm add -D sass svelte-preprocess
-pnpm add -D svelte-check prettier prettier-plugin-svelte eslint eslint-plugin-svelte
-pnpm add svelte-spa-router
-```
-
----
+- Новый крейт `crates/trackly-client` (Tauri 2, `[[bin]] name="link"`), в `members` корневого `Cargo.toml`; свой `tauri.conf.json` (`identifier` отдельный, `bundle.createUpdaterArtifacts`, NSIS `currentUser`). Зависит от `trackly-core` (DTO, валидатор rich-text) — НЕ от `trackly-app`/`trackly-infra` (в клиент не должны попасть rusqlite/axum/ldap3 -> меньше размер, чище лицензии).
+- Общие зависимости — через `[workspace.dependencies]` (новые: `reqwest`, `tokio-tungstenite`, `keyring-core` + store-крейты, плагины autostart/updater/opener/window-state).
+- Убедиться, что workspace feature-unification не воспроизводит историю с `snmp2`/`zip` (память: unification на Windows ломает сборку) — после добавления `reqwest`/`rustls` провайдеров прогнать `cargo tree -d` и Windows-CI на отдельном крейте; провайдер rustls — только `ring` (в клиенте `aws-lc-rs` не включать: C-toolchain/NASM на Windows CI).
+- CI: отдельный job/workflow `link-release` (теги `link-v*.*.*`), тест клиента с `TRACKLY_*_MOCK` для SSPI/keyring.
 
 ## Alternatives Considered
 
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| `rusqlite` + `refinery` | `sqlx` (with `sqlite` feature) | Only if the project is async-end-to-end at the DB layer **and** writes are funneled through a single task. SQLx + SQLite has a well-documented write-transaction footgun: a transaction that starts as a read gets upgraded to a write, holds the only writer slot, and starves all other writers — under our 20-concurrent-user assumption this surfaces as random hangs. We work around it by putting all writes behind a single `tokio::task::spawn_blocking` worker that owns one `rusqlite::Connection` (so the writer-singleton is structural, not accidental). |
-| `rusqlite` | `diesel` (SQLite) | If we wanted a typed DSL ORM and were okay with sync-only + macro-heavy schema. Diesel's SQLite story is mature but the DSL adds friction for the kind of dynamic queries this app needs (autocomplete dropdowns, contextual filters). |
-| `rusqlite` | `sea-orm` | If we needed an async ORM with relations + migrations. Overkill for ~10 tables; couples us to async writes (back to the SQLite-single-writer problem). |
-| Vanilla Svelte 5 | SvelteKit (`adapter-static`, `ssr=false`, `prerender=false`) | If we want file-system routing and Kit's data-loading conventions and we're okay with Kit's build emitting an SPA that ignores most of Kit's value. The hybrid Tauri+browser delivery makes "no router opinion" the right call. |
-| `axum` | `actix-web` | If we need the actor model anywhere, or if maximum raw throughput matters. Neither is true here. |
-| `axum` | `poem` / `salvo` / `warp` | Smaller communities → smaller library halo (middleware, sessions, OpenAPI). axum's Tower middleware ecosystem is the deciding factor. |
-| `snmp2` | `rasn-snmp` + `rasn` | If we wanted purely safe Rust ASN.1 codecs and were building generic SNMP tooling. For our use case (poll specific OIDs from known printer brands), `snmp2`'s ready-to-use client sessions ship faster. |
-| `snmp2` | `csnmp` | Async-first, decent API, but smaller and less complete on v3 crypto. Pick if `snmp2`'s sync-first API becomes a pain point. |
-| `snmp2` | `modern_snmp` | SNMPv3-only. Use if v3 is the only protocol we touch (it isn't — Pantum/Kyocera/HP defaults run v2c). |
-| `ldap3` | `simple-ldap` wrappers | All wrap `ldap3`. Stay on the canonical one. |
-| `argon2` | `bcrypt` (RustCrypto) | Only for compat with legacy hashes. New installs: argon2id. |
-| `argon2` | `scrypt` | Memory-hard like argon2id but less standardized. Pick argon2id unless a specific compliance regime requires scrypt. |
-| `krilla` | `genpdf` / `printpdf` (low-level) | `printpdf` works but defaults to Windows-1252 — Cyrillic forces you to embed a custom font and hand-measure text. `genpdf` builds on top of `printpdf`. krilla's subsetting + OpenType story is better in 2026. |
-| `krilla` | Typst (`typst-as-lib`) | When document templates need a richer markup language editable by non-programmers (e.g., the user wants to tweak the act template themselves). Worth a spike in the "templates" phase. |
-| `krilla` | HTML → PDF via the Tauri webview (`window.print()` / `webview.printToPdf`) | Works for "print preview" UX inside the desktop app, but **doesn't work in server mode** (the LAN user's browser is doing the printing, no canonical PDF). Use as a *preview* path only, not the source of truth. |
-| `krilla` | wkhtmltopdf / weasyprint shellout | External binary, painful in portable mode (extra files to ship), security surface. Avoid. |
-| `tower-sessions` cookies | JWT (e.g., `jsonwebtoken` crate) | If we ever need stateless multi-process auth. We don't on a single-process LAN server; revocation is much simpler with sessions. |
-| `time` | `chrono` | If we need rich timezone DB / format compat with legacy systems. For RU-only single-tz, `time` is leaner. |
-| `tracing-appender` daily rotation | `flexi_logger` / `fern` | Both work; `tracing-appender` is the canonical choice in the `tracing` ecosystem. |
+| Category | Recommended | Alternative | Why Not |
+|---|---|---|---|
+| Сеть клиента | Всё через Rust (pinned reqwest/tungstenite) | fetch/WebSocket из webview | Самоподписанный сертификат; pinning невозможен в WKWebView; токен в JS |
+| HTTP-плагин | свой reqwest | `tauri-plugin-http` | Нет хука под `ClientConfig`-pinning |
+| SPNEGO | `windows` 0.62 SSPI напрямую | `sspi` 0.23.1 | MSRV 1.93 > 1.92, тяжёл API; |
+| SPNEGO | `windows` | `kenobi` 0.4.2 | Малый проект, документация слабая |
+| Секреты | `keyring-core` + store-крейты | `keyring` 4 default `v1`/`cli` | Тянет лишние хранилища; рекомендуемый авторами модульный путь |
+| Редактор | TipTap 3 (MIT) | Lexical / Milkdown / Quill | Требуются таблицы с объединением ячеек + упоминания + JSON-схема; TipTap/ProseMirror — единственный с готовым `prosemirror-tables` |
+| Редактор | `@tiptap/core` напрямую | `svelte-tiptap` 3.0.2 | Лишний слой; допустим, если нужна готовая BubbleMenu-обвязка |
+| Эмодзи | Twemoji jdecked | Fluent / OpenMoji / Noto | Лицензия (SA), вес, громоздкость |
+| Пикер | свой + emojibase-data (ru) | `emoji-picker-element` | Нативные глифы, IndexedDB, не тот вид |
+| Валидация JSON | serde-типы в core | `jsonschema`/`schemars`, `prosemirror` crate | Дублирование схемы, незрелость |
+| Апдейтер | плагин + (при проблемах TLS) собственный загрузчик | сторонний Squirrel/MSIX | Лишнее; плагин покрывает подпись/откат |
 
----
+## What NOT to add
 
-## What NOT to Use
+- `tauri-plugin-updater` в **Trackly** (portable) — по-прежнему нет; только Link.
+- `native-tls`/OpenSSL, `reqwest` с `default-tls`, `aws-lc-rs` — только rustls+ring.
+- `@tiptap-pro/*`, Tiptap Cloud, коллаборативные расширения (Hocuspocus/Y.js) — платные/не нужны (нет совместного редактирования).
+- `emoji-picker-element`, `twemoji` (оригинальный twitter/twemoji, заброшен), CDN-ссылки на SVG (LAN без интернета).
+- Службу Windows/`windows-service` — сессия 0 не показывает трей/окна (решение зафиксировано в PROJECT.md).
+- `libgssapi`/`cross-krb5` в v1.5 (macOS/Linux Kerberos) — отложить.
+- Отдельную очередь сообщений (Redis/NATS/MQTT) — достаточно SQLite seq + broadcast-«пинок».
+- `ammonia` на сервере и HTML-хранение сообщений.
+- `sqlx`, ORM — прежнее решение rusqlite/single-writer сохраняется.
+- Хранение токена в файле/`tauri-plugin-store` — только ОС-хранилище (keyring).
+- Реальные имена/организацию в фикстурах чата и THIRD-PARTY-NOTICES — только вымышленные («Иванов И.И.»).
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| **Tauri v1** | EOL, smaller plugin ecosystem, no capability model, harder mobile path (we won't take it, but the codebase shape matters) | Tauri v2 |
-| **Svelte 4** | Stores-only reactivity doesn't scale to this app's cross-cutting state; eventual migration cost rises | Svelte 5 with runes |
-| **SvelteKit (default config)** | SSR / file-system-router complexity is fighting Tauri's webview model; static-adapter half-disables Kit anyway | Vanilla Svelte 5 SPA |
-| **`sqlx` with SQLite for write-heavy paths** | Documented lock-starvation footgun: any read tx that touches write upgrades the lock and blocks all other writers; with 20 concurrent users this manifests as occasional hangs that are hard to root-cause | `rusqlite` + single dedicated writer task via `tokio::task::spawn_blocking` |
-| **`diesel` SQLite** | Sync-only; DSL friction for dynamic queries (autocomplete, contextual filters) | `rusqlite` + hand-written SQL + `refinery` |
-| **`native-tls` / OpenSSL** for the LAN HTTPS server | Drags in a system OpenSSL or a vendored OpenSSL build; portable mode does not want a DLL | `rustls` |
-| **`tauri-plugin-updater`** in portable mode | Updater writes to install dir and assumes a fixed install path; conflicts with "ship a folder anywhere" model | Skip in portable build; if shipping an MSI/NSIS install variant later, enable updater only there |
-| **`dirs` crate as the default path resolver** | Returns `%APPDATA%` etc. — violates portable constraint | Resolve all paths relative to `std::env::current_exe()`; only fall back to `dirs::data_dir()` for an explicit non-portable install variant |
-| **`bcrypt` for new password hashes** | CPU-only hard, GPU-friendly to attackers; NIST/OWASP now point at argon2id | `argon2id` |
-| **`reqwest` with `native-tls`** | Same OpenSSL drag-along problem if we add outbound HTTP (notifications, webhooks later) | `reqwest` with `rustls-tls` feature, default-features = false |
-| **`printpdf` directly** (no font embed) | Defaults to Windows-1252; Cyrillic is silently mangled or missing | `krilla` with an embedded Cyrillic font (DejaVu Sans / PT Sans / Roboto) |
-| **`chrono` time-zone DB on Windows** | Historically pulled in `chrono-tz` weirdness on portable Windows builds | `time` crate (UTC + offsets is enough for RU-only) |
-| **In-memory session store in multi-process scenarios** | Fine for our single-process server mode; **never** use if we ever fork worker procs | If multi-process ever happens: SQLite-backed `SessionStore` impl |
-| **Shell-outs to `wkhtmltopdf` / `weasyprint`** | External binary, large, abandoned (wkhtmltopdf), packaging hell on portable Windows | `krilla` or Typst |
+## Installation (иллюстративно)
 
----
+```bash
+# Rust — клиент (workspace.dependencies добавить; features сверить на спайке)
+cargo add -p trackly-client tauri-plugin-autostart@2 tauri-plugin-updater@2 tauri-plugin-opener@2 tauri-plugin-window-state@2
+cargo add -p trackly-client reqwest@0.13 --no-default-features --features json,stream,multipart   # + rustls-фича по документации 0.13
+cargo add -p trackly-client tokio-tungstenite@0.30 keyring-core@1 minisign-verify@0.3   # minisign-verify — только если путь (b)
+# windows-native-keyring-store / apple-native-keyring-store / zbus-secret-service-keyring-store — под cfg(target_os)
+# windows 0.62: добавить features Win32_Security_Authentication_Identity, Win32_Security_Credentials, Win32_Foundation
 
-## Stack Patterns by Variant
-
-**If running in portable mode (default):**
-- Resolve all paths from `std::env::current_exe()?.parent()?`:
-  - `./data/trackly.sqlite` (override via settings)
-  - `./logs/` (rolling daily, tracing-appender)
-  - `./config.toml` (server port, host, templates path)
-  - `./templates/` (act/document templates; on first run, write defaults from `include_str!`)
-  - `./certs/` (self-signed cert + key generated by `rcgen` on first server-mode enable)
-- Use `tauri-plugin-single-instance` to prevent two .exe instances racing on the same SQLite file.
-- Do **not** enable `tauri-plugin-updater`.
-- SQLite `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;` at connection-open time.
-
-**If server mode is on:**
-- axum binds to the configured host:port (default `0.0.0.0:8443` HTTPS, fall back to HTTP for first-run if cert generation hasn't happened).
-- The Svelte SPA build is served by `tower-http::ServeDir` at `/`.
-- A `/api/v1/*` namespace exposes the same operations as Tauri commands.
-- All writes go through the same "data" service module — Tauri command handlers and axum HTTP handlers are thin adapters; the service module owns the single writer.
-- Session middleware (`tower-sessions`) gates `/api/*` except `/api/v1/auth/login`.
-- For local users: argon2id verify against stored hash. For AD users (later phase): `ldap3::Ldap::simple_bind(user_principal, password)` and inspect result code.
-
-**If we need concurrent reads + writes from both Tauri commands and HTTP at the same time:**
-- One **writer connection** lives in a long-lived `tokio::task` that owns a `mpsc` queue of write jobs. All write paths (Tauri invoke, axum handler) push a job onto the queue and `await` a oneshot reply.
-- **Reader connections** come from a small `r2d2`/`deadpool` pool (or hand-rolled `Arc<Mutex<Vec<Connection>>>`); reads do not contend with writes in WAL mode, so a pool of 4–8 readers is plenty.
-- Both Tauri and axum import the same `data` crate — there is no duplication of business logic across transports.
-
-**If shipping the Windows 7 32-bit variant (optional/best-effort):**
-- Use the NSIS installer (`bundle.targets.nsis`), `webviewInstallMode = "embedBootstrapper"`.
-- Add `i686-pc-windows-msvc` to `rustup target add` in the CI matrix step.
-- Test on a real Win7 VM — WebView2 on Win7 needs TLS 1.2 enabled, which is not the default on stock Win7 SP1.
-- Document this in release notes as experimental.
-
-**If we add AD SSO later (Kerberos/NTLM):**
-- Enable `ldap3` feature `gssapi` (requires Clang + Kerberos libs at build time) or `ntlm` (raises MSRV to 1.85).
-- This is a Windows-machine-only feature path; macOS/Linux dev boxes won't build it without extra setup. Gate it behind a Cargo feature.
-
----
-
-## Version Compatibility
-
-| Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| `tauri ^2.11` | `wry ^0.55`, `tao ^0.35`, `tauri-build ^2`, `tauri-plugin-* ^2` | All on the `v2` line; do not mix v1 plugins. |
-| `svelte ^5.55` | `vite ^6`, `svelte-preprocess ^6` or `@sveltejs/vite-plugin-svelte ^4` | Stable. Some older Svelte 4 community libs may not have updated APIs (check `bits-ui`/`shadcn-svelte` if used). |
-| `rusqlite 0.39` | `libsqlite3-sys 0.37` (transitive, with `bundled` feature) | Bundled SQLite avoids platform variance. |
-| `refinery 0.8` | `rusqlite 0.39` | `refinery` ships a matching driver feature flag. |
-| `axum 0.8` | `tokio 1`, `tower 0.5`, `tower-http 0.6`, `hyper 1.x` | Tower 0.5 is the current line. |
-| `tower-sessions 0.13` | `axum 0.8`, `tower 0.5` | Pluggable store; we likely roll our own rusqlite-backed store. |
-| `ldap3 0.12` | Rust ≥ 1.82 (or 1.85 with NTLM); `tokio 1`, `rustls 0.23` if `tls-rustls` feature | NTLM bumps MSRV. |
-| `snmp2 0.4` | `tokio 1`; `crypto-rust` avoids OpenSSL | Pure Rust crypto path is portable-friendly. |
-| `krilla 0.7` | Rust ≥ 1.92 | High MSRV — verify against the toolchain pinned for Win7 32-bit if attempted. |
-| `argon2 0.5` | RustCrypto stack (`password-hash 0.5`) | Stable. |
-| `rustls 0.23` | `rustls-pemfile 2`, `rcgen 0.13` | All v0.23+ co-released. |
-| `time 0.3` | `serde 1` | OK. |
-
----
-
-## Critical Architectural Notes
-
-### Dual access path (Tauri invoke + HTTP) must share business logic
-
-Make a workspace with three crates:
-
-```
-trackly/
-├── src-tauri/             # Tauri shell + invoke handlers (thin)
-├── crates/
-│   ├── trackly-domain/    # Pure logic: types, validation, no I/O
-│   ├── trackly-data/      # rusqlite, refinery migrations, single-writer task
-│   └── trackly-server/    # axum routes, tower middleware, session auth
-└── ui/                    # Svelte 5 SPA
+# Frontend
+pnpm add @tiptap/core@^3.35 @tiptap/pm@^3.35 @tiptap/starter-kit@^3.35 @tiptap/extension-table@^3.35 \
+  @tiptap/extension-subscript @tiptap/extension-superscript @tiptap/extension-text-align \
+  @tiptap/extension-image @tiptap/extension-mention @tiptap/suggestion @floating-ui/dom \
+  @twemoji/parser emojibase-data
+pnpm --filter link-ui add @tauri-apps/plugin-autostart @tauri-apps/plugin-updater @tauri-apps/plugin-opener @tauri-apps/plugin-window-state
 ```
 
-`src-tauri/main.rs` and `trackly-server` both depend on `trackly-data` and `trackly-domain`. Tauri commands and axum handlers are 5–10-line adapters that call the same service methods. The Svelte frontend's data layer abstracts "where am I running?":
+## Confidence & спайки (для фаз)
 
-```ts
-// ui/src/lib/api.ts
-export const isTauri = "__TAURI_INTERNALS__" in window;
-export async function call<T>(cmd: string, args: object): Promise<T> {
-  if (isTauri) return (await import("@tauri-apps/api/core")).invoke(cmd, args);
-  return fetch(`/api/v1/${cmd}`, { method: "POST", body: JSON.stringify(args) }).then(r => r.json());
-}
-```
-
-### SQLite WAL + single-writer pattern (the most important pitfall)
-
-WAL allows many concurrent readers + one writer. We **enforce** that single-writer at the application layer by funneling every write through one tokio task that owns one connection. Reads use a small pool. This eliminates lock-starvation issues and gives us a natural place to add request tracing, retries, and slow-query logging.
-
-### Russian Cyrillic in PDFs
-
-Embed a Cyrillic-capable open-license font at compile time:
-
-```rust
-const FONT_REGULAR: &[u8] = include_bytes!("../../assets/fonts/DejaVuSans.ttf");
-const FONT_BOLD:    &[u8] = include_bytes!("../../assets/fonts/DejaVuSans-Bold.ttf");
-```
-
-Pass these to `krilla` (or `typst-as-lib`'s font path) at render time. Subsetting keeps PDF size reasonable. Test the rendered output by extracting text from the PDF with `pdfium-render` or just `pdftotext` and verifying round-trip of «А-Я а-я Ё ё №».
-
-### Portable mode discipline
-
-Every write site in the codebase resolves its path through one helper:
-
-```rust
-pub fn portable_root() -> PathBuf {
-    std::env::current_exe().unwrap()
-        .parent().unwrap()
-        .to_path_buf()
-}
-```
-
-CI lints (clippy custom or grep) should fail if `dirs::*_dir()` or `%APPDATA%`/`%LOCALAPPDATA%` appears outside an explicit `non_portable` Cargo feature gate.
-
----
+| Тема | Confidence | Что проверить до планирования |
+|---|---|---|
+| Плагины Tauri (autostart/updater/single-instance/window-state), версии | HIGH | — |
+| Updater: формат, подпись, downgrade, per-user | HIGH (док Tauri) | Работа апдейтера с самоподписанным TLS сервера (спайк: (a) vs (b)) — LOW |
+| NSIS `/S` для GPO | MEDIUM | Проверка на реальной Windows (флаг не описан в доках Tauri) |
+| SPNEGO через `windows` SSPI | MEDIUM | Спайк на доменном ПК; серверный `sso.rs` должен принимать токен из не-браузерного клиента |
+| keyring-core модульный путь | MEDIUM | API v4/keyring-core сменился — проверить на всех 3 ОС |
+| reqwest 0.13 + rustls ring + кастомный verifier | MEDIUM | Имена фич и `use_preconfigured_tls` в 0.13 |
+| TipTap 3 набор, MIT, объединение ячеек | HIGH (npm, лицензии) / MEDIUM (состав StarterKit) | |
+| Twemoji jdecked, лицензии | HIGH | Решить способ поставки SVG |
+| Overlay v1.6 | HIGH Windows / LOW Wayland | — |
+| Пути lint-гейтов при переезде фронта в `packages/` | HIGH риск | Миграция с правкой `ui/scripts/check-*.mjs` |
 
 ## Sources
 
-- [Tauri 2.0 Stable Release Blog](https://v2.tauri.app/blog/tauri-20/) — confirmed v2 GA Oct 2024
-- [Tauri Core Releases](https://v2.tauri.app/release/) — current versions of tauri, wry, tao
-- [Tauri Webview Versions](https://v2.tauri.app/reference/webview-versions/) — Windows 7 + WebView2 caveats
-- [Tauri Windows Installer Docs](https://v2.tauri.app/distribute/windows-installer/) — NSIS vs MSI on Win7, `embedBootstrapper` mode
-- [Tauri SvelteKit Frontend Setup](https://v2.tauri.app/start/frontend/sveltekit/) — confirms `adapter-static` + `ssr=false` if using Kit
-- [Svelte Releases (GitHub)](https://github.com/sveltejs/svelte/releases) — Svelte 5.55+ current
-- [Svelte 5 Runes Guide](https://www.pkgpulse.com/guides/svelte-5-runes-complete-guide-2026) — runes model
-- [Tauri with Svelte vs SvelteKit (Medium / Tauri Discussion #5322)](https://github.com/tauri-apps/tauri/discussions/5322) — vanilla Svelte is sufficient for SPA
-- [sqlx 0.9.0 docs (docs.rs)](https://docs.rs/sqlx/latest/sqlx/) — current sqlx version
-- [PSA: Write Transactions are a Footgun with SQLx and SQLite (Evan Schwartz)](https://emschwartz.me/psa-write-transactions-are-a-footgun-with-sqlx-and-sqlite/) — the canonical rationale for `rusqlite` over `sqlx-sqlite`
-- [rusqlite 0.39 docs](https://docs.rs/rusqlite/latest/rusqlite/) — current rusqlite + bundled feature
-- [refinery (rust-db/refinery)](https://github.com/rust-db/refinery) — embedded migrations
-- [axum 0.8.9 docs](https://docs.rs/axum/latest/axum/) — current axum version
-- [Rust Web Frameworks 2025/2026 comparisons](https://aarambhdevhub.medium.com/rust-web-frameworks-in-2026-axum-vs-actix-web-vs-rocket-vs-warp-vs-salvo-which-one-should-you-2db3792c79a2) — axum vs actix-web tradeoffs
-- [tower-sessions](https://github.com/maxcountryman/tower-sessions) + [tower-sessions-sqlx-store](https://lib.rs/crates/tower-sessions-sqlx-store) — session middleware
-- [snmp2 0.4.9 docs](https://docs.rs/crate/snmp2/latest/features) — SNMP v1/v2/v3 + traps + getbulk
-- [snmp2 GitHub (roboplc/snmp2)](https://github.com/roboplc/snmp2) — feature matrix
-- [rasn-snmp](https://crates.io/crates/rasn-snmp) — alternative SNMP codec stack
-- [modern_snmp](https://github.com/davedufresne/modern_snmp) — SNMPv3-only alternative
-- [ldap3 0.12.1 docs](https://docs.rs/ldap3/latest/ldap3/) — AD bind, NTLM/GSSAPI features, MSRV
-- [ldap3 GitHub (inejge/ldap3)](https://github.com/inejge/ldap3) — release notes for 0.10/0.11/0.12
-- [krilla 0.7 (LaurenzV/krilla)](https://github.com/LaurenzV/krilla) — PDF lib with OpenType subsetting
-- [Typst as a Rust library (Typst blog)](https://typst.app/blog/2025/automated-generation/) and [typst-as-lib](https://crates.io/crates/typst-as-lib) — backup PDF route
-- [Rust: Multilingual PDFs intro (behainguyen)](https://behainguyen.wordpress.com/2025/11/11/rust-multilingual-pdfs-an-introductory-study/comment-page-1/) — Cyrillic/UTF-8 PDF pitfalls
-- [argon2 (RustCrypto)](https://github.com/RustCrypto/password-hashes) — current `argon2` crate
-- [Password Hashing Guide 2025/2026](https://guptadeepak.com/research/password-hashing-guide-2026/) — argon2id parameters and NIST guidance
-- [tracing-appender docs](https://docs.rs/tracing-appender/latest/tracing_appender/) — rolling file logging
-- [calamine GitHub](https://github.com/tafia/calamine) and [rust_xlsxwriter](https://crates.io/keywords/xlsx) — XLSX read/write libs
-- [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) — cross-compile from macOS for Linux
-- [Tauri GitHub Actions guide](https://v2.tauri.app/distribute/pipelines/github/) — official CI matrix
-- [Ship Your Tauri v2 App Like a Pro (dev.to)](https://dev.to/tomtomdu73/ship-your-tauri-v2-app-like-a-pro-github-actions-and-release-automation-part-22-2ef7) — release pipeline example
-- [Paraglide JS for SvelteKit (inlang)](https://inlang.com/m/dxnzrydw/paraglide-sveltekit-i18n) — future i18n choice
-
----
-
-*Stack research for: Rust + Tauri 2 + Svelte 5 desktop+server hybrid asset tracker (Trackly)*
-*Researched: 2026-05-24*
+- crates.io API (версии/MSRV на 2026-11-25): tauri 2.12.7, tauri-plugin-autostart 2.7.0, -updater 2.14.1, -single-instance 2.5.5, -notification 2.8.1, -window-state 2.5.0, -opener 2.7.3, -http 2.9.0, keyring 4.2.0, keyring-core 1.1.0, windows-native-keyring-store 1.1.0, apple-native-keyring-store 1.0.3, reqwest 0.13.5, tokio-tungstenite 0.30.0, rustls 0.23.46, sspi 0.23.1 (MSRV 1.93), kenobi 0.4.2, minisign-verify 0.3.0, ammonia 4.2.5, prosemirror 0.5.2
+- npm registry: @tiptap/* 3.35.0 (MIT), svelte-tiptap 3.0.2, @twemoji/api 17.0.3 (MIT AND CC-BY-4.0), @twemoji/parser 17.0.2, emojibase-data 18.0.0, emoji-picker-element 1.29.1, dompurify 3.5.0
+- https://v2.tauri.app/plugin/updater/ — динамический endpoint, version_comparator/downgrade, installMode (HIGH)
+- https://v2.tauri.app/distribute/windows-installer/ — NSIS `currentUser`, webviewInstallMode (HIGH)
+- https://github.com/jdecked/twemoji — MIT (код) / CC-BY 4.0 (графика), Emoji 17.0, v17.0.3 (HIGH)
+- https://github.com/open-source-cooperative/keyring-rs — модульная архитектура keyring-core (MEDIUM)
+- https://github.com/Devolutions/sspi-rs, https://docs.rs/crate/kenobi/latest — оценка SPNEGO-клиентов (LOW-MEDIUM)

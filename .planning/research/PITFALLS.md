@@ -1,638 +1,377 @@
-# Pitfalls Research
+# Domain Pitfalls
 
-**Domain:** Portable Tauri + Svelte desktop with embedded LAN HTTP server, SQLite WAL, AD bind, multi-vendor SNMP printer monitoring (Trackly)
-**Researched:** 2026-05-24
-**Confidence:** HIGH for Tauri/SQLite/AD/SNMP generic; MEDIUM for Pantum-specific (vendor support is sparse publicly); HIGH for Russian-locale traps (Cyrillic, encoding, TZ).
+**Domain:** Десктопный мессенджер-клиент Link (Tauri 2) и полноценный чат, добавляемые в существующий Trackly (Rust/axum/SQLite WAL single-writer/Svelte 5)
+**Milestone:** v1.5 «Trackly Link — клиент и Чат»
+**Researched:** 2026-11-25
+**Overall confidence:** MEDIUM. Привязки к кодовой базе (ws.rs, chat_service.rs, context.rs) прочитаны напрямую, поэтому HIGH. Платформенные факты (Tauri updater, NSIS, AUMID, трей GNOME, AppLocker/SRP, ProseMirror) взяты из знаний обучения и не перепроверялись по официальной документации в этой сессии. Пункты с пометкой `[verify]` перед использованием в плане фазы нужно сверить с текущей документацией.
+
+## Что уже есть в коде и меняет приоритеты
+
+Прочитано напрямую (HIGH):
+
+- `ws.rs`: **один** глобальный `broadcast::channel::<WsEvent>(128)` (`context.rs:234`). Фильтр `evt.is_visible_to(&identity)` смотрит на `Identity`, снятую **один раз при апгрейде**. Тип события жёстко задан (`WsEvent`), без привязки к комнате.
+- `ws.rs`: `Lagged(n)` только логируется и пропускается, ресинка нет. Клиент молчит (server-push-only), курсора нет.
+- `ws.rs`: сессия проверяется только при апгрейде. Отозванная или истёкшая сессия, а также смена роли не закрывают живой сокет.
+- `chat_service.rs` уже существует (651 строка), но это чат **заявки** (`request_id`, `feed`, `mark_read`, `unread_summary`, `set_muted`, `send` с черновиками). Он привязан к заявке, а не к комнате. Новый чат нельзя «доращивать» поверх него без явного решения: переиспользовать таблицы, сделать параллельную модель или обобщить (см. Pitfall C-9).
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Portable mode leaks data into %APPDATA% / %LOCALAPPDATA%
+Ошибки, из-за которых переписывают или получают инцидент безопасности.
 
-**What goes wrong:**
-"Portable" build still creates `%LOCALAPPDATA%\<app>\EBWebView` (WebView2 user data), and any Tauri code using `tauri::path::BaseDirectory::AppData / AppLocalData / AppConfig` writes outside the executable folder. The user copies `trackly.exe` to a USB stick, runs it on another machine, and discovers settings/cookies/DB orphans were left behind.
+### C-1: Хранимый XSS и инъекция HTML через rich-text JSON
+**Что ломается:** Сообщение хранится как ProseMirror/TipTap JSON. Клиент рендерит его через `{@html}` или `DOMSerializer`/`generateHTML` без белого списка. Атакующий-сотрудник присылает JSON с узлом или маркой, которых нет в схеме: `link` с `href="javascript:..."`, `image` с `src="http://внутренний-хост/..."` или `onerror`, произвольные `attrs` (`style`, `class`). Вектор действует и в Tauri-вебвью, и в браузерном SPA. В Tauri XSS означает доступ к `invoke` и к токену сессии.
+**Почему происходит:** Схема ProseMirror защищает только при `Node.fromJSON` с проверкой `.check()`. Если рендер идёт напрямую из «сырого» JSON, схема не применяется. Клиентская санитизация обходится прямым POST на `/api/v1/...`.
+**Последствия:** Кража сессии, действия от имени администратора (жёсткое удаление, выдача ролей), вызовы Tauri-команд из вебвью.
+**Профилактика:**
+1. **Санитизация и валидация на сервере — источник истины.** Сервер при `send`/`edit` разбирает JSON строго типизированными serde-структурами (enum узлов и марок, `deny_unknown_fields`), отклоняет неизвестные типы и атрибуты и пересохраняет **канонизированный** JSON. Не принимать и не пересылать «как есть».
+2. Белые списки: схемы URL только `http`, `https`, `mailto` (для внутренних ссылок на сущности Trackly — собственный тип узла, не URL); сравнение после trim и lowercase, удаление управляющих символов (`java\tscript:`); числовые границы для `colspan`/`rowspan`/`level`/`indent`; ограничение глубины вложенности, числа узлов и размера документа.
+3. Клиент: не использовать `{@html}` для контента сообщений. Рендер — Svelte-компонентом по узлам (дерево -> элементы), поэтому незнакомый узел просто не рисуется. Второй уровень защиты, не замена серверного.
+4. Ссылки: `rel="noopener noreferrer"`, открытие во внешнем браузере через `tauri-plugin-shell`/opener, **не** внутри вебвью. Показывать реальный `href` при наведении, подтверждение при расхождении текста и адреса.
+5. CSP в Tauri (`app.security.csp`): `default-src 'self'`, `script-src 'self'`, без `unsafe-inline` и `unsafe-eval`, `img-src 'self' data: blob:`; capabilities (ACL) для окна Link — минимум разрешений.
+**Признаки:** в коде есть `{@html`, `innerHTML`, `generateHTML` на данных из API; серверный тест принимает `{"type":"foo"}` и сохраняет его; нет теста с `javascript:`/`data:`/`vbscript:`.
+**Фаза:** модель сообщений + серверная валидация (фундамент чата, до UI); рендер — фаза UI редактора. Включить тест-корпус XSS (OWASP-вектора) как гейт.
 
-**Why it happens:**
-- WebView2 defaults its user-data folder to `LOCALAPPDATA\<app>\EBWebView`. Tauri does not redirect this automatically.
-- `BaseDirectory::AppData` and the `app_data_dir()` helper resolve to system AppData by default.
-- Sqlite/migration code, the updater plugin, and log_dir defaults all silently choose AppData if not overridden.
-- "Portable" is a build-mode myth in Tauri 2 — it must be engineered.
+### C-2: Картинки и ссылки по удалённым URL — трекинг и SSRF
+**Что ломается:** Узел `image` допускает `src="https://внешний-хост/pixel.png"`. Каждое открытие сообщения шлёт запрос наружу: раскрывается IP, момент прочтения, факт открытия (обход приватности read receipts). Если сервер «подтягивает» превью ссылок или картинок — это SSRF во внутреннюю сеть. В проекте уже зафиксирован принятый остаточный SSRF на `ip_address` принтеров (память по ф.41.13) — не повторять паттерн.
+**Профилактика:**
+1. Узел `image` ссылается **только** на вложение (`attachment_id`) из собственного хранилища (как в Заявках), а не на URL. Вставка из буфера: клиент загружает как вложение, в JSON попадает id.
+2. Никаких серверных превью ссылок (link unfurling) в v1.5. Явно занести в anti-features.
+3. CSP `img-src` без `http(s):` — защита, даже если сервер пропустил URL.
+4. Вставка HTML из буфера (Word, веб): прогонять через схему ProseMirror (`parseDOM` отбрасывает неизвестное), удалять `<img src=http...>`.
+**Признаки:** в схеме у `image` атрибут `src` вместо `attachment_id`; сервер делает исходящий HTTP при отправке.
+**Фаза:** модель сообщений/вложений.
 
-**How to avoid:**
-- Set `WEBVIEW2_USER_DATA_FOLDER` env var to `<exe_dir>/data/webview` **before** Tauri builder runs (in `main()` first line, before `tauri::Builder`).
-- Define a single `app_root()` function returning `std::env::current_exe()?.parent()` and route every path (DB, logs, config, backups, templates, cache, webview) through it.
-- Never call `app_handle.path().app_data_dir()` etc. — ban it via clippy `disallowed-methods` lint.
-- Disable Tauri updater plugin (or configure its cache dir under `app_root()`).
-- Add an integration test that runs the app in a sandboxed temp folder and asserts no writes anywhere except `<exe_dir>`.
+### C-3: Дрейф схемы ProseMirror между версиями и клиентами
+**Что ломается:** Хранится JSON по схеме версии N. Клиент Link версии N-1 (обновление идёт по каналам, часть ПК отстаёт) получает узел, которого не знает: `Node.fromJSON` бросает `RangeError`, чат не открывается, или молча теряется содержимое. Худший вариант: клиент N-1 **редактирует** сообщение и пересохраняет, срезав неизвестные атрибуты (потеря данных). Дрейф между Tauri-клиентом и браузерным SPA возможен, когда SPA на сервере новее клиента.
+**Профилактика:**
+1. Поле `schema_version` в строке сообщения и в каждом ответе API. Версия пинится в `Cargo.toml`/`package.json` **точной** (`=`), общая для Link и SPA (монорепо, один пакет `chat-editor`).
+2. Рендер **толерантный**: неизвестный узел показывается как заглушка «неподдерживаемый фрагмент — обновите Link» (текстовое содержимое сохраняется), а не падением.
+3. Редактирование разрешено только при `client_schema_version >= message.schema_version`, иначе кнопка «править» заблокирована.
+4. Новые узлы только аддитивно; удаление или переименование узла — через серверную миграцию данных (как миграции SQL) и бамп версии.
+5. Минимальная версия клиента на сервере (`min_client_version`) — принудительное обновление для критичных изменений, при этом без раскрытия каналов (см. U-6).
+6. Golden-фикстура JSON для каждой версии схемы, гоняется Rust-валидатором и JS-схемой (по аналогии с гейтом «JS-зеркало Rust-формулы» из памяти проекта).
+**Признаки:** нет `schema_version`; две копии схемы (Rust-валидатор и JS) без общей фикстуры; тесты не ловят расхождения.
+**Фаза:** модель сообщений (поле и валидатор), затем UI-редактор; обновление — фаза автообновления.
 
-**Warning signs:**
-- `Process Monitor` (Windows) shows writes to `\AppData\` paths after starting the app.
-- A second user on the same machine sees the first user's settings/cache.
-- Running from a read-only directory (e.g., USB with write-protect) crashes or silently fails.
-- `dir %LOCALAPPDATA%\Trackly` returns anything other than "not found".
+### C-4: Авторизация WS fan-out — утечка сообщений чужих комнат и после удаления из комнаты
+**Что ломается:** Сегодняшняя модель: **все** события идут всем подписчикам, фильтр `is_visible_to` по снятой при подключении `Identity`. Для чата этого недостаточно: (а) событие сообщения содержит текст — достаточно ошибки в фильтре, и текст уходит всем; (б) после удаления пользователя из комнаты открытый сокет продолжает получать сообщения комнаты, потому что членство в `Identity` не пересчитывается; (в) отозванная сессия не рвёт сокет; (г) фильтр, зависящий от БД, нельзя вызвать синхронно в `is_visible_to`.
+**Профилактика:**
+1. **События чата без содержимого**: `chat_message{room_id, seq}` как «сигнал»; тело клиент забирает через авторизованный `GET /rooms/{id}/messages?after=seq`. Тогда утечка через WS ограничена метаданными, а проверка членства выполняется в обычном HTTP-пути (один источник авторизации, уже покрытый тестами).
+2. Если всё же слать тело — держать в соединении **актуальный** набор `room_ids` (`Arc<RwLock<HashSet>>`), обновляемый событиями `membership_changed` и при смене состава; проверка на каждое событие.
+3. При удалении из комнаты, смене роли, отзыве сессии, деактивации пользователя — **принудительный пересчёт или закрытие** сокета (клиент переподключается и ресинкается). Ввести событие `session_revoked{user_id}`, которое обработчик сокета учитывает.
+4. Периодическая ревалидация сессии в `handle_ws_socket` (таймер раз в N секунд) — сейчас её нет.
+5. Тест-матрица: пользователь вне комнаты, удалённый из комнаты, деактивированный, смена роли; для каждого — «событие не доставлено» и «HTTP 403/404».
+6. Для сообщений `is_visible_to` должен быть **fail-closed** (по умолчанию не показывать).
+**Признаки:** в `WsEvent` появился вариант с `text`/`body`; `is_visible_to` для чата возвращает `true` по умолчанию; нет теста «после удаления из комнаты».
+**Фаза:** транспорт/надёжная доставка (ранняя) + модель комнат. Должна быть закрыта до любого UI чата.
 
-**Phase to address:**
-Phase 1 (foundation) — establish `app_root()` discipline and the no-AppData rule before any feature code lands. Add the procmon-based test in CI Windows job.
+### C-5: Потеря событий (Lagged) и дыры в доставке — нужна нумерация и курсор
+**Что ломается:** `broadcast(128)` + `Lagged => continue` означает молчаливую потерю. Для чата это потеря сообщений, неверный счётчик непрочитанного, «тихие» упоминания. Кроме того: сон/выход из сна ноутбука, смена Wi-Fi, TCP half-open — клиент не знает, что соединение мёртвое (сервер ничего не шлёт и не получает).
+**Профилактика:**
+1. Монотонный `seq` на **комнату** (или глобальный на пользователя), присваиваемый в **той же транзакции записи**, что и сообщение (единственный писатель — естественная сериализация; `MAX(seq)+1` внутри транзакции безопасно именно благодаря single-writer). Уникальный индекс `(room_id, seq)`.
+2. Клиент хранит `last_seq` по комнате; после reconnect, `Lagged`, сна — догрузка `after=last_seq`. Сервер при `Lagged` отправляет клиенту событие `resync` (а не только `warn!`) или закрывает сокет, чтобы клиент переподключился.
+3. Размер канала 128 — не масштабируется на чат. Не увеличивать «на глаз»: события-сигналы мелкие, но ресинк обязателен. Отдельный канал/топик для чата, чтобы шумный чат не вытеснял служебные события (`entities_changed`, принтеры).
+4. Heartbeat: сервер шлёт ping каждые ~20-30 с, клиент отвечает; клиент считает соединение мёртвым при тишине >2 интервалов. Сейчас клиентские кадры игнорируются, а сервер ping не шлёт — прокси и NAT рвут «молчащие» сокеты.
+5. Дедупликация на клиенте по `(room_id, seq)` / `message_id` (догрузка и живое событие пересекутся).
+6. Клиентский `client_msg_id` (UUID) при отправке для идемпотентности: повтор после обрыва не создаёт дубль.
+**Признаки:** счётчик непрочитанного «уезжает» после сна; сообщения появляются после F5; дубль при повторной отправке.
+**Фаза:** фаза «надёжная доставка» — первая в чат-ветке, до UI.
 
----
+### C-6: Ключ подписи обновлений — потеря, утечка, невозможность ротации
+**Что ломается:** Updater Tauri проверяет подпись по **публичному ключу, зашитому в сборку** (`plugins.updater.pubkey`). Потеря закрытого ключа = ни одну установленную копию больше нельзя обновить автоматически (придётся ставить вручную на каждом ПК). Утечка = атакующий выкатывает вредоносное обновление на весь парк. Ротация без заранее заложенной возможности невозможна.
+**Профилактика:**
+1. Закрытый ключ только в секретах CI (как заявлено), плюс **офлайн-резервная копия** в менеджере секретов организации (не в репозитории, не в `.planning/`). Пароль к ключу отдельно.
+2. Заложить ротацию с первого релиза: клиент принимает **несколько** публичных ключей, либо промежуточный релиз «мост» подписывается старым ключом и содержит новый pubkey. Проверить на тесте до выпуска v1.5.0 `[verify]` (поддержка нескольких ключей в плагине зависит от версии).
+3. Подпись проверяется клиентом всегда; сервер не должен иметь доступа к закрытому ключу (иначе компрометация сервера = компрометация парка). Загрузка релиза в админку Trackly принимает уже подписанные артефакты и `.sig`.
+4. Публичный репозиторий: следить, чтобы ключ/пароль не попали в логи CI и артефакты (маскирование секретов, не печатать `TAURI_SIGNING_PRIVATE_KEY`).
+5. Подпись Authenticode (код-подпись) — отдельная тема, см. G-3.
+**Признаки:** ключ лежит только на одной машине; нет процедуры ротации; сервер умеет подписывать.
+**Фаза:** фаза автообновления; решение о ключах — до первого релиза клиента (поздно менять).
 
-### Pitfall 2: SQLite "database is locked" under server-mode concurrent writers
+### C-7: Утечка канала «тестовый» через версии, интерфейс, логи, заголовки
+**Что ломается:** Требование: стабильный пользователь не должен видеть **никаких** следов тестового канала. Каналы легко выдать:
+- номер версии (`1.5.0-test.3`, или ветвление версий, видимое в «О программе»);
+- URL эндпоинта обновлений (`/updates/test/...`) и ответы 404/ошибки с названием канала;
+- заголовки (`X-Channel`), тело JSON манифеста с полем `channel`;
+- логи клиента (`updater: channel=test`), список релизов в админке, видимой не-админам;
+- ответ API «подключённые клиенты» и общий список релизов с типом;
+- ошибка «версия понижена, откат» с названием канала;
+- один и тот же эндпоинт отвечает по-разному в зависимости от идентификации (тайминг и размер).
+**Профилактика:**
+1. Единый URL для всех клиентов: `GET /api/v1/link/update?target=&arch=&current_version=`; канал определяется **сервером** по (user, computer) из аутентифицированного запроса. Клиент не передаёт и не получает слово «канал».
+2. Манифест ответа содержит только `version`, `url`, `signature`, `notes`, `pub_date`. Одинаковая форма и для стабильного, и для тестового.
+3. Версии: единая линия semver без суффиксов `-test`/`-beta`/`-rc` у публикуемых артефактов; тестовая сборка получает следующий номер, которого у стабильного канала просто нет «пока». Решить, как избежать «понижения» при возврате со тестового на стабильный (см. U-4) **без** признаков канала.
+4. Имена файлов артефактов и URL загрузки не содержат `test`/`beta`; хранить по content-hash или id.
+5. Логи клиента: не писать слово «channel»; на сервере раздел «Link» виден только администратору (проверка роли на **каждом** эндпоинте release/channel, не только скрытием меню).
+6. Тест-гейт: grep по ответам API и клиентскому бандлу (`rg -i "channel|test"` по ответам endpoint'а обновления, по `strings` бинарника клиента, по `ui/dist`) — не должно быть слова-признака. Учитывать, что общий фронтенд-пакет Trackly может содержать админские экраны «каналы» — в бандл **клиента Link** они не попадают (отдельные точки входа, tree-shaking не гарантия).
+7. Админский UI «Link» живёт в Trackly (SPA), а не в клиенте Link — клиент статически не содержит строк про каналы.
+**Признаки:** в бандле клиента есть строки «канал», «тестовый»; ответ updater различается структурой; версия содержит дефис.
+**Фаза:** автообновление/релизы; тест-гейт добавить в CI.
 
-**What goes wrong:**
-Admin desktop is editing an act while a specialist in the browser submits a return at the same instant. One transaction sees `SQLITE_BUSY`, the user gets a red error toast, and refreshes. Or worse: the desktop reads cached data, the browser commits, and the desktop's "save" silently overwrites with stale values.
+### C-8: Single-writer и реакции — правило «максимум 3» и гонки
+**Что ломается:** «Не более 3 реакций от пользователя на сообщение, самая старая снимается» реализуют как «SELECT count, затем INSERT, затем DELETE oldest» в нескольких вызовах — при нескольких writer-транзакциях это гонка. При архитектуре проекта (все записи через единственный writer-task) гонка структурно невозможна **только если** вся последовательность выполняется **внутри одного job в writer'е**; чтение «count» через reader-соединение вне этого job даёт устаревшие данные. Вторая проблема: «самая старая» должна определяться монотонным `reaction_seq`/`id`, а не `created_at` (при равенстве секунд или скачке часов порядок недетерминирован). Третья: повторное нажатие той же реакции — переключатель (toggle) или идемпотентный повтор? При повторной доставке запроса (retry) toggle ломает состояние.
+**Профилактика:**
+1. Вся логика реакции — один write-job: проверить наличие, вставить, при `count>3` удалить с минимальным `id`; всё в одной транзакции, одно событие в итоге (с полным актуальным состоянием реакций сообщения, а не дельтой).
+2. Уникальный индекс `(message_id, user_id, emoji)`, порядок — по автоинкрементному `id`.
+3. API идемпотентный: `PUT /reactions/{emoji}` (поставить) и `DELETE` (снять), а не `toggle`.
+4. Событие содержит итоговое состояние (какая реакция снята автоматически), иначе у клиентов расползается UI.
+5. Тест: 4 параллельных запроса одним пользователем -> ровно 3 в БД; тест порядка при одинаковом `created_at`.
+**Признаки:** SELECT вне writer-job; сортировка по `created_at`; toggle-эндпоинт.
+**Фаза:** фаза реакций (после базовой модели сообщений).
 
-**Why it happens:**
-- WAL mode only solves **reader/writer** blocking; it does **not** allow concurrent writers.
-- Default `busy_timeout = 0` returns `SQLITE_BUSY` immediately.
-- Read-then-upgrade transactions (`BEGIN` → `SELECT` → `UPDATE`) deadlock when two upgraders race; `BEGIN IMMEDIATE` is required.
-- A long transaction (e.g., bulk CSV import, PDF rendering inside a tx) blocks every other writer for the duration.
-- App-level optimistic concurrency (row version / updated_at compare) is usually skipped in MVP.
+### C-9: Смешение нового чата со старым чатом заявок
+**Что ломается:** В коде есть `chat_service.rs` с моделью «чат заявки», `request_id`, `unread_summary`, черновиками, mute. Попытка натянуть комнаты и ЛС на те же таблицы приводит к `request_id NULL`-костылям, поломке авторизации (`load_access` смотрит на заявку) и регрессиям в Заявках. Обратная ошибка: дублирование логики непрочитанного и mute в двух местах с расхождением.
+**Профилактика:** на этапе дизайна явно решить и зафиксировать (ADR): новая модель `conversation` (kind: direct/room/request) и перенос заявок на неё **или** независимая модель с общими примитивами (rich-text валидатор, вложения, счётчики). Если переносить заявки — это миграция данных, делать **отдельной фазой после** стабилизации нового чата, с регрессионными тестами существующего поведения (`feed`/`send`/`mark_read`). Не менять существующий чат заявок в рамках одной с новым чатом миграции.
+**Признаки:** в схеме появляется `request_id NULL`-колонка в новых таблицах; изменения затрагивают `chat_service.rs` в первых планах.
+**Фаза:** архитектура/модель данных (самая первая фаза чата).
 
-**How to avoid:**
-- On every connection: `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA wal_autocheckpoint=1000;`
-- Use a single writer pool (size = 1) and a separate reader pool (size = N) — `r2d2` or `sqlx` SqlitePool with `.max_connections(1)` for writes; route every mutating query through it.
-- Use `BEGIN IMMEDIATE` for any tx that will write.
-- Keep write transactions short — no I/O (PDF, HTTP, file write) inside a tx.
-- Add row-level `version` column on `acts`, `cartridges`, `devices`; refuse update if version mismatch with 409-style error.
-- Do not put the DB file on a network share — WAL requires shared memory between processes; over SMB it corrupts.
+### C-10: Мягкое удаление «протекает» через поиск, уведомления, цитаты, историю правок
+**Что ломается:** Сообщение помечено `deleted_at`, но:
+- FTS-индекс не обновлён -> поиск находит текст удалённого сообщения (и показывает сниппет);
+- уведомление (системный тост) уже ушло с текстом; повторная доставка при ресинке отправляет **исходный** текст;
+- ответ с цитатой содержит **копию** текста исходного сообщения (если цитата денормализована), или подтягивает по JOIN без проверки `deleted_at`;
+- история правок (если хранится) содержит прежние версии, которые API отдаёт «Информацией о сообщении»;
+- вложения удалённого сообщения остаются доступными по прямому `GET /attachments/{id}`;
+- реакции, упоминания, превью последнего сообщения в списке комнат, счётчики;
+- админ «видит удалённое» — эта привилегия утекает в общие эндпоинты (общий DTO с `deleted_text`).
+**Профилактика:**
+1. Один «слой видимости» на сервере: функция `visible_body(msg, caller)` используется **всеми** путями (feed, поиск, цитата, превью комнаты, уведомление, ресинк, экспорт). Тест-матрица «точка выдачи × роль × состояние сообщения».
+2. Цитата хранит только `reply_to_id`; текст подтягивается на отдаче по тому же слою видимости (удалённое -> «Сообщение удалено»).
+3. FTS: триггеры (или явные write-job шаги) на UPDATE/DELETE; при мягком удалении удалять строку из FTS **той же транзакцией**; при жёстком удалении администратором — ещё и вложения, реакции, FTS, историю правок, **и физически файл вложения**.
+4. Правки: решить заранее, хранится ли история; если нет — не хранить вовсе (меньше утечек). «Карандаш» показывает факт правки, не содержимое.
+5. Вложения: проверка принадлежности к видимому сообщению при отдаче (не только право на комнату).
+6. Админская видимость удалённого — отдельный эндпоинт и отдельный DTO (`AdminMessageDto`), не флаг в общем.
+**Признаки:** `WHERE deleted_at IS NULL` разбросан по запросам вручную; в цитате есть поле `text`; FTS без триггеров.
+**Фаза:** модель сообщений + поиск; тест-матрица — фаза модерации. Повторить на фазе поиска.
 
-**Warning signs:**
-- Intermittent "database is locked" in logs even at low load → busy_timeout missing.
-- `-wal` file grows >100 MB → checkpoints aren't running → long-lived read tx holding back checkpoints.
-- Users report "I saved but my change disappeared" → no optimistic concurrency.
-- Random crashes when DB is on `\\server\share\trackly.db` → forbid this in Settings UI.
-
-**Phase to address:**
-Phase 1 (foundation / data layer). Pragmas, writer-pool, optimistic concurrency, and the "no network share" guard must ship with the schema.
-
----
-
-### Pitfall 3: Pantum BM5100ADN spooler hang — SNMP cannot reliably detect it
-
-**What goes wrong:**
-The product's originating pain point. The Pantum BM5100ADN periodically stops printing in AD environments without a visible printer error — print jobs queue on the Windows host, the printer's own panel shows "Ready", and SNMP `hrPrinterStatus` returns `idle(3)` or `printing(4)` while nothing actually prints. The team builds a monitor that asks the printer "are you OK?" and the printer says "yes" — but jobs are stuck on the Windows spooler, not on the device.
-
-**Why it happens:**
-- The hang is on the **Windows print spooler service** (host side), not on the printer hardware. SNMP polls the printer, which is healthy.
-- Pantum's SNMP firmware support is shallow — `hrDeviceStatus`, `prtAlertTable`, `prtMarkerSuppliesLevel` may return constants or `noSuchObject`, especially for the BM5100 series.
-- Job queue depth (`prtConsoleDisplayBufferText`, `hrPrinterDetectedErrorState`) is often not implemented.
-- Many "fix" articles point at clearing `C:\Windows\System32\spool\PRINTERS\` and restarting `Spooler` service — confirming the bug lives on Windows, not on the device.
-- Driver re-installation is frequently the suggested workaround.
-
-**How to avoid (detection strategy that actually works):**
-Combine multiple signals — SNMP alone is insufficient for this printer:
-1. **Spooler-side detection** (primary signal): poll the Windows host where the printer is shared. Two options:
-   - **Local agent** on the print server (small Rust/Go binary, or a scheduled task) reporting via HTTP to Trackly.
-   - **Remote WMI/RPC** from Trackly server to the print host (requires AD service account, firewall rules). Watch `Win32_PrintJob` count over time — same JobId stuck >N minutes = hang.
-2. **SNMP cross-check** (secondary signal): poll device every 60s for `prtMarkerLifeCount` (page counter). If a job is queued (signal 1) AND page counter hasn't advanced in 5 min → confirmed hang.
-3. **Network reachability** (sanity check): TCP 9100 (raw print) open + ICMP responds → device is alive; if dead, it's not the spooler bug.
-4. **Alert, don't auto-fix in v1.** Restarting the spooler kills every other queued job for other printers; do it only on operator confirmation and only for the specific printer queue (`Restart-Service Spooler` is too broad — prefer `Remove-PrintJob` + driver restart per queue).
-
-**Warning signs (telling the user something's wrong even before SNMP):**
-- `Win32_PrintJob.JobStatus` includes `PRINTING|RETAINED` or `ERROR` for >5 minutes.
-- `Get-Printer | Select-Object -ExpandProperty PrinterStatus` returns 4 (Error) or paused.
-- Same JobId appears in consecutive polls with identical PagesPrinted.
-
-**Phase to address:**
-Phase "Принтеры" (printer monitoring). Detection mechanism is research-heavy — flag for prototype/spike before final design. Auto-restart is explicitly deferred to a later phase per PROJECT.md (correct decision; do not pull it forward).
-
----
-
-### Pitfall 4: AD bind from non-domain dev machine (macOS) without realistic test path
-
-**What goes wrong:**
-LDAP code "works" in dev (no AD reachable → mocked), passes review, hits a Windows AD-joined test box, and fails with one of: TLS cert untrusted (corp CA), referral loop, `LDAP_OPERATIONS_ERROR` because `sAMAccountName=us100` was sent as the DN, channel binding requirement rejected, 60-second timeout because the firewall blackholes 389 and tester thinks the app is hung.
-
-**Why it happens:**
-- Active Directory commonly requires **LDAP channel binding** (post-2023 hardening). `ldap3` supports the tls-server-end-point token, but only on TLS connections — plain `ldap://` will be rejected silently or noisily.
-- AD distinguishes between **bind DN** (`CN=User,OU=...,DC=corp,DC=local`) and **logon names** (`sAMAccountName=us100`, `userPrincipalName=us100@corp.local`). You can bind with UPN directly, but `sAMAccountName` requires either `DOMAIN\us100` (NTLM-style, not pure LDAP) or a search-then-bind two-step.
-- Corp AD almost always uses an internal CA → `native-tls` rejects it unless the CA is trusted.
-- Default `ldap3` timeouts are generous → blocking the app's UI thread if you call bind synchronously.
-- Connecting to a single DC by IP fails when that DC reboots — you need DNS round-robin or SRV records (`_ldap._tcp.dc._msdcs.corp.local`).
-
-**How to avoid:**
-- **Architecture:** bind via UPN (`us100@corp.local`) — works universally and doesn't require a search-then-bind.
-- For `sAMAccountName` flow: app-scoped service account binds first, runs `(sAMAccountName=us100)` search to get the user's `userPrincipalName`, then bind as that user.
-- Always use `ldaps://` (636) or `StartTLS`; provide a UI setting for "Trust CA from PEM file" with explicit path.
-- Set `LdapConnSettings { conn_timeout: 5s, no_tls_verify: false }`. Expose `conn_timeout` in settings; default 5s.
-- Discover DCs via DNS SRV records, not hardcoded hostnames. Use `hickory-resolver` for SRV queries.
-- **Never store AD passwords.** Use them only for the immediate bind, then zeroize (`zeroize` crate on the password buffer).
-- For dev on macOS: use Samba/`389-ds` in Docker as a stand-in AD; CI runs against a real Windows Server 2022 in a Vagrant/Hyper-V box (slow but realistic).
-
-**Warning signs:**
-- "Strong authentication required" or `LDAP_STRONG_AUTH_REQUIRED` → channel binding / signing enforcement; you're on plain LDAP and AD is set to require sealing.
-- Bind succeeds in dev mock, fails in prod with `LDAP_INVALID_CREDENTIALS` → you sent `sAMAccountName` as DN.
-- 30+ second hangs at login → DC unreachable, no timeout configured.
-- AD password appears in any log line or stack trace → critical, fix immediately.
-
-**Phase to address:**
-Phase "Пользователи — AD-вход" (late phase per PROJECT.md). However, the **constraint** that local user passwords never coexist with AD passwords in clear must be in Phase 1 (auth scaffolding: argon2 hashing, no `password` column anywhere).
-
----
-
-### Pitfall 5: Backend authorization gap — UI-only role checks
-
-**What goes wrong:**
-The Svelte UI hides "Delete device" from the Specialist role. A curious user opens DevTools, calls the Tauri command or the axum endpoint directly with the request the Admin uses, and deletes anything. Or a Сотрудник (Employee) calls `POST /api/cartridges/issue` from `curl` and issues themselves cartridges.
-
-**Why it happens:**
-- Tauri's own docs explicitly state: "command exposure has no inherent security impact if the backend doesn't validate requests independently." Tauri capabilities prevent the frontend from *calling* a command, but in server mode the same logic is exposed over HTTP and the capability system doesn't apply.
-- Developers assume "the desktop is the admin" and don't enforce role on Tauri commands either, then enable server mode and forget to add HTTP-side role enforcement.
-- Permission code that looks like `if (user.role === 'admin')` lives in a Svelte component, not in axum middleware.
-
-**How to avoid:**
-- **Single source of truth for permissions in Rust** — a `Permission` enum and an `authorize(user, perm)` function. Every Tauri command **and** every axum route calls it before doing work.
-- Axum middleware tower layer extracts the session from cookie/header, looks up the user, attaches `RequestUser` to extensions; every handler receives `RequestUser` and calls `authorize`.
-- Tauri commands receive `tauri::State<SessionStore>` and resolve the current user; same `authorize` call.
-- Write a single integration test per route: "Specialist calls DELETE /api/devices/:id → 403". Use a parameterized matrix (role × endpoint).
-- UI hiding is a UX nicety, never a security control. Document this in the auth module's README.
-
-**Warning signs:**
-- A permission check lives in a `.svelte` file and nowhere else.
-- `grep -r "authorize\|require_role" src-tauri/` returns < (number of mutating endpoints + Tauri commands).
-- Specialist can hit admin endpoint via curl and get 200.
-
-**Phase to address:**
-Phase "Пользователи" (auth/roles). Must ship with the role system itself, not retrofitted later.
+### C-11: Выполняемый установщик в `%LOCALAPPDATA%` блокируют AppLocker/SRP/антивирус — главный риск «варианта A»
+**Что ломается:** Концепция «per-user NSIS в `%LOCALAPPDATA%` без админа» упирается в то, что на **многих** доменных ПК политики запрещают запуск исполняемых файлов из пользовательских профилей: Software Restriction Policies (правила по пути), AppLocker (правила по умолчанию разрешают только `%PROGRAMFILES%` и `%WINDIR%` для не-админов), Defender ASR / Application Control, сторонние EDR. Результат: установщик «успешно» отработал скриптом входа, но `link.exe` не стартует, пользователь не видит ничего. Также WebView2 может отсутствовать (старые Windows 10, Windows 7/8, серверные ОС, изолированные от интернета ПК), а загрузчик WebView2 требует интернета.
+**Профилактика:**
+1. **Первое действие фазы дистрибуции — пилот на 2-3 реальных доменных ПК под реальными политиками**, до написания остального. Результат фиксируется (без реальных имён) как решение: поддерживаем ли A, или нужны исключения AppLocker по издателю (подпись!) / по хэшу, либо вариант B (per-machine через GPO Software Installation/SCCM).
+2. Подписать исполняемые файлы и установщик сертификатом Authenticode: правила AppLocker «по издателю» переживают обновления, правила «по хэшу» ломаются при каждом обновлении, «по пути» — слабо. Самоподписанный внутренний сертификат допустим, если его корень разослан через GPO (Trusted Publishers). `[verify]` настройки Tauri `bundle.windows.signCommand`/`certificateThumbprint`.
+3. WebView2: режим `offlineInstaller` или `fixedRuntime` для ПК без интернета; для ПК с Windows 10/11 обычно runtime присутствует (Evergreen поставляется с Windows 11 и новыми сборками Windows 10) `[verify]`. Учесть прокси.
+4. Скрипт входа: логирует результат в локальный файл (в `%TEMP%`/сетевой общий каталог ошибок), возвращает диагностику; тихая установка `/S`; идемпотентность (проверка версии в реестре HKCU, не повторная установка при каждом входе); таймаут, чтобы не тормозить вход (запуск в фоне).
+5. Дистрибутив лежит на сетевой общей папке или отдаётся сервером Trackly (HTTPS с пином; для скрипта — `Invoke-WebRequest`, но самоподписанный сертификат вызовет ошибку доверия в PowerShell, предусмотреть передачу хэша/сверку).
+6. Mark of the Web / SmartScreen: файл, скачанный из браузера, помечается; установщик, запущенный скриптом из сетевой шары, вызывает предупреждение зоны «Интернет/Интранет» (`Unblock-File`, добавление сервера в зону «Местная интрасеть» через GPO).
+**Признаки:** «установилось, но не запускается»; Event Viewer: AppLocker/SRP блокировки (ID 8004/8007 `[verify]`); отсутствие подписи.
+**Фаза:** фаза дистрибуции — начинать с пилота; результат определяет остальную планировку. Помечена как требующая углублённого исследования и проверки на живой среде.
 
 ---
 
-### Pitfall 6: Cyrillic + Windows paths + Tauri = silent breakage
+## Moderate Pitfalls
 
-**What goes wrong:**
-User saves the portable folder to `C:\Документы\Учёт\Trackly\` (Cyrillic path). On Windows, file APIs sometimes work, sometimes return "file not found", logs show `fo�.txt`-style replacement chars, and SQLite fails to open the DB because the path crossed a `&str` boundary and got mangled.
+### M-1: RDS/терминальные серверы и несколько пользователей на одном ПК
+**Что ломается:** Per-user установка в `%LOCALAPPDATA%` означает N копий на сервере терминалов (память: каждая — свой WebView2-процесс), N записей автозапуска, N соединений WS. Одинаковый идентификатор `single-instance` у двух пользователей **одной машины**: `tauri-plugin-single-instance` на Windows использует именованный mutex/окно; если имя не включает сессию/пользователя, второй пользователь не запускает приложение (считает, что оно уже запущено) `[verify]`. Роуминг-профили: `%LOCALAPPDATA%` не роумится (хорошо — бинарник не едет), но `%APPDATA%` едет — не хранить там крупные данные, кэш WebView2 и вложений класть только в Local. Данные профиля на каждом входе скачиваются — большой кэш замедляет вход.
+**Профилактика:** решить, поддерживается ли RDS (если да — нагрузочная проверка и отдельное ограничение); имя mutex/ID per-user; WebView2 user data folder в `%LOCALAPPDATA%` (по умолчанию рядом с exe — **не** в каталоге установки, доступном на запись только одному); компьютерный идентификатор (для канала «по компьютеру») должен различать **пользователь × компьютер**, а на RDS — не считать сервер одним «компьютером» для канала всех его пользователей без явного решения.
+**Фаза:** дистрибуция/идентификация клиента.
 
-**Why it happens:**
-- Windows filenames are UTF-16 (technically WTF-8 in Rust's internal representation), and Rust's `Path::to_str()` validates UTF-8 — non-UTF-8 paths return `None` or use replacement chars.
-- Many crates take `&str` for paths (instead of `AsRef<Path>`), causing silent corruption.
-- SQLite's `Connection::open(path)` does work with UTF-8, but if upstream code already mangled the string, it's too late.
-- WebView2 cache path (set via `WEBVIEW2_USER_DATA_FOLDER`) is parsed via Windows APIs that don't always tolerate Cyrillic well in env vars unless the process is UTF-8 manifest-enabled.
+### M-2: Идентификатор «компьютера» для канала обновления
+**Что ломается:** Канал назначается «пользователю И компьютеру». Идентификатор компьютера берут из `MachineGuid` (меняется при клонировании образов — десятки ПК с одним GUID в «золотом образе»), из имени хоста (переименование), MAC (виртуальные адаптеры). Клиент сам присылает идентификатор — его легко подделать, и стабильный пользователь, узнав чужой id, получит тестовый канал.
+**Профилактика:** серверный `client_id`, выдаваемый при первом входе и хранимый локально; привязка к аутентифицированному пользователю; дополнительно имя хоста как «человеческая метка» в админке; обработка клонированных образов (дубль `client_id` -> перевыдача). Не доверять идентификатору для безопасности, только для маршрутизации.
+**Фаза:** клиент/регистрация + каналы.
 
-**How to avoid:**
-- Always pass `PathBuf` / `&Path`, never `&str`, between modules. Add a clippy/lint rule banning `.to_str().unwrap()` on paths.
-- Add a Windows manifest setting `activeCodePage=UTF-8` (Windows 10 1903+) — Tauri's WiX/NSIS template should include this; verify it does for your version.
-- Test from day 1 with paths containing `Документы`, `Учёт`, spaces, and `№` (the act-number character).
-- For SQLite specifically, ensure `bundled` feature is used (so the SQLite library is the upstream version with UTF-8 path support, not the Windows-default one).
-- Reject CR/LF/control characters in user-provided locations (e.g., DB-folder setting) with a clear error.
+### M-3: Обновление при работающем приложении, частичная загрузка, NSIS currentUser vs perMachine
+**Что ломается:**
+- Windows не даёт перезаписать исполняемый файл запущенного процесса. Tauri updater на Windows завершает приложение и запускает установщик (`installMode: passive|basicUi|quiet`) `[verify]`. Для tray-приложения «закрыто» может означать «скрыто», процесс жив.
+- Установщик NSIS с `installMode: currentUser` в `tauri.conf.json` обязателен для варианта A; `perMachine` или `both` запросит UAC, который у пользователя без прав зависнет/отклонится. Проверить, что и **первичная** установка, и **обновление** используют один режим (смена режима между версиями оставляет две установки).
+- Частичная загрузка: плагин скачивает целиком, проверяет подпись **до** запуска установщика; но обрыв при Wi-Fi может оставить мусор во временной папке; сервер должен отдавать `Content-Length`, поддерживать `Range` не требуется, но ответ через reverse proxy не должен буферизоваться/обрезаться.
+- Пользователь выключил ПК посреди установки — повреждённая установка; предусмотреть «ремонтный» запуск (повторный вход скриптом GPO поставит поверх).
+- Откат (downgrade): плагин по умолчанию принимает обновление только при `remote_version > current_version` (сравнение semver) `[verify]` — **откат на меньшую версию требует** либо кастомного `version_comparator`, либо **выпуска «отката» с бóльшим номером** (бамп, содержимое старой версии). Решить заранее; второй вариант проще и не раскрывает канал.
+- Версия приложения в обновляемой сборке должна строго расти на **каждом** выпуске, включая тестовый.
+**Профилактика:** `currentUser` во всех сборках; тест «обновление при открытом окне / свёрнутом в трей»; на выходе из старой версии корректно закрыть WS и дождаться записи черновиков; ретрай загрузки; при ошибке подписи — молча остаться на текущей версии и логировать без признаков канала; «откат» = новая версия с большим номером.
+**Фаза:** автообновление.
 
-**Warning signs:**
-- "File not found" errors mentioning paths with `?` or `�` characters.
-- App works in `C:\Trackly\` but not in `C:\Документы\Trackly\`.
-- Logs containing replacement chars where the user's path should be.
+### M-4: Закрепление (pinning) самоподписанного TLS-сертификата и его ротация
+**Что ломается:** Клиент закрепляет сертификат сервера. При истечении или перегенерации (в проекте есть rcgen генерация самоподписанного при первом запуске, а также «мёртвое сохранение TLS-сертификата» в списке долгов) все клиенты перестают подключаться, а обновить их автоматически нельзя — updater тоже ходит по этому TLS. Закрепление **листа** ломается при ротации, закрепление **публичного ключа (SPKI)** переживает перевыпуск с тем же ключом. Подтверждение «доверять первому увиденному» (TOFU) уязвимо к MITM на первом подключении и вызывает вопрос пользователю.
+**Профилактика:**
+1. Пиннить **SPKI-хэш** (SHA-256 публичного ключа), а не весь сертификат; при перевыпуске сохранять ключ.
+2. Серверу вести **два** ключа/сертификата (текущий и следующий), клиент принимает список из нескольких SPKI-хэшей; новый хэш передаётся клиентам **по уже доверенному каналу** (в ответе авторизации, подписанном/по доверенному соединению) до смены.
+3. Срок действия сертификата длинный (но не бесконечный) и **мониторинг** истечения в админке Trackly с предупреждением за 60/30/7 дней.
+4. Первичное закрепление: отпечаток вводится администратором/зашит в установщик (генерируется на сервере: установщик скачивается с сервера, `config` рядом). Не TOFU по умолчанию. Для пользователя вне домена — показать отпечаток для сверки.
+5. Реализация: `reqwest` с `rustls` и кастомным `ServerCertVerifier` (не отключать проверку целиком; `danger_accept_invalid_certs(true)` как «временное» решение превращается в постоянное). **WS** использует тот же verifier (`tokio-tungstenite` + rustls-конфиг), иначе WS идёт мимо пина. **Вебвью** Tauri не использует Rust-verifier: если UI Link грузится как `https://сервер/` внутри вебвью, пиннинг к нему **не применяется**, а самоподписанный сертификат в WebView2 вызовет страницу ошибки. Поэтому: UI грузится локально из бандла (`tauri://`), а **все** сетевые вызовы делает Rust-сторона (команды `invoke`), которая применяет пин; WS тоже терминируется в Rust и пробрасывается в UI событиями. Это ключевое архитектурное решение (см. A-1).
+6. Предусмотреть аварийный путь: ручная смена отпечатка в настройках клиента (скрыто от обычных пользователей), документированная процедура.
+**Признаки:** «все клиенты отвалились после перегенерации сертификата»; в коде `danger_accept_invalid_certs`.
+**Фаза:** клиент-сеть/аутентификация; процедура ротации — фаза автообновления/эксплуатации.
 
-**Phase to address:**
-Phase 1. Establish path-handling conventions and add Cyrillic-path test in CI Windows job before any feature ships.
+### M-5: SPNEGO/Kerberos из нативного клиента против вебвью
+**Что ломается:** В браузере Kerberos SSO (память: ф.31–32 в Trackly реализован на сервере) работает через `Negotiate` в браузере, который сам берёт билет по политике «Intranet zone»/`AuthServerAllowlist`. В Tauri-вебвью (WebView2) автоматический Negotiate срабатывает только для сайтов зоны Интранет и зависит от настроек Windows; для самоподписанного хоста и по IP не сработает. Для нативного Rust-клиента нужен SSPI (Windows): `sspi` crate/`windows` API `InitializeSecurityContext` с `Negotiate`; на macOS/Linux — GSSAPI с Kerberos-тикетом (kinit), у не-доменных ПК его нет. Другие проблемы: SPN должен совпадать с именем хоста, к которому обращается клиент (по IP — NTLM-откат или отказ); время на клиенте и КД не должно расходиться больше 5 минут; токены SPNEGO многошаговые — нужна **одна и та же** TCP-связность (keep-alive) между раундами; `Authorization: Negotiate` через reverse proxy теряется.
+**Профилактика:**
+1. Определить поток: клиент вызывает Rust-реализацию SSPI (Windows) -> получает токен -> шлёт `Authorization: Negotiate ...` на `/api/v1/auth/sso` -> сервер валидирует (как сейчас) -> выдаёт **токен клиента Link** (не cookie вебвью).
+2. Fallback: логин/пароль при любой ошибке SPNEGO; не зацикливаться (повторные попытки с бэкоффом, иначе блокировка учётной записи при неверном пароле — **не** слать пароль автоматически повторно).
+3. Хранение учётных данных: если «запомнить меня» — токен в **Windows Credential Manager / Keychain / Secret Service** (через `keyring`), а не в файле настроек; ни пароль, ни токен — в логах.
+4. Обращаться к серверу только по **DNS-имени** с зарегистрированным SPN.
+5. На dev-машине (macOS без AD) SPNEGO/AD мокаются (требование проекта); отдельный чеклист ручной проверки на Windows-стенде — **не** отмечать «проверено» по моку.
+**Признаки:** SSO работает в Chrome, но не в Link; по IP-адресу не работает; блокировка УЗ после нескольких неудач.
+**Фаза:** клиент — аутентификация; нужны исследование и живая Windows-проверка.
 
----
+### M-6: Уведомления Windows и AUMID у per-user установки
+**Что ломается:** Тосты в Windows для настольных приложений требуют **AppUserModelID**, привязанного к ярлыку в меню «Пуск» (для unpackaged apps). Без этого тосты не показываются или показываются от «Windows PowerShell»/с чужим именем; в проекте это уже случалось (portable-вариант пришлось запускать через `POWERSHELL_APP_ID`). NSIS-установщик Tauri создаёт ярлык в меню «Пуск» — AUMID на нём задан идентификатором из `identifier` `[verify]`; в **dev-режиме** (`tauri dev`) тосты идут от PowerShell, поэтому «работает в dev, не работает в релизе» и наоборот. Per-user установка не требует прав, но ярлык должен лежать в **пользовательском** меню «Пуск» (`%APPDATA%\Microsoft\Windows\Start Menu\Programs`) — проверить, что установщик так и делает при `currentUser`. Режим «Не беспокоить»/Focus Assist подавляет тосты без ошибок. Групповые политики могут отключать уведомления.
+**Штормы уведомлений:** 50 сообщений за 10 секунд -> 50 тостов; тосты на каждое сообщение при открытом окне чата; уведомления о собственных сообщениях со второго устройства; повторная доставка при ресинке (после сна приходят все пропущенные сразу).
+**Профилактика:**
+1. Один идентификатор приложения (`identifier` в `tauri.conf.json`) = AUMID = ярлык; проверка на **чистой установке из NSIS** на Windows (не в dev) — пункт в UAT.
+2. Группировка и троттлинг: тост по комнате с заменой (tag/group), не чаще раза в N секунд на комнату, схлопывание «Ещё 12 сообщений»; при ресинке после паузы — **один** сводный тост, а не по сообщению.
+3. Не показывать системный тост, если окно Link видимо **и в фокусе** и открыта эта комната; внутренний тост приложения — иначе. (Из памяти проекта: `document.hidden` не равно «окно не в фокусе» — использовать события фокуса окна Tauri `onFocusChanged` и видимость окна, а не только `document.hidden`.)
+4. Mute комнаты / всего приложения применяются **на клиенте и сервере**: упоминание (@) пробивает mute комнаты (решить правилом и зафиксировать).
+5. Содержимое тоста: настройка «показывать текст» (приватность на экране) — по умолчанию без превью или с обрезкой; мягко удалённое не показывать.
+6. Права: macOS запрашивает разрешение на уведомления при первом показе (нужно подписанное приложение/бандл-идентификатор), Linux — зависит от демона уведомлений (libnotify/D-Bus) `[verify]`.
+**Признаки:** тосты «от PowerShell»; нет тоста после установки из NSIS; десятки тостов после выхода из сна.
+**Фаза:** фаза уведомлений; AUMID-проверка — в фазе дистрибуции (раньше, чтобы не открывать поздно).
 
-### Pitfall 7: PDF generation with Cyrillic — missing glyphs, empty boxes, font bloat
+### M-7: Трей: различия платформ, GNOME без трея
+**Что ломается:**
+- **GNOME** (Ubuntu/Fedora Workstation) **не показывает** иконки трея по умолчанию: нужно расширение AppIndicator/KStatusNotifierItem. Tauri использует `libayatana-appindicator`/`libappindicator` `[verify]`; без расширения приложение «скрылось» в трей, которого не видно -> пользователь потерял приложение. На Linux также нет события клика по иконке трея (только меню) `[verify]` — открыть окно можно только через пункт меню.
+- **macOS**: трей = menu bar extra; режим «без Dock» (`LSUIElement`/`set_activation_policy(Accessory)`); иконка должна быть template-image (монохромная), иначе тёмная тема ломается; индикатор непрочитанного — смена иконки или заголовка-числа (`set_title`) рядом с иконкой, на других ОС заголовок недоступен. «Не показывать на панели задач» на Windows: `skip_taskbar`.
+- **Windows**: иконки в «скрытых значках» (по умолчанию новые иконки прячутся в «^»), пользователь не видит индикатор непрочитанного; нет «бейджа» поверх иконки трея — делать сменой самой иконки (сгенерировать набор иконок с цифрой/точкой заранее: 16/20/24/32 px под DPI 100/125/150/200%); пересоздание иконки при перезапуске Explorer (`TaskbarCreated`) `[verify]` — иначе иконка исчезает до перезапуска.
+- «Закрывается только из меню трея»: перехватить `CloseRequested` -> `hide()`; при выходе из системы/выключении ОС приложение должно **закрываться** корректно (Windows `WM_QUERYENDSESSION`), иначе блокирует выключение и пользователь видит «Приложение не позволяет завершить работу». `[verify]` как Tauri/tao ведёт себя при `RunEvent::ExitRequested`.
+- Скрытое окно не перерисовывается; WebView2 может **приостановить** фоновые таймеры/WS в вебвью (throttling) — таймеры в JS не надёжны в скрытом окне.
+**Профилактика:**
+1. Сетевая часть (WS, ресинк, счётчики, уведомления, обновление индикатора) живёт в **Rust-процессе**, а не в JS вебвью — не зависит от видимости окна.
+2. Linux: при старте определить наличие хоста трея (D-Bus `org.kde.StatusNotifierWatcher`); если нет — **не** скрывать окно в никуда, показывать обычное окно в панели задач и подсказку о расширении. Прописать в документации.
+3. Матрица ручной проверки: Win10/Win11 × тема × DPI; macOS светлая/тёмная; Ubuntu GNOME с расширением и без; KDE.
+4. Двойной клик/открытие второго экземпляра -> single-instance поднимает окно существующего.
+**Фаза:** клиентская оболочка (трей, окно) — ранняя; индикатор — фаза уведомлений.
 
-**What goes wrong:**
-The Act of Acceptance prints fine in dev (English placeholder text). In prod with `Сидоров А.А. передаёт Петрову Б.Б.`, every Cyrillic glyph renders as an empty rectangle or vanishes.
+### M-8: Автозапуск — реестр против папки «Автозагрузка»
+**Что ломается:** `tauri-plugin-autostart` на Windows пишет в `HKCU\...\Run` `[verify]`. Проблемы: (а) путь в реестре указывает на старую версию, если обновление меняет каталог (NSIS перезаписывает по тому же пути — ок; если путь содержит номер версии — сломается); (б) политики (GPO/«Список разрешённых автозапусков», Defender ASR) удаляют/блокируют записи Run; (в) Startup-папка (`shell:startup`) видна пользователю и менее хрупка к блокировке, но ярлык можно удалить; (г) на RDS `Run` срабатывает для каждого сеанса — правильно, но нагружает; (д) macOS: LaunchAgent plist (`~/Library/LaunchAgents`) или `SMAppService` (macOS 13+) — «Элементы входа» с показом в настройках; Linux: `~/.config/autostart/*.desktop` — не работает в части оконных менеджеров без XDG autostart.
+Включение автозапуска «по умолчанию» на ПК, где пользователь отказался, воспринимается как навязчивость; нужна настройка в UI, учитывающая текущее состояние (читать из системы, а не из своего конфига).
+**Профилактика:** записывать автозапуск при установке (NSIS-хук), а в настройках — тумблер, читающий реальное состояние; запуск при автозапуске с флагом `--minimized` (в трее, без окна); задержка старта (30–60 с) на медленных/загруженных ПК при входе пользователя, чтобы не соревноваться с GPO-скриптами; тест: перезагрузка Windows -> иконка в трее появилась. Для macOS/Linux — отдельные проверки.
+**Фаза:** клиентская оболочка / дистрибуция.
 
-**Why it happens:**
-- `genpdf`'s built-in fonts are Windows-1252 encoded — zero Cyrillic glyphs.
-- `printpdf` requires explicit font embedding; if you embed a font without Cyrillic glyphs (e.g., default Helvetica from PDF standard), no Cyrillic renders.
-- Some PDF libraries silently skip glyphs that aren't in the font's cmap instead of erroring loudly.
-- Even when the font has glyphs, **subset embedding** can drop them if the library uses Latin-1 codepage extraction.
-- Bundling a 5MB TTF per font face × bold × italic × monospace bloats the binary.
+### M-9: Эмодзи — отрисовка и откат шрифта
+**Что ломается:** Требование «одинаково на всех ОС» — собственный SVG-набор. Проблемы: (а) пользовательский ввод содержит Unicode-эмодзи (вставка, мобильные клавиатуры, Win+.) с вариационными селекторами (U+FE0F), ZWJ-последовательностями (👨‍👩‍👧), модификаторами тона кожи, флагами (региональные индикаторы) — наивная замена «по одному символу» ломает составные; (б) в Windows 10 нет цветных эмодзи для новых версий Unicode (квадратики `☐`), WebView2 на старых Windows показывает ч/б Segoe UI Symbol; (в) в поле ввода (contenteditable) эмодзи вставляются как текст, а не картинка; (г) копирование из чата в чужое приложение должно давать **Unicode**, а не `<img>` — нужен `alt`/копирование через `clipboard` с текстом; (д) поиск и серверная валидация: хранить Unicode-символы в JSON (UTF-8), **не** хранить URL/картинки эмодзи; (е) реакции — набор фиксирован: валидировать на сервере по списку допустимых; (ж) размер набора: полный Unicode-набор SVG — десятки МБ в бандле, лучше спрайт и ленивая загрузка; лицензия набора (Twemoji (CC-BY 4.0, форк Fluent/Noto: Apache 2.0, OFL)) — указать атрибуцию в «О программе» и не конфликтовать с лицензией публичного репозитория.
+**Профилактика:** библиотека сегментации (`Intl.Segmenter` с `granularity: 'grapheme'` или `emoji-regex`) вместо замены посимвольно; рендер — узел `emoji` с атрибутом `char` (Unicode) в схеме, SVG выбирается на **клиенте** по кодовой последовательности; запасной вариант — системный шрифт, когда SVG нет; тест-набор из ZWJ/флагов/тонов/keycap (`1️⃣`). Для WKWebView и WebView2 проверить вручную (память проекта: синтетический харнесс не заменяет проверку в реальном приложении).
+**Фаза:** UI редактора/реакций.
 
-**How to avoid:**
-- Pick a font family with full Cyrillic coverage: **DejaVu Sans**, **PT Sans**, **Roboto**, or **Inter** (verify the file actually contains U+0410–U+044F and `ё/Ё` U+0401/U+0451).
-- Bundle the TTF as a Rust `include_bytes!` resource; don't rely on system fonts (portability).
-- Use **Typst** (via `typst` crate) or **`weasyprint`-style HTML→PDF** (`headless_chrome` against the embedded webview is heavy but works) if `printpdf`/`genpdf` font handling becomes painful. **Recommendation:** start with `typst` — it's Rust-native, handles fonts and Unicode natively, and produces beautiful PDFs from declarative templates.
-- Add a CI test: render a fixture PDF with known Cyrillic text, hash the output, fail if bytes mismatch.
-- Strip the font to required subset offline to control binary size (use `fonttools subset --unicodes=U+0020-U+007E,U+0400-U+04FF`).
+### M-10: Рост SQLite и FTS
+**Что ломается:** Чат — самая интенсивная по записи функция проекта. WAL разрастается, если есть долгий читатель (чекпоинт не проходит) — файл `-wal` в гигабайты; FTS5 индекс увеличивается в несколько раз относительно текста; вложения в БД (BLOB) раздувают базу и бэкап — в Заявках вложения уже есть (`attachment_store`), использовать **тот же файловый механизм**; хранение JSON rich-text плюс плоский текст для поиска — двойной объём; `VACUUM` блокирует писателя; резервные копии (`backup_service`) без `wal_checkpoint` дают неконсистентный снимок или огромные бэкапы.
+**Профилактика:**
+1. Для поиска — **внешний** (external content) FTS5 с токенайзером `unicode61 remove_diacritics 2` (кириллица, регистр) `[verify]`; русская морфология недоступна без внешних средств — **принять и задокументировать** (поиск по подстроке/префиксу `слов*`, не по лемме). Хранить в FTS плоский текст, извлечённый сервером из канонизированного JSON.
+2. `PRAGMA wal_autocheckpoint`, периодический `wal_checkpoint(PASSIVE/TRUNCATE)` в фоне писателем в окно простоя; не держать долгие читатели (стримы выдачи по курсору короткие).
+3. Пагинация только по `seq`-курсору (`WHERE seq < ? ORDER BY seq DESC LIMIT 50`), индексы `(room_id, seq)`; никаких `OFFSET`.
+4. Политика хранения: лимит размера вложения, квоты на пользователя, админский просмотр объёма (`/Link` раздел), очистка осиротевших файлов при жёстком удалении.
+5. Нагрузочный тест: 100 пользователей × 50 000 сообщений, замер поиска, холодного открытия комнаты, размера БД и времени `backup`. Миграции FTS: **миграция обязана ставить `PRAGMA user_version`** (правило проекта), `INSERT INTO fts(fts) VALUES('rebuild')` вынести из миграции в фоновый job, иначе блокировка запуска; помнить, что `FK OFF` не работает внутри транзакции refinery, и что новый `.sql` теперь пересобирается через build.rs.
+**Признаки:** `-wal` больше БД; поиск >1 с; бэкап растёт линейно с вложениями.
+**Фаза:** поиск и вложения; нагрузочный тест — перед закрытием milestone.
 
-**Warning signs:**
-- Empty boxes / missing glyphs in the rendered PDF.
-- PDF opens with a font-substitution warning in Adobe Reader.
-- File size of bundled fonts dominates the binary.
+### M-11: Счётчик непрочитанного — расхождение (drift)
+**Что ломается:** Счётчик хранят как инкрементируемое поле `unread_count` и «+1»/«-1» на событиях: расхождение при потерянных событиях, удалении сообщений (мягком — уменьшать ли?), упоминаниях, чтении с двух устройств, выходе из комнаты, повторной доставке. Это то же, что `unread_summary` в старом `chat_service`.
+**Профилактика:** хранить **`last_read_seq`** на (user, room) и вычислять `unread = count(messages WHERE seq > last_read_seq AND NOT own AND NOT deleted)` (материализовать кэшем с пересчётом, но источник истины — курсор); `mark_read(up_to_seq)` идемпотентен и монотонен (`max(old, new)`); индикатор трея = сумма по немьютнутым комнатам (+ упоминания всегда); при ресинке сервер присылает «саммари» (`unread_summary`) и клиент **заменяет**, а не прибавляет. Прочтение «по видимости» — только при фокусе окна и прокрутке до сообщения (не при скрытом окне в трее — иначе всё помечается прочитанным при первом же подключении).
+**Фаза:** надёжная доставка / фаза read receipts.
 
-**Phase to address:**
-Phase "Акты приёма-передачи" (first feature requiring PDF) — set up font infrastructure once, reuse for all later document templates.
+### M-12: Конфиденциальность read receipts
+**Что ломается:** «Информация о сообщении: кто и когда прочитал» раскрывает привычки (когда сотрудник на месте). Такие данные видны **любому** участнику? Автору? Администратору? В 1:1 «прочитано» — симметричная утечка. Отметка «прочитано» ставится автоматически при загрузке окна (в трее) без реального просмотра; в комнате из 200 человек объём `read_receipts` O(сообщений × участников).
+**Профилактика:** хранить **один** курсор `last_read_seq` на (user, room) вместо строки на сообщение (O(участников), а «кто прочитал сообщение m» = `last_read_seq >= m.seq`); время прочтения — время обновления курсора (приблизительное, зафиксировать в тексте UI «около»); определить политику видимости (автор видит; остальные — нет; админ — отдельным правом, в журнал аудита); возможность отключить отправку receipts (настройка организации) — решить на этапе требований; в комнатах >N участников показывать только счётчик. Информация о **реакциях** — аналогично.
+**Фаза:** фаза read receipts; решение о приватности — на этапе требований.
 
----
+### M-13: Часы, часовые пояса, упорядочивание сообщений
+**Что ломается:** Порядок по клиентскому времени при расхождении часов (ноутбук отстаёт на минуты/сутки) — сообщения «из прошлого»; `created_at` в секундах — равенства; переход летнего/зимнего времени (в РФ отменён, но у клиентов вне РФ/macOS с другим поясом — возможен); отображение «сегодня/вчера» в поясе клиента против сервера; Kerberos чувствителен к скью >5 мин (см. M-5) и ошибка выглядит как «не удалось войти».
+**Профилактика:** порядок **только** по серверному `seq`; серверное время UTC (`time` crate, unix-секунды/миллисекунды) хранится и отдаётся; клиентское время не отправляется (кроме `client_msg_id`); отображение в локальном поясе клиента через `Intl.DateTimeFormat` (не вручную); учитывать, что у браузерного SPA и клиента Link тот же код форматирования; сервер возвращает `server_time` в ответах для оценки скью, клиент показывает предупреждение при расхождении >2 мин (помогает диагностике SSO).
+**Фаза:** модель сообщений (seq) и UI.
 
-### Pitfall 8: CSV roundtrip with Russian Excel — encoding mismatch
+### M-14: Крупные вложения и загрузка
+**Что ломается:** Загрузка файла на сотни МБ через единственный writer-task блокирует запись всем (если потоково писать «внутри» job); лимит тела в axum (по умолчанию 2 МБ у `DefaultBodyLimit`) даёт 413 на сообщения с картинками; обрыв Wi-Fi посередине; клиент в трее не показывает прогресс; Content-Type из имени файла -> XSS при отдаче `text/html` (inline); повторная загрузка одного и того же; антивирус. Миниатюры/просмотр — как в Заявках (переиспользовать `attachment_media`).
+**Профилактика:** писать файл в **временный каталог вне writer'а**, а в БД — только короткая запись метаданных в writer-job; лимит на тело (например, 25–50 МБ, настраиваемый) и общий на пользователя; `Content-Disposition: attachment` для не-whitelisted типов и `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` на выдаче вложений; очистка временных файлов; загрузка до отправки сообщения (вложение «висит» непривязанным — GC по TTL, аналог `purge_stale_drafts`); сжатие картинок клиентом перед отправкой; прогресс и отмена в UI.
+**Фаза:** вложения.
 
-**What goes wrong:**
-Export CSV from Trackly. Open in Russian Excel — every Cyrillic field is mojibake (`Ð¡Ð¸Ð´Ð¾Ñ€Ð¾Ð²`). User edits, re-imports. Either the import fails, or it imports correctly but silently double-converts.
+### M-15: Офлайн-черновики и потеря введённого текста
+**Что ломается:** Черновик в `contenteditable` теряется при обновлении клиента (авто-перезапуск), краше вебвью, смене комнаты; потеря соединения: отправка «в никуда» без индикации; повтор отправки даёт дубль (см. C-5 `client_msg_id`); черновик содержит чувствительный текст — хранение открытым в `localStorage` вебвью (читается любым XSS и остаётся на общем ПК/RDS). В проекте уже есть серверные черновики (`discard_drafts`, `purge_stale_drafts`) для заявок.
+**Профилактика:** черновик — локально в файле профиля пользователя (или `localStorage` вебвью + привязка к user_id; очищать при выходе), сохранять на `input` с debounce; перед авто-обновлением — сохранить состояние; очередь исходящих с состояниями «отправляется/не доставлено/повторить» и идемпотентным `client_msg_id`; при смене пользователя на общем ПК — очистка.
+**Фаза:** UI чата / надёжная доставка.
 
-**Why it happens:**
-- Russian Excel on Windows defaults to Windows-1251 (CP1251) for CSV without a BOM.
-- UTF-8 BOM (`EF BB BF`) is required for Excel to recognize the file as UTF-8.
-- Excel's default CSV delimiter depends on regional settings — semicolon (`;`) in Russian locales, comma (`,`) in en-US.
-- Quoting rules differ: Excel uses `""` doubling; some imports expect backslash escaping.
+### M-16: Доступность (a11y) — базовый минимум
+**Что ломается:** Контекстные меню на `div`, реакции — иконки без текстовых меток; rich-text редактор без роли `textbox` и `aria-multiline`; живые обновления без `aria-live` — скринридер молчит; таблицы в сообщениях без `th`/`scope`; контраст (в проекте уже есть долг `check-contrast`); фокус теряется при приходе сообщений (автопрокрутка); клавиатурная навигация по списку комнат и меню; `prefers-reduced-motion`; масштаб интерфейса 125–200%.
+**Профилактика:** `role="log"`/`aria-live="polite"` для ленты (не «assertive»), метки `aria-label` у всех иконок-кнопок, навигация стрелками в меню, видимый фокус, горячие клавиши (Enter/Shift+Enter, Esc, Ctrl+K) задокументированы; не забирать фокус у пользователя при входящих; отдельный пункт чеклиста UI-фазы. Юридический минимум (требования к ПО в организации) уточнить — LOW confidence, что это обязательное требование здесь.
+**Фаза:** UI-фаза чата (чеклист), не отдельная.
 
-**How to avoid:**
-- **Export:** write UTF-8 with BOM by default; use `;` as delimiter on Russian-locale (detect via OS locale or a Settings toggle). Provide a UI checkbox "Совместимость с Excel (Windows-1251, ;)" for users who insist on legacy.
-- **Import:** detect encoding via BOM first (UTF-8 BOM, UTF-16 LE/BE BOM); if no BOM, try UTF-8 strict decode → on `UTF8Error` fall back to CP1251 (`encoding_rs`). Show a preview of the first 5 rows decoded in the chosen encoding before commit.
-- Auto-detect delimiter by counting `;` vs `,` vs `\t` in the first 10 lines, pick highest; show in preview, allow override.
-- Use the `csv` crate with `flexible(true)` so short rows don't fail import; show row-level errors with line numbers.
-- Idempotency: define a "natural key" for each CSV entity (e.g., `serial_number` for devices) and use UPSERT semantics with explicit "what to do on conflict" UI choice.
-
-**Warning signs:**
-- Exports look fine in dev (TextEdit, VS Code) but mojibake in Excel.
-- Users send back files with mixed encodings (some rows UTF-8, some CP1251 — happens after multi-step manual editing).
-- Imports succeed with "0 errors" but data has `?` chars.
-
-**Phase to address:**
-Phase "Устройства" (first import/export). Build encoding/delimiter detection once as a shared utility.
-
----
-
-### Pitfall 9: Sequential ID race — act №, cartridge code (C-000001)
-
-**What goes wrong:**
-Two specialists in the browser hit "Create act" at the same instant. Both UIs request "next available number", get `42`, both submit. Either one fails with a unique-constraint violation (bad UX) or — worse, if there's no unique index — both succeed and there are now two act №42s.
-
-**Why it happens:**
-- The naive flow: `SELECT MAX(number)+1` → return to UI → user edits → submit. The gap between read and write is wide open to races.
-- AUTOINCREMENT works for surrogate IDs but the user-visible № may need to be editable (per PROJECT.md: "автопредложение следующего, с возможностью переопределить"), so you can't rely on it alone.
-- SQLite gaps from rolled-back transactions create confusion ("Where's №43?") when the user expects gapless sequences.
-
-**How to avoid:**
-- Two-step strategy:
-  1. UI shows a **suggested** next number from `MAX(number)+1` (or from a counter table). User can override.
-  2. On submit, the backend wraps the INSERT in `BEGIN IMMEDIATE` transaction, re-computes the suggested number atomically (or re-validates uniqueness), and inserts. On unique-violation, retry once with the new max+1; if that fails, return the user a friendly "номер уже занят, предлагаем №X" with the new suggestion pre-filled.
-- Use a **unique index** on `acts.number` and `cartridges.code` so the DB enforces correctness even if app logic fails.
-- For cartridge code `C-000001` format: store the numeric part in a separate `cartridge_seq INTEGER NOT NULL UNIQUE` column; format `C-{:06}` on display.
-- Gap policy: document that gaps are allowed and normal; never try to "fill" them.
-- For partial returns ("N в1", "N в2"…): store as a separate `return_index` column on a child table, computed within the same transaction as the parent return.
-
-**Warning signs:**
-- Unique-constraint violations under load testing with 2+ simulated clients.
-- Users reporting "I clicked save and it disappeared without an error."
-- Two acts in DB with the same `number`.
-
-**Phase to address:**
-Phase "Акты приёма-передачи" (first sequential ID need). Pattern reused for cartridge codes in the cartridges phase.
-
----
-
-### Pitfall 10: Backup that "works" but restores corrupt
-
-**What goes wrong:**
-Auto-backup copies `trackly.db` every night with `std::fs::copy`. Six months in, the disk fails. Restore the latest backup → SQLite says "database disk image is malformed" or, more insidiously, opens fine but is missing the last hour of data (which was in the WAL file that wasn't backed up).
-
-**Why it happens:**
-- A naive file-copy of a WAL-mode DB during an active transaction captures an inconsistent state.
-- The `-wal` and `-shm` files contain uncommitted-to-main pages; backing up only the main file loses recent data.
-- Reverse: backing up main+wal but restoring on a different machine without proper checkpoint can leave the WAL referencing pages that no longer exist.
-
-**How to avoid:**
-- **Always** use SQLite's online backup API (`rusqlite::backup::Backup`) or `VACUUM INTO 'backup.db'` — they handle WAL contents and locking correctly.
-- Before backup: `PRAGMA wal_checkpoint(TRUNCATE)` to fold WAL into main; then backup the single file. Acceptable for nightly backups during low-activity windows.
-- After backup: verify by opening the backup file read-only and running `PRAGMA integrity_check` — if it returns anything other than `ok`, mark the backup as bad and keep the prior one.
-- Restore procedure: app refuses to start; user picks a backup file; app deletes `trackly.db`, `trackly.db-wal`, `trackly.db-shm`; copies backup over; reopens.
-- Retention: keep N daily + M weekly + K monthly; delete oldest with a clear log line each time.
-- Test restore quarterly in CI (script that creates DB, backs up, corrupts main, restores, verifies row counts).
-
-**Warning signs:**
-- Backup file size identical day-over-day → WAL not being checkpointed.
-- Backup file size = 0 or < 4KB → backup failed silently.
-- `integrity_check` after restore returns non-`ok`.
-- Restore on a different machine fails to open.
-
-**Phase to address:**
-Phase "Настройки — Бэкап" (backup feature itself). However, **schema versioning** (`PRAGMA user_version`) must be in Phase 1 so restore knows what schema the backup is from.
+### M-17: Автообновление через публичный репозиторий и приватность
+**Что ломается:** Исполняемые файлы и `latest.json` могут случайно попасть в публичный GitHub-релиз с зашитыми адресами сервера, отпечатками, доменом (требование приватности: никаких реальных данных организации в репозитории и артефактах). Клиент Link не должен содержать адрес сервера в сборке — он вводится/подставляется установщиком (переменная/файл `link.conf` рядом) — иначе публичный релиз раскрывает внутренний хост. Аналогично фикстуры чата, тестовые сообщения, скриншоты, дизайн-прототипы — только вымышленные имена (память: гейт приватности в pre-commit/CI уже есть; проверить, что он покрывает новые каталоги `crates/link`, `ui/…` и **JSON-фикстуры**; гейт, по памяти, не ловит ФИО — добавить словарь вымышленных имён как единственно допустимых).
+**Профилактика:** адрес сервера и отпечаток сертификата — только конфигурация, не код; публичные релизы GitHub содержат «чистый» клиент (без конфигурации), серверный `/downloads` отдаёт установщик с подставленной конфигурацией (серверная генерация MST/`link.conf` рядом); проверить `strings` бинарника на отсутствие хостов.
+**Фаза:** дистрибуция + CI.
 
 ---
 
-### Pitfall 11: HTTPS in server mode — self-signed cert UX trap
+## Minor Pitfalls
 
-**What goes wrong:**
-Server mode launches with a self-signed cert. Specialists open `https://192.168.1.42:8443/` — browser shows a giant red "NOT SECURE" warning. They click around it once, but every browser update re-prompts. Users start using `http://` (and Trackly happily accepts it), passwords go in clear over the wire.
+### m-1: `spa_fallback` маскирует отсутствующие `/api` маршруты
+Новые эндпоинты чата/Link, на которые клиент ходит из Rust (`reqwest`), при опечатке в пути получат **200 с index.html** вместо 404; Rust-десериализация упадёт непонятной ошибкой. **Профилактика:** исправить fallback (404 для `/api/*`) **в начале** milestone (долг уже известен), тест на каждый новый маршрут (инвентарь от репозитория, как в INT-26).
 
-**Why it happens:**
-- Self-signed certs trigger browser security warnings; UX is awful but not bypassable cleanly.
-- If both HTTP and HTTPS listen, users default to HTTP and the team forgets to disable it.
-- Cert pinning / corp CA trust is a real operational burden the user shouldn't have to solve.
+### m-2: Svelte 5 runtime-ошибки не видны гейтам компиляции
+Редактор, обёртки над ProseMirror (императивные), `$effect` и жизненный цикл — типичное место ошибок рун (бесконечный цикл `$effect`, мутация `$state` внутри `$derived`). `svelte-check`/`eslint`/`build` их пропускают. **Профилактика:** смоук-тест в реальном вебвью, ручной чеклист, юнит-тесты логики вне компонентов; проверять и в WKWebView, и в WebView2 (разные поведения `contenteditable`, IME, выделение, вставка).
 
-**How to avoid:**
-- **No HTTP listener at all** in server mode. HTTPS only, port configurable (default 8443).
-- Generate a self-signed cert on first server-mode toggle, store `cert.pem` + `key.pem` next to the DB. Include the device's hostname and all detected LAN IPs in the SAN field — minimizes warnings.
-- In Settings, show a "Доверенный сертификат" section with instructions to install the generated cert into Windows trusted root store on each client machine — provide a one-line `certutil -addstore` command and a `.cer` download.
-- Allow users to provide their own corp CA-signed cert (path to PEM in Settings).
-- Detect HSTS-eligible hostname (mDNS `.local`) and prefer it over IP — fewer cert SAN problems.
-- Document that for serious deployments, the user should put Trackly behind their own reverse proxy with their corp cert (out of scope to automate this).
+### m-3: IME и русская раскладка в rich-text
+Композиция ввода (IME), `beforeinput`, горячие клавиши, привязанные к `event.key` (раскладка RU ломает `Ctrl+B`/`Ctrl+Z`), нужно `event.code` или поддержка в ProseMirror keymap. **Профилактика:** проверка с русской раскладкой; Enter против Shift+Enter.
 
-**Warning signs:**
-- Users complain about browser warnings on every load.
-- Passwords visible in Wireshark capture from a LAN test.
-- Settings allow toggling HTTPS off → remove the option.
+### m-4: Упоминания @ и поиск по всем пользователям
+Список пользователей для упоминания и диалогов 1:1 раскрывает каталог всех сотрудников — `employee`-роль видит лишнее? Включить деактивированных? Упоминание узла хранит `user_id`, а не имя (переименование, фамилия); уведомление упоминаемому, даже если он не в комнате (утечка) — упоминать можно только участников.
 
-**Phase to address:**
-Phase "Сервер-режим" (when HTTP server is introduced). Cert generation and the no-HTTP rule must be in the initial server-mode work.
+### m-5: Переход «Создателя» комнаты
+При выходе создателя права переходят «другому участнику» — кому? детерминированно (старейшему участнику), в одной транзакции; комната без участников; гонки при одновременном выходе двух; событие `membership_changed` всем.
 
----
+### m-6: Выход пользователя / деактивация
+Деактивированный сотрудник: сессии, WS, токены клиента Link, комнаты, упоминания, отображаемое имя в старых сообщениях (хранить `user_id`, имя подставлять на отдаче). Выход из Link на общем ПК — удалить токен из хранилища.
 
-### Pitfall 12: Cross-compilation macOS → Windows — works locally, breaks in CI
+### m-7: Лимиты и антиспам
+Лимит частоты отправки/реакций/загрузок на пользователя, максимальный размер сообщения/числа узлов/таблицы (таблица 1000×1000 с объединением ячеек = DoS рендера), число комнат на пользователя, глубина цитат.
 
-**What goes wrong:**
-Dev builds Windows release locally via `cargo-xwin`, ships, users say "smartscreen warning" or "ring/openssl link error" or "missing VC++ runtime". Team adds GitHub Actions Windows runner, builds work; signing doesn't; updater fails because the bundle isn't signed.
+### m-8: Логи
+`tracing` не должен писать тело сообщений, токены, SPNEGO-заголовки. Уровень `info` для событий чата — только идентификаторы.
 
-**Why it happens:**
-- Tauri's signtool integration assumes Windows host; cross-compile from macOS requires `osslsigncode` and a custom sign command in `tauri.conf.json`.
-- `ring` crate has historically been problematic to cross-compile (recent versions are better but pin to a known-good).
-- `openssl` crate links to system libs — prefer `rustls` everywhere, with `aws-lc-rs` provider.
-- Windows 7 32-bit support effectively died: recent Rust releases (1.78+) deprecated `i686-win7-windows-msvc` in some channels; ring/sqlcipher/etc may have minimum Win10 requirements.
-- SmartScreen ("unverified publisher") warning persists even with EV cert until enough downloads accumulate.
+### m-9: Бандл и обновление общего фронтенда
+Монорепо с общим фронтенд-пакетом: сборка Link и SPA из одной базы — обновление Svelte/Vite затрагивает оба; фиксировать версии. Каталог `ui/dist` сидируется для CI/тестов (память проекта: `cargo test` требует настоящий `ui/dist`).
 
-**How to avoid:**
-- Use GitHub Actions `windows-latest` runner for the canonical build; treat macOS local Windows builds as developer convenience only.
-- Replace `openssl` with `rustls` + `aws-lc-rs` everywhere (`reqwest` features, `ldap3` features, `sqlx` features).
-- Pin all crypto crate versions in workspace `Cargo.toml`.
-- Code-sign with a real (cheap OV) certificate from day 1 — SmartScreen reputation builds with signed downloads over time.
-- For Win7 32-bit: declare it best-effort, run a single CI job that just attempts the build; do not block release on its success.
-- Bundle VC++ runtime via NSIS (Tauri's NSIS template can include it) or document the prerequisite clearly.
-
-**Warning signs:**
-- Build green in CI but the resulting `.exe` doesn't start on a fresh Windows VM ("VCRUNTIME140.dll missing").
-- `windows-rs` linker errors that don't appear on `windows-latest` runner.
-- Updater fails verification on signed builds → sign command wrong, signature stripped.
-
-**Phase to address:**
-Phase "Инфраструктура / выпуск" (CI/CD). Set up the canonical Windows runner build early; cross-compile from macOS is for dev iteration only.
+### m-10: Ложная «проверенность» на dev-машине
+Dev — macOS без AD, без Windows-ПК: AUMID, трей Windows, SmartScreen/AppLocker, SSPI, NSIS `currentUser`, автозапуск реестра не воспроизводятся. Любой пункт без реальной Windows-проверки помечать **UNVERIFIED**; не принимать авто-одобрение `human-verify` исполнителями (память: `auto_advance` авто-одобряет).
 
 ---
 
-### Pitfall 13: SNMPv2c community string in plaintext + UDP unreliability
+## Phase-Specific Warnings
 
-**What goes wrong:**
-The Settings UI has a field "SNMP Community: public". User saves. The string lands in the SQLite DB unencrypted, in logs when SNMP requests are traced, and is sent over UDP in clear text. A bad actor on the LAN sniffs it and can now query every printer.
+| Фаза (предлагаемая) | Вероятная ловушка | Что сделать |
+|---------------------|-------------------|-------------|
+| 0. Архитектурное решение (ADR) | C-9 смешение с чатом заявок; решение «UI локально, сеть в Rust» (M-4/A-1) | Зафиксировать до кода; ADR на модель `conversation`, на пин и на хранение токена |
+| 1. Транспорт: seq, курсор, ресинк, heartbeat, авторизация WS | C-4, C-5, m-1 | Первая; закрыть `Lagged`, проверку членства на каждом событии, 404 для `/api/*`; отдельный канал для чата |
+| 2. Модель сообщений + серверная валидация rich-text | C-1, C-2, C-3, C-10, M-13, m-7 | Типизированный валидатор, `schema_version`, канонизация, слой видимости, FTS-триггеры, лимиты |
+| 3. Комнаты/ЛС/участники/Создатель | C-4, m-4, m-5, m-6 | Транзакционный переход прав, события членства закрывают сокет |
+| 4. Клиентская оболочка Link (трей, автозапуск, single-instance, окно) | M-7, M-8, M-1, M-6 (AUMID) | Сеть в Rust; проверка трея на GNOME; закрытие при завершении сеанса; Windows-пилот |
+| 5. Аутентификация клиента + пиннинг TLS | M-4, M-5, m-8 | SPKI-пин, два ключа, SSPI в Rust, токен в системном хранилище; живая проверка на Windows |
+| 6. Дистрибуция (NSIS currentUser, GPO) | **C-11**, M-1, M-17, G-3 | Пилот на реальных политиках ПЕРВЫМ делом; подпись Authenticode; WebView2; идемпотентный скрипт; конфигурация вне публичного релиза |
+| 7. Автообновление и каналы | C-6, C-7, M-2, M-3, M-4 (ротация) | Ключи и ротация; единый эндпоинт; без слова «канал» в клиенте; откат = больший номер; тест-гейт утечки |
+| 8. UI редактора и ленты, эмодзи | C-1 (клиент), C-3, M-9, M-16, m-2, m-3 | Рендер по узлам, без `{@html}`; чеклист в WKWebView и WebView2; Intl.Segmenter |
+| 9. Реакции, правки, удаление, модерация | C-8, C-10 | Один write-job; идемпотентный API; матрица видимости; жёсткое удаление чистит файлы/FTS |
+| 10. Вложения | M-14, C-2, C-10 | Файл вне writer'а; безопасная выдача; лимиты; переиспользовать механизм Заявок |
+| 11. Read receipts, непрочитанное, уведомления, mute | M-6, M-11, M-12 | Курсор вместо строк; троттлинг и сводные тосты; фокус по событиям окна |
+| 12. Поиск | C-10, M-10 | External-content FTS5, без морфологии (принять), нагрузочный тест |
+| 13. Чат в браузерном SPA | C-1, m-9, m-2 | Тот же пакет редактора; сессия-cookie против токена клиента; проверка CORS/Origin для WS |
+| 14. Закрытие milestone | m-10, M-10 | Нагрузочный тест, Windows UAT, привязка гейтов к CI до закрытия (красный CI не закрывать) |
 
-**Why it happens:**
-- SNMPv2c is unauthenticated and unencrypted by protocol design; "community string" is a misnomer for "weak shared secret".
-- Most teams default to `public` and never change it.
-- UDP packet loss + variable printer response times cause inconsistent monitoring data; users report "the printer randomly goes offline" when it didn't.
+(Дополнительно: G-3 — подпись Authenticode, см. C-11; A-1 — архитектура клиента «UI локально, сеть в Rust», см. M-4.)
 
-**How to avoid:**
-- **Encrypt at rest** the community string in DB using a key derived from a config file (the file lives next to the DB, so portability is preserved). Not security against local-FS access (the user has the DB file), but prevents accidental log leakage and protects against backup theft.
-- **Never log** the community string. Use a `Secret<String>` newtype with custom `Debug` impl that prints `***`. Apply to AD passwords too.
-- **SNMP retry strategy:** initial timeout 2s, retry 3x with exponential backoff, mark printer as `degraded` (not `offline`) after first failure, `offline` only after 3 consecutive polling cycles fail (so 6+ minutes at 60s poll). Avoids flapping.
-- **Connection pooling** — one socket per printer, reuse across polls; avoid socket churn at 60s × 100 printers.
-- Future-proof Settings UI for SNMPv3 (auth+priv) — users may not enable it in v1, but make the schema accommodate it.
-- Document in Settings: "Используйте уникальную community string на ваших принтерах вместо `public`."
+**Фазы, которым нужно углублённое исследование перед планированием:** 5 (SSPI/Kerberos из Rust, пин через rustls verifier + WS), 6 (политики AppLocker/SRP в реальной среде — требует живого пилота, не веб-исследования), 7 (поведение `tauri-plugin-updater` по версиям: несколько pubkey, `version_comparator`, поведение при открытом приложении, NSIS-режимы), 4 (трей на Linux/Windows в актуальной версии Tauri).
+**Стандартные паттерны, глубокого исследования не требуют:** 2 (валидация JSON — обычная serde-работа), 3, 9, 10, 12.
 
-**Warning signs:**
-- `grep community .planning/.../trackly.db` succeeds (it's there in plaintext).
-- Logs contain the community string in error messages.
-- Printer "goes offline" several times a day without anyone touching it → tighten retry logic.
+## Confidence Assessment
 
-**Phase to address:**
-Phase "Принтеры" (SNMP monitoring). Secret-handling pattern set in Phase 1 (auth scaffolding) and reused here.
+| Область | Уровень | Причина |
+|---------|---------|---------|
+| Интеграция с ws.rs / chat_service / broadcast | HIGH | Код прочитан напрямую |
+| XSS, санитизация, схема, видимость при удалении | HIGH | Общеизвестные паттерны, применимость проверена по архитектуре |
+| Реакции/single-writer, seq, курсоры | HIGH | Следует из принятой модели записи проекта |
+| Updater (ключи, каналы, откат, NSIS-режимы) | MEDIUM | Знания обучения; детали версий плагина помечены `[verify]` |
+| AUMID, трей Windows/macOS/Linux, автозапуск | MEDIUM | Знания обучения плюс память проекта по AUMID; поведение текущего Tauri 2.x нужно сверить |
+| AppLocker/SRP/GPO/RDS | MEDIUM-LOW | Зависит от реальной среды; только пилот даст ответ |
+| SPNEGO из нативного клиента | MEDIUM | Известные ограничения SSPI/GSSAPI; конкретные crate'ы не сверялись |
+| FTS5 для кириллицы | MEDIUM | `unicode61` известен; настройки сверить |
 
----
+## Gaps to Address
 
-### Pitfall 14: User-editable document templates → injection / silently broken upgrades
-
-**What goes wrong:**
-Admin edits the Акт template in the UI. They paste in `{{ system('rm -rf /') }}` or similar — if using a powerful engine, it executes. Or, less malicious: a future release adds the field `act.warehouse_returner_phone` to default templates; admins who customized their templates 6 months ago still don't see this field because their template overrides the default.
-
-**Why it happens:**
-- Tera, Handlebars, and similar Jinja-derived engines have escape mechanisms but historically have had sandbox escapes via reflection or filter abuse.
-- "Just embed Tera" with full power = remote code execution from the admin role (which is less bad than from an anonymous user, but still wrong defense in depth).
-- Template versioning is usually not designed in v1 — users get stuck on old versions.
-
-**How to avoid:**
-- Use **Tera in safe mode**: register only explicit filters/functions you control; do not expose any I/O or `get_env`-style functions.
-- Or use **MiniJinja** (`minijinja` crate) with `set_undefined_behavior(UndefinedBehavior::Strict)` and a custom syntax set — it's leaner than Tera and explicitly designed for end-user editing scenarios.
-- Or skip templating entirely and use **Typst** with parameter passing — Typst is a typesetting language but its scripting is bounded by design.
-- Per-template version: store the engine version and template schema version in DB; on app upgrade, if user has customized a template, show a 3-way merge dialog ("default changed, your version, merged result"). At minimum, warn "your template hasn't been updated since v1.2, current is v2.0 — review here".
-- Run template render in a separate thread with a 5s timeout; kill if it loops.
-- Provide a "Reset to default" button in the template editor (per template).
-
-**Warning signs:**
-- Template engine call without a timeout.
-- Template rendering can call `read_file` / `include` from arbitrary paths.
-- No version field on stored templates → no upgrade path.
-
-**Phase to address:**
-Phase "Документы и шаблоны" / wherever the first template is editable (likely "Акты"). Set the safe-template pattern early.
-
----
-
-### Pitfall 15: Time zones — Russia's quirky history breaks dates in reports
-
-**What goes wrong:**
-Reports for "March 2026" show acts created at `2026-03-31 23:30 +03:00` correctly. Historical reports for "October 2014" mis-attribute events to the wrong month because the codebase stored `chrono::Local` timestamps and the local TZ database has stale rules.
-
-**Why it happens:**
-- Russia abolished DST on 26 October 2014. Russia changed nominal offsets in 2011 (permanent DST → UTC+4 in Moscow) and 2014 (back to UTC+3, no DST).
-- Some regions (Samara, Udmurtia, Magadan, Kamchatka, Chukotka, Zabaykalsky, Kemerovo) changed offsets independently in 2014.
-- Storing local timestamps + assuming "system TZ" makes reports break when the DB is moved between machines in different regions.
-- Server mode: the desktop and the specialist browser may be in different TZs; "today" means different things.
-
-**How to avoid:**
-- **Store all timestamps in UTC** in DB (`DATETIME NOT NULL` storing ISO 8601 UTC, or INTEGER unix seconds). Never store local time.
-- Store the organization's primary TZ in Settings (`Europe/Moscow` by default). Use `chrono-tz` crate (vendored IANA database — keep updated via `cargo update` quarterly).
-- All formatting for UI happens in the organization's TZ, not the OS's TZ.
-- Reports filter by the organization's TZ boundaries: "March 2026" = `2026-03-01T00:00:00 Europe/Moscow` to `2026-04-01T00:00:00 Europe/Moscow`, converted to UTC for the SQL `WHERE`.
-- Document the convention in CONTRIBUTING.md: any `chrono::Local` or `SystemTime::now()` without explicit TZ handling is a code review block.
-- Russian DST quirks: `chrono-tz` handles them correctly **if** the tzdata it was compiled against is recent. Pin a version, audit on each release.
-
-**Warning signs:**
-- `chrono::Local::now()` anywhere in the codebase.
-- Report counts off by 1 across midnight/month boundaries depending on which machine ran them.
-- Historical dates before 2014-10-26 displaying with the wrong offset.
-
-**Phase to address:**
-Phase 1 (data layer). TZ discipline established at the schema level — costly to retrofit.
-
----
-
-## Technical Debt Patterns
-
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Use `chrono::Local` for new timestamps because "it works in dev" | -1 day setup | Reports broken across TZ boundaries; entire DB needs rewrite | **Never** |
-| Skip `BEGIN IMMEDIATE`, hope for the best with WAL | Less code | Random "database is locked" under any concurrent load | Single-user pure-desktop mode only — not Trackly |
-| Store SNMP community string / AD bind password in plaintext for v1 | -1 hour | Logged in tracebacks, leaks via backup theft | Until first beta tester runs Wireshark — i.e., never to production |
-| File-copy DB for backup instead of online backup API | -2 hours | Backups silently corrupt; restore is unreliable | Only with explicit `wal_checkpoint(TRUNCATE)` + locking; even then, use the API |
-| UI-only role checks now, backend checks "later" | Faster UI iteration | Whole-system audit needed; any browser-accessible endpoint is open | Only for genuinely read-only public endpoints (e.g., a status page) — there are none in Trackly |
-| Default `public` SNMPv2c community string with no warning | Easier discovery | LAN compromise → printer config tampering | Acceptable as default if Settings UI warns + supports change; never silent |
-| Single tokio runtime for both Tauri and axum (default Tauri behavior) | Simpler code | Long-running handler can block UI thread responsiveness | **Always do this** — Tauri's runtime is fine; just don't block-on inside command handlers |
-| Bundle "system" font for PDF, expecting Cyrillic to "just work" | -1 hour | Glyphs missing in production | **Never** for v1 — always embed |
-| Single SQLite pool with `max_connections > 1` for writes | Simpler config | Writer/writer contention, SQLITE_BUSY | Never — split read pool (N) and write pool (1) |
-| Hardcode AD bind URL to one DC | -30 minutes | Outage when that DC reboots | Acceptable only as initial fallback if SRV-record discovery fails |
-
----
-
-## Integration Gotchas
-
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| **Tauri ↔ axum** | Spawning separate tokio runtimes (`tokio::runtime::Runtime::new()` inside Tauri) | Use `tauri::async_runtime::spawn` (single runtime shared); axum app via `axum::serve(listener, app)` inside the spawn |
-| **Tauri webview ↔ axum (same machine)** | Trying to fetch from `https://localhost:8443` in the webview but blocking via Tauri's default CSP | Either use Tauri commands from webview (no HTTP at all on the desktop side), or configure CSP `connect-src` explicitly to allow localhost HTTPS |
-| **axum ↔ browser over LAN** | Listening on `127.0.0.1` and being puzzled why LAN clients can't connect | Bind `0.0.0.0:8443` (or specific LAN IP); be aware Windows Firewall will prompt — pre-configure via WiX/NSIS install step if possible |
-| **ldap3 ↔ AD** | Plain `ldap://` to a hardened AD that requires sealing | Always `ldaps://636` with proper CA trust; or StartTLS; verify `tls-server-end-point` channel binding for AD with strict mode |
-| **SNMP ↔ Pantum** | Trusting `hrPrinterStatus` to indicate spooler hang | Cross-reference with `prtMarkerLifeCount` (page counter) over time + WMI on print host |
-| **rusqlite ↔ Tauri** | Holding a `Connection` in a Tauri command's local scope → opening/closing per call | Use `r2d2_sqlite` pool stored in `tauri::State`; one writer + N readers |
-| **WebView2 ↔ portable folder** | Defaulting cache to `LOCALAPPDATA\<app>\EBWebView` | Set `WEBVIEW2_USER_DATA_FOLDER` env var before Tauri builder |
-| **Templates (Tera/MiniJinja) ↔ user input** | Admin renders user-supplied template with full engine power | Sandbox: pre-registered filters only, no I/O functions, render in separate thread with timeout |
-| **CSV ↔ Russian Excel** | Plain UTF-8 without BOM + comma delimiter | UTF-8 with BOM + `;` delimiter for export; encoding/delimiter sniffing on import |
-| **Cross-compile ↔ Tauri signtool** | Building from macOS, expecting code signing to "just work" | Configure custom sign command using `osslsigncode`, or sign only on Windows-host CI |
-
----
-
-## Performance Traps
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| N+1 query on devices→cartridges→acts in dashboard | Dashboard loads in 2s, then 5s, then 15s as data grows | Eager-load with joins or batched IN-queries; profile every `Vec<T>` returned to the UI | ~500+ devices, ~2000+ acts |
-| WAL file unbounded growth | `.db-wal` reaches 1+ GB; reads slow as WAL grows | `PRAGMA wal_autocheckpoint=1000`; periodic `wal_checkpoint(TRUNCATE)` during idle | 24+ hours of constant writes without idle window |
-| SNMP polling all printers in serial | Polling takes longer than the poll interval | Parallel polling with a bounded semaphore (e.g., 10 concurrent); per-printer timeout 2s | 20+ printers at 60s interval |
-| Bulk CSV import in one transaction (10k rows) | UI frozen 30s; SQLite locked for everyone | Chunk into transactions of 500 rows each; show progress; allow cancel | 5000+ row imports |
-| PDF render on UI thread | UI freezes 2-5s when admin clicks "Print Act" | Spawn render onto a worker thread, stream result; debounce repeated clicks | Documents >5 pages or with embedded images |
-| Full-text search via `LIKE '%foo%'` on devices.name | Slows linearly with table; 800ms at 5000 rows | Use SQLite FTS5 virtual table; reindex on write via triggers | 2000+ devices |
-| Every Tauri command opens a fresh DB connection | High file-descriptor pressure; intermittent lock errors | Connection pool in `tauri::State`; share across commands | 5+ concurrent users in server mode |
-| Loading entire act history into memory for reports | App memory grows to 500+ MB | Server-side pagination + cursor; render virtualized lists in Svelte | 10k+ historical records |
-
----
-
-## Security Mistakes
-
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Storing AD password (even hashed) for any purpose | Catastrophic if DB stolen — AD account compromise; violates PROJECT.md explicit rule | Bind-and-discard; `Secret<String>` newtype with `Drop` zeroing; never persist |
-| Local user passwords with weak hash (MD5/SHA1/bcrypt cost 4) | Offline cracking trivial | argon2id with sensible cost (`argon2 = { version = "0.5", features = ["std"] }`, m_cost=19456, t_cost=2, p=1 — OWASP recommended) |
-| Session token in URL query string for browser server mode | Logged in browser history, proxies, logs | HttpOnly + Secure cookies; CSRF token in header for mutating ops |
-| Webview can call privileged commands from server mode | If admin opens a malicious URL in webview, that page can call admin commands | Disable webview navigation to non-app origins; use Tauri's `dangerousDisableAssetCspModification: false`; lock CSP |
-| Open ports without confirmation | Server mode binds 8443 without asking; Windows Firewall prompt confuses admin who clicks "Cancel" | UX: explicit "Запустить сервер" toggle, show "Windows может запросить разрешение"; provide a tested NSIS step that adds firewall rule |
-| Logging full request body on errors | AD passwords, session tokens, community strings in logs | Structured logging with explicit allowlist of fields; `Secret<T>` for all sensitive |
-| Self-signed cert accepted with `danger_accept_invalid_certs` in Rust HTTP client | TLS protection bypassed | Trust the user's own CA via Settings; never accept invalid certs |
-| Path traversal in template-storage / backup-folder Settings | User sets `../../../Windows/System32/foo` as backup path → app writes there | Canonicalize all user-provided paths; reject if outside the app's working tree (or document and explicitly allow with a confirmation) |
-| Storing IP camera / printer credentials (SNMPv3, future) in clear in DB | LAN credential exposure on DB theft | Same `Secret<String>` discipline + DB-at-rest encryption (or at least field-level XOR keyed from a file beside DB) |
-| Trust Tauri capability allowlist as the only authz | Server-mode endpoints bypass capabilities entirely | Backend `authorize()` function called from every command **and** every axum handler |
-
----
-
-## UX Pitfalls
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Showing browser cert warning on every launch in server mode | Specialists train themselves to ignore security warnings | Generate cert with hostname + LAN IPs; provide one-click "install cert" instructions; document mDNS `.local` access |
-| "Database is locked" red toast with no recovery | User panics, loses confidence | Auto-retry with exponential backoff (1-5 attempts), show subtle spinner; only surface error after all retries fail; preserve form state |
-| Auto-suggesting act № that's already taken because race lost | User submits, sees "номер занят", re-edits, repeats | After loss, automatically advance the suggestion and preserve all other fields; never make user re-enter |
-| Sequential cartridge codes that show gaps confusingly | "Where's C-000042?" support questions | Document in UI that gaps are normal (small "?" tooltip); never expose internal numbering as user-visible identity if the user shouldn't see gaps |
-| CSV import errors line-by-line in a small modal | User can't fix 50 errors without exporting them | Show errors in a side panel with line numbers, allow filter/export of failed rows; provide "skip and continue" + "fix and retry" |
-| Cyrillic name fields with min-width too small (UI clipping) | Truncated names in tables | Test all UI components with `Сидоров-Петроградский-Долгорукий` and `№` characters; use `text-overflow: ellipsis` with full-text tooltip |
-| Switching `Tauri Local` ↔ `Server Mode` requires restart with confusing prompt | Users guess wrong, lose unsaved work | "Save first?" prompt; preserve open documents across mode switch if possible; clearly indicate mode in title bar |
-| Sidebar/dashboard counts that don't match list views | Trust erosion | Both queries hit the same query layer; counters update from the same source as the lists; never compute separately |
-| PDF preview that opens in system default app | User has no PDF reader installed, or it opens slowly | Embed a PDF viewer (e.g., PDF.js in Tauri webview); fall back to "Open in system app" button |
-| "Update detected, restart now?" with no "later" option | Interrupts work | Defer to next launch; show non-intrusive badge in title bar; never auto-restart |
-
----
-
-## "Looks Done But Isn't" Checklist
-
-- [ ] **Portable mode:** Run Process Monitor while exercising every screen — verify zero writes outside `<exe_dir>`. Specifically check `WEBVIEW2_USER_DATA_FOLDER` is set before Tauri builder.
-- [ ] **AD login:** Test against a real Windows Server 2022 with LDAP signing and channel binding enabled (post-2023 hardening). Mock-only AD tests pass everything.
-- [ ] **Pantum monitoring:** Test against the actual BM5100ADN with the spooler hang scenario reproduced (paused queue + responsive SNMP). Verify alert fires.
-- [ ] **SQLite concurrency:** Run a load test with 20 simulated clients doing reads + writes concurrently. Verify zero `SQLITE_BUSY` errors reach the UI.
-- [ ] **Backup/restore:** Restore from a backup taken yesterday, verify `PRAGMA integrity_check = ok`, verify row counts match expectations.
-- [ ] **PDF Cyrillic:** Render an Act with `Сидоров-Петроградский Иван Александрович (ё)`, open in Adobe Reader, Foxit, and Chrome — no missing glyphs.
-- [ ] **CSV roundtrip:** Export → open in Russian Excel → save → re-import → verify no data corruption, no encoding loss.
-- [ ] **Cyrillic paths:** Install Trackly to `C:\Документы\Учёт\` — verify everything works.
-- [ ] **Role enforcement:** Run a curl-based test that hits every mutating endpoint as Specialist and Employee — verify 403.
-- [ ] **HTTPS only:** Verify server mode refuses to start an HTTP listener; verify cert has all LAN IPs in SAN.
-- [ ] **Time zones:** Generate a report spanning the 2014-10-26 boundary, verify correct date attribution for historical entries.
-- [ ] **No secrets in logs:** `grep -ri "password\|community\|secret" logs/` returns nothing sensitive.
-- [ ] **Cross-platform build:** Fresh `windows-latest` VM runs the installer, app launches, no missing DLLs.
-- [ ] **Template safety:** Try injecting `{{ self }}`, `{% for x in range(99999999) %}`, file-read functions — none should succeed.
-- [ ] **WAL hygiene:** After 24h of normal use, `-wal` file is < 4 MB (autocheckpoint working).
-- [ ] **Sequential IDs:** Two browser tabs creating acts simultaneously — both get unique numbers, no constraint violation surfaced to user.
-- [ ] **Auto-suggest dropdowns:** With 5000+ devices, autocomplete is still fast (<100ms); FTS index in place.
-- [ ] **Dashboard counters match list views:** Same numbers shown in widget and on the section page.
-- [ ] **Firewall prompt:** First server-mode start on a clean Windows shows the firewall dialog and instructions are visible to the user.
-- [ ] **Database on network share:** Setting attempts to point DB to `\\server\share\trackly.db` is refused with a clear error.
-
----
-
-## Recovery Strategies
-
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Portable mode writes to AppData discovered post-release | MEDIUM | Ship patch redirecting paths; on first launch of patched version, detect AppData remnants and prompt to migrate; document manual cleanup in release notes |
-| SQLite database corruption | HIGH | 1) Stop app. 2) Try `sqlite3 trackly.db .recover > recover.sql` then import to fresh DB. 3) If recovery partial, restore latest backup. 4) Reconcile gap manually from CSV exports if any. |
-| Backups all corrupt (file-copy strategy) | CRITICAL | Roll back to last known-good. Build forensic SQL `.recover` from corrupted file. Communicate data loss window to user. Implement online backup API immediately. |
-| Pantum monitoring false positives flooding alerts | LOW | Tune retry/threshold in Settings; add per-printer suppression; ship update with smarter cross-check logic |
-| AD bind locked out service account | LOW-MEDIUM | Document the bind throttling; ask user's AD admin to unlock; switch app to UPN bind to avoid name confusion |
-| PDF glyphs missing in shipped templates | LOW | Hot-patch the bundled font; users update; existing PDFs that were saved with missing glyphs cannot be re-rendered automatically |
-| CSV import corrupts data (encoding mis-detected, no preview) | MEDIUM | Implement preview step; for already-imported bad data, restore from last backup taken before import; provide an "undo last import" feature (`import_id` foreign key on imported rows) |
-| Sequential ID duplicates in production DB | MEDIUM | Add unique index now; resolve duplicates manually (rename with suffix or assign new numbers); communicate to user |
-| Secret leak in logs (community string, password) | HIGH | Rotate the exposed secret; audit log retention; ship patch with `Secret<T>` discipline; communicate to affected users |
-| Server mode exposed without HTTPS by misconfig | HIGH | Force HTTPS-only in next release; communicate; suggest password rotation for users who logged in over LAN |
-| Time zone bug discovered in historical reports | MEDIUM | One-time migration script converting `Local` timestamps to UTC based on stored TZ hint (or organization TZ default); document the cutover |
-
----
-
-## Pitfall-to-Phase Mapping
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| 1. Portable mode leaks | Phase 1 (foundation) | ProcMon test in CI; clippy disallowed-methods rule |
-| 2. SQLite "database is locked" | Phase 1 (foundation) | Load test with 20 concurrent clients in CI |
-| 3. Pantum spooler hang detection | Phase "Принтеры" (prototype/spike before design) | Manual reproduction on a real BM5100ADN; alert fires |
-| 4. AD bind issues | Phase "Пользователи — AD" (late); core `Secret<T>` pattern in Phase 1 | Integration test against real WS2022 |
-| 5. UI-only role checks | Phase "Пользователи" (auth/roles) | curl-based matrix test, role × endpoint |
-| 6. Cyrillic paths | Phase 1 (foundation) | CI Windows job tests with `C:\Документы\Учёт\` |
-| 7. PDF Cyrillic | Phase "Акты приёма-передачи" (first PDF) | Render fixture PDF, hash check; visual inspection in 3 readers |
-| 8. CSV encoding | Phase "Устройства" (first import/export) | Roundtrip test with Russian Excel fixture |
-| 9. Sequential ID race | Phase "Акты приёма-передачи" | Concurrent submit test; unique index in schema |
-| 10. Backup correctness | Phase "Настройки — Бэкап"; schema versioning in Phase 1 | Quarterly CI restore test; integrity_check on every backup |
-| 11. HTTPS UX | Phase "Сервер-режим" | No HTTP listener (assertion in startup); cert SAN includes LAN IPs |
-| 12. Cross-compile | Phase "Инфраструктура / выпуск" | windows-latest CI runner; fresh-VM smoke test |
-| 13. SNMP secret + UDP retry | Phase "Принтеры"; secret pattern in Phase 1 | Wireshark check; `grep` DB for community string |
-| 14. Template injection | Phase "Документы и шаблоны" | Injection-attempt test fixture; render timeout enforced |
-| 15. Time zones | Phase 1 (foundation) | `chrono::Local` clippy lint; 2014-boundary report test |
-
----
+- Не проверялось по официальной документации в этой сессии: версия `tauri-plugin-updater` (несколько pubkey, версионный компаратор), `tauri-plugin-autostart`/`single-instance` на Windows per-user, поведение событий трея в Tauri 2.11 на Linux. Все пункты с `[verify]` — к проверке в research-подшаге соответствующей фазы.
+- Политики AppLocker/SRP и наличие WebView2 в реальной сети организации неизвестны и не должны записываться в репозиторий — только обобщённый результат пилота.
+- Решения на уровне требований, влияющие на ловушки: видимость read receipts (M-12), поддержка RDS (M-1), хранится ли история правок (C-10), пробивает ли @-упоминание mute (M-6), перенос чата заявок на новую модель (C-9).
 
 ## Sources
 
-- [Tauri 2 — File System Plugin](https://v2.tauri.app/plugin/file-system/) — webview folder denied by default, Windows
-- [Tauri Discussion #8029 — How to clean webview cache?](https://github.com/orgs/tauri-apps/discussions/8029) — WEBVIEW2_USER_DATA_FOLDER env var pattern
-- [Tauri Discussion #5557 — Storing application data](https://github.com/tauri-apps/tauri/discussions/5557) — AppData defaults
-- [Tauri Issue #7491 — EBWebView created in AppData](https://github.com/tauri-apps/tauri/issues/7491) — confirms WebView2 writes to AppData even for "portable"
-- [Tauri — Capabilities](https://v2.tauri.app/security/capabilities/) — explicit "does not protect against backend code", "command exposure has no inherent security impact if backend doesn't validate"
-- [Tauri — Permissions](https://v2.tauri.app/security/permissions/)
-- [Tauri Discussion #2751 — http server in tauri app](https://github.com/tauri-apps/tauri/discussions/2751) — axum embedding patterns
-- [Tauri Issue #12331 — Self-signed cert hosting](https://github.com/tauri-apps/tauri/issues/12331)
-- [Tauri v1 — Cross-Platform Compilation](https://v1.tauri.app/v1/guides/building/cross-platform/)
-- [Ship Your Tauri v2 App Like a Pro — Code Signing](https://dev.to/tomtomdu73/ship-your-tauri-v2-app-like-a-pro-code-signing-for-macos-and-windows-part-12-3o9n)
-- [SQLite — WAL documentation](https://sqlite.org/wal.html) — single writer rule, network FS warning
-- [SQLite Forum — Hot backup database in WAL mode by copying](https://sqlite.org/forum/forumpost/2ea989bbe9)
-- [SQLite — Autoincrement](https://sqlite.org/autoinc.html) — gaps and uniqueness semantics
-- [Bert Hubert — SQLITE_BUSY errors despite timeout](https://berthub.eu/articles/posts/a-brief-post-on-sqlite3-database-locked-despite-timeout/)
-- [Ten Thousand Meters — SQLite concurrent writes](https://tenthousandmeters.com/blog/sqlite-concurrent-writes-and-database-is-locked-errors/) — BEGIN IMMEDIATE rationale
-- [PhotoStructure — How to VACUUM SQLite in WAL Mode](https://photostructure.com/coding/how-to-vacuum-sqlite/)
-- [ldap3 crate docs](https://docs.rs/ldap3/latest/ldap3/) — TLS, channel binding, settings
-- [ldap3 LdapConnSettings](https://docs.rs/ldap3/latest/ldap3/struct.LdapConnSettings.html) — timeout and TLS verify options
-- [RFC 3805 — Printer MIB v2](https://datatracker.ietf.org/doc/html/rfc3805)
-- [MPS Monitor — Printer Monitoring with SNMP MIB](https://www.mpsmonitor.com/snmp-mib/) — vendor proprietary MIBs reality
-- [MIB Browser — Printer-MIB OID list](https://mibbrowser.online/mibdb_search.php?mib=Printer-MIB)
-- [Sysadminwork — Monitoring printers via SNMP (Kyocera/HP)](https://sysadminwork.com/monitoring-printers-hp-kyocera-brother-via-snmp-with-zabbix/)
-- [Pantum BM5100 Series User Manual](https://www.manualslib.com/manual/2115030/Pantum-Bm5100-Series.html)
-- [Pantum Support Portal](https://support.pantum.com/index/productcenter/problem.html)
-- [Microsoft Learn — Troubleshooting printing scenarios](https://learn.microsoft.com/en-us/troubleshoot/windows-server/printing/troubleshoot-printing-scenarios) — confirms spooler-side hang pattern
-- [Microsoft Support — Fix print spooler service](https://support.microsoft.com/en-us/windows/fix-print-spooler-service-not-running-errors-in-windows-bb0de80a-8c4a-4938-a36a-f89a859113f0)
-- [Svelte 5 migration guide](https://svelte.dev/docs/svelte/v5-migration-guide)
-- [Svelte $effect docs](https://svelte.dev/docs/svelte/$effect)
-- [genpdf — fonts module](https://docs.rs/genpdf/latest/genpdf/fonts/index.html) — Windows-1252 limitation
-- [printpdf GitHub](https://github.com/fschutt/printpdf)
-- [Redmine #7037 — CSV export with UTF-8 + BOM for Excel](https://www.redmine.org/issues/7037)
-- [Rust Forum — Path, OsStr and non-UTF-8 paths](https://users.rust-lang.org/t/path-osstr-and-supporting-non-utf-8-paths-inputs/64826)
-- [Rust Issue #56171 — OsStr need not be valid UTF-8 on Windows](https://github.com/rust-lang/rust/issues/56171)
-- [OWASP — Testing for SSTI](https://owasp.org/www-project-web-security-testing-guide/v41/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection)
-- [Time in Russia — Wikipedia](https://en.wikipedia.org/wiki/Time_in_Russia) — 2011/2014 DST and offset history
-- [Moscow Time — Wikipedia](https://en.wikipedia.org/wiki/Moscow_Time)
-- [Broadcom KB — SNMP Timeouts explained](https://knowledge.broadcom.com/external/article/307285/understanding-simple-network-management.html)
-- Personal experience: portable Windows desktop apps deployed in mixed-locale environments; Tauri 2 production releases 2024-2026.
-
----
-*Pitfalls research for: Trackly — Tauri + Svelte + Rust + SQLite portable desktop with LAN server, AD bind, multi-vendor SNMP printer monitoring*
-*Researched: 2026-05-24*
+- Прямое чтение: `crates/trackly-app/src/http/ws.rs`, `crates/trackly-app/src/context.rs` (broadcast 128), `crates/trackly-app/src/services/chat_service.rs` (сигнатуры), `.planning/PROJECT.md` (раздел v1.5) — HIGH.
+- Память проекта (AUMID/POWERSHELL_APP_ID, Lagged, spa_fallback, user_version, FK OFF в refinery, document.hidden, WKWebView против WebView2, privacy-гейт) — HIGH для внутренних фактов.
+- Общие знания об OWASP XSS/CSP, ProseMirror schema (`Node.fromJSON`, `parseDOM`), Tauri 2 updater/NSIS/tray, SQLite WAL/FTS5, Kerberos/SSPI, AppLocker — MEDIUM, внешние источники в этой сессии не запрашивались; перепроверить по официальной документации Tauri v2 (updater, system-tray, windows-installer), документации ProseMirror/TipTap, SQLite FTS5 и Microsoft Learn (AppLocker, AUMID) на соответствующих фазах.
