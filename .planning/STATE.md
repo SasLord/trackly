@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 
 Phase: 42 — Основа монорепо, ADR и пилот на доменных ПК
 Plan: —
-Status: Ready to discuss/plan
-Last activity: 2026-11-26 — roadmap v1.5 created
+Status: Context gathered — ready to plan
+Last activity: 2026-11-26 — Phase 42 context gathered (42-CONTEXT.md, D-01..D-22)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -1543,9 +1543,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-11-22T10:46:48.911Z
-Stopped at: Phase 41.10 UI-SPEC approved
-Resume file: .planning/phases/41.10-device-history/41.10-UI-SPEC.md
+Last session: 2026-11-26
+Stopped at: Phase 42 context gathered
+Resume file: .planning/phases/42-link-monorepo-foundation/42-CONTEXT.md
 
 None
 
