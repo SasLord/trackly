@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-11-25T16:35:27.349Z"
 last_activity: 2026-11-25
 progress:
-  total_phases: 0
+  total_phases: 11
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** веха v1.5 «Trackly Link — клиент и Чат» — определение требований и дорожной карты
+**Current focus:** Phase 42 — Основа монорепо, ADR и пилот на доменных ПК (веха v1.5 «Trackly Link — клиент и Чат»)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 42 — Основа монорепо, ADR и пилот на доменных ПК
 Plan: —
-Status: Defining requirements
-Last activity: 2026-11-25 — Milestone v1.5 started
+Status: Ready to discuss/plan
+Last activity: 2026-11-26 — roadmap v1.5 created
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 

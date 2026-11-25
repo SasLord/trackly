@@ -137,13 +137,83 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (заполняет роадмаппер) | | |
+| LNK-01 | Phase 42 | Pending |
+| LNK-10 | Phase 42 | Pending |
+| DST-06 | Phase 42 | Pending |
+| DLV-01 | Phase 43 | Pending |
+| DLV-02 | Phase 43 | Pending |
+| DLV-03 | Phase 43 | Pending |
+| DLV-04 | Phase 43 | Pending |
+| LNK-02 | Phase 44 | Pending |
+| LNK-03 | Phase 44 | Pending |
+| LNK-04 | Phase 44 | Pending |
+| LNK-05 | Phase 44 | Pending |
+| LNK-06 | Phase 44 | Pending |
+| LNK-07 | Phase 44 | Pending |
+| LNK-08 | Phase 44 | Pending |
+| LNK-09 | Phase 44 | Pending |
+| LNK-11 | Phase 44 | Pending |
+| DST-01 | Phase 45 | Pending |
+| DST-02 | Phase 45 | Pending |
+| DST-03 | Phase 45 | Pending |
+| DST-04 | Phase 45 | Pending |
+| DST-05 | Phase 45 | Pending |
+| UPD-01 | Phase 45 | Pending |
+| UPD-02 | Phase 45 | Pending |
+| UPD-03 | Phase 45 | Pending |
+| UPD-04 | Phase 45 | Pending |
+| UPD-05 | Phase 45 | Pending |
+| UPD-06 | Phase 45 | Pending |
+| UPD-07 | Phase 45 | Pending |
+| ADM-01 | Phase 45 | Pending |
+| ADM-02 | Phase 45 | Pending |
+| CHT-01 | Phase 47 | Pending |
+| CHT-02 | Phase 47 | Pending |
+| CHT-03 | Phase 47 | Pending |
+| CHT-04 | Phase 47 | Pending |
+| CHT-05 | Phase 47 | Pending |
+| CHT-06 | Phase 47 | Pending |
+| CHT-12 | Phase 47 | Pending |
+| CHT-13 | Phase 47 | Pending |
+| RTE-09 | Phase 47 | Pending |
+| CHT-07 | Phase 48 | Pending |
+| CHT-08 | Phase 48 | Pending |
+| CHT-09 | Phase 48 | Pending |
+| CHT-10 | Phase 48 | Pending |
+| CHT-11 | Phase 48 | Pending |
+| RTE-01 | Phase 49 | Pending |
+| RTE-02 | Phase 49 | Pending |
+| RTE-03 | Phase 49 | Pending |
+| RTE-04 | Phase 49 | Pending |
+| RTE-05 | Phase 49 | Pending |
+| RTE-06 | Phase 49 | Pending |
+| RTE-07 | Phase 49 | Pending |
+| RTE-08 | Phase 49 | Pending |
+| MOP-01 | Phase 50 | Pending |
+| MOP-02 | Phase 50 | Pending |
+| MOP-03 | Phase 50 | Pending |
+| MOP-04 | Phase 50 | Pending |
+| MOP-05 | Phase 50 | Pending |
+| MOP-06 | Phase 50 | Pending |
+| MOP-07 | Phase 50 | Pending |
+| MOP-08 | Phase 50 | Pending |
+| ALR-01 | Phase 51 | Pending |
+| ALR-02 | Phase 51 | Pending |
+| ALR-03 | Phase 51 | Pending |
+| ALR-04 | Phase 51 | Pending |
+| ALR-05 | Phase 51 | Pending |
+| ALR-06 | Phase 51 | Pending |
+| ADM-03 | Phase 52 | Pending |
+| ADM-04 | Phase 52 | Pending |
+| ADM-05 | Phase 52 | Pending |
+| ADM-06 | Phase 52 | Pending |
 
 **Coverage:**
 - v1.5 requirements: 70 total
-- Mapped to phases: 0
-- Unmapped: 70 ⚠️
+- Mapped to phases: 70
+- Unmapped: 0 ✓
+- Phase 46 (дизайн-ворота) не владеет требованиями по замыслу
 
 ---
 *Requirements defined: 2026-11-26*
-*Last updated: 2026-11-26 after initial definition*
+*Last updated: 2026-11-26 — traceability filled by roadmap v1.5*
