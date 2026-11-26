@@ -28,7 +28,7 @@
 // Чего гейт НЕ видит (честно): импорты через динамически собранную строку; `@trackly/*`,
 // указывающий на пакет, не объявленный в dependencies; тип-импорты из .d.ts без
 // спецификатора; доменную зависимость без импорта (глобальные переменные, окружение).
-// `link-ui/src` до плана 16 может отсутствовать: PASS печатает, был ли он просканирован.
+// `link-ui/src` обязан существовать и содержать исходники (WR-04); PASS печатает число просканированных файлов.
 //
 // Self-test (`--selftest`): мутанты на временной копии дерева; якорь замены встречается
 // ровно один раз; у каждого сверяется ожидаемый код.
@@ -146,8 +146,13 @@ export function check(root) {
   // [B4]
   const linkSrc = path.join(root, 'link-ui', 'src');
   const linkScanned = fs.existsSync(linkSrc);
-  if (linkScanned) {
+  let linkFiles = 0;
+  if (!linkScanned) {
+    // WR-04: каталог существует с плана 16; его исчезновение — не «ещё нет», а потеря покрытия.
+    v.push('[B4] link-ui/src отсутствует: нечего проверять, вакуумный проход недопустим');
+  } else {
     for (const file of walk(linkSrc, SRC_EXTS)) {
+      linkFiles += 1;
       const relFile = posix(path.relative(root, file));
       for (const spec of specsOf(file)) {
         const rel = spec.startsWith('.') ? path.resolve(path.dirname(file), spec) : null;
@@ -164,6 +169,8 @@ export function check(root) {
         }
       }
     }
+    if (linkFiles === 0)
+      v.push('[B4] link-ui/src пуст: скан без файлов — вакуумный проход недопустим');
   }
 
   // [B5]
@@ -183,7 +190,7 @@ export function check(root) {
   }
   return {
     violations: v,
-    info: `файлов пакетов: ${pkgFiles}; link-ui/src ${linkScanned ? 'просканирован' : 'отсутствует (до плана 16)'}; Cargo.toml Link ${cargoChecked ? 'проверен' : 'отсутствует'}`,
+    info: `файлов пакетов: ${pkgFiles}; link-ui/src: ${linkFiles} файлов; Cargo.toml Link ${cargoChecked ? 'проверен' : 'отсутствует'}`,
   };
 }
 
@@ -266,6 +273,19 @@ function selftest() {
           path.join(r, 'link-ui/src/m.ts'),
           "import { open } from '@tauri-apps/plugin-shell';\n",
         );
+      },
+      'B4',
+    ],
+    [
+      'link-ui/src исчез [B4]',
+      (r) => fs.rmSync(path.join(r, 'link-ui/src'), { recursive: true, force: true }),
+      'B4',
+    ],
+    [
+      'link-ui/src пуст [B4]',
+      (r) => {
+        fs.rmSync(path.join(r, 'link-ui/src'), { recursive: true, force: true });
+        fs.mkdirSync(path.join(r, 'link-ui/src'), { recursive: true });
       },
       'B4',
     ],
