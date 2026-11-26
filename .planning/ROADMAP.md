@@ -105,7 +105,7 @@
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
 | 39–41.13 | v1.4 | 443/443 | Complete | 2026-11-25 (см. архив) |
-| 42. Основа монорепо, ADR и пилот | v1.5 | 9/19 | In Progress|  |
+| 42. Основа монорепо, ADR и пилот | v1.5 | 10/19 | In Progress|  |
 | 43. Надёжная доставка событий | v1.5 | 0/? | Not started | - |
 | 44. Link — транспорт, пин и вход | v1.5 | 0/? | Not started | - |
 | 45. Дистрибуция и автообновление Link | v1.5 | 0/? | Not started | - |
@@ -170,7 +170,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 42-09-PLAN.md — спайк kit/Button, кодмод, покрытие lint/svelte-check, гейт границ (в.4)
+- [x] 42-09-PLAN.md — спайк kit/Button, кодмод, покрытие lint/svelte-check, гейт границ (в.4)
 - [x] 42-10-PLAN.md — крейт link-app: конфиг, окно, window-state, link_info, иконки (в.4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
