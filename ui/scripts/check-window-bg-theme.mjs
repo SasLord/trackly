@@ -57,9 +57,9 @@ async function runCases(overrides) {
     setItem: (k, v) => store.set(k, String(v)),
   });
   def('requestAnimationFrame', (cb) => cb());
-  def('getComputedStyle', (el) => ({
+  win.getComputedStyle = (el) => ({
     getPropertyValue: (n) => (n === '--tr-bg' ? (COLORS[el.dataset.theme] ?? '') : ''),
-  }));
+  });
 
   const bad = [];
   const expect = (code, cond, msg) => {
@@ -138,15 +138,15 @@ const MUTANTS = [
   {
     name: 'цвет захардкожен вместо --tr-bg темы',
     file: THEME,
-    from: ".getPropertyValue('--tr-bg').trim();",
-    to: ".getPropertyValue('--tr-bg').trim() && '#eef1f6';",
+    from: "style.getPropertyValue('--tr-bg').trim();",
+    to: "style.getPropertyValue('--tr-bg').trim() && '#eef1f6';",
     expect: 'W2',
   },
   {
     name: 'значение не обрезается',
     file: THEME,
-    from: ".getPropertyValue('--tr-bg').trim();",
-    to: ".getPropertyValue('--tr-bg');",
+    from: "style.getPropertyValue('--tr-bg').trim();",
+    to: "style.getPropertyValue('--tr-bg');",
     expect: 'W1',
   },
 ];

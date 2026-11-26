@@ -44,7 +44,8 @@ function applyResolved(): void {
 async function syncWindowBackground(): Promise<void> {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
   try {
-    const color = getComputedStyle(document.documentElement).getPropertyValue('--tr-bg').trim();
+    const style = window.getComputedStyle(document.documentElement);
+    const color = style.getPropertyValue('--tr-bg').trim();
     if (!color) return;
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     await getCurrentWindow().setBackgroundColor(color);
