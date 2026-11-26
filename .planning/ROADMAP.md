@@ -222,7 +222,40 @@ Plans:
   3. Повторная отправка после сбоя сети не создаёт дубликат сообщения.
   4. Сервер сам закрывает «мёртвые» соединения, а клиенты переподключаются автоматически.
 
-**Plans**: TBD
+**Plans**: 12 plans
+Plans:
+**Wave 1**
+
+- [ ] 43-01-PLAN.md — миграции V058/V059 (ядро im_*, ключи идемпотентности), правила domain/im, репозиторий im_sqlite
+- [ ] 43-02-PLAN.md — сервер WS: hello, ping/pong, закрытие мёртвых, resync_required вместо Lagged, мост десктопа
+- [ ] 43-03-PLAN.md — клиент ws.ts: onWsResync, отложенный тост 5 с, online/visibilitychange, проба; исполняющие гейты
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 43-04-PLAN.md — ImHub, ImService (send/sync/состав), DTO, AppCtx; тесты членства, исключения, идемпотентности, sync
+- [ ] 43-05-PLAN.md — реестровый гейт ресинка (check-ws-resync-registry) и ресинк оболочек/страниц
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 43-06-PLAN.md — идемпотентность chat_send и requests_create (client id), DTO, биндинги
+- [ ] 43-07-PLAN.md — ресинк оставшихся подписчиков (заявки, чат, настройки, вложения), гейт в pnpm lint
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 43-08-PLAN.md — маршруты im_send/im_sync, ветка ImHub в WS, Lagged IM, паритет http-tauri, тесты на реальном сокете
+- [ ] 43-09-PLAN.md — sendWithRetry/newClientId, форма заявки с одним clientRequestId
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 43-10-PLAN.md — стор неотправленных, пузырь «Не отправлено»/«Повторить» в чате заявки
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 43-11-PLAN.md — раздел «Протокол доставки» в ADR 0003, сплошной прогон гейтов
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 43-12-PLAN.md — живая проверка в LAN-браузере и десктопе (checkpoint)
 
 ### Phase 44: Link — транспорт, пин сертификата и вход
 
