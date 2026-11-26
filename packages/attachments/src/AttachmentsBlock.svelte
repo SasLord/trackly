@@ -9,7 +9,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import RowChevron from '@trackly/kit/components/icons/RowChevron.svelte';
-  import { onWsEvent } from '@trackly/transport/ws';
+  import { onWsEvent, onWsResync } from '@trackly/transport/ws';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { currentUser } from './host';
   import { saveFile } from '@trackly/kit/utils/saveFile';
@@ -95,7 +95,14 @@
         void load(true);
       }
     });
-    return off;
+    // D-08: ресинк перезагружает список вложений открытой карточки.
+    const offResync = onWsResync(() => {
+      void load(true);
+    });
+    return () => {
+      off();
+      offResync();
+    };
   });
 
   onDestroy(() => {

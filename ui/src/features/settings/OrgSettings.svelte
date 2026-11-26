@@ -13,7 +13,7 @@
   import NumberMaskHelp from './NumberMaskHelp.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '@trackly/transport/client';
-  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { connectWs, onWsEvent, onWsResync } from '@trackly/transport/ws';
   import { previewShortenPath, monoReadout } from '$lib/utils/placePath';
   import type { WsEvent } from '../../bindings-phase6';
   import type { NumberTemplateDto, TemplateContextDto, TemplateTypeDto } from '../../bindings';
@@ -431,10 +431,15 @@
         // перезагружается по CRUD-операциям, без live-инвалидации по WS.
       });
     const unsubscribeWs = onWsEvent(handleTemplatesWsEvent);
+    // D-08/D-10: ресинк перечитывает только шаблоны, поля формы организации не трогает.
+    const unsubscribeResync = onWsResync(() => {
+      void loadTemplates();
+    });
 
     return () => {
       disposed = true;
       unsubscribeWs();
+      unsubscribeResync();
       wsRelease?.();
     };
   });

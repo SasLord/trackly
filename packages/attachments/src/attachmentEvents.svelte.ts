@@ -1,6 +1,6 @@
 // Фаза 41.3, план 14 (D-14, D-15): события вложений родителя; перечитываются
 // вместе с блоком по WebSocket-событию attachments_changed.
-import { onWsEvent } from '@trackly/transport/ws';
+import { onWsEvent, onWsResync } from '@trackly/transport/ws';
 import { attachments } from './api';
 import type { AttachmentHistoryEventDto } from './types';
 
@@ -44,7 +44,14 @@ export function createAttachmentEvents(
         void load();
       }
     });
-    return off;
+    // D-08: ресинк = перечитать историю вложений.
+    const offResync = onWsResync(() => {
+      void load();
+    });
+    return () => {
+      off();
+      offResync();
+    };
   });
 
   return {

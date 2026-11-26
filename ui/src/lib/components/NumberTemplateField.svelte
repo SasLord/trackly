@@ -17,7 +17,7 @@
   import IconInsertTemplate from '@trackly/kit/components/icons/IconInsertTemplate.svelte';
   import { apiCall } from '@trackly/transport/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { connectWs, onWsEvent, onWsResync } from '@trackly/transport/ws';
   import type { WsEvent } from '../../bindings-phase6';
   import type {
     NextNumberDto,
@@ -404,10 +404,17 @@
         // WS необязателен — без него просто не будет тихой замены (D-14).
       });
     const unsubscribeWs = onWsEvent(handleWsEvent);
+    // D-08/D-10: ресинк обновляет подсказку и список шаблонов тем же путём, что событие.
+    const unsubscribeResync = onWsResync(() => {
+      void refreshCurrentSuggestion();
+      occupiedRecheck += 1;
+      void loadTemplates(context, { dropMissingSelection: true });
+    });
 
     return () => {
       disposed = true;
       unsubscribeWs();
+      unsubscribeResync();
       wsRelease?.();
     };
   });
