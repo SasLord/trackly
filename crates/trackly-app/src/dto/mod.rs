@@ -19,6 +19,7 @@ pub mod group_types;
 pub mod groups;
 pub mod health;
 pub mod history;
+pub mod im;
 pub mod number_template;
 pub mod organization;
 pub mod place;

@@ -171,6 +171,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         number_templates,
         attachments,
         chat,
+        im_hub: std::sync::Arc::new(trackly_app::services::im_hub::ImHub::new()),
         paths: paths_arc,
         org_db,
         reports,

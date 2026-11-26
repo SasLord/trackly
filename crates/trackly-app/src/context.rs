@@ -144,6 +144,8 @@ pub struct AppCtx {
     pub attachments: Arc<AttachmentService>,
     /// Request chat service (Phase 41.5): feed, read marks, unread summary.
     pub chat: Arc<ChatService>,
+    /// Каналы сигналов мессенджера по пользователям (Phase 43, D-04).
+    pub im_hub: Arc<crate::services::im_hub::ImHub>,
 }
 
 impl AppCtx {
@@ -233,6 +235,7 @@ impl AppCtx {
         // spot depends on it, this is purely a hoist.
         let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
         let ws_broadcast = Arc::new(ws_tx);
+        let im_hub = Arc::new(crate::services::im_hub::ImHub::new());
 
         // Phase 40.2 Plan 08 (D-14): `with_ws_tx` wires the SAME shared
         // broadcast sender every other service below uses, so
@@ -581,6 +584,7 @@ impl AppCtx {
             number_templates,
             attachments,
             chat,
+            im_hub,
         })
     }
 }

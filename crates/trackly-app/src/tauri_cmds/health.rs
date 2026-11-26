@@ -204,6 +204,7 @@ mod tests {
             number_templates,
             attachments,
             chat,
+            im_hub: Arc::new(crate::services::im_hub::ImHub::new()),
             paths: paths_arc,
             org_db,
             reports,
