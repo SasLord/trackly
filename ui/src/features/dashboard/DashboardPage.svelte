@@ -240,7 +240,7 @@
 </div>
 
 <style lang="scss">
-  @use '../../styles/_breakpoints' as bp;
+  @use '@trackly/design/breakpoints' as bp;
 
   .dashboard-page {
     display: flex;

@@ -3,5 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "exports": {}
+  "exports": {
+    "./global.scss": "./src/styles/global.scss",
+    "./breakpoints": "./src/styles/_breakpoints.scss",
+    "./tokens": "./src/styles/_tokens.scss",
+    "./vite-plugin": "./vite-plugin-theme-init.mjs"
+  }
 }

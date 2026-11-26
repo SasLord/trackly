@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // [check-contrast] Постоянный CI-гейт WCAG AA-контраста (Phase 30, план 01, D-01; Phase 41.11, план 03).
 //
-// Читает ЕДИНСТВЕННЫЙ файл — ui/src/styles/_tokens.scss — и делает две независимые вещи.
+// Читает ЕДИНСТВЕННЫЙ файл — packages/design/src/styles/_tokens.scss — и делает две независимые вещи.
 //
 // (1) Каноническая таблица: 51 пара (foreground token / background token / порог) × 2 темы =
 //     102 проверки за прогон на «голых» фонах. Формула контраста WCAG 2.x реализована с нуля:
@@ -561,7 +561,7 @@ function main() {
   const tokensArg = args.find((a) => a.startsWith('--tokens='));
   const tokensScssPath = tokensArg
     ? path.resolve(tokensArg.slice('--tokens='.length))
-    : path.join(UI_ROOT, 'src', 'styles', '_tokens.scss');
+    : path.join(UI_ROOT, '..', 'packages', 'design', 'src', 'styles', '_tokens.scss');
   const content = readFileSafe(tokensScssPath);
   if (content == null) {
     console.error(`[check-contrast] cannot read ${relPath(tokensScssPath)}`);

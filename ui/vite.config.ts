@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte, vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import path from 'path';
+import themeInit from '@trackly/design/vite-plugin';
 
 // Trackly UI: vanilla Svelte 5 SPA. Served by Tauri webview (desktop) and by
 // the axum static-file handler in server mode (Phase 5). Vite dev port 1420
@@ -8,13 +9,14 @@ import path from 'path';
 export default defineConfig({
   plugins: [
     svelte({
-      // Design tokens live globally in `src/styles/_tokens.scss` and are
+      // Design tokens live globally in `packages/design/src/styles/_tokens.scss` and are
       // imported once via `global.scss`. We deliberately do NOT use
       // scss.prependData — svelte scopes component <style> blocks, which
       // would hash any `:root { --var: … }` rule injected per component
       // and prevent the CSS variables from applying to <html>.
       preprocess: vitePreprocess(),
     }),
+    themeInit(),
   ],
   resolve: {
     alias: {

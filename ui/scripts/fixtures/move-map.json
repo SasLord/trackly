@@ -7,6 +7,22 @@
     {
       "from": "ui/src/lib/components/Spinner.svelte",
       "to": "packages/kit/src/components/Spinner.svelte"
+    },
+    {
+      "from": "ui/src/styles/_tokens.scss",
+      "to": "packages/design/src/styles/_tokens.scss"
+    },
+    {
+      "from": "ui/src/styles/_breakpoints.scss",
+      "to": "packages/design/src/styles/_breakpoints.scss"
+    },
+    {
+      "from": "ui/src/styles/global.scss",
+      "to": "packages/design/src/styles/global.scss"
+    },
+    {
+      "from": "ui/public/theme-init.js",
+      "to": "packages/design/public/theme-init.js"
     }
   ]
 }

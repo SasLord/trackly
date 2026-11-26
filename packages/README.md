@@ -75,3 +75,19 @@ node ui/scripts/_move-codemod.mjs --apply <from>=<to>...    # git mv + прав�
 Покрытие доказано мутациями на `packages/kit/src/components/Button.svelte`:
 TS-ошибка -> svelte-check красный; сдвиг отступа -> prettier красный; `var` без
 использования -> eslint красный; после возврата всё зелёное.
+
+## Стили и тема (`@trackly/design`, спайк A2)
+
+Токены, брейкпоинты и глобальные стили живут в `packages/design/src/styles/`;
+`theme-init.js` — в `packages/design/public/`. Принятая форма (вариант 0 из ряда
+loadPaths / алиас / относительный путь — ничего из них не понадобилось): Sass внутри
+Vite резолвит пакет через `exports` workspace-зависимости.
+
+- глобально: `import '@trackly/design/global.scss';` в точке входа приложения
+  (`scss.prependData` не используется — отвергнуто);
+- в компоненте: `@use '@trackly/design/breakpoints' as bp;`;
+- `theme-init.js`: `import themeInit from '@trackly/design/vite-plugin'` в `plugins`
+  `vite.config.ts` — отдаёт файл в dev и эмитит в корень `dist`; `index.html` ссылается
+  на внешний `/theme-init.js` (CSP `script-src 'self'`).
+
+Подтверждено `vite build` (токены в CSS), `svelte-check` и `pnpm lint`.

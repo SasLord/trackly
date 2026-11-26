@@ -53,7 +53,7 @@
 </header>
 
 <style lang="scss">
-  @use '../../styles/_breakpoints' as bp;
+  @use '@trackly/design/breakpoints' as bp;
 
   .page-header {
     position: sticky;

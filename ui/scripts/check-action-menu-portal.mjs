@@ -83,7 +83,7 @@ const TAG = '[check-action-menu-portal]';
 
 const MENU_FILE = 'src/lib/components/ActionMenu.svelte';
 const TABLE_ROW_FILE = 'src/lib/components/TableRow.svelte';
-const GLOBAL_SCSS_FILE = 'src/styles/global.scss';
+const GLOBAL_SCSS_FILE = 'packages/design/src/styles/global.scss';
 const SUBMENU_FILE = 'src/lib/components/ActionSubmenu.svelte';
 // Сколько вызовов <ActionMenu есть в src/**/*.svelte (инвентарь плана 41.1-16):
 // 21 = сумма `grep -rc '<ActionMenu' src --include='*.svelte'` по файлам
@@ -648,7 +648,11 @@ function checkRepo(root, violations) {
   })) {
     files.set(path.relative(root, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
   }
-  const globalPath = path.join(root, GLOBAL_SCSS_FILE);
+  // Штатный корень — ui/: global.scss лежит в пакете design (репозиторный путь), не под ui/src.
+  const globalPath =
+    path.resolve(root) === ROOTS_UI
+      ? path.join(ROOTS_UI, '..', GLOBAL_SCSS_FILE)
+      : path.join(root, GLOBAL_SCSS_FILE);
   if (fs.existsSync(globalPath)) files.set(GLOBAL_SCSS_FILE, fs.readFileSync(globalPath, 'utf8'));
   scanSources(files, MIN_CALL_SITES, violations);
 }

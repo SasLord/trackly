@@ -82,7 +82,14 @@ export default [
   {
     // public/ holds static assets copied verbatim by Vite (e.g. theme-init.js,
     // an inline theme bootstrap with no module graph) — not lint-able source.
-    ignores: ['node_modules/', 'dist/', 'public/', 'src/bindings.ts', 'pnpm-lock.yaml'],
+    ignores: [
+      'node_modules/',
+      'dist/',
+      'public/',
+      '**/public/',
+      'src/bindings.ts',
+      'pnpm-lock.yaml',
+    ],
   },
   js.configs.recommended,
   // Phase 33 (D-04/C-02): standalone Paged.js bootstrap script, inlined via

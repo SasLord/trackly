@@ -144,7 +144,7 @@ function main() {
   let diffText;
   try {
     diffText = execSync(
-      `git diff --unified=0 ${JSON.stringify(baseRef)} -- '*.svelte' '*.scss' ':!src/styles/_tokens.scss'`,
+      `git diff --unified=0 ${JSON.stringify(baseRef)} -- '*.svelte' '*.scss' ':(exclude,glob)**/styles/_tokens.scss'`,
       {
         cwd: new URL('..', import.meta.url).pathname,
         encoding: 'utf8',

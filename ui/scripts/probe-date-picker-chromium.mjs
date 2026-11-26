@@ -79,7 +79,7 @@ fs.writeFileSync(
   entry,
   `import { mount } from 'svelte';
 import DatePicker from ${JSON.stringify(path.join(UI, 'src/lib/components/DatePicker.svelte'))};
-import ${JSON.stringify(path.join(UI, 'src/styles/global.scss'))};
+import ${JSON.stringify(path.join(UI, '../packages/design/src/styles/global.scss'))};
 window.__mount = (target, props) => mount(DatePicker, { target, props });
 `,
 );

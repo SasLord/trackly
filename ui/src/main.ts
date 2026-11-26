@@ -1,4 +1,4 @@
-import './styles/global.scss';
+import '@trackly/design/global.scss';
 import { mount } from 'svelte';
 import App from './App.svelte';
 import { initTheme } from './lib/stores/theme.svelte';

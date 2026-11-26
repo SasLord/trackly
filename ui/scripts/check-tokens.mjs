@@ -7,7 +7,7 @@
 //                                  где-либо в файле (не только <style>).
 //   Rule 2 (hex-in-style gate)  — hex-литерал внутри <style>-блока .svelte-файла.
 //   Rule 3 (closed-world gate)  — var(--tr-*) ссылается на имя, реально определённое
-//                                  в ui/src/styles/_tokens.scss.
+//                                  в packages/design/src/styles/_tokens.scss.
 //   Rule 4 (color-func-in-style gate) — rgba()/rgb()/hsl()/hsla() литерал внутри
 //                                  <style>-блока .svelte-файла (закрывает слепой участок
 //                                  Правила 2, которое видит только hex-литералы, Phase 23
@@ -24,7 +24,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
-import { walk } from './_roots.mjs';
+import { walk, REPO } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -54,7 +54,7 @@ function printHelp() {
       '  Rule 1: old token-family names (--color-*/--space-*/--radius-*/--font-size-*/\n' +
       '          --font-weight-*/--line-height-*/--shadow-*) anywhere in the file.\n' +
       '  Rule 2: hex literals inside <style> blocks of .svelte files.\n' +
-      '  Rule 3: var(--tr-*) references not defined in ui/src/styles/_tokens.scss.\n' +
+      '  Rule 3: var(--tr-*) references not defined in packages/design/src/styles/_tokens.scss.\n' +
       '  Rule 4: rgba()/rgb()/hsl()/hsla() color-function literals inside <style> blocks\n' +
       '          of .svelte files.',
   );
@@ -233,7 +233,10 @@ function main() {
   }
 
   if (args.rules.includes(3)) {
-    const tokensScssPath = path.join(args.src, 'styles', '_tokens.scss');
+    // Явный --src (тестовое дерево) держит свой styles/; штатный прогон читает токены пакета.
+    const tokensScssPath = args.explicit
+      ? path.join(args.src, 'styles', '_tokens.scss')
+      : path.join(REPO, 'packages', 'design', 'src', 'styles', '_tokens.scss');
     const violations = checkClosedWorld(files, tokensScssPath);
     for (const v of violations) {
       console.error(
