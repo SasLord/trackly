@@ -4,12 +4,12 @@ milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
 status: executing
 last_updated: "2026-11-26T16:40:06.377Z"
-last_activity: 2026-11-26 -- Phase 43 plan 02 complete
+last_activity: 2026-11-26 -- Phase 43 plan 03 complete
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 31
-  completed_plans: 19
+  completed_plans: 20
   percent: 9
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 2 of 12 complete (43-01, 43-02 done)
+Plan: 3 of 12 complete (43-01, 43-02, 43-03 done)
 Status: Executing Phase 43
 Last activity: 2026-11-26 -- Phase 43 execution started
 
