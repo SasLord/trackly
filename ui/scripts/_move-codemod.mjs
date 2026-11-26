@@ -56,8 +56,7 @@ function listSources() {
 }
 
 /** Литералы-спецификаторы: import/export ... from '...', import('...'), import '...'. */
-const SPEC_RE =
-  /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])([^'"\n]+)\2/g;
+const SPEC_RE = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])([^'"\n]+)\2/g;
 
 function resolveSpec(spec, importerAbs) {
   if (spec.startsWith('$lib/')) return path.join(UI_ROOT, 'src', 'lib', spec.slice(5));
@@ -163,7 +162,9 @@ function main(argv) {
       const targetMoved = fromAbs.has(hit);
       if (!targetMoved) {
         if (importerMoved) {
-          throw new Error(`[codemod] ${rel(file)} (переезжает) импортирует непереносимый ${rel(hit)}`);
+          throw new Error(
+            `[codemod] ${rel(file)} (переезжает) импортирует непереносимый ${rel(hit)}`,
+          );
         }
         return full;
       }
@@ -205,7 +206,9 @@ function main(argv) {
     if (!map.moves.some((x) => x.from === mv.from)) map.moves.push({ from: mv.from, to: mv.to });
   }
   fs.writeFileSync(MOVE_MAP, JSON.stringify(map, null, 2) + '\n');
-  console.log(`[codemod] перенесено файлов: ${moves.length}; правок содержимого: ${edits.filter((e) => e[2] !== null).length}`);
+  console.log(
+    `[codemod] перенесено файлов: ${moves.length}; правок содержимого: ${edits.filter((e) => e[2] !== null).length}`,
+  );
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -58,4 +58,20 @@ node ui/scripts/_move-codemod.mjs --apply <from>=<to>...    # git mv + прав�
 
 ## Покрытие гейтов кода (спайк A4)
 
-Заполняется результатом проверки (см. ниже).
+`pnpm --dir ui lint` и `pnpm --dir ui svelte-check` покрывают `packages/*/src` и `link-ui/src`:
+
+- **svelte-check**: `ui/tsconfig.json` `include` расширен на `../packages/*/src/**/*` и
+  `../link-ui/src/**/*`. Каждому каталогу нужен `svelte.config.js` (реэкспорт
+  `ui/svelte.config.js`): без него svelte-check берёт fallback `svelte-preprocess` и падает
+  на `<script lang="ts">`. Файлы `packages/svelte.config.js`, `link-ui/svelte.config.js`.
+- **eslint**: ESLint 9 не линтует файлы вне каталога конфига, поэтому `eslint .` в `ui/`
+  пакеты не видит. Обёртка `ui/scripts/_eslint-workspaces.mjs` запускает eslint из
+  `packages/` (и `link-ui/`, когда появится `src/`) с конфигом-реэкспортом
+  `eslint.config.mjs`. Пустой `packages/` — ошибка.
+- **prettier**: `prettier --check . ../packages ../link-ui`; prettier ищет конфиг вверх от
+  файла, поэтому в `packages/prettier.config.mjs` (и `link-ui/prettier.config.mjs`) лежит
+  конфиг, повторяющий `ui/.prettierrc.json` с плагином, резолвленным из `ui/node_modules`.
+
+Покрытие доказано мутациями на `packages/kit/src/components/Button.svelte`:
+TS-ошибка -> svelte-check красный; сдвиг отступа -> prettier красный; `var` без
+использования -> eslint красный; после возврата всё зелёное.

@@ -23,6 +23,13 @@
       "$lib/*": ["./src/lib/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "../packages/*/src/**/*.ts",
+    "../packages/*/src/**/*.svelte",
+    "../link-ui/src/**/*.ts",
+    "../link-ui/src/**/*.svelte"
+  ],
   "exclude": ["node_modules", "dist"]
 }
