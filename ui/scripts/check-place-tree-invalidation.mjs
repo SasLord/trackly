@@ -2030,11 +2030,11 @@ function selftest() {
       exact: 1,
     },
     {
-      name: '4j: РЕАЛЬНЫЙ src/lib/utils/pluralize.ts + devices.delete( без инвалидации',
+      name: '4j: РЕАЛЬНЫЙ src/lib/utils/placePath.ts + devices.delete( без инвалидации',
       run: () =>
         run(
           appended(
-            'src/lib/utils/pluralize.ts',
+            'src/lib/utils/placePath.ts',
             'export async function zzRemove(d: { id: number; version: number }) {\n  await devices.delete(d.id, d.version);\n}',
           ),
         ),

@@ -20,7 +20,7 @@
 //
 // Usage: node scripts/check-unread-store-behavior.mjs [--selftest]
 
-import { gateMain, installHarness, srcUrl, until } from './_rune-harness.mjs';
+import { gateMain, installHarness, pkgUrl, srcUrl, until } from './_rune-harness.mjs';
 
 const TAG = '[check-unread-store-behavior]';
 const US = 'features/requests/chat/unreadStore.svelte.ts';
@@ -48,8 +48,8 @@ async function runCases(overrides) {
   };
   globalThis.__h = H;
   installHarness({ stubs: STUBS, overrides });
-  const toast = await import(srcUrl('lib/stores/toast.svelte.ts'));
-  const scoped = await import(srcUrl('lib/stores/userScoped.svelte.ts'));
+  const toast = await import(pkgUrl('kit', 'stores/toast.svelte.ts'));
+  const scoped = await import(pkgUrl('kit', 'stores/userScoped.svelte.ts'));
   const u = await import(srcUrl(US));
   const s = u.unreadStore;
 

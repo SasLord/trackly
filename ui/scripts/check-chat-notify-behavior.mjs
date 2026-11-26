@@ -21,7 +21,7 @@
 //
 // Usage: node scripts/check-chat-notify-behavior.mjs [--selftest]
 
-import { gateMain, installHarness, srcUrl } from './_rune-harness.mjs';
+import { gateMain, installHarness, pkgUrl, srcUrl } from './_rune-harness.mjs';
 
 const TAG = '[check-chat-notify-behavior]';
 const CN = 'features/requests/chat/chatNotifications.svelte.ts';
@@ -55,8 +55,8 @@ async function runCases(overrides) {
   };
   globalThis.__h = H;
   installHarness({ stubs: STUBS, overrides });
-  const toast = await import(srcUrl('lib/stores/toast.svelte.ts'));
-  const scoped = await import(srcUrl('lib/stores/userScoped.svelte.ts'));
+  const toast = await import(pkgUrl('kit', 'stores/toast.svelte.ts'));
+  const scoped = await import(pkgUrl('kit', 'stores/userScoped.svelte.ts'));
   const unread = await import(srcUrl('features/requests/chat/unreadStore.svelte.ts'));
   const cn = await import(srcUrl(CN));
 

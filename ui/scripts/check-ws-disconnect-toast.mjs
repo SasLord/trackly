@@ -17,7 +17,7 @@
 // поле, снятый вызов — просто мёртвый код).
 //
 // Гейт ИСПОЛНЯЮЩИЙ и состоит из двух частей.
-//  1. Исполняемые проверки E1-E5 стора `src/lib/stores/toast.svelte.ts`:
+//  1. Исполняемые проверки E1-E5 стора `packages/kit/src/stores/toast.svelte.ts`:
 //     модуль транспилируется и реально вызывается, `setTimeout` подменяется
 //     рекордером, поэтому «залипающий тост всё-таки получил TTL» ловится
 //     фактом планирования таймера, а не чтением исходника.
@@ -40,7 +40,7 @@
 //            (`clearReconnectingToast`) — иначе он висит навсегда;
 //       W4 — `showReconnectingToast()` вообще вызывается — инвариант
 //            «не меньше одного»;
-//       W5 — каждая цепочка `import('$lib/stores/toast.svelte')` логирует
+//       W5 — каждая цепочка `import('@trackly/kit/stores/toast.svelte')` логирует
 //            сбой в `.catch`. Пустой `.catch(() => {})` однажды уже скрыл
 //            причину и стоил сессии лишних витков;
 //       W6 — таймер переподключения отменяем (WR-04 ревью 41.7): результат
@@ -72,7 +72,7 @@ import { stripComments } from './_strip.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
-const STORE = path.join(UI_ROOT, 'src/lib/stores/toast.svelte.ts');
+const STORE = path.join(UI_ROOT, '../packages/kit/src/stores/toast.svelte.ts');
 const WS = path.join(UI_ROOT, 'src/lib/api/ws.ts');
 const TAG = '[check-ws-disconnect-toast]';
 const RECONNECT_MESSAGE = 'Соединение с сервером потеряно. Переподключение…';
@@ -257,7 +257,7 @@ function runStructural(wsSrc) {
   // W5 — ни одна цепочка импорта тост-стора не глушит сбой молча.
   // Окно цепочки = от её import до следующего import (или до конца файла);
   // тело .catch = от `.catch(` до ближайшего `});`, закрывающего эту ссылку.
-  const IMPORT = "import('$lib/stores/toast.svelte')";
+  const IMPORT = "import('@trackly/kit/stores/toast.svelte')";
   const starts = [];
   for (let i = text.indexOf(IMPORT); i !== -1; i = text.indexOf(IMPORT, i + 1)) {
     starts.push(i);
@@ -383,7 +383,7 @@ let reconnectTimer = null;
 let activeCleanup = null;
 
 function showReconnectingToast() {
-  import('$lib/stores/toast.svelte')
+  import('@trackly/kit/stores/toast.svelte')
     .then(({ pushToast }) => {
       reconnectToastId = pushToast('warning', '${RECONNECT_MESSAGE}', {
         sticky: true,
@@ -400,7 +400,7 @@ function clearReconnectingToast() {
     return;
   }
   reconnectToastId = null;
-  import('$lib/stores/toast.svelte')
+  import('@trackly/kit/stores/toast.svelte')
     .then(({ removeToast }) => {
       removeToast(id);
     })
@@ -557,7 +557,7 @@ const WS_MUTANTS = [
     to:
       'function connectBrowser() {\n' +
       '  // шаблоны лежат в templates/*.html\n' +
-      "  import('$lib/stores/toast.svelte').then(() => {}).catch(() => {});\n" +
+      "  import('@trackly/kit/stores/toast.svelte').then(() => {}).catch(() => {});\n" +
       '  /* настоящий блочный комментарий */',
   },
   {

@@ -5,7 +5,8 @@
 //   *.ts        → typescript.transpileModule (Node 20 в CI не импортирует .ts напрямую);
 //   *.svelte.ts → затем svelte/compiler compileModule (generate: 'client', настоящий рантайм рун).
 // Импорты разрешаются хуками загрузчика (module.register, Node ≥ 20.6):
-//   `$lib/...` → ui/src/lib/..., относительные без расширения → `.ts`;
+//   `$lib/...` → ui/src/lib/..., `@trackly/<пакет>/<подпуть>` → packages/<пакет>/src/<подпуть>
+//   (D-20; пакетные файлы транслируются так же, как ui/src), относительные без расширения → `.ts`;
 //   спецификаторы из `stubs` → data:-модули (заглушки ws/auth/api/плагинов).
 // Мутации: `overrides` = { абсолютный путь: [[from, to], ...] } применяется к исходнику ДО
 // трансляции (якорь обязан встречаться ровно один раз — иначе стенд падает).
@@ -22,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UI = path.resolve(__dirname, '..');
 export const SRC = path.join(UI, 'src');
+export const PKGS = path.resolve(UI, '..', 'packages');
 
 const HOOKS = `
 import fs from 'node:fs';
@@ -37,6 +39,11 @@ export async function initialize(data) {
   ts = req('typescript');
   ({ compileModule } = req('svelte/compiler'));
 }
+function inRoots(p) {
+  if (p.startsWith(cfg.src)) return true;
+  const rel = path.relative(cfg.pkgs, p);
+  return !rel.startsWith('..') && !path.isAbsolute(rel) && /^[^/\\\\]+[/\\\\]src[/\\\\]/.test(rel);
+}
 function withTs(p) {
   if (fs.existsSync(p) && fs.statSync(p).isFile()) return p;
   if (fs.existsSync(p + '.ts')) return p + '.ts';
@@ -48,20 +55,24 @@ export async function resolve(spec, ctx, next) {
   }
   let base = null;
   if (spec.startsWith('$lib/')) base = path.join(cfg.src, 'lib', spec.slice(5));
-  else if ((spec.startsWith('./') || spec.startsWith('../')) && ctx.parentURL && ctx.parentURL.startsWith('file:'))
+  else if (spec.startsWith('@trackly/')) {
+    const rest = spec.slice('@trackly/'.length);
+    const i = rest.indexOf('/');
+    if (i > 0) base = path.join(cfg.pkgs, rest.slice(0, i), 'src', rest.slice(i + 1));
+  } else if ((spec.startsWith('./') || spec.startsWith('../')) && ctx.parentURL && ctx.parentURL.startsWith('file:'))
     base = path.resolve(path.dirname(fileURLToPath(ctx.parentURL)), spec);
   if (base !== null) {
     const q = base.indexOf('?');
     const query = q < 0 ? '' : base.slice(q);
     const p = withTs(q < 0 ? base : base.slice(0, q));
-    if (p !== null && p.startsWith(cfg.src)) return { url: pathToFileURL(p).href + query, shortCircuit: true };
+    if (p !== null && inRoots(p)) return { url: pathToFileURL(p).href + query, shortCircuit: true };
   }
   return next(spec, ctx);
 }
 export async function load(url, ctx, next) {
   if (!url.startsWith('file:')) return next(url, ctx);
   const p = fileURLToPath(url.split('?')[0]);
-  if (!p.startsWith(cfg.src) || !p.endsWith('.ts')) return next(url, ctx);
+  if (!inRoots(p) || !p.endsWith('.ts')) return next(url, ctx);
   let src = fs.readFileSync(p, 'utf8');
   for (const [from, to] of cfg.overrides[p] ?? []) {
     const n = src.split(from).length - 1;
@@ -83,9 +94,13 @@ export async function load(url, ctx, next) {
 /** Регистрирует хуки. Вызывать до первого динамического import() тестируемых модулей. */
 export function installHarness({ stubs = {}, overrides = {} } = {}) {
   register('data:text/javascript;base64,' + Buffer.from(HOOKS).toString('base64'), {
-    data: { ui: UI, src: SRC, stubs, overrides },
+    data: { ui: UI, src: SRC, pkgs: PKGS, stubs, overrides },
   });
 }
+
+/** URL файла пакета: pkgUrl('kit', 'stores/toast.svelte.ts'). */
+export const pkgUrl = (pkg, rel, query = '') =>
+  pathToFileURL(path.join(PKGS, pkg, 'src', rel)).href + query;
 
 export const srcUrl = (rel, query = '') => pathToFileURL(path.join(SRC, rel)).href + query;
 

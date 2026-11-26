@@ -34,7 +34,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '../src');
 const TAG = '[check-user-scoped-reset]';
 
-const REGISTRY = 'lib/stores/userScoped.svelte.ts';
+// Ключи files — путь от ui/src; файлы пакетов выглядят как '../../packages/<пакет>/src/...'.
+const KIT_STORES = '../../packages/kit/src/stores';
+const REGISTRY = `${KIT_STORES}/userScoped.svelte.ts`;
 const STATUSES = 'lib/stores/deviceStatuses.svelte.ts';
 const TYPES = 'lib/stores/deviceTypes.svelte.ts';
 const EVENTS = 'lib/stores/placeContentEvents.svelte.ts';
@@ -43,9 +45,9 @@ const APP = 'App.svelte';
 // Освобождения от правила [A]: файл -> причина (не короче 20 символов).
 // Запись обязана совпасть с реальным файлом (иначе гейт красный).
 export const EXEMPT = {
-  'lib/stores/theme.svelte.ts': 'настройка браузера, не данные пользователя системы',
+  [`${KIT_STORES}/theme.svelte.ts`]: 'настройка браузера, не данные пользователя системы',
   'features/layout/layout-state.svelte.ts': 'состояние выдвижной панели, не данные с сервера',
-  'lib/stores/toast.svelte.ts': 'не кэш данных; очищается отдельно (clearToasts) в App.svelte',
+  [`${KIT_STORES}/toast.svelte.ts`]: 'не кэш данных; очищается отдельно (clearToasts) в App.svelte',
   'lib/stores/auth.svelte.ts': 'сам источник смены пользователя; обнуляется входом и выходом',
   'lib/api/ws.ts': 'refCount и обработчики соединения: их закрывают размонтируемые Layout',
   'features/attachments/attachmentEvents.svelte.ts':

@@ -15,7 +15,7 @@
 //
 // Usage: node scripts/check-open-external.mjs [--selftest]
 
-import { gateMain, installHarness, srcUrl, until } from './_rune-harness.mjs';
+import { gateMain, installHarness, pkgUrl, srcUrl, until } from './_rune-harness.mjs';
 
 const TAG = '[check-open-external]';
 const OE = 'features/requests/chat/openExternal.ts';
@@ -32,7 +32,7 @@ async function runCases(overrides) {
   };
   globalThis.__h = H;
   installHarness({ stubs: STUBS, overrides });
-  const toast = await import(srcUrl('lib/stores/toast.svelte.ts'));
+  const toast = await import(pkgUrl('kit', 'stores/toast.svelte.ts'));
 
   const bad = [];
   const expect = (code, cond, msg) => {

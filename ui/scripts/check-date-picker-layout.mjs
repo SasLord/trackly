@@ -37,6 +37,7 @@ import { walk as walkRoots } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '../src');
+const KIT_SRC = path.resolve(__dirname, '../../packages/kit/src');
 const COMPONENT = path.join(SRC, 'lib/components/DatePicker.svelte');
 const TAG = '[check-date-picker-layout]';
 const WHY =
@@ -319,7 +320,7 @@ const wrap = (decls) =>
   `<input class="date-picker"/><style lang="scss">.date-picker { ${decls} }</style>`;
 
 export const CLEAN = `<script lang="ts">
-  import { needsOwnCalendarIcon } from '$lib/utils/calendarIcon.js';
+  import { needsOwnCalendarIcon } from '@trackly/kit/utils/calendarIcon.js';
   const ownIcon = needsOwnCalendarIcon(navigator.userAgent);
   function openPicker() {
     if (typeof inputEl.showPicker === 'function') {
@@ -387,7 +388,10 @@ export function iconFixtures() {
     'нет typeof-охраны': rep("typeof inputEl.showPicker === 'function'", 'inputEl'),
     'нет focus-фоллбэка': rep('inputEl.focus();', 'noop();'),
     'хардкод цвета': rep('color: var(--tr-text-secondary);', 'color: #888;'),
-    'нет импорта': rep("import { needsOwnCalendarIcon } from '$lib/utils/calendarIcon.js';", ''),
+    'нет импорта': rep(
+      "import { needsOwnCalendarIcon } from '@trackly/kit/utils/calendarIcon.js';",
+      '',
+    ),
   };
   return bad;
 }
@@ -456,7 +460,7 @@ if (process.argv.includes('--selftest')) {
   const src = fs.readFileSync(file, 'utf8');
   const bad = [...check(src), ...checkIcon(src)].map((b) => `${path.basename(file)}: ${b}`);
   const { needsOwnCalendarIcon } = await import(
-    pathToFileURL(path.join(SRC, 'lib/utils/calendarIcon.js')).href
+    pathToFileURL(path.join(KIT_SRC, 'utils/calendarIcon.js')).href
   );
   bad.push(...checkDetector(needsOwnCalendarIcon).map((b) => `calendarIcon.js: ${b}`));
   const files = walkRoots({ exts: ['.svelte'] });

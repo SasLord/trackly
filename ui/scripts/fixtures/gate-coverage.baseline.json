@@ -448,7 +448,7 @@
           "dir": "ui/src",
           "pattern": ".",
           "recursive": true,
-          "count": 304
+          "count": 292
         }
       ]
     }
