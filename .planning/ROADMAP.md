@@ -106,7 +106,7 @@
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
 | 39–41.13 | v1.4 | 443/443 | Complete | 2026-11-25 (см. архив) |
 | 42. Основа монорепо, ADR и пилот | v1.5 | 19/19 | Complete | 2026-11-26 |
-| 43. Надёжная доставка событий | v1.5 | 8/12 | In Progress|  |
+| 43. Надёжная доставка событий | v1.5 | 10/12 | In Progress|  |
 | 44. Link — транспорт, пин и вход | v1.5 | 0/? | Not started | - |
 | 45. Дистрибуция и автообновление Link | v1.5 | 0/? | Not started | - |
 | 46. Дизайн-прототипы чата и Link | v1.5 | 0/? | Not started | - |
@@ -243,11 +243,11 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 43-08-PLAN.md — маршруты im_send/im_sync, ветка ImHub в WS, Lagged IM, паритет http-tauri, тесты на реальном сокете
-- [ ] 43-09-PLAN.md — sendWithRetry/newClientId, форма заявки с одним clientRequestId
+- [x] 43-09-PLAN.md — sendWithRetry/newClientId, форма заявки с одним clientRequestId
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 43-10-PLAN.md — стор неотправленных, пузырь «Не отправлено»/«Повторить» в чате заявки
+- [x] 43-10-PLAN.md — стор неотправленных, пузырь «Не отправлено»/«Повторить» в чате заявки
 
 **Wave 6** *(blocked on Wave 5 completion)*
 

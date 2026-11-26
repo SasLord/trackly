@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 9 of 12 complete (43-01..43-09 done)
+Plan: 10 of 12 complete (43-01..43-10 done)
 Status: Executing Phase 43
-Last activity: 2026-11-27 -- 43-09 (sendWithRetry, clientRequestId в форме заявки)
+Last activity: 2026-11-27 -- 43-10 (стор неотправленных, пузырь «Не отправлено» в чате)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
