@@ -19,6 +19,21 @@
 //   * НЕ МЕНЬШЕ одного — тост залипающий, без TTL, снимается на `onopen`
 //     (сессия `ws-disconnect-toast-no-show`: транзиентный тост истекал раньше,
 //     чем пользователь успевал переключиться из десктопного окна в браузер).
+// Фаза 43 (DLV-01/DLV-04) — протокол служебных кадров и ресинк:
+//   * сервер -> клиент: `hello` (первый кадр: protocol, pingIntervalSecs, idleTimeoutSecs),
+//     `pong` (ответ на пробу), `resync_required` (клиент отстал и потерял события — Lagged);
+//     клиент -> сервер: текстовый `{"type":"ping"}` (проба живости). Служебные кадры
+//     разбираются ДО dispatch и обработчикам WsEvent не отдаются (D-03).
+//   * ресинк (D-08): `onWsResync(handler)` — реестр «перечитай всё»; `resyncAll()`
+//     зовётся на resync_required, на успешном открытии после обрыва и (Tauri) на событии
+//     `trackly-resync`; вызовы в пределах RESYNC_DEBOUNCE_MS схлопываются. Ресинк ТИХИЙ —
+//     тостов не показывает (D-09).
+//   * тост обрыва (D-14) показывается не раньше RECONNECT_TOAST_DELAY_MS после обрыва;
+//     быстрое переподключение тоста не даёт. Таймер отложенного тоста отменяется на
+//     onopen и в activeCleanup (иначе призрачный тост восстановленного соединения).
+//     Итого инварианты: не больше одного, не меньше одного, не раньше 5 с, таймер отменяем.
+//   * D-15: `online` и `visibilitychange` (visible) сбрасывают backoff и открывают сокет
+//     сразу; при открытом сокете шлют ping и при молчании PROBE_TIMEOUT_MS рвут его.
 // NOTE: 'request_status_changed' — NOT 'request_updated' (06-CONTEXT sync).
 
 import { isTauri } from './transport.svelte';
@@ -58,6 +73,19 @@ export type WsEvent =
     }
   | { type: 'chat_read_changed'; userId: number };
 
+/** Служебные кадры сервера (D-03) — не входят в WsEvent. */
+type WsControlFrame =
+  | { type: 'hello'; protocol: number; pingIntervalSecs: number; idleTimeoutSecs: number }
+  | { type: 'resync_required' }
+  | { type: 'pong' };
+
+/** Задержка показа тоста обрыва (D-14). */
+export const RECONNECT_TOAST_DELAY_MS = 5000;
+/** Окно схлопывания ресинков (D-08). */
+export const RESYNC_DEBOUNCE_MS = 500;
+/** Сколько ждать любой кадр после ping, прежде чем считать сокет мёртвым (D-15). */
+export const PROBE_TIMEOUT_MS = 5000;
+
 type WsEventHandler = (event: WsEvent) => void;
 
 let handlers: WsEventHandler[] = [];
@@ -83,6 +111,14 @@ let epoch = 0;
 // таймер позже открывал сокет, который уже никто не держит; следующий первый
 // потребитель открывал второй — события дублировались (класс GAP-12-10).
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// D-14: таймер отложенного тоста обрыва; отменяется на onopen и в activeCleanup.
+let reconnectToastTimer: ReturnType<typeof setTimeout> | null = null;
+// D-15: таймер пробы живости сокета.
+let probeTimer: ReturnType<typeof setTimeout> | null = null;
+// D-08: дебаунс ресинка.
+let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+let resyncPending = false;
+let resyncHandlers: Array<() => void> = [];
 
 export function onWsEvent(handler: WsEventHandler): () => void {
   handlers.push(handler);
@@ -93,6 +129,48 @@ export function onWsEvent(handler: WsEventHandler): () => void {
 
 function dispatch(event: WsEvent): void {
   handlers.forEach((h) => h(event));
+}
+
+/** Подписка на «перечитай всё» (D-08): потеря событий или повторное открытие. */
+export function onWsResync(handler: () => void): () => void {
+  resyncHandlers.push(handler);
+  return () => {
+    resyncHandlers = resyncHandlers.filter((h) => h !== handler);
+  };
+}
+
+function runResync(): void {
+  for (const h of resyncHandlers) {
+    try {
+      h();
+    } catch (e) {
+      console.error('[ws] ошибка обработчика ресинка', e);
+    }
+  }
+}
+
+// Первый вызов выполняется сразу, повторные в окне схлопываются в один хвостовой.
+// Ресинк тихий: никаких тостов (D-09).
+function resyncAll(): void {
+  if (resyncTimer !== null) {
+    resyncPending = true;
+    return;
+  }
+  runResync();
+  resyncTimer = setTimeout(() => {
+    resyncTimer = null;
+    if (resyncPending) {
+      resyncPending = false;
+      resyncAll();
+    }
+  }, RESYNC_DEBOUNCE_MS);
+}
+
+function clearProbe(): void {
+  if (probeTimer !== null) {
+    clearTimeout(probeTimer);
+    probeTimer = null;
+  }
 }
 
 // id залипающего тоста обрыва — нужен, чтобы снять его на успешном `onopen`.
@@ -143,8 +221,17 @@ function connectBrowser(): void {
   ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws`);
 
   ws.onmessage = (e) => {
+    clearProbe(); // любой кадр доказывает, что сокет жив
     try {
-      dispatch(JSON.parse(e.data) as WsEvent);
+      const msg = JSON.parse(e.data) as WsEvent | WsControlFrame;
+      if (msg.type === 'resync_required') {
+        resyncAll();
+        return;
+      }
+      if (msg.type === 'hello' || msg.type === 'pong') {
+        return;
+      }
+      dispatch(msg);
     } catch {
       // Malformed message — ignore.
     }
@@ -156,44 +243,115 @@ function connectBrowser(): void {
       // индикацию обрыва снимаем.
       reconnecting = false;
       clearReconnectingToast();
+      if (reconnectToastTimer !== null) {
+        clearTimeout(reconnectToastTimer);
+        reconnectToastTimer = null;
+      }
+      resyncAll();
     }
     reconnectDelay = 1000; // Reset backoff on success.
   };
 
-  ws.onclose = () => {
-    ws = null;
-    // Plan 12-17: once the last consumer has released the singleton,
-    // `activeCleanup` (set below) nulls this very `onclose` handler before
-    // calling `ws.close()` — so in practice this branch only runs while
-    // refCount > 0. The explicit guard is defence-in-depth in case a stray
-    // close event fires in between (e.g. a server-initiated close raced with
-    // release()) — it must NOT resurrect a connection nobody asked for.
-    if (refCount <= 0) {
-      return;
-    }
-    // Show the "reconnecting" toast at most once per disconnection episode.
-    // `reconnecting` stays true across the whole backoff sequence and is only
-    // reset on a successful onopen, so a failing connection (e.g. an untrusted
-    // self-signed wss:// cert that closes every ~1s) no longer spams a toast on
-    // every retry. See debug session ui-ws-toast-reports-flicker (Bug A).
-    if (!reconnecting) {
-      reconnecting = true;
-      showReconnectingToast();
-    }
-    const delay = reconnectDelay;
-    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      if (refCount <= 0) {
-        return;
-      }
-      connectBrowser();
-    }, delay);
-  };
+  ws.onclose = handleLost;
 
   ws.onerror = () => {
     // onclose fires after onerror; backoff handled there.
   };
+}
+
+// Потеря соединения (onclose или проба живости): тост обрыва по таймеру + backoff.
+function handleLost(): void {
+  ws = null;
+  // Plan 12-17: once the last consumer has released the singleton,
+  // `activeCleanup` (set below) nulls the `onclose` handler before
+  // calling `ws.close()` — so in practice this branch only runs while
+  // refCount > 0. The explicit guard is defence-in-depth in case a stray
+  // close event fires in between (e.g. a server-initiated close raced with
+  // release()) — it must NOT resurrect a connection nobody asked for.
+  if (refCount <= 0) {
+    return;
+  }
+  // Show the "reconnecting" toast at most once per disconnection episode.
+  // `reconnecting` stays true across the whole backoff sequence and is only
+  // reset on a successful onopen, so a failing connection (e.g. an untrusted
+  // self-signed wss:// cert that closes every ~1s) no longer spams a toast on
+  // every retry. See debug session ui-ws-toast-reports-flicker (Bug A).
+  // D-14: показ отложен — быстрое переподключение тоста не даёт.
+  if (!reconnecting) {
+    reconnecting = true;
+    reconnectToastTimer = setTimeout(() => {
+      reconnectToastTimer = null;
+      showReconnectingToast();
+    }, RECONNECT_TOAST_DELAY_MS);
+  }
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (refCount <= 0) {
+      return;
+    }
+    connectBrowser();
+  }, delay);
+}
+
+// D-15: открыть соединение немедленно, сбросив backoff.
+function connectNow(): void {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  reconnectDelay = 1000;
+  if (refCount > 0 && ws === null) {
+    connectBrowser();
+  }
+}
+
+// D-15: online/visibilitychange. Нет сокета — открыть сразу; сокет OPEN — проверить
+// живость: ping и разрыв, если за PROBE_TIMEOUT_MS не пришло ни одного кадра.
+function probeOrReconnect(): void {
+  if (refCount <= 0) {
+    return;
+  }
+  if (ws === null) {
+    connectNow();
+    return;
+  }
+  if (ws.readyState !== 1 || probeTimer !== null) {
+    return; // CONNECTING/CLOSING или проба уже идёт
+  }
+  try {
+    ws.send('{"type":"ping"}');
+  } catch {
+    // send на полумёртвом сокете может бросить — проба всё равно истечёт.
+  }
+  probeTimer = setTimeout(() => {
+    probeTimer = null;
+    const dead = ws;
+    if (dead) {
+      // Закрытие полуоткрытого сокета браузером может идти долго — onclose не ждём.
+      dead.onclose = null;
+      dead.onmessage = null;
+      dead.onopen = null;
+      try {
+        dead.close();
+      } catch {
+        // уже закрыт
+      }
+    }
+    handleLost();
+    connectNow();
+  }, PROBE_TIMEOUT_MS);
+}
+
+function onOnline(): void {
+  probeOrReconnect();
+}
+
+function onVisibility(): void {
+  if (document.visibilityState === 'visible') {
+    probeOrReconnect();
+  }
 }
 
 // Plan 12-17: refcounted singleton. Public contract unchanged — every caller
@@ -214,13 +372,22 @@ export async function connectWs(): Promise<() => void> {
       // Tauri path: native events, no WebSocket needed.
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        const unlisten = await listen<WsEvent>('trackly-event', (e) => {
+        const unlistenEvent = await listen<WsEvent>('trackly-event', (e) => {
           dispatch(e.payload);
         });
+        // D-08: мост десктопа сообщает о потере событий (Lagged) именем trackly-resync
+        // (desktop_event_bridge::RESYNC_EVENT).
+        const unlistenResync = await listen('trackly-resync', () => {
+          resyncAll();
+        });
+        const unlisten = () => {
+          unlistenEvent();
+          unlistenResync();
+        };
         if (epoch !== myEpoch) {
           // WR-02: пока listen() ждал, соединение уже снесли (последний потребитель
           // сделал release()/disconnectWs()). Сохранять `unlisten` некуда — снимаем
-          // подписку сразу, иначе она живёт вечно, а следующий connectWs() даёт дубль.
+          // подписки сразу, иначе они живут вечно, а следующий connectWs() даёт дубль.
           unlisten();
         } else {
           activeCleanup = unlisten;
@@ -237,10 +404,21 @@ export async function connectWs(): Promise<() => void> {
     } else {
       // Browser path.
       connectBrowser();
+      window.addEventListener('online', onOnline);
+      document.addEventListener('visibilitychange', onVisibility);
       activeCleanup = () => {
+        // Иначе утечка слушателей на каждый цикл connect/release (класс GAP-12-10).
+        window.removeEventListener('online', onOnline);
+        document.removeEventListener('visibilitychange', onVisibility);
+        clearProbe();
         if (reconnectTimer !== null) {
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
+        }
+        // D-14: отложенный тост уже снесённого соединения показывать нельзя.
+        if (reconnectToastTimer !== null) {
+          clearTimeout(reconnectToastTimer);
+          reconnectToastTimer = null;
         }
         if (ws) {
           ws.onclose = null; // Prevent reconnect loop on intentional close.
@@ -281,6 +459,11 @@ export function disconnectWs(): void {
  */
 function teardown(): void {
   epoch += 1;
+  if (resyncTimer !== null) {
+    clearTimeout(resyncTimer);
+    resyncTimer = null;
+  }
+  resyncPending = false;
   if (activeCleanup) {
     activeCleanup();
     activeCleanup = null;
