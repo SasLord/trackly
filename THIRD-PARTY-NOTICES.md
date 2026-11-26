@@ -21,3 +21,8 @@ Cargo-фичей `heic` статически линкуют:
 
 Привязка к libheif на стороне Rust — крейты `libheif-rs` / `libheif-sys`
 (MIT).
+
+## tauri-plugin-window-state
+
+Trackly Link запоминает размер и положение окна плагином **tauri-plugin-window-state**
+(MIT OR Apache-2.0) — https://github.com/tauri-apps/plugins-workspace

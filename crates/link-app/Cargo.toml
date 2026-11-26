@@ -1,0 +1,24 @@
+[package]
+name = "link-app"
+# D-10: литеральная версия, НЕ version.workspace — инъекция версии release.yml её не затрагивает.
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Trackly Link: отдельное Tauri-приложение сотрудника (каркас окна)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "trackly-link"
+path = "src/main.rs"
+
+[dependencies]
+tauri = { workspace = true }
+tauri-plugin-window-state = { workspace = true }
+serde = { workspace = true }
+
+[build-dependencies]
+tauri-build = { workspace = true }
