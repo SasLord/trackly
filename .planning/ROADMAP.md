@@ -106,7 +106,7 @@
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
 | 39–41.13 | v1.4 | 443/443 | Complete | 2026-11-25 (см. архив) |
 | 42. Основа монорепо, ADR и пилот | v1.5 | 19/19 | Complete | 2026-11-26 |
-| 43. Надёжная доставка событий | v1.5 | 3/12 | In Progress|  |
+| 43. Надёжная доставка событий | v1.5 | 4/12 | In Progress|  |
 | 44. Link — транспорт, пин и вход | v1.5 | 0/? | Not started | - |
 | 45. Дистрибуция и автообновление Link | v1.5 | 0/? | Not started | - |
 | 46. Дизайн-прототипы чата и Link | v1.5 | 0/? | Not started | - |
@@ -232,7 +232,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 43-04-PLAN.md — ImHub, ImService (send/sync/состав), DTO, AppCtx; тесты членства, исключения, идемпотентности, sync
+- [x] 43-04-PLAN.md — ImHub, ImService (send/sync/состав), DTO, AppCtx; тесты членства, исключения, идемпотентности, sync
 - [ ] 43-05-PLAN.md — реестровый гейт ресинка (check-ws-resync-registry) и ресинк оболочек/страниц
 
 **Wave 3** *(blocked on Wave 2 completion)*
