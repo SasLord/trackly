@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "svelte-check": "svelte-check",
-    "tauri": "cd ../crates/link-app && node ../../link-ui/node_modules/@tauri-apps/cli/tauri.js"
+    "svelte-check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "tauri": "cd ../crates/link-app && node ../../link-ui/node_modules/@tauri-apps/cli/tauri.js",
+    "lint": "node scripts/check-link-layout.mjs --selftest && node scripts/check-link-layout.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
