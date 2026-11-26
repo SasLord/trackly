@@ -207,6 +207,42 @@
     {
       "from": "ui/src/lib/stores/transport.svelte.ts",
       "to": "packages/transport/src/transport.svelte.ts"
+    },
+    {
+      "from": "ui/src/features/attachments/AttachmentTypeIcon.svelte",
+      "to": "packages/attachments/src/AttachmentTypeIcon.svelte"
+    },
+    {
+      "from": "ui/src/features/attachments/AttachmentTile.svelte",
+      "to": "packages/attachments/src/AttachmentTile.svelte"
+    },
+    {
+      "from": "ui/src/features/attachments/attachmentEvents.svelte.ts",
+      "to": "packages/attachments/src/attachmentEvents.svelte.ts"
+    },
+    {
+      "from": "ui/src/features/attachments/api.ts",
+      "to": "packages/attachments/src/api.ts"
+    },
+    {
+      "from": "ui/src/features/attachments/AttachmentViewer.svelte",
+      "to": "packages/attachments/src/AttachmentViewer.svelte"
+    },
+    {
+      "from": "ui/src/features/attachments/rejectText.ts",
+      "to": "packages/attachments/src/rejectText.ts"
+    },
+    {
+      "from": "ui/src/features/attachments/AttachmentsBlock.svelte",
+      "to": "packages/attachments/src/AttachmentsBlock.svelte"
+    },
+    {
+      "from": "ui/src/features/attachments/labels.ts",
+      "to": "packages/attachments/src/labels.ts"
+    },
+    {
+      "from": "ui/src/features/attachments/AttachmentHistory.svelte",
+      "to": "packages/attachments/src/AttachmentHistory.svelte"
     }
   ]
 }

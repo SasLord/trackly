@@ -3,7 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "exports": {},
+  "exports": {
+    "./attachmentEvents.svelte": "./src/attachmentEvents.svelte.ts",
+    "./*.svelte": {
+      "svelte": "./src/*.svelte",
+      "default": "./src/*.svelte"
+    },
+    "./*": "./src/*.ts"
+  },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
     "@trackly/kit": "workspace:*",

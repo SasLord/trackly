@@ -9,8 +9,8 @@
   import { parseAppError } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { saveFile } from '@trackly/kit/utils/saveFile';
-  import AttachmentViewer from '../../attachments/AttachmentViewer.svelte';
-  import { attachments, fetchAttachmentBytes } from '../../attachments/api';
+  import AttachmentViewer from '@trackly/attachments/AttachmentViewer.svelte';
+  import { attachments, fetchAttachmentBytes } from '@trackly/attachments/api';
   import type { AttachmentDto, ChatFeedDto, ChatItemDto, ChatMessageDto } from '../../../bindings';
   import ChatAttachmentEvent from './ChatAttachmentEvent.svelte';
   import ChatComposer from './ChatComposer.svelte';

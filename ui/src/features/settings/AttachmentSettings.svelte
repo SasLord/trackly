@@ -10,7 +10,7 @@
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import { formatDateTimeShort } from '@trackly/kit/utils/date';
-  import { attachments } from '../attachments/api';
+  import { attachments } from '@trackly/attachments/api';
   import type { AttachmentLimitDto, IntegrityReportDto } from '../../bindings';
 
   const MB = 1024 * 1024;

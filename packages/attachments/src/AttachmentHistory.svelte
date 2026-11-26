@@ -23,9 +23,9 @@
   // кнопкой-ссылкой оно становится, пока вложение активно (администратору ещё и
   // пока оно в «Удалённых»), иначе это обычный текст.
   import Button from '@trackly/kit/components/Button.svelte';
-  import { authStore } from '$lib/stores/auth.svelte';
+  import { currentUser } from './host';
   import { formatDateTimeShort } from '@trackly/kit/utils/date';
-  import type { AttachmentHistoryEventDto } from '../../bindings';
+  import type { AttachmentHistoryEventDto } from './types';
 
   interface Props {
     events: AttachmentHistoryEventDto[];
@@ -36,7 +36,7 @@
 
   const { events, onOpen, bare = false }: Props = $props();
 
-  const isAdmin = $derived(authStore.user?.role === 'admin');
+  const isAdmin = $derived(currentUser()?.role === 'admin');
 
   function linkable(ev: AttachmentHistoryEventDto): boolean {
     if (!onOpen) return false;

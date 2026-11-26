@@ -11,7 +11,7 @@
   import AttachmentTypeIcon, { iconKindForMime } from './AttachmentTypeIcon.svelte';
   import { attachmentUrl } from './api';
   import { actorLabel } from './labels';
-  import type { AttachmentDto } from '../../bindings';
+  import type { AttachmentDto } from './types';
 
   interface Props {
     item: AttachmentDto;

@@ -31,9 +31,9 @@
   import DetailSection from '@trackly/kit/components/DetailSection.svelte';
   import DetailField from '@trackly/kit/components/DetailField.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
-  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
-  import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
-  import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
+  import AttachmentsBlock from '@trackly/attachments/AttachmentsBlock.svelte';
+  import AttachmentHistory from '@trackly/attachments/AttachmentHistory.svelte';
+  import { createAttachmentEvents } from '@trackly/attachments/attachmentEvents.svelte';
   import type { AttachmentHistoryEventDto } from '../../bindings';
   import { apiCall } from '@trackly/transport/client';
   import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';

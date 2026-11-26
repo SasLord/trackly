@@ -5,7 +5,7 @@
 // пропало бы при переключении «Чат» / «Информация». Ключ — id заявки; смена
 // заявки сбрасывает черновик.
 import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
-import { rejectLine } from '../../attachments/rejectText';
+import { rejectLine } from '@trackly/attachments/rejectText';
 
 export interface Chip {
   id: string;

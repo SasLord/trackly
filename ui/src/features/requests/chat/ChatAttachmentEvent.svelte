@@ -3,9 +3,9 @@
   // AttachmentViewer здесь НЕ рендерится: один экземпляр на RequestChat.
   import Button from '@trackly/kit/components/Button.svelte';
   import { formatDateTimeShort } from '@trackly/kit/utils/date';
-  import { attachmentActionLabel } from '../../attachments/AttachmentHistory.svelte';
-  import { attachmentUrl } from '../../attachments/api';
-  import { actorLabel } from '../../attachments/labels';
+  import { attachmentActionLabel } from '@trackly/attachments/AttachmentHistory.svelte';
+  import { attachmentUrl } from '@trackly/attachments/api';
+  import { actorLabel } from '@trackly/attachments/labels';
   import type { AttachmentDto, ChatAttachmentEventDto } from '../../../bindings';
   import ChatEventIcon from './ChatEventIcon.svelte';
   import { timeHHmm } from './chatDates';

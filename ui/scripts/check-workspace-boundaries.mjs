@@ -22,7 +22,8 @@
 //
 // TAURI_IMPORT_ALLOWLIST: файлы пакетов, которым разрешён `@tauri-apps/*` (transport,
 // saveFile и подобное). Расширяется только осознанной правкой этого гейта с обоснованием
-// рядом с записью. Сейчас: saveFile (план 12), transport client/ws (план 15).
+// рядом с записью. Сейчас: saveFile (план 12), transport client/ws (план 15),
+// attachments api.ts (план 17).
 //
 // Чего гейт НЕ видит (честно): импорты через динамически собранную строку; `@trackly/*`,
 // указывающий на пакет, не объявленный в dependencies; тип-импорты из .d.ts без
@@ -59,6 +60,9 @@ const TAURI_IMPORT_ALLOWLIST = new Set([
   // Это и есть назначение пакета (Tauri-ветка транспорта); других @tauri-apps/* ему не нужно.
   'packages/transport/src/client.ts',
   'packages/transport/src/ws.ts',
+  // attachments (план 17): convertFileSrc схемы trackly-att в attachmentUrl (десктопная ветка);
+  // только api.ts, остальным файлам пакета @tauri-apps/* не нужен.
+  'packages/attachments/src/api.ts',
 ]);
 
 const SRC_EXTS = new Set(['.ts', '.svelte', '.js', '.mjs']);

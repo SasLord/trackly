@@ -11,7 +11,7 @@
   import { formatDateTimeShort } from '@trackly/kit/utils/date';
   import { attachmentUrl, fetchAttachmentBytes } from './api';
   import { actorLabel } from './labels';
-  import type { AttachmentDto } from '../../bindings';
+  import type { AttachmentDto } from './types';
 
   interface Props {
     /** Навигационный набор: просматриваемые непотерянные вложения родителя. */

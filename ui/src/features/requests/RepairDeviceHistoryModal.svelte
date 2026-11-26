@@ -11,7 +11,7 @@
   import DetailSection from '@trackly/kit/components/DetailSection.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
-  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
+  import AttachmentsBlock from '@trackly/attachments/AttachmentsBlock.svelte';
   import { repairs } from './api';
   import { requestStatusLabel, requestStatusVariant } from './repairLocks';
   import type { RepairDeviceHistoryDto } from '../../bindings';

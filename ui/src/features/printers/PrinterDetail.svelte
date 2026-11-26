@@ -27,9 +27,9 @@
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
-  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
-  import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
-  import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
+  import AttachmentsBlock from '@trackly/attachments/AttachmentsBlock.svelte';
+  import AttachmentHistory from '@trackly/attachments/AttachmentHistory.svelte';
+  import { createAttachmentEvents } from '@trackly/attachments/attachmentEvents.svelte';
   import { printers } from './api';
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';

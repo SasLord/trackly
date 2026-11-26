@@ -40,9 +40,9 @@
   import RepairAssignDeviceModal from './RepairAssignDeviceModal.svelte';
   import RepairVisitsSection from './RepairVisitsSection.svelte';
   import { parseAppError } from '@trackly/transport/errors';
-  import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
-  import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
-  import { attachments } from '../attachments/api';
+  import AttachmentsBlock from '@trackly/attachments/AttachmentsBlock.svelte';
+  import AttachmentHistory from '@trackly/attachments/AttachmentHistory.svelte';
+  import { attachments } from '@trackly/attachments/api';
   import { onWsEvent } from '@trackly/transport/ws';
   import type {
     AttachmentHistoryEventDto,

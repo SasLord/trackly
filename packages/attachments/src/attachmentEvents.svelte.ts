@@ -2,7 +2,7 @@
 // вместе с блоком по WebSocket-событию attachments_changed.
 import { onWsEvent } from '@trackly/transport/ws';
 import { attachments } from './api';
-import type { AttachmentHistoryEventDto } from '../../bindings';
+import type { AttachmentHistoryEventDto } from './types';
 
 /** Вызывать при инициализации компонента (использует $effect). */
 export function createAttachmentEvents(

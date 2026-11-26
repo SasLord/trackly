@@ -12,7 +12,7 @@
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
-  import { attachments, uploadAttachment } from '../attachments/api';
+  import { attachments, uploadAttachment } from '@trackly/attachments/api';
   import { repairs } from './api';
   import type { RepairStateDto, RepairTransitionResultDto, RequestDto } from '../../bindings';
 

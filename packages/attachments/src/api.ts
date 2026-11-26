@@ -16,7 +16,7 @@ import type {
   AttachmentListDto,
   IntegrityReportDto,
   AttachmentDto,
-} from '../../bindings';
+} from './types';
 
 /** Результат загрузки одного файла (зеркало Rust `AttachmentUploadDto`). */
 export interface AttachmentUploadDto {

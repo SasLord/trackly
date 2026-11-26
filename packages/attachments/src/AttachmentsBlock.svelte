@@ -11,13 +11,13 @@
   import RowChevron from '@trackly/kit/components/icons/RowChevron.svelte';
   import { onWsEvent } from '@trackly/transport/ws';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { authStore } from '$lib/stores/auth.svelte';
+  import { currentUser } from './host';
   import { saveFile } from '@trackly/kit/utils/saveFile';
   import AttachmentTile from './AttachmentTile.svelte';
   import AttachmentViewer from './AttachmentViewer.svelte';
   import { rejectLine } from './rejectText';
   import { attachments, fetchAttachmentBytes, uploadAttachment } from './api';
-  import type { AttachmentDto, AttachmentListDto } from '../../bindings';
+  import type { AttachmentDto, AttachmentListDto } from './types';
 
   interface Props {
     parentKind: 'request' | 'device' | 'cartridge';
@@ -356,7 +356,7 @@
   function canDeleteItem(item: AttachmentDto): boolean {
     if (readonly || !list) return false;
     if (list.canDeleteAny) return true;
-    return item.uploadedById !== null && item.uploadedById === authStore.user?.id;
+    return item.uploadedById !== null && item.uploadedById === currentUser()?.id;
   }
 
   async function doDelete() {

@@ -16,7 +16,7 @@
   import { parseAppError } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
-  import { attachments, uploadAttachment } from '../attachments/api';
+  import { attachments, uploadAttachment } from '@trackly/attachments/api';
   import { repairs } from './api';
   import type {
     PlaceDto,

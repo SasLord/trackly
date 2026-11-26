@@ -4,6 +4,7 @@ import App from './App.svelte';
 import { initTheme } from '@trackly/kit/stores/theme.svelte';
 import { pushToast } from '@trackly/kit/stores/toast.svelte';
 import { setApiHooks } from '@trackly/transport/client';
+import { setAttachmentsHost } from '@trackly/attachments/host';
 import { authStore } from '$lib/stores/auth.svelte';
 
 // Реакции на 401/403 транспорта живут здесь (пакет transport не знает auth и тосты).
@@ -15,6 +16,15 @@ setApiHooks({
   },
   onForbidden: () => {
     pushToast('error', 'Недостаточно прав для этого действия');
+  },
+});
+
+// Права вложений читаются из auth через хост (пакет attachments не знает auth).
+// Регистрация строго до mount; чтение authStore.user остаётся реактивным.
+setAttachmentsHost({
+  currentUser: () => {
+    const u = authStore.user;
+    return u ? { id: u.id, role: u.role } : null;
   },
 });
 
