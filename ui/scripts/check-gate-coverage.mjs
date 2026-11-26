@@ -110,7 +110,15 @@ export function evaluate({
   return failures;
 }
 
-const LOCAL_WALK_EXEMPT = new Set(['check-gate-coverage.mjs', 'check-lint-selftest-wiring.mjs']);
+// check-workspace-boundaries обходит packages/*/src и link-ui/src СВОИМ обходом осознанно: он
+// проверяет сами границы пакетов (в том числе на временной копии дерева в selftest), а не
+// применяет правила к файлам ui/src, поэтому per-gate счётчик по _roots.mjs ему не нужен.
+// Его вакуум-защита — правило [B0] (0 файлов пакетов = нарушение).
+const LOCAL_WALK_EXEMPT = new Set([
+  'check-gate-coverage.mjs',
+  'check-lint-selftest-wiring.mjs',
+  'check-workspace-boundaries.mjs',
+]);
 
 /** Гейты, листающие src локально: readdirSync + путь src, без импорта _roots.mjs. */
 export function findLocalWalkers(scriptsDir, pinnedGates) {
