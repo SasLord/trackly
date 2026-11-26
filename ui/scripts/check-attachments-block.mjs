@@ -4,7 +4,7 @@
 // Что держит (сообщение начинается с кода правила в квадратных скобках):
 //   [G0] защита от пропуска: каждый обязательный файл присутствует в наборе;
 //        отсутствующий файл — красный, а не «нечего проверять»;
-//   [G1] нигде в features/attachments/*.svelte нет `{@html}` (имена файлов и людей
+//   [G1] нигде в packages/attachments/src/*.svelte нет `{@html}` (имена файлов и людей
 //        только интерполяцией; T-41.3-57);
 //   [G2] AttachmentsBlock подписан через onWsEvent на 'attachments_changed' (D-15/D-25);
 //   [G3] каждый `<AttachmentViewer` стоит на верхнем уровне, а не внутри тела
@@ -51,7 +51,8 @@ import { stripComments } from './_strip.mjs';
 
 const TAG = '[check-attachments-block]';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DIR = path.resolve(HERE, '../src/features/attachments');
+// Подсистема вложений живёт в пакете (план 17); карточки и Rust-сервис — по прежним путям.
+const DIR = path.resolve(HERE, '../../packages/attachments/src');
 const FEATURES = path.resolve(HERE, '../src/features');
 // Карточки, во встраивание которых блок обязан попасть (план 14). Ключ в наборе
 // файлов — `card:<имя>`, чтобы не путать с файлами каталога attachments.

@@ -51,7 +51,7 @@ export const EXEMPT = {
   'lib/stores/auth.svelte.ts': 'сам источник смены пользователя; обнуляется входом и выходом',
   '../../packages/transport/src/ws.ts':
     'refCount и обработчики соединения: их закрывают размонтируемые Layout',
-  'features/attachments/attachmentEvents.svelte.ts':
+  '../../packages/attachments/src/attachmentEvents.svelte.ts':
     'фабрика без модульного состояния: всё внутри createAttachmentEvents',
   [REGISTRY]: 'сам реестр сбросов; хранит функции, а не данные пользователя',
 };

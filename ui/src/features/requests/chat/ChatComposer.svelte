@@ -7,7 +7,9 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import { parseAppError } from '@trackly/transport/errors';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
-  import AttachmentTypeIcon, { iconKindForMime } from '@trackly/attachments/AttachmentTypeIcon.svelte';
+  import AttachmentTypeIcon, {
+    iconKindForMime,
+  } from '@trackly/attachments/AttachmentTypeIcon.svelte';
   import { rejectLine } from '@trackly/attachments/rejectText';
   import { uploadDraft, chat } from './api';
   import {

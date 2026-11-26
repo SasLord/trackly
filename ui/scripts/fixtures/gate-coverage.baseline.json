@@ -348,7 +348,7 @@
       ],
       "dirs": [
         {
-          "dir": "ui/src/features/attachments",
+          "dir": "packages/attachments/src",
           "pattern": "\\.svelte$|^api\\.ts$",
           "recursive": false,
           "count": 6
@@ -448,7 +448,7 @@
           "dir": "ui/src",
           "pattern": ".",
           "recursive": true,
-          "count": 259
+          "count": 250
         }
       ]
     }

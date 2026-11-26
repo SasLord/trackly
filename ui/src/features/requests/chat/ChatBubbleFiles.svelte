@@ -4,7 +4,9 @@
   // один экземпляр на RequestChat, клики уходят наверх через onOpen / onDownload.
   import { authStore } from '$lib/stores/auth.svelte';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
-  import AttachmentTypeIcon, { iconKindForMime } from '@trackly/attachments/AttachmentTypeIcon.svelte';
+  import AttachmentTypeIcon, {
+    iconKindForMime,
+  } from '@trackly/attachments/AttachmentTypeIcon.svelte';
   import { attachmentUrl } from '@trackly/attachments/api';
   import type { AttachmentDto } from '../../../bindings';
 

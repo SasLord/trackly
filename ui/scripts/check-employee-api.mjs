@@ -53,7 +53,8 @@ const ENTRIES = [
 // План 42-15: 90 -> 86. Замыкание обходит только ui/src; четыре файла транспорта (client, errors,
 // ws, transport.svelte) переехали в packages/transport и в обход не попадают (92 -> 88 файла).
 // Вызовов команд в них нет (MIN_CALLS не менялся), к проверке роли они отношения не имеют.
-const MIN_FILES = 86;
+// План 42-17: 86 -> 89. Резолвер понимает @trackly/attachments/* (файлы вложений снова в замыкании).
+const MIN_FILES = 89;
 const MIN_CALLS = 70;
 
 /**
@@ -146,6 +147,10 @@ function mkFs(root, overrides) {
 function resolveImport(F, fromRel, spec) {
   let base;
   if (spec.startsWith('$lib/')) base = 'src/lib/' + spec.slice(5);
+  // attachments (план 17): подсистема вложений в packages/attachments; её файлы входят в
+  // замыкание по тем же правилам (обёртка attachments.* и AttachmentsBlock проверяются).
+  else if (spec.startsWith('@trackly/attachments/'))
+    base = '../packages/attachments/src/' + spec.slice('@trackly/attachments/'.length);
   else if (spec.startsWith('.')) base = path.posix.join(path.posix.dirname(fromRel), spec);
   else return { skip: true };
   if (/\?/.test(base) || /\.(scss|css|json|svg|png|woff2?|ttf|html|txt|js)$/.test(base))
@@ -669,7 +674,7 @@ function selftest() {
     },
     {
       name: 'снята проверка прав у восстановления вложения',
-      file: 'src/features/attachments/AttachmentsBlock.svelte',
+      file: '../packages/attachments/src/AttachmentsBlock.svelte',
       from: '    if (!canManageDeleted) return;\n    try {\n      await attachments.restore(item.id);',
       to: '    try {\n      await attachments.restore(item.id);',
       expect: /AttachmentsBlock\.svelte:\d+: attachments\.restore/,
