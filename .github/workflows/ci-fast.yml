@@ -34,10 +34,11 @@ jobs:
       # selftest может молча ослабнуть; ui/-гейты держит check-lint-selftest-wiring
       # в pnpm lint, а эти два живут вне ui/ — их подключение держит этот шаг.
       # Оба самодостаточны (временные каталоги, свой git-репозиторий у второго).
-      - name: Root gate selftests (privacy, write-site gate untouched)
+      - name: Root gate selftests (privacy, write-site gate untouched, release isolation)
         run: |
           node scripts/check-privacy.selftest.mjs
           node scripts/check-write-site-gate-untouched.mjs --selftest
+          node scripts/check-release-isolation.mjs --selftest && node scripts/check-release-isolation.mjs
 
       # На ubuntu-latest кончалось место: ~214 тестовых бинарников, каждый статически
       # линкует весь стек Tauri (прогон 42624283151: «No space left on device»,
@@ -148,6 +149,15 @@ jobs:
       - name: pnpm lint
         working-directory: ui
         run: pnpm lint
+
+      # link-ui не имеет своего lint-скрипта: eslint/prettier/границы пакетов покрывает
+      # `pnpm lint` в ui/ (prettier ../link-ui, check-workspace-boundaries). Здесь —
+      # сборка и svelte-check, чтобы Link не ломался молча.
+      - name: Build link-ui
+        run: pnpm --dir link-ui build
+
+      - name: link-ui svelte-check
+        run: pnpm --dir link-ui svelte-check
 
       - name: Job summary
         if: always()
