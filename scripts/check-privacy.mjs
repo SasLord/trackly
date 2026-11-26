@@ -379,7 +379,7 @@ const BINARY_EXTENSIONS = new Set([
 // расширением есть нарушение. Добавлять новые записи только для заведомо
 // не-чувствительных бинарников (иконки, известные безопасные тестовые
 // фикстуры), никогда как разрешение на весь каталог без разбора.
-const BINARY_ALLOWLIST_PREFIXES = ['crates/trackly-app/icons/'];
+const BINARY_ALLOWLIST_PREFIXES = ['crates/trackly-app/icons/', 'crates/link-app/icons/'];
 const BINARY_ALLOWLIST_EXACT = new Set([
   'crates/trackly-app/tests/fixtures/logo_test.png',
 ]);
