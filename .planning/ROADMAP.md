@@ -105,7 +105,7 @@
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
 | 39–41.13 | v1.4 | 443/443 | Complete | 2026-11-25 (см. архив) |
-| 42. Основа монорепо, ADR и пилот | v1.5 | 7/19 | In Progress|  |
+| 42. Основа монорепо, ADR и пилот | v1.5 | 8/19 | In Progress|  |
 | 43. Надёжная доставка событий | v1.5 | 0/? | Not started | - |
 | 44. Link — транспорт, пин и вход | v1.5 | 0/? | Not started | - |
 | 45. Дистрибуция и автообновление Link | v1.5 | 0/? | Not started | - |
@@ -166,7 +166,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 42-07-PLAN.md — per-gate baseline и правила [C4]-[C6] (в.3)
-- [ ] 42-08-PLAN.md — pnpm workspace, единый lockfile, каркасы пакетов, CI-кеш (в.3)
+- [x] 42-08-PLAN.md — pnpm workspace, единый lockfile, каркасы пакетов, CI-кеш (в.3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
