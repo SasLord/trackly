@@ -31,6 +31,8 @@ pub struct SendPayload {
     pub text: String,
     #[serde(default)]
     pub draft_attachment_ids: Vec<i64>,
+    #[serde(default)]
+    pub client_msg_id: Option<String>,
 }
 
 pub async fn handler_feed(
@@ -49,7 +51,15 @@ pub async fn handler_send(
 ) -> Result<Json<ChatSendOutcomeDto>, AppErrorResponse> {
     let who = session_identity(&session).await?;
     Ok(Json(
-        build_chat_send(&ctx, &who, p.request_id, p.text, p.draft_attachment_ids).await?,
+        build_chat_send(
+            &ctx,
+            &who,
+            p.request_id,
+            p.text,
+            p.draft_attachment_ids,
+            p.client_msg_id,
+        )
+        .await?,
     ))
 }
 

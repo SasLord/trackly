@@ -24,9 +24,16 @@ pub async fn build_chat_send(
     request_id: i64,
     text: String,
     draft_attachment_ids: Vec<i64>,
+    client_msg_id: Option<String>,
 ) -> Result<ChatSendOutcomeDto, AppError> {
     ctx.chat
-        .send(caller, request_id, &text, &draft_attachment_ids)
+        .send(
+            caller,
+            request_id,
+            &text,
+            &draft_attachment_ids,
+            client_msg_id.as_deref(),
+        )
         .await
 }
 
@@ -79,6 +86,7 @@ pub async fn chat_send(
     request_id: i32,
     text: String,
     draft_attachment_ids: Vec<i32>,
+    client_msg_id: Option<String>,
 ) -> Result<ChatSendOutcomeDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_chat_send(
@@ -87,6 +95,7 @@ pub async fn chat_send(
         request_id as i64,
         text,
         draft_attachment_ids.into_iter().map(i64::from).collect(),
+        client_msg_id,
     )
     .await
 }

@@ -175,7 +175,7 @@ async fn chat_message_reaches_author_participant_staff_not_stranger() {
         let out = w
             .ctx
             .chat
-            .send(&manager_ident, w.request_a, SECRET, &[])
+            .send(&manager_ident, w.request_a, SECRET, &[], None)
             .await
             .expect("send");
         let message_id = out.message.expect("message").id;
@@ -184,7 +184,7 @@ async fn chat_message_reaches_author_participant_staff_not_stranger() {
         let stranger_ident = ident(w.other_author_id, Role::Employee);
         w.ctx
             .chat
-            .send(&stranger_ident, w.request_b, "контроль", &[])
+            .send(&stranger_ident, w.request_b, "контроль", &[], None)
             .await
             .expect("control send");
 
@@ -238,7 +238,7 @@ async fn chat_read_changed_only_to_marker_owner() {
         // Control event visible to everyone on request A.
         w.ctx
             .chat
-            .send(&author_ident, w.request_a, "контроль", &[])
+            .send(&author_ident, w.request_a, "контроль", &[], None)
             .await
             .expect("control send");
 

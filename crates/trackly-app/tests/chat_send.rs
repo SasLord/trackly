@@ -67,7 +67,11 @@ async fn chat_send_in_open_statuses() {
         let who = ident(author, Role::Employee);
         for st in ["open", "in_progress", "in_repair"] {
             let r = seed_request(&ctx, author, "repair", st).await;
-            let out = ctx.chat.send(&who, r, "  Привет  ", &[]).await.unwrap();
+            let out = ctx
+                .chat
+                .send(&who, r, "  Привет  ", &[], None)
+                .await
+                .unwrap();
             let m = out.message.expect("message");
             assert!(out.reject_code.is_none());
             assert_eq!(m.text, "Привет", "trimmed");
@@ -98,7 +102,7 @@ async fn chat_send_closed_statuses_and_race() {
         let who = ident(author, Role::Employee);
         for st in ["completed", "rejected", "cancelled"] {
             let r = seed_request(&ctx, author, "repair", st).await;
-            let out = ctx.chat.send(&who, r, "текст", &[]).await.unwrap();
+            let out = ctx.chat.send(&who, r, "текст", &[], None).await.unwrap();
             assert_eq!(out.reject_code.as_deref(), Some("closed"), "{st}");
             assert!(out.message.is_none());
         }
@@ -108,7 +112,7 @@ async fn chat_send_closed_statuses_and_race() {
         let r = seed_request(&ctx, author, "repair", "open").await;
         let id = draft_file(&ctx, &who, r, "фото.png").await;
         set_status(&ctx, r, "completed").await;
-        let out = ctx.chat.send(&who, r, "", &[id]).await.unwrap();
+        let out = ctx.chat.send(&who, r, "", &[id], None).await.unwrap();
         assert_eq!(out.reject_code.as_deref(), Some("closed"));
         assert_eq!(count(&ctx, "SELECT COUNT(*) FROM chat_messages").await, 0);
         assert_eq!(
@@ -133,18 +137,18 @@ async fn chat_send_text_limits() {
         let ok = "я".repeat(4000);
         assert!(ctx
             .chat
-            .send(&who, r, &ok, &[])
+            .send(&who, r, &ok, &[], None)
             .await
             .unwrap()
             .message
             .is_some());
         let long = "я".repeat(4001);
-        let out = ctx.chat.send(&who, r, &long, &[]).await.unwrap();
+        let out = ctx.chat.send(&who, r, &long, &[], None).await.unwrap();
         assert_eq!(out.reject_code.as_deref(), Some("too_long"));
-        let out = ctx.chat.send(&who, r, "   \n ", &[]).await.unwrap();
+        let out = ctx.chat.send(&who, r, "   \n ", &[], None).await.unwrap();
         assert_eq!(out.reject_code.as_deref(), Some("empty"));
         let id = draft_file(&ctx, &who, r, "фото.png").await;
-        let out = ctx.chat.send(&who, r, "", &[id]).await.unwrap();
+        let out = ctx.chat.send(&who, r, "", &[id], None).await.unwrap();
         let m = out.message.expect("files only");
         assert_eq!(m.text, "");
         assert_eq!(m.attachments.len(), 1);
@@ -162,7 +166,7 @@ async fn chat_send_no_chat_and_forbidden() {
         let ad = seed_request(&ctx, author, "ad_register", "open").await;
         let out = ctx
             .chat
-            .send(&ident(admin, Role::Admin), ad, "текст", &[])
+            .send(&ident(admin, Role::Admin), ad, "текст", &[], None)
             .await
             .unwrap();
         assert_eq!(out.reject_code.as_deref(), Some("no_chat"));
@@ -170,7 +174,7 @@ async fn chat_send_no_chat_and_forbidden() {
         let r = seed_request(&ctx, author, "repair", "open").await;
         let err = ctx
             .chat
-            .send(&ident(stranger, Role::Employee), r, "текст", &[])
+            .send(&ident(stranger, Role::Employee), r, "текст", &[], None)
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::Forbidden));
@@ -178,7 +182,11 @@ async fn chat_send_no_chat_and_forbidden() {
             user_id: None,
             role: Role::Employee,
         };
-        let err = ctx.chat.send(&anon, r, "текст", &[]).await.unwrap_err();
+        let err = ctx
+            .chat
+            .send(&anon, r, "текст", &[], None)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AppError::Forbidden));
         assert_eq!(count(&ctx, "SELECT COUNT(*) FROM chat_messages").await, 0);
     })
@@ -195,7 +203,7 @@ async fn chat_send_files_promoted_with_audit() {
         let b = draft_file(&ctx, &who, r, "два.png").await;
         let out = ctx
             .chat
-            .send(&who, r, "Смотрите", &[a, b, a])
+            .send(&who, r, "Смотрите", &[a, b, a], None)
             .await
             .unwrap();
         let m = out.message.expect("message");
@@ -257,7 +265,7 @@ async fn chat_send_forged_draft_ids() {
         for bad in [foreign, other_req, 987_654] {
             let err = ctx
                 .chat
-                .send(&who, r, "текст", &[mine, bad])
+                .send(&who, r, "текст", &[mine, bad], None)
                 .await
                 .unwrap_err();
             assert!(matches!(err, AppError::Forbidden), "{bad}");
@@ -273,8 +281,15 @@ async fn chat_send_forged_draft_ids() {
             "valid drafts stay drafts"
         );
         // A reused id: promoted once, then forged.
-        ctx.chat.send(&who, r, "первый", &[mine]).await.unwrap();
-        let err = ctx.chat.send(&who, r, "второй", &[mine]).await.unwrap_err();
+        ctx.chat
+            .send(&who, r, "первый", &[mine], None)
+            .await
+            .unwrap();
+        let err = ctx
+            .chat
+            .send(&who, r, "второй", &[mine], None)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AppError::Forbidden), "reused id");
         assert_eq!(count(&ctx, "SELECT COUNT(*) FROM chat_messages").await, 1);
     })
@@ -293,7 +308,7 @@ async fn chat_send_ws_after_commit_without_text() {
 
         // Reject: no events.
         ctx.chat
-            .send(&who, closed, "секретный текст", &[])
+            .send(&who, closed, "секретный текст", &[], None)
             .await
             .unwrap();
         assert!(fixture::collect_events(&mut rx).is_empty());
@@ -302,7 +317,7 @@ async fn chat_send_ws_after_commit_without_text() {
         fixture::drain(&mut rx);
         let out = ctx
             .chat
-            .send(&who, r, "секретный текст", &[id])
+            .send(&who, r, "секретный текст", &[id], None)
             .await
             .unwrap();
         let mid = out.message.unwrap().id;

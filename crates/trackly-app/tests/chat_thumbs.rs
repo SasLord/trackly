@@ -104,7 +104,11 @@ async fn message_attachment_thumb_on_every_read_path() {
     .attachment
     .expect("attachment")
     .id;
-    let out = ctx.chat.send(&who, r, "", &[att_id]).await.expect("send");
+    let out = ctx
+        .chat
+        .send(&who, r, "", &[att_id], None)
+        .await
+        .expect("send");
     assert!(out.reject_code.is_none(), "{:?}", out.reject_code);
 
     // Path 1: service.

@@ -506,7 +506,7 @@ async fn attachments_draft_rejects_forbidden_type_in_batch() {
         );
 
         ctx.chat
-            .send(&who, r, "фото принтера", &[photo_id])
+            .send(&who, r, "фото принтера", &[photo_id], None)
             .await
             .expect("send with the accepted photo");
         assert_eq!(scalar(&ctx, "SELECT COUNT(*) FROM chat_messages").await, 1);

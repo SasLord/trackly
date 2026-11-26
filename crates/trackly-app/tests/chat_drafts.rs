@@ -186,7 +186,10 @@ async fn chat_drafts_purge_stale_only_old_drafts() {
         )
         .await;
         let sent = draft_file(&ctx, &who, r, "ушёл.png", &attachments_support::tiny_gif()).await;
-        ctx.chat.send(&who, r, "текст", &[sent]).await.unwrap();
+        ctx.chat
+            .send(&who, r, "текст", &[sent], None)
+            .await
+            .unwrap();
         // Age the first draft and the promoted file far into the past.
         ctx.writer
             .execute(move |conn| {

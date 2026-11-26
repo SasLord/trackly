@@ -15,6 +15,7 @@ use trackly_core::domain::chat::{
     author_role_label, can_post_status, exceeds_limit, normalize_text, request_type_has_chat,
     ChatRejectCode,
 };
+use trackly_core::domain::im::is_valid_client_id;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -94,6 +95,24 @@ fn message_dto(
 enum Written {
     Closed,
     Sent(ChatMessageRow, Vec<AttachmentRow>),
+    /// D-11: повтор отправки с тем же клиентским id.
+    Replay(ChatMessageRow, Vec<AttachmentRow>),
+}
+
+/// Replay of a stored message: its live attachments, nothing written.
+fn replay_of(
+    repo: &SqliteChatRepository,
+    conn: &rusqlite::Connection,
+    request_id: i64,
+    row: ChatMessageRow,
+) -> Result<Written, AppError> {
+    let atts = SqliteAttachmentRepository
+        .list_message_attachments_on(conn, request_id)?
+        .into_iter()
+        .filter(|a| a.message_id == Some(row.id) && a.deleted_at_utc.is_none())
+        .collect();
+    let _ = repo;
+    Ok(Written::Replay(row, atts))
 }
 
 fn reject(code: ChatRejectCode) -> ChatSendOutcomeDto {
@@ -447,7 +466,17 @@ impl ChatService {
         request_id: i64,
         text: &str,
         draft_attachment_ids: &[i64],
+        client_msg_id: Option<&str>,
     ) -> Result<ChatSendOutcomeDto, AppError> {
+        if let Some(cid) = client_msg_id {
+            if !is_valid_client_id(cid) {
+                return Err(AppError::Validation {
+                    field: "client_msg_id".into(),
+                    message: "invalid client id".into(),
+                });
+            }
+        }
+        let client_msg_id = client_msg_id.map(str::to_owned);
         let access = self.load_access(caller, request_id).await?;
         if !request_type_has_chat(&access.request_type) {
             return Ok(reject(ChatRejectCode::NoChat));
@@ -476,6 +505,13 @@ impl ChatService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                // D-11: replay is decided BEFORE the status check, so a retry
+                // after the request was closed returns the stored message.
+                if let Some(cid) = client_msg_id.as_deref() {
+                    if let Some(row) = repo.find_by_client_id_on(&tx, request_id, user_id, cid)? {
+                        return replay_of(&repo, &tx, request_id, row);
+                    }
+                }
                 // TOCTOU: the status is read here, in the writer, not before.
                 let status: Option<(String, Option<i64>)> = {
                     use rusqlite::OptionalExtension;
@@ -507,6 +543,25 @@ impl ChatService {
                         moved_from_request_id: None,
                     },
                 )?;
+                if let Some(cid) = client_msg_id.as_deref() {
+                    match repo.set_client_msg_id_on(&tx, message_id, cid) {
+                        Ok(()) => {}
+                        Err(AppError::Conflict { .. }) => {
+                            // Safety net (V059 UNIQUE): treat as replay.
+                            drop(tx);
+                            let conn2 = &*conn;
+                            return match repo
+                                .find_by_client_id_on(conn2, request_id, user_id, cid)?
+                            {
+                                Some(row) => replay_of(&repo, conn2, request_id, row),
+                                None => Err(AppError::Conflict {
+                                    reason: "client_msg_id".into(),
+                                }),
+                            };
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
                 let promoted =
                     repo.promote_drafts_on(&tx, request_id, user_id, &ids, message_id)?;
                 for a in &promoted {
@@ -542,6 +597,21 @@ impl ChatService {
             })
             .await?;
 
+        if let Written::Replay(row, atts) = written {
+            let fresh = self.load_access(caller, request_id).await?;
+            let atts = atts
+                .iter()
+                .map(|a| {
+                    let mut dto = self.attachments.to_dto(a);
+                    dto.from_message = true;
+                    dto
+                })
+                .collect();
+            return Ok(ChatSendOutcomeDto {
+                message: Some(message_dto(&row, &fresh, caller.user_id, atts)),
+                reject_code: None,
+            });
+        }
         let (row, promoted) = match written {
             Written::Closed => {
                 // The drafts of a closed request are of no use any more.
@@ -549,6 +619,7 @@ impl ChatService {
                 return Ok(reject(ChatRejectCode::Closed));
             }
             Written::Sent(row, promoted) => (row, promoted),
+            Written::Replay(..) => unreachable!("replay returned above"),
         };
 
         // D-23: only after the writer returned Ok; ids and the author name only.

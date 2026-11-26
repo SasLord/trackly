@@ -128,6 +128,42 @@ impl SqliteChatRepository {
         Ok(conn.last_insert_rowid())
     }
 
+    /// D-11: сообщение автора в заявке по клиентскому id (повтор отправки).
+    pub fn find_by_client_id_on(
+        &self,
+        conn: &Connection,
+        request_id: i64,
+        author_user_id: i64,
+        client_msg_id: &str,
+    ) -> Result<Option<ChatMessageRow>, AppError> {
+        conn.query_row(
+            &format!(
+                "{MSG_SELECT} WHERE m.request_id = ?1 AND m.author_user_id = ?2 \
+                 AND m.client_msg_id = ?3"
+            ),
+            params![request_id, author_user_id, client_msg_id],
+            map_msg,
+        )
+        .optional()
+        .map_err(map_rusqlite)
+    }
+
+    /// D-11: проставляет клиентский id только что вставленному сообщению (та же
+    /// транзакция). Конфликт UNIQUE приходит как `AppError::Conflict`.
+    pub fn set_client_msg_id_on(
+        &self,
+        conn: &Connection,
+        message_id: i64,
+        client_msg_id: &str,
+    ) -> Result<(), AppError> {
+        conn.execute(
+            "UPDATE chat_messages SET client_msg_id = ?2 WHERE id = ?1",
+            params![message_id, client_msg_id],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
     /// D-09: перенос всех сообщений заявки `from` в `to` с сохранением id и
     /// `created_at_utc`; `moved_from_request_id` помечает происхождение.
     pub fn move_messages_on(

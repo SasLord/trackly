@@ -15,6 +15,8 @@ mod chat_drafts;
 mod chat_feed;
 #[path = "../chat_http.rs"]
 mod chat_http;
+#[path = "../chat_idempotent_send.rs"]
+mod chat_idempotent_send;
 #[path = "../chat_mute.rs"]
 mod chat_mute;
 #[path = "../chat_send.rs"]
