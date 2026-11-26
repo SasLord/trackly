@@ -177,6 +177,11 @@ pub struct RequestCreateDto {
     /// For free_form requests: category.
     pub category_id: Option<i32>,
     pub description: Option<String>,
+    /// D-11: клиентский id для идемпотентного создания (повтор после сбоя
+    /// возвращает ту же заявку). Необязателен: старые клиенты без него.
+    #[serde(default)]
+    #[specta(optional)]
+    pub client_request_id: Option<String>,
 }
 
 /// Lifecycle transition payload — UI sends the op discriminant + params.

@@ -299,6 +299,7 @@ async fn desktop_create_on_fresh_db_attributes_system_admin() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("Нужна замена мыши".into()),
+                client_request_id: None,
             },
             &caller,
         )

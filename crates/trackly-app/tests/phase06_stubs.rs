@@ -225,6 +225,7 @@ async fn test_request_create() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("Тест заявки".to_string()),
+                client_request_id: None,
             },
             &caller,
         )
@@ -287,6 +288,7 @@ async fn test_request_lifecycle() {
                 category_id: None,
                 // free_form now requires a non-empty description server-side (WR-02).
                 description: Some("Заявка для проверки перехода статусов".to_string()),
+                client_request_id: None,
             },
             &caller,
         )
@@ -318,6 +320,7 @@ async fn test_request_lifecycle() {
                 category_id: None,
                 // free_form now requires a non-empty description server-side (WR-02).
                 description: Some("Вторая заявка для проверки перехода".to_string()),
+                client_request_id: None,
             },
             &caller,
         )
@@ -391,6 +394,7 @@ async fn test_ws_event_sent() {
             cartridge_model_id: None,
             category_id: None,
             description: Some("WS test".to_string()),
+            client_request_id: None,
         },
         &caller,
     )
@@ -705,6 +709,7 @@ async fn test_req_cart_link() {
                 cartridge_model_id: Some(model_id as i32),
                 category_id: None,
                 description: None,
+                client_request_id: None,
             },
             &caller,
         )
@@ -797,6 +802,7 @@ async fn history_shows_cartridge_snapshot_after_complete() {
                 cartridge_model_id: Some(model_id as i32),
                 category_id: None,
                 description: None,
+                client_request_id: None,
             },
             &caller,
         )
@@ -902,6 +908,7 @@ async fn history_complete_without_cartridge_keeps_plain_notes() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("Свободная заявка без картриджа".to_string()),
+                client_request_id: None,
             },
             &caller,
         )
@@ -1119,6 +1126,7 @@ async fn request_dto_carries_printer_place() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: None,
+                client_request_id: None,
             },
             &caller,
         )
@@ -1196,6 +1204,7 @@ async fn request_dto_printer_place_none_when_no_location_or_no_printer() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("Свободная заявка без принтера".to_string()),
+                client_request_id: None,
             },
             &caller,
         )
@@ -1220,6 +1229,7 @@ async fn request_dto_printer_place_none_when_no_location_or_no_printer() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: None,
+                client_request_id: None,
             },
             &caller,
         )

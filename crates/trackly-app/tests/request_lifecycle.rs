@@ -100,6 +100,7 @@ async fn delete_completed_request_succeeds() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("to be completed then deleted".to_string()),
+                client_request_id: None,
             },
             &employee(employee_id),
         )
@@ -172,6 +173,7 @@ async fn delete_with_wrong_version_returns_optimistic_lock_mismatch() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("delete with stale version".to_string()),
+                client_request_id: None,
             },
             &employee(employee_id),
         )
@@ -209,6 +211,7 @@ async fn delete_already_deleted_request_returns_optimistic_lock_mismatch() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("delete twice".to_string()),
+                client_request_id: None,
             },
             &employee(employee_id),
         )
@@ -373,6 +376,7 @@ async fn cancel_own_open_request_succeeds() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("self-cancel".to_string()),
+                client_request_id: None,
             },
             &employee(employee_id),
         )
@@ -400,6 +404,7 @@ async fn cancel_other_users_request_returns_forbidden() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("not yours".to_string()),
+                client_request_id: None,
             },
             &employee(owner_id),
         )
@@ -430,6 +435,7 @@ async fn cancel_in_progress_request_returns_validation_error() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("already accepted".to_string()),
+                client_request_id: None,
             },
             &employee(employee_id),
         )

@@ -94,6 +94,7 @@ async fn request_service_still_rejects_repair_type() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("Обход".into()),
+                client_request_id: None,
             },
             &emp(ivanov),
         )

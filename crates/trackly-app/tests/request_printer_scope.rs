@@ -288,6 +288,7 @@ fn dto(kind: &str, printer: Option<i64>) -> RequestCreateDto {
         } else {
             None
         },
+        client_request_id: None,
     }
 }
 

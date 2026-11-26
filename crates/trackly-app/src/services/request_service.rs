@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use rusqlite::OptionalExtension;
 use trackly_core::auth::{authorize, Action, Identity};
+use trackly_core::domain::im::is_valid_client_id;
 use trackly_core::domain::printers::RequestTransitionOp;
 use trackly_core::domain::requests::{Pagination, RequestFilter, RequestNew};
 use trackly_core::error::AppError;
@@ -349,6 +350,35 @@ impl RequestService {
     ) -> Result<RequestDto, AppError> {
         authorize(caller, &Action::CreateRequest)?;
 
+        // D-11: идемпотентность. Валидация id и replay-поиск идут ДО allowlist и
+        // scope-проверок: повтор уже созданной заявки не должен зависеть от
+        // того, что изменилось после (область принтеров и т.п.).
+        let client_request_id = payload.client_request_id.clone();
+        if let Some(cid) = client_request_id.as_deref() {
+            if !is_valid_client_id(cid) {
+                return Err(AppError::Validation {
+                    field: "client_request_id".into(),
+                    message: "invalid client id".into(),
+                });
+            }
+            if let Some(uid) = caller.user_id {
+                let readers = self.readers.clone();
+                let repo = self.request_repo.clone();
+                let cid_owned = cid.to_owned();
+                let existing = tokio::task::spawn_blocking(move || {
+                    let conn = readers.acquire();
+                    repo.find_by_client_request_id_on(&conn, uid, &cid_owned)
+                })
+                .await
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("spawn_blocking: {e}"),
+                })??;
+                if let Some(id) = existing {
+                    return self.get(id, caller).await;
+                }
+            }
+        }
+
         // WR-01: the user-facing create endpoint may ONLY originate the two
         // self-service request types. `ad_register` requests are written
         // directly by `AuthService::on_ad_bind_success` and must never be
@@ -446,11 +476,39 @@ impl RequestService {
             ad_subtype: None,
         };
 
-        let request_id = self
+        let (request_id, created) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                // D-11: повторный поиск в писателе (гонка двух вкладок).
+                if let Some(cid) = client_request_id.as_deref() {
+                    if let Some(id) =
+                        request_repo.find_by_client_request_id_on(&tx, requested_by, cid)?
+                    {
+                        return Ok((id, false));
+                    }
+                }
                 let id = request_repo.insert_in_tx(&tx, &new, now)?;
+                if let Some(cid) = client_request_id.as_deref() {
+                    match request_repo.set_client_request_id_on(&tx, id, cid) {
+                        Ok(()) => {}
+                        Err(AppError::Conflict { .. }) => {
+                            // Страховка UNIQUE (V059): конфликт = replay.
+                            drop(tx);
+                            return match request_repo.find_by_client_request_id_on(
+                                &*conn,
+                                requested_by,
+                                cid,
+                            )? {
+                                Some(existing) => Ok((existing, false)),
+                                None => Err(AppError::Conflict {
+                                    reason: "client_request_id".into(),
+                                }),
+                            };
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
@@ -465,11 +523,14 @@ impl RequestService {
                     },
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(id)
+                Ok((id, true))
             })
             .await?;
 
         let dto = self.get(request_id, caller).await?;
+        if !created {
+            return Ok(dto);
+        }
 
         // WS push after successful create (D-Notify-01).
         let _ = self.ws_tx.send(WsEvent::NewRequest {

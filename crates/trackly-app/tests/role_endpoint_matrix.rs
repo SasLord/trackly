@@ -1046,8 +1046,7 @@ async fn role_endpoint_matrix_test() {
                     printer_device_id: None,
                     cartridge_model_id: None,
                     category_id: None,
-                    description: Some("employee-owned request".to_string()),
-                },
+                    description: Some("employee-owned request".to_string()), client_request_id: None, },
                 &employee_identity,
             )
             .await
@@ -1061,8 +1060,7 @@ async fn role_endpoint_matrix_test() {
                     printer_device_id: None,
                     cartridge_model_id: None,
                     category_id: None,
-                    description: Some("manager-owned request".to_string()),
-                },
+                    description: Some("manager-owned request".to_string()), client_request_id: None, },
                 &manager_identity,
             )
             .await
@@ -1505,8 +1503,7 @@ async fn role_endpoint_matrix_test() {
                         printer_device_id: None,
                         cartridge_model_id: None,
                         category_id: None,
-                        description: Some("to be completed then deleted".to_string()),
-                    },
+                        description: Some("to be completed then deleted".to_string()), client_request_id: None, },
                     &employee_identity,
                 )
                 .await

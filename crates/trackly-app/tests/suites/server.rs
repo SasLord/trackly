@@ -21,6 +21,8 @@ mod im_membership;
 mod im_sync;
 #[path = "../request_accept_assignee.rs"]
 mod request_accept_assignee;
+#[path = "../request_idempotent_create.rs"]
+mod request_idempotent_create;
 #[path = "../request_lifecycle.rs"]
 mod request_lifecycle;
 #[path = "../request_printer_options.rs"]

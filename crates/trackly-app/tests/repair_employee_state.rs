@@ -294,6 +294,7 @@ async fn employee_author_gets_not_found_for_soft_deleted_request() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("Скрипит".into()),
+                client_request_id: None,
             },
             &emp(f.ivanov),
         )

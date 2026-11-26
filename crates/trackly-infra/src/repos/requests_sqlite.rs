@@ -132,6 +132,38 @@ impl SqliteRequestRepository {
         Ok(tx.last_insert_rowid())
     }
 
+    /// D-11: заявка автора по клиентскому id (повтор создания).
+    pub fn find_by_client_request_id_on(
+        &self,
+        conn: &Connection,
+        requested_by_user_id: i64,
+        client_request_id: &str,
+    ) -> Result<Option<i64>, AppError> {
+        conn.query_row(
+            "SELECT id FROM requests WHERE requested_by_user_id = ?1 AND client_request_id = ?2",
+            params![requested_by_user_id, client_request_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)
+    }
+
+    /// D-11: проставляет клиентский id только что вставленной заявке (та же
+    /// транзакция). Конфликт UNIQUE приходит как `AppError::Conflict`.
+    pub fn set_client_request_id_on(
+        &self,
+        conn: &Connection,
+        request_id: i64,
+        client_request_id: &str,
+    ) -> Result<(), AppError> {
+        conn.execute(
+            "UPDATE requests SET client_request_id = ?2 WHERE id = ?1",
+            params![request_id, client_request_id],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
     /// Apply a lifecycle transition inside a transaction.
     ///
     /// Steps:

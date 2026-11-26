@@ -144,6 +144,7 @@ async fn manager_cannot_see_ad_register_in_list_or_counts_admin_can() {
                 cartridge_model_id: None,
                 category_id: None,
                 description: Some("контрольная заявка".to_string()),
+                client_request_id: None,
             },
             &employee(owner_id),
         )

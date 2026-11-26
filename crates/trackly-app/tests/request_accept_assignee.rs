@@ -85,6 +85,7 @@ async fn accept_resolves_assignee_from_caller_not_client_id() {
                     cartridge_model_id: None,
                     category_id: None,
                     description: Some("Глючит офис".to_string()),
+                    client_request_id: None,
                 },
                 &employee,
             )
