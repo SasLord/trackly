@@ -134,6 +134,10 @@ futures-util = "0.3"
 # вызывают по `--test` (`export_bindings`, `attachments_heic`).
 
 [[test]]
+name = "stand_ui_move"
+path = "tests/stand_ui_move.rs"
+
+[[test]]
 name = "app_acts"
 path = "tests/suites/acts.rs"
 
