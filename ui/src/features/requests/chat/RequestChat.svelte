@@ -17,9 +17,12 @@
   import ChatDayDivider from './ChatDayDivider.svelte';
   import ChatEvent from './ChatEvent.svelte';
   import ChatMessage from './ChatMessage.svelte';
+  import ChatPendingMessage from './ChatPendingMessage.svelte';
   import { dayKey, dayLabel, sameGroup } from './chatDates';
   import { chat } from './api';
-  import { clearDraft, useDraftFor } from './draftStore.svelte';
+  import { clearDraft, draft, useDraftFor } from './draftStore.svelte';
+  import { pendingFor, retryMessage } from './pendingStore.svelte';
+  import { rejectText } from './sendOutcomeText';
   import { dismissChatToast } from './chatNotifications.svelte';
   import { setActiveChat } from './unreadStore.svelte';
 
@@ -280,6 +283,29 @@
     void tick().then(() => scrollToBottom(true));
   }
 
+  const pendingList = $derived(pendingFor(requestId));
+
+  // Прокрутка вниз при появлении/смене неотправленных (как для своих сообщений).
+  $effect(() => {
+    void pendingList.length;
+    untrack(() => void tick().then(() => scrollToBottom(true)));
+  });
+
+  async function onRetry(clientMsgId: string) {
+    const res = await retryMessage(clientMsgId);
+    if (res === null) return;
+    if (res.kind === 'sent') {
+      onSent(res.message);
+    } else if (res.kind === 'rejected') {
+      draft.errors = [...draft.errors, rejectText(res.code)];
+      if (res.code === 'closed') onClosed();
+    } else if (res.kind === 'error') {
+      const code = parseAppError(res.error).code;
+      const forbidden = code === 'FORBIDDEN' || code === 'Forbidden' || code === 'UNAUTHORIZED';
+      draft.errors = [...draft.errors, rejectText(forbidden ? 'forbidden' : null)];
+    }
+  }
+
   function onClosed() {
     clearDraft();
     void load(false);
@@ -449,7 +475,10 @@
             />
           {/if}
         {/each}
-        {#if !hasMessages}
+        {#each pendingList as p (p.clientMsgId)}
+          <ChatPendingMessage item={p} {onRetry} />
+        {/each}
+        {#if !hasMessages && pendingList.length === 0}
           <li class="empty">
             <p class="empty-title">Сообщений пока нет</p>
             {#if canPost}

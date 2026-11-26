@@ -12,6 +12,8 @@
   } from '@trackly/attachments/AttachmentTypeIcon.svelte';
   import { rejectLine } from '@trackly/attachments/rejectText';
   import { uploadDraft, chat } from './api';
+  import { submitMessage } from './pendingStore.svelte';
+  import { rejectText } from './sendOutcomeText';
   import {
     addFiles as storeAddFiles,
     clearDraft,
@@ -165,41 +167,33 @@
         }
         draftIds.push(res.attachment.id);
       }
-      let outcome;
-      try {
-        outcome = await chat.send(sentFor, draft.text, draftIds);
-      } catch (e) {
+      const result = await submitMessage(sentFor, draft.text, draftIds);
+      if (result.kind === 'failed') {
+        // Сообщение осталось в ленте пузырём «Не отправлено»; черновики вложений нужны повтору.
+        if (draft.requestId === sentFor) clearDraft();
+        return;
+      }
+      if (result.kind === 'error') {
         try {
           await chat.discardDrafts(sentFor);
         } catch {
           // см. выше
         }
-        fail(
-          isForbidden(e)
-            ? 'Нет доступа к переписке этой заявки.'
-            : 'Не удалось отправить сообщение. Проверьте подключение и попробуйте ещё раз.',
-        );
+        fail(rejectText(isForbidden(result.error) ? 'forbidden' : null));
         return;
       }
       if (draft.requestId !== sentFor) return;
-      if (outcome.rejectCode !== null || outcome.message === null) {
-        switch (outcome.rejectCode) {
-          case 'too_long':
-            fail('Сообщение длиннее 4000 символов. Сократите его и отправьте снова.');
-            break;
-          case 'closed':
-            fail('Заявка закрыта — сообщение не отправлено.');
-            onClosed();
-            break;
-          case 'no_chat':
-            fail('Нет доступа к переписке этой заявки.');
-            break;
-          default:
-            fail('Не удалось отправить сообщение. Проверьте подключение и попробуйте ещё раз.');
+      if (result.kind === 'rejected') {
+        try {
+          await chat.discardDrafts(sentFor);
+        } catch {
+          // см. выше
         }
+        fail(rejectText(result.code));
+        if (result.code === 'closed') onClosed();
         return;
       }
-      const message = outcome.message;
+      const message = result.message;
       const keepErrors = draft.errors;
       clearDraft();
       draft.errors = keepErrors;

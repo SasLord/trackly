@@ -42,6 +42,9 @@
 //        возвращает отписку; перечитывание ленты load( стоит ВНУТРИ if, условие которого требует
 //        все три события СВОЕЙ заявки (chat_message и request_status_changed по ev.requestId === requestId,
 //        attachments_changed по parentKind 'request' и ev.parentId === requestId);
+//   [C17] (фаза 43-10, D-12) неотправленные: ChatComposer импортирует submitMessage, не зовёт chat.send(
+//        напрямую, ветка result.kind === 'failed' не зовёт discardDrafts; RequestChat выводит
+//        pendingFor + ChatPendingMessage; ChatPendingMessage содержит «Не отправлено» и «Повторить»;
 //   [C8] счётный минимум: сработало не меньше MIN_RULES различных правил.
 //
 // Usage: node scripts/check-chat-ui.mjs [--selftest]
@@ -58,6 +61,8 @@ const CHAT = 'features/requests/chat/';
 const REQUIRED = [
   `${CHAT}RequestChat.svelte`,
   `${CHAT}ChatComposer.svelte`,
+  `${CHAT}ChatPendingMessage.svelte`,
+  `${CHAT}pendingStore.svelte.ts`,
   `${CHAT}ChatMessage.svelte`,
   `${CHAT}ChatMuteToggle.svelte`,
   `${CHAT}ChatEvent.svelte`,
@@ -80,7 +85,7 @@ const RUST_ABS = path.resolve(
   __dirname,
   '../../crates/trackly-app/src/tauri_cmds/system_notify.rs',
 );
-const MIN_RULES = 16;
+const MIN_RULES = 17;
 const WS_EVENTS = [
   'chat_message',
   'request_status_changed',
@@ -178,13 +183,38 @@ export function check(files) {
     if (sb === null) fail('C3', 'ChatComposer: send() не найден');
     else {
       const up = sb.indexOf('uploadDraft(');
-      const cs = sb.indexOf('chat.send(');
-      if (up < 0 || cs < 0) fail('C3', 'ChatComposer.send: нет uploadDraft( или chat.send(');
-      else if (up > cs) fail('C3', 'ChatComposer.send: uploadDraft стоит ПОСЛЕ chat.send');
+      const cs = sb.indexOf('submitMessage(');
+      if (up < 0 || cs < 0) fail('C3', 'ChatComposer.send: нет uploadDraft( или submitMessage(');
+      else if (up > cs) fail('C3', 'ChatComposer.send: uploadDraft стоит ПОСЛЕ submitMessage');
       if (!sb.includes('discardDrafts(')) fail('C3', 'ChatComposer.send: нет discardDrafts(');
     }
     fired.add('C3');
   }
+
+  // C17 (43-10): неотправленные сообщения чата
+  if (comp !== null) {
+    if (!/import \{[^}]*\bsubmitMessage\b[^}]*\} from '\.\/pendingStore\.svelte'/.test(comp))
+      fail('C17', 'ChatComposer: нет импорта submitMessage из pendingStore');
+    if (comp.includes('chat.send('))
+      fail('C17', 'ChatComposer: прямой вызов chat.send( мимо очереди неотправленных');
+    const fb = funcBody(comp, /if \(result\.kind === 'failed'\) \{/);
+    if (fb === null) fail('C17', "ChatComposer: нет ветки result.kind === 'failed'");
+    else if (fb.includes('discardDrafts('))
+      fail('C17', "ChatComposer: ветка 'failed' отбрасывает черновики вложений (нужны повтору)");
+  }
+  const rcp = get(`${CHAT}RequestChat.svelte`);
+  if (rcp !== null) {
+    if (!rcp.includes('pendingFor(')) fail('C17', 'RequestChat: нет pendingFor(');
+    if (!rcp.includes('<ChatPendingMessage'))
+      fail('C17', 'RequestChat: не выводится <ChatPendingMessage');
+  }
+  const pm = get(`${CHAT}ChatPendingMessage.svelte`);
+  if (pm !== null) {
+    if (!pm.includes('Не отправлено'))
+      fail('C17', 'ChatPendingMessage: нет подписи «Не отправлено»');
+    if (!pm.includes('Повторить')) fail('C17', 'ChatPendingMessage: нет кнопки «Повторить»');
+  }
+  fired.add('C17');
 
   // C4
   const rc = get(`${CHAT}RequestChat.svelte`);
@@ -827,7 +857,7 @@ function selftest(files) {
       make: reorder(
         `${CHAT}ChatComposer.svelte`,
         'const res = await uploadDraft(sentFor, chip.file);',
-        'outcome = await chat.send(sentFor, draft.text, draftIds);',
+        'const result = await submitMessage(sentFor, draft.text, draftIds);',
       ),
     },
     {
@@ -1626,6 +1656,37 @@ function selftest(files) {
         '  $effect(() => {\n    const off = onWsEvent(',
         '  {\n    const off = onWsEvent(',
       ),
+    },
+    {
+      name: 'C17: композер снова зовёт chat.send напрямую',
+      expect: 'C17',
+      make: swapText(
+        `${CHAT}ChatComposer.svelte`,
+        'const result = await submitMessage(sentFor, draft.text, draftIds);',
+        'const result = await submitMessage(sentFor, draft.text, draftIds);\n      void chat.send(sentFor, draft.text, draftIds);',
+      ),
+    },
+    {
+      name: "C17: ветка 'failed' отбрасывает черновики",
+      expect: 'C17',
+      make: swapText(
+        `${CHAT}ChatComposer.svelte`,
+        "if (result.kind === 'failed') {",
+        "if (result.kind === 'failed') {\n        void chat.discardDrafts(sentFor);",
+      ),
+    },
+    {
+      name: 'C17: лента не выводит пузыри неотправленных',
+      expect: 'C17',
+      make: swapText(`${CHAT}RequestChat.svelte`, '<ChatPendingMessage item={p} {onRetry} />', ''),
+    },
+    {
+      name: 'C17: пропала подпись «Повторить»',
+      expect: 'C17',
+      make: () => {
+        const rel = `${CHAT}ChatPendingMessage.svelte`;
+        return { ...files, [rel]: files[rel].split('Повторить').join('Ещё раз') };
+      },
     },
     {
       name: 'пропал файл (не «пропуск», а красный)',
