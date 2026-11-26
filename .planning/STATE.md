@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 6 of 12 complete (43-01..43-06 done)
+Plan: 7 of 12 complete (43-01..43-07 done)
 Status: Executing Phase 43
 Last activity: 2026-11-26 -- Phase 43 execution started
 

@@ -49,7 +49,7 @@ completed: 2026-11-27
 - `check-ws-resync-registry` selftest OK, боевой OK.
 - Мутация на настоящем исходнике: из `AttachmentsBlock.svelte` убран вызов onWsResync (и импорт) — гейт exit 1 с «packages/attachments/src/AttachmentsBlock.svelte: подписчиков 1, ресинков 0»; после восстановления из копии зелёный, `git diff` по файлу пуст.
 - `pnpm --dir ui lint` — exit 0 (79 гейтов в wiring); `pnpm --dir ui svelte-check` — 0 ошибок, 0 предупреждений; `check-attachments-block` PASS; `check-gate-coverage` зелёный; privacy-гейт PASS на каждом коммите.
-- `pnpm build` — см. примечание в отчёте оркестратору (запущен после коммитов).
+- `pnpm --dir ui build` — OK.
 
 ## Отклонения от плана
 
