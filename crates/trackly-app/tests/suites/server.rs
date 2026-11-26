@@ -17,6 +17,8 @@ mod graceful_shutdown_drain;
 mod im_idempotent_send;
 #[path = "../im_membership.rs"]
 mod im_membership;
+#[path = "../im_sync.rs"]
+mod im_sync;
 #[path = "../request_accept_assignee.rs"]
 mod request_accept_assignee;
 #[path = "../request_lifecycle.rs"]
