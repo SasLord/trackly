@@ -7,8 +7,8 @@
   "build": {
     "frontendDist": "../../link-ui/dist",
     "devUrl": "http://localhost:1421",
-    "beforeDevCommand": "pnpm --dir ../../link-ui dev",
-    "beforeBuildCommand": "pnpm --dir ../../link-ui build"
+    "beforeDevCommand": "pnpm --dir ../link-ui dev",
+    "beforeBuildCommand": "pnpm --dir ../link-ui build"
   },
   "app": {
     "windows": [
