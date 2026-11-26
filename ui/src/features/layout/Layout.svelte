@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
   import { router } from 'svelte-spa-router';
-  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { connectWs, onWsEvent, onWsResync } from '@trackly/transport/ws';
   import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
   import { notifyEntitiesChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { WsEvent } from '../../bindings-phase6';
@@ -31,6 +31,11 @@
     }
   }
 
+  // D-08/D-10: после обрыва/Lagged перечитываем всё (пустой список = «всё»), без сброса ввода.
+  function handleResync(): void {
+    notifyEntitiesChanged([]);
+  }
+
   onMount(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -46,11 +51,13 @@
         // Сбой сокета не фатален: локальные вызовы инвалидации продолжают работать.
       });
     const unsubscribe = onWsEvent(handleEntitiesWsEvent);
+    const unsubscribeResync = onWsResync(handleResync);
     const stopChat = startChatRealtime();
 
     return () => {
       disposed = true;
       unsubscribe();
+      unsubscribeResync();
       stopChat();
       unlisten?.();
     };

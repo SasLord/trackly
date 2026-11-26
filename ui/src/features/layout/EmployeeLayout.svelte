@@ -9,14 +9,14 @@
   import active from 'svelte-spa-router/active';
   import Button from '@trackly/kit/components/Button.svelte';
   import UnreadBadge from '@trackly/kit/components/UnreadBadge.svelte';
-  import { unreadStore } from '../requests/chat/unreadStore.svelte';
+  import { unreadStore, refreshUnread } from '../requests/chat/unreadStore.svelte';
   import { sidebarActivePattern } from './sidebar-config';
   import ThemeSwitcher from '@trackly/kit/components/ThemeSwitcher.svelte';
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { themeStore, setTheme } from '@trackly/kit/stores/theme.svelte';
   import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { connectWs, onWsEvent, onWsResync } from '@trackly/transport/ws';
   import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { appHasFocus, showSystemNotification } from '$lib/platform/systemNotify';
@@ -92,6 +92,11 @@
     }
   }
 
+  // D-08/D-09: ресинк перечитывает колокольчик/счётчики молча — без тостов и ОС-уведомлений.
+  function handleResync(): void {
+    void refreshUnread();
+  }
+
   onMount(() => {
     if (authStore.user?.role !== 'employee') return;
 
@@ -116,11 +121,13 @@
         // WS connection is non-fatal — graceful-degrade, no notifications.
       });
     const unsubscribe = onWsEvent(handleEmployeeWsEvent);
+    const unsubscribeResync = onWsResync(handleResync);
     const stopChat = startChatRealtime();
 
     return () => {
       disposed = true;
       unsubscribe();
+      unsubscribeResync();
       stopChat();
       unlisten?.();
     };

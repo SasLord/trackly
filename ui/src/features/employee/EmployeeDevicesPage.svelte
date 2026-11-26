@@ -4,7 +4,7 @@
   // сервер (D-06, D-20): клиент не сортирует и не фильтрует. Единственные экземпляры
   // карточки и формы заявки стоят здесь, вне строки и вне <td>.
   import { onMount } from 'svelte';
-  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { connectWs, onWsEvent, onWsResync } from '@trackly/transport/ws';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Table from '$lib/components/Table.svelte';
@@ -93,6 +93,11 @@
     }
   }
 
+  // D-08/D-10: ресинк перечитывает список фоново (generation учитывает load), ввод не сбрасывается.
+  function handleResync(): void {
+    scheduleRefresh();
+  }
+
   onMount(() => {
     void load(false);
 
@@ -107,6 +112,7 @@
         // Сокет не критичен: список остаётся читаемым.
       });
     const unsubscribe = onWsEvent(handleWsEvent);
+    const unsubscribeResync = onWsResync(handleResync);
 
     const mql = window.matchMedia('(max-width: 767px)');
     narrow = mql.matches;
@@ -118,6 +124,7 @@
     return () => {
       disposed = true;
       unsubscribe();
+      unsubscribeResync();
       unlisten?.();
       mql.removeEventListener('change', onMql);
       if (timer !== undefined) clearTimeout(timer);

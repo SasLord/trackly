@@ -7,7 +7,7 @@
   import { onMount } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { connectWs, onWsEvent, onWsResync } from '@trackly/transport/ws';
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { parseIdFromHash } from '@trackly/kit/utils/hashId';
@@ -177,6 +177,11 @@
     }
   }
 
+  // D-08/D-10: ресинк только перечитывает список и алерты, выбор и фильтры не трогает.
+  function handleResync(): void {
+    void refresh();
+  }
+
   onMount(() => {
     refresh();
     if (initialFocusDeviceId !== null) {
@@ -203,8 +208,10 @@
         // WS connection is non-fatal.
       });
     const unsubscribe = onWsEvent(handleWsEvent);
+    const unsubscribeResync = onWsResync(handleResync);
     return () => {
       unsubscribe();
+      unsubscribeResync();
       unlisten?.();
     };
   });
