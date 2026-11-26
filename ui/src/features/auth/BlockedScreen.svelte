@@ -25,7 +25,7 @@
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
-  import AuthShell from '$lib/components/AuthShell.svelte';
+  import AuthShell from '@trackly/kit/components/AuthShell.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 
   interface Props {

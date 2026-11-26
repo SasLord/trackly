@@ -83,13 +83,13 @@
   // plain `Input`, no template concept in edit (SPEC boundaries, out of
   // scope for this plan).
   import { onMount, untrack } from 'svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
   // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
   // Dropdown не принимает `id`/`for`, поэтому подпись оборачивает поле
   // (implicit label), а не связывается через `for` (как раньше у Select).
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

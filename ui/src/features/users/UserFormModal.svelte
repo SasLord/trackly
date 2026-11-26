@@ -10,12 +10,12 @@
   // server-side validation remains authoritative (documented in SUMMARY).
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   // Plan 28-13 (GAP-1): Select (нативный <select>) заменён на кастомный
   // Dropdown (flat + variant="select") для поля «Роль», по прецеденту
   // CartridgeFormBody.svelte (Plan 27-G1).
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import type { UserDto } from '../../bindings';
 
   interface UserFormData {

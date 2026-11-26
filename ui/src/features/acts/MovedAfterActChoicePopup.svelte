@@ -5,8 +5,8 @@
   // на сервере к этому моменту ничего не удалено.
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Radio from '$lib/components/Radio.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Radio from '@trackly/kit/components/Radio.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import type { MovedAfterActChoiceDto, MovedAfterActDeviceDto } from '../../bindings';
 
   interface Props {

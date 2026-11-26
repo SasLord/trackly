@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
-  import Radio from '$lib/components/Radio.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
+  import Radio from '@trackly/kit/components/Radio.svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Table from '$lib/components/Table.svelte';
   import TableRow from '@trackly/kit/components/TableRow.svelte';

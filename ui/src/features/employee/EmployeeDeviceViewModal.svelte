@@ -6,8 +6,8 @@
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Badge from '@trackly/kit/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import DetailSection from '$lib/components/DetailSection.svelte';
-  import DetailField from '$lib/components/DetailField.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
+  import DetailField from '@trackly/kit/components/DetailField.svelte';
   import TonerGauge from '../printers/TonerGauge.svelte';
   import { statusTone } from '$lib/deviceStatusTone';
   import { formatDateTimeShort } from '@trackly/kit/utils/date';

@@ -3,8 +3,8 @@
   // Карточки заходов (новые сверху); печать акта идёт через общий PdfPreviewModal
   // (mode='repair') — тот же предпросмотр и печать в обоих режимах, что у актов
   // приёма-передачи. Права: кнопки только у canManage; сервер авторизует независимо.
-  import DetailSection from '$lib/components/DetailSection.svelte';
-  import DetailField from '$lib/components/DetailField.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
+  import DetailField from '@trackly/kit/components/DetailField.svelte';
   import Badge from '@trackly/kit/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';

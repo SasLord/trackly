@@ -4,7 +4,7 @@
   import { routes, employeeRoutes } from './routes';
   import Layout from './features/layout/Layout.svelte';
   import EmployeeLayout from './features/layout/EmployeeLayout.svelte';
-  import ToastHost from '$lib/components/ToastHost.svelte';
+  import ToastHost from '@trackly/kit/components/ToastHost.svelte';
   import LoginPage from './features/auth/LoginPage.svelte';
   import FirstRunWizard from './features/auth/FirstRunWizard.svelte';
   import { apiCall } from '$lib/api/client';

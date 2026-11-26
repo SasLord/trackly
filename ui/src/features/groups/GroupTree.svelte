@@ -30,7 +30,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import GroupTreeNode, {

@@ -6,7 +6,7 @@
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Badge from '@trackly/kit/components/Badge.svelte';
-  import DetailField from '$lib/components/DetailField.svelte';
+  import DetailField from '@trackly/kit/components/DetailField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

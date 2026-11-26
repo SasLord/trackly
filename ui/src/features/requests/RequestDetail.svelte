@@ -18,14 +18,14 @@
   import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
   // Plan 28-11 (GAP-1): Select (нативный <select>) заменён на кастомный
   // Dropdown (flat + variant="select") — см. CartridgeFormBody.svelte
   // (Phase 27-G1) для канонического паттерна.
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
-  import DetailSection from '$lib/components/DetailSection.svelte';
-  import DetailField from '$lib/components/DetailField.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
+  import DetailField from '@trackly/kit/components/DetailField.svelte';
   import OperationModal from '../cartridges/OperationModal.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

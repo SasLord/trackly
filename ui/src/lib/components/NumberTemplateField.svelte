@@ -12,9 +12,9 @@
   // (trim + toLowerCase) для видимости стрелки ↑/↓ и для решения «правили
   // ли значение вручную» (D-14/D-19/NUM-07).
   import { onMount, tick, untrack } from 'svelte';
-  import Input from './Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
-  import IconInsertTemplate from './icons/IconInsertTemplate.svelte';
+  import IconInsertTemplate from '@trackly/kit/components/icons/IconInsertTemplate.svelte';
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';

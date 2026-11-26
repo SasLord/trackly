@@ -2,9 +2,9 @@
   // DeviceFilters — FTS search input + status switch-bar + group toggle.
   // Per UI-SPEC §DeviceFilters, D-Search-01, DEV-07.
 
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Tabs from '@trackly/kit/components/Tabs.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import { onMount, untrack } from 'svelte';
   import {
     deviceStatusesStore,

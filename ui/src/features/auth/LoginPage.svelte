@@ -6,11 +6,11 @@
   import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
   import PendingScreen from './PendingScreen.svelte';
   import BlockedScreen from './BlockedScreen.svelte';
-  import AuthShell from '$lib/components/AuthShell.svelte';
-  import FormField from '$lib/components/FormField.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import AuthShell from '@trackly/kit/components/AuthShell.svelte';
+  import FormField from '@trackly/kit/components/FormField.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
 
   // D-Sec-01 / T-09-20: single generic message for ALL credential/account-state
   // failures (no enumeration). Distinct copy ONLY for infra (AD unreachable).

@@ -4,7 +4,7 @@
   // По паттерну CartridgesSearchAndTabs.svelte.
   // FIX F1 (Phase 27 batch F): кнопка «Найти принтеры» перенесена в PageHeader
   // раздела (PrintersPage.svelte) — здесь больше не отображается.
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Tabs from '@trackly/kit/components/Tabs.svelte';
   import type { PrinterFilter } from '../../bindings-phase6';
 

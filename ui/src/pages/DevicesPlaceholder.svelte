@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  import Placeholder from '@trackly/kit/components/Placeholder.svelte';
 </script>
 
 <!-- Plan 03 заменит этот placeholder на features/devices/DevicesPage.svelte -->

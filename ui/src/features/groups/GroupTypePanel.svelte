@@ -6,9 +6,9 @@
   // только внутренние регионы страниц).
   import { untrack } from 'svelte';
   import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
-  import DetailSection from '$lib/components/DetailSection.svelte';
-  import DetailField from '$lib/components/DetailField.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
+  import DetailField from '@trackly/kit/components/DetailField.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import GroupTypePropertiesTable from './GroupTypePropertiesTable.svelte';
   import { groupTypes } from '$lib/api/groups';

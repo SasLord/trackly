@@ -9,8 +9,8 @@
   // Когда apply_to_all=true: per-row inputs disabled, placeholder «(по умолчанию)».
   // Когда apply_to_all=false: per-row inputs enabled per checked row.
   // Когда row.checked=false: row opacity 0.5 + оба disabled regardless of applyToAll.
-  import Input from '$lib/components/Input.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
 

@@ -8,7 +8,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import DetailSection from '$lib/components/DetailSection.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
   import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';

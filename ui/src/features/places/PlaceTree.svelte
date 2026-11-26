@@ -13,8 +13,8 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { placeContentEventsStore, reloadSeqNow } from '$lib/stores/placeContentEvents.svelte';
-  import Input from '$lib/components/Input.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';

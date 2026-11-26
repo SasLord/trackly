@@ -28,10 +28,10 @@
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import DetailSection from '$lib/components/DetailSection.svelte';
-  import DetailField from '$lib/components/DetailField.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
+  import DetailField from '@trackly/kit/components/DetailField.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
-  import IconHistory from '$lib/components/icons/IconHistory.svelte';
+  import IconHistory from '@trackly/kit/components/icons/IconHistory.svelte';
   import { historyPanel } from '$lib/stores/historyPanel.svelte';
   import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import DeviceFormBody from '../devices/DeviceFormBody.svelte';

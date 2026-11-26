@@ -11,7 +11,7 @@
   // остаётся нетронутым — вне области GAP-1's 7-site list.
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import GroupedPrinterSelect from '$lib/components/GroupedPrinterSelect.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
   import Badge from '@trackly/kit/components/Badge.svelte';
   import { tick } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

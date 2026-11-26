@@ -28,8 +28,8 @@
   import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
-  import DetailSection from '$lib/components/DetailSection.svelte';
-  import DetailField from '$lib/components/DetailField.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
+  import DetailField from '@trackly/kit/components/DetailField.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
   import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
   import AttachmentHistory from '../attachments/AttachmentHistory.svelte';

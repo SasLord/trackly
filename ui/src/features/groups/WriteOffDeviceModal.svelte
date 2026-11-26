@@ -7,7 +7,7 @@
   // text-align: left. Монтируется родителем через {#if}.
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Radio from '$lib/components/Radio.svelte';
+  import Radio from '@trackly/kit/components/Radio.svelte';
   import { groups } from '$lib/api/groups';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';

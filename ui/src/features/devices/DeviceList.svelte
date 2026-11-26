@@ -3,7 +3,7 @@
   import Table from '$lib/components/Table.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import RowReload from '$lib/components/icons/RowReload.svelte';
+  import RowReload from '@trackly/kit/components/icons/RowReload.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
   import DeviceContainerRow from './DeviceContainerRow.svelte';
   import DeviceGroupRow from './DeviceGroupRow.svelte';

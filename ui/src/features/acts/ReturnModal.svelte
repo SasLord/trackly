@@ -26,7 +26,7 @@
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import DatePicker from '@trackly/kit/components/DatePicker.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';

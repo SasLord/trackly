@@ -7,7 +7,7 @@
   import { untrack } from 'svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
   import { parseAppError } from '$lib/api/errors';

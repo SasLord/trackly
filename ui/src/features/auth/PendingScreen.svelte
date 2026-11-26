@@ -2,7 +2,7 @@
   // Phase 9 Plan 05 — Screen 2 (UI-SPEC). Informational terminal state shown
   // after `auth_login` returns AppError code REGISTRATION_PENDING (pending
   // registration mode, D-REG-01). No primary CTA — purely informational.
-  import AuthShell from '$lib/components/AuthShell.svelte';
+  import AuthShell from '@trackly/kit/components/AuthShell.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 
   interface Props {

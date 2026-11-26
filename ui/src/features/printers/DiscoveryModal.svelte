@@ -4,7 +4,7 @@
   // size="wide" (960px). Reset на open. handleScan → printers.discover. handleCreate → printers.admit.
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DiscoveryResultsTable from './DiscoveryResultsTable.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

@@ -6,9 +6,9 @@
   // for visibility only (UI-SPEC Screen 4 / AdSettingsDto doc).
   import { onMount } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
-  import Radio from '$lib/components/Radio.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
+  import Radio from '@trackly/kit/components/Radio.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import type { AdSettingsDto, SetAdPayload } from '../../bindings-phase9';

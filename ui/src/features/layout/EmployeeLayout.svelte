@@ -11,7 +11,7 @@
   import UnreadBadge from '@trackly/kit/components/UnreadBadge.svelte';
   import { unreadStore } from '../requests/chat/unreadStore.svelte';
   import { sidebarActivePattern } from './sidebar-config';
-  import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
+  import ThemeSwitcher from '@trackly/kit/components/ThemeSwitcher.svelte';
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { themeStore, setTheme } from '@trackly/kit/stores/theme.svelte';
   import { apiCall } from '$lib/api/client';

@@ -20,7 +20,7 @@
   } from '../historyEvents';
   import { statusByCode } from '../stores/deviceStatuses.svelte';
   import HistoryKindChips from './HistoryKindChips.svelte';
-  import HistoryKindIcon from './icons/HistoryKindIcon.svelte';
+  import HistoryKindIcon from '@trackly/kit/components/icons/HistoryKindIcon.svelte';
 
   type Variant = 'device' | 'cartridge' | 'group';
 

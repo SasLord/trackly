@@ -4,7 +4,7 @@
   import { getVisibleItems, sidebarActivePattern } from './sidebar-config';
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserRole } from '$lib/stores/auth.svelte';
-  import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
+  import ThemeSwitcher from '@trackly/kit/components/ThemeSwitcher.svelte';
   import { apiCall } from '$lib/api/client';
   import UnreadBadge from '@trackly/kit/components/UnreadBadge.svelte';
   import { unreadStore } from '../requests/chat/unreadStore.svelte';

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
 
   let open = $state(false);
   let demoValue = $state('Пример значения');

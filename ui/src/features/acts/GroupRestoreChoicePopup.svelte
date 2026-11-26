@@ -6,7 +6,7 @@
   // ничего не удалено.
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Radio from '$lib/components/Radio.svelte';
+  import Radio from '@trackly/kit/components/Radio.svelte';
   import type { GroupRestoreChoiceDto, GroupRestoreConflictDto } from '../../bindings';
 
   interface Props {

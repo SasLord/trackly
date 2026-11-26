@@ -7,7 +7,7 @@
   // `selectedKeys` — allow-list ключей чекбоксов, тот же wire-контракт, что
   // `category_filter_clause` в report_service.rs (см. interfaces PLAN).
   import Button from '@trackly/kit/components/Button.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import { portal } from '@trackly/kit/utils/portal';
   import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
 

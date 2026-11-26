@@ -3,9 +3,9 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserDto } from '../../bindings';
   import type { UserRole } from '$lib/stores/auth.svelte';
-  import AuthShell from '$lib/components/AuthShell.svelte';
-  import FormField from '$lib/components/FormField.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import AuthShell from '@trackly/kit/components/AuthShell.svelte';
+  import FormField from '@trackly/kit/components/FormField.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 
   let login = $state('');

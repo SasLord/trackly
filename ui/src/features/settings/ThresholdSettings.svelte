@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
-  import Input from '$lib/components/Input.svelte';
-  import Radio from '$lib/components/Radio.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
+  import Radio from '@trackly/kit/components/Radio.svelte';
 
   let threshold = $state(2);
   // Дефолт на непронастроенной БД — «по модели принтера» (CONTEXT «Хранение настройки»).

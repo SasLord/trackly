@@ -23,7 +23,7 @@
   import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
-  import DetailSection from '$lib/components/DetailSection.svelte';
+  import DetailSection from '@trackly/kit/components/DetailSection.svelte';
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';

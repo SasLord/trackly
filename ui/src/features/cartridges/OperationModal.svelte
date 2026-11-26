@@ -7,8 +7,8 @@
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import DatePicker from '@trackly/kit/components/DatePicker.svelte';
-  import Select from '$lib/components/Select.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
+  import Select from '@trackly/kit/components/Select.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import CartridgeSelect from '$lib/components/CartridgeSelect.svelte';

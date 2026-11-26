@@ -21,7 +21,7 @@
   import { onMount } from 'svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

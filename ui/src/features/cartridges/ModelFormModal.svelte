@@ -13,7 +13,7 @@
   // Dropdown не принимает `id`/`for`, поэтому подпись оборачивает поле
   // (implicit label), а не связывается через `for` (как раньше у Select).
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import CompatibilityEditor from './CompatibilityEditor.svelte';
   import { cartridges } from './api';

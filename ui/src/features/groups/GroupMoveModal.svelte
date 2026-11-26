@@ -15,9 +15,9 @@
   import { untrack } from 'svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import FormField from '$lib/components/FormField.svelte';
+  import FormField from '@trackly/kit/components/FormField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { groups } from '$lib/api/groups';
   import { pluralizeRu } from '@trackly/kit/utils/pluralize';

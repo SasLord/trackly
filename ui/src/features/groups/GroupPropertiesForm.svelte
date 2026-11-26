@@ -9,8 +9,8 @@
   // ip/mac здесь нет. Ошибка по полю приходит как details.field = «values.<id>»
   // и показывается под соответствующим полем.
   import { untrack } from 'svelte';
-  import FormField from '$lib/components/FormField.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import FormField from '@trackly/kit/components/FormField.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { groups } from '$lib/api/groups';
   import { parseAppError } from '$lib/api/errors';

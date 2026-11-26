@@ -123,6 +123,74 @@
     {
       "from": "ui/src/lib/components/icons/RowChevron.svelte",
       "to": "packages/kit/src/components/icons/RowChevron.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/AuthShell.svelte",
+      "to": "packages/kit/src/components/AuthShell.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Checkbox.svelte",
+      "to": "packages/kit/src/components/Checkbox.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/DetailField.svelte",
+      "to": "packages/kit/src/components/DetailField.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/DetailSection.svelte",
+      "to": "packages/kit/src/components/DetailSection.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/FormField.svelte",
+      "to": "packages/kit/src/components/FormField.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Input.svelte",
+      "to": "packages/kit/src/components/Input.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Placeholder.svelte",
+      "to": "packages/kit/src/components/Placeholder.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Radio.svelte",
+      "to": "packages/kit/src/components/Radio.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Select.svelte",
+      "to": "packages/kit/src/components/Select.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Textarea.svelte",
+      "to": "packages/kit/src/components/Textarea.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/ThemeSwitcher.svelte",
+      "to": "packages/kit/src/components/ThemeSwitcher.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Toast.svelte",
+      "to": "packages/kit/src/components/Toast.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/ToastHost.svelte",
+      "to": "packages/kit/src/components/ToastHost.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/icons/HistoryKindIcon.svelte",
+      "to": "packages/kit/src/components/icons/HistoryKindIcon.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/icons/IconHistory.svelte",
+      "to": "packages/kit/src/components/icons/IconHistory.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/icons/IconInsertTemplate.svelte",
+      "to": "packages/kit/src/components/icons/IconInsertTemplate.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/icons/RowReload.svelte",
+      "to": "packages/kit/src/components/icons/RowReload.svelte"
     }
   ]
 }

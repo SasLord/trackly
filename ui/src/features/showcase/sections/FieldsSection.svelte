@@ -1,9 +1,9 @@
 <script lang="ts">
-  import Input from '$lib/components/Input.svelte';
-  import Select from '$lib/components/Select.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
-  import Radio from '$lib/components/Radio.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
+  import Select from '@trackly/kit/components/Select.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
+  import Radio from '@trackly/kit/components/Radio.svelte';
 
   let inputNormal = $state('Пример текста');
   let inputInvalid = $state('Некорректное значение');

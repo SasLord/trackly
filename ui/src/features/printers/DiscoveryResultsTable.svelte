@@ -9,7 +9,7 @@
   import Badge from '@trackly/kit/components/Badge.svelte';
   import Table from '$lib/components/Table.svelte';
   import TableRow from '@trackly/kit/components/TableRow.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import type { DiscoveredPrinterDto } from '../../bindings-phase6';
 
   interface Props {

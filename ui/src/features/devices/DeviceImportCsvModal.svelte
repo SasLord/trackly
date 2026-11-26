@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Select from '$lib/components/Select.svelte';
+  import Select from '@trackly/kit/components/Select.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
   import { apiCall } from '$lib/api/client';

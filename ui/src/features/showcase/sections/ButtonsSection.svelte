@@ -1,7 +1,7 @@
 <script lang="ts">
   import Button from '@trackly/kit/components/Button.svelte';
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
-  import IconInsertTemplate from '$lib/components/icons/IconInsertTemplate.svelte';
+  import IconInsertTemplate from '@trackly/kit/components/icons/IconInsertTemplate.svelte';
 </script>
 
 <section class="buttons-section">

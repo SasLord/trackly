@@ -6,10 +6,10 @@
   import { untrack } from 'svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import DatePicker from '@trackly/kit/components/DatePicker.svelte';
-  import Input from '$lib/components/Input.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
+  import Textarea from '@trackly/kit/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';

@@ -19,7 +19,7 @@
   import { push } from 'svelte-spa-router';
   import { apiCall } from '$lib/api/client';
   import Tabs from '@trackly/kit/components/Tabs.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import Table from '$lib/components/Table.svelte';
   import TableRow from '@trackly/kit/components/TableRow.svelte';
   import Badge from '@trackly/kit/components/Badge.svelte';

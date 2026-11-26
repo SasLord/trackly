@@ -80,7 +80,7 @@
   // submit (never mismatch — `ActNumberEditInput` has no `template_id`
   // field at all, a structural guarantee from Plan 06).
   import { onMount, untrack } from 'svelte';
-  import Input from '$lib/components/Input.svelte';
+  import Input from '@trackly/kit/components/Input.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import DatePicker from '@trackly/kit/components/DatePicker.svelte';
