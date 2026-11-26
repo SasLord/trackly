@@ -1,0 +1,15 @@
+{
+  "name": "@trackly/attachments",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {},
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@trackly/kit": "workspace:*",
+    "@trackly/transport": "workspace:*"
+  },
+  "peerDependencies": {
+    "svelte": "^5.55.0"
+  }
+}

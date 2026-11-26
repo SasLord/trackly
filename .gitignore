@@ -9,6 +9,9 @@ target/
 node_modules/
 ui/node_modules/
 ui/dist/
+link-ui/dist/
+link-ui/node_modules/
+packages/*/node_modules/
 .vite/
 .svelte-kit/
 pnpm-debug.log*
@@ -21,6 +24,7 @@ ui/src/bindings.ts
 
 # Tauri 2 generated artifacts (rebuilt by `tauri-build` on every compile)
 crates/trackly-app/gen/
+crates/link-app/gen/
 
 # Local databases (portable-mode artifacts that should never be committed)
 *.db

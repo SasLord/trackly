@@ -6,7 +6,84 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  link-ui:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: ^2.11.0
+        version: 2.12.5
+      '@trackly/design':
+        specifier: workspace:*
+        version: link:../packages/design
+      '@trackly/kit':
+        specifier: workspace:*
+        version: link:../packages/kit
+      svelte:
+        specifier: ^5.55.0
+        version: 5.55.9(@typescript-eslint/types@8.59.4)
+    devDependencies:
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.1.1
+        version: 5.1.1(svelte@5.55.9(@typescript-eslint/types@8.59.4))(vite@6.4.2(sass@1.100.0))
+      '@tauri-apps/cli':
+        specifier: ^2.11.0
+        version: 2.11.2
+      sass:
+        specifier: ^1.80.0
+        version: 1.100.0
+      svelte-check:
+        specifier: ^4.0.0
+        version: 4.4.8(picomatch@4.0.4)(svelte@5.55.9(@typescript-eslint/types@8.59.4))(typescript@5.9.3)
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.0
+        version: 6.4.2(sass@1.100.0)
+
+  packages/attachments:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: ^2.11.0
+        version: 2.12.5
+      '@trackly/kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@trackly/transport':
+        specifier: workspace:*
+        version: link:../transport
+      svelte:
+        specifier: ^5.55.0
+        version: 5.55.9(@typescript-eslint/types@8.59.4)
+
+  packages/design: {}
+
+  packages/kit:
+    dependencies:
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2.7.1
+        version: 2.7.1
+      '@tauri-apps/plugin-fs':
+        specifier: ^2.4.2
+        version: 2.5.1
+      '@tauri-apps/plugin-shell':
+        specifier: ^2.3.1
+        version: 2.3.5
+      '@trackly/design':
+        specifier: workspace:*
+        version: link:../design
+      svelte:
+        specifier: ^5.55.0
+        version: 5.55.9(@typescript-eslint/types@8.59.4)
+
+  packages/transport:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: ^2.11.0
+        version: 2.12.5
+
+  ui:
     dependencies:
       '@tauri-apps/api':
         specifier: ^2.11.0
@@ -26,6 +103,18 @@ importers:
       '@tauri-apps/plugin-shell':
         specifier: ^2.3.1
         version: 2.3.5
+      '@trackly/attachments':
+        specifier: workspace:*
+        version: link:../packages/attachments
+      '@trackly/design':
+        specifier: workspace:*
+        version: link:../packages/design
+      '@trackly/kit':
+        specifier: workspace:*
+        version: link:../packages/kit
+      '@trackly/transport':
+        specifier: workspace:*
+        version: link:../packages/transport
       pagedjs:
         specifier: 0.4.3
         version: 0.4.3
@@ -975,6 +1064,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -1946,11 +2036,11 @@ snapshots:
 
   '@tauri-apps/plugin-dialog@2.7.1':
     dependencies:
-      '@tauri-apps/api': 2.11.0
+      '@tauri-apps/api': 2.12.5
 
   '@tauri-apps/plugin-fs@2.5.1':
     dependencies:
-      '@tauri-apps/api': 2.11.0
+      '@tauri-apps/api': 2.12.5
 
   '@tauri-apps/plugin-notification@2.4.0':
     dependencies:
@@ -1958,11 +2048,11 @@ snapshots:
 
   '@tauri-apps/plugin-process@2.3.1':
     dependencies:
-      '@tauri-apps/api': 2.11.0
+      '@tauri-apps/api': 2.12.5
 
   '@tauri-apps/plugin-shell@2.3.5':
     dependencies:
-      '@tauri-apps/api': 2.11.0
+      '@tauri-apps/api': 2.12.5
 
   '@types/estree@1.0.8': {}
 

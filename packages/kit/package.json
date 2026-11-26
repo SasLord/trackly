@@ -1,0 +1,16 @@
+{
+  "name": "@trackly/kit",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {},
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.4.2",
+    "@tauri-apps/plugin-shell": "^2.3.1",
+    "@trackly/design": "workspace:*"
+  },
+  "peerDependencies": {
+    "svelte": "^5.55.0"
+  }
+}

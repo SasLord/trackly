@@ -1,0 +1,8 @@
+{
+  "name": "trackly-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=20"
+  }
+}
