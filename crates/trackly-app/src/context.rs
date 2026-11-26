@@ -146,6 +146,8 @@ pub struct AppCtx {
     pub chat: Arc<ChatService>,
     /// Каналы сигналов мессенджера по пользователям (Phase 43, D-04).
     pub im_hub: Arc<crate::services::im_hub::ImHub>,
+    /// Ядро мессенджера: send/sync/состав беседы (Phase 43).
+    pub im: Arc<crate::services::im_service::ImService>,
 }
 
 impl AppCtx {
@@ -333,6 +335,14 @@ impl AppCtx {
                 attachments.clone(),
             )
             .with_ws_tx(ws_broadcast.clone()),
+        );
+        let im = Arc::new(
+            crate::services::im_service::ImService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+            )
+            .with_im_hub(im_hub.clone()),
         );
         // Phase 41.5 D-14: stale message drafts are cleaned in the background.
         {
@@ -585,6 +595,7 @@ impl AppCtx {
             attachments,
             chat,
             im_hub,
+            im,
         })
     }
 }

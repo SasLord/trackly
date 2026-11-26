@@ -193,6 +193,11 @@ mod tests {
             organization.clone(),
             org_db.clone(),
         ));
+        let im = std::sync::Arc::new(crate::services::im_service::ImService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -205,6 +210,7 @@ mod tests {
             attachments,
             chat,
             im_hub: Arc::new(crate::services::im_hub::ImHub::new()),
+            im,
             paths: paths_arc,
             org_db,
             reports,

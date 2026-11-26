@@ -162,6 +162,11 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         organization.clone(),
         org_db.clone(),
     ));
+    let im = std::sync::Arc::new(trackly_app::services::im_service::ImService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
@@ -174,6 +179,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         attachments,
         chat,
         im_hub: std::sync::Arc::new(trackly_app::services::im_hub::ImHub::new()),
+        im,
         paths: paths_arc,
         org_db,
         reports,
