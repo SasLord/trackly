@@ -22,9 +22,9 @@
   // re-binds to AD with the same credentials (proves identity — the user
   // has no session) and idempotently creates/reuses an open restore
   // request (09-AD-GAPS Defect 1 fix's idempotent INSERT, reused here).
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
+  import type { AccessBlockedDetails, AppError } from '@trackly/transport/errors';
   import AuthShell from '@trackly/kit/components/AuthShell.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 

@@ -3,7 +3,7 @@
   // Assembles sub-nav, period selector, filters, and table.
   // Loads dropdown data on mount; auto-reloads report on state changes.
   import { onMount } from 'svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
   import { saveFile } from '@trackly/kit/utils/saveFile';

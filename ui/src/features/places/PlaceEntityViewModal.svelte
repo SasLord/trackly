@@ -46,7 +46,7 @@
   import RepairDeviceHistoryModal from '../requests/RepairDeviceHistoryModal.svelte';
   import { repairs } from '../requests/api';
   import { canUseRepairs } from '../requests/repairLocks';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import type {
     PlaceContentDto,
     DeviceDto,

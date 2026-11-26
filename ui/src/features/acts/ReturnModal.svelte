@@ -30,7 +30,7 @@
   import DatePicker from '@trackly/kit/components/DatePicker.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
   import ReturnItemsTable, { type ReturnRowState } from './ReturnItemsTable.svelte';
   import { buildReturnItems } from './returnPayload';

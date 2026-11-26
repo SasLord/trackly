@@ -5,12 +5,12 @@
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { ensureLoaded as ensureStatusesLoaded } from '$lib/stores/deviceStatuses.svelte';
-  import { isTauri } from '$lib/stores/transport.svelte';
+  import { isTauri } from '@trackly/transport/transport.svelte';
   import {
     notifyPlaceContentChanged,
     placeContentEventsStore,
   } from '$lib/stores/placeContentEvents.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { parseIdFromHash } from '@trackly/kit/utils/hashId';
   import DeviceList from './DeviceList.svelte';
   import DeviceFilters from './DeviceFilters.svelte';

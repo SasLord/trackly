@@ -14,7 +14,7 @@
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { groupTypes } from '$lib/api/groups';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { GroupTypeDto, GroupTypeUpdateDto } from '../../bindings';
 
   interface Props {

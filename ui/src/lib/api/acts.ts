@@ -7,7 +7,7 @@
 // `renderPdf` / `search` — stub'ы до plan 04; бэкенд их ещё не регистрирует,
 // но мы кидаем понятную ошибку, чтобы downstream UI не вылетал.
 
-import { apiCall } from './client';
+import { apiCall } from '@trackly/transport/client';
 import type {
   ActCreateDto,
   ActDeleteResultDto,

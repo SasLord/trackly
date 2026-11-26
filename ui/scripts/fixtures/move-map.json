@@ -191,6 +191,22 @@
     {
       "from": "ui/src/lib/components/icons/RowReload.svelte",
       "to": "packages/kit/src/components/icons/RowReload.svelte"
+    },
+    {
+      "from": "ui/src/lib/api/client.ts",
+      "to": "packages/transport/src/client.ts"
+    },
+    {
+      "from": "ui/src/lib/api/errors.ts",
+      "to": "packages/transport/src/errors.ts"
+    },
+    {
+      "from": "ui/src/lib/api/ws.ts",
+      "to": "packages/transport/src/ws.ts"
+    },
+    {
+      "from": "ui/src/lib/stores/transport.svelte.ts",
+      "to": "packages/transport/src/transport.svelte.ts"
     }
   ]
 }

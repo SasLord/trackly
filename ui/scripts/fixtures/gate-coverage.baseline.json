@@ -207,7 +207,7 @@
     "ui/src/features/users/UsersPage.svelte",
     "ui/src/lib/api/acts.ts",
     "ui/src/lib/api/adSso.ts",
-    "ui/src/lib/api/client.ts",
+    "packages/transport/src/client.ts",
     "ui/src/lib/api/devices.ts",
     "ui/src/lib/api/errors.ts",
     "ui/src/lib/api/groups.ts",
@@ -415,12 +415,12 @@
           "dir": "ui/scripts",
           "pattern": "^check-.*\\.mjs$",
           "recursive": false,
-          "count": 73
+          "count": 74
         }
       ]
     },
     "html-commands": {
-      "files": ["ui/src/lib/api/client.ts"],
+      "files": ["packages/transport/src/client.ts"],
       "dirs": [
         {
           "dir": "crates/trackly-app/src/http",
@@ -448,7 +448,7 @@
           "dir": "ui/src",
           "pattern": ".",
           "recursive": true,
-          "count": 262
+          "count": 259
         }
       ]
     }

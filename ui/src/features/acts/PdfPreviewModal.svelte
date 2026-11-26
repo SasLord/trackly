@@ -41,9 +41,9 @@
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { acts } from '$lib/api/acts';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { repairs } from '../requests/api';
-  import { isTauri } from '$lib/stores/transport.svelte';
+  import { isTauri } from '@trackly/transport/transport.svelte';
   import {
     buildSrcdoc,
     THEME_CHROME,

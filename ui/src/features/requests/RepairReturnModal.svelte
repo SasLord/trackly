@@ -12,8 +12,8 @@
   import Textarea from '@trackly/kit/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { apiCall } from '$lib/api/client';
-  import { parseAppError } from '$lib/api/errors';
+  import { apiCall } from '@trackly/transport/client';
+  import { parseAppError } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import { attachments, uploadAttachment } from '../attachments/api';

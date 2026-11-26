@@ -10,7 +10,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
   import { pluralizeRu } from '@trackly/kit/utils/pluralize';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
 
   interface Props {
     kind: 'group' | 'type';

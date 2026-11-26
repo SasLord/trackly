@@ -3,7 +3,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import UsersList from './UsersList.svelte';
   import UserFormModal from './UserFormModal.svelte';
   import type { UserDto, UserListResponse, UserPatch } from '../../bindings';

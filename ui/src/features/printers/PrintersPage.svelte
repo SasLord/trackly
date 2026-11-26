@@ -7,7 +7,7 @@
   import { onMount } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { connectWs, onWsEvent } from '@trackly/transport/ws';
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { parseIdFromHash } from '@trackly/kit/utils/hashId';

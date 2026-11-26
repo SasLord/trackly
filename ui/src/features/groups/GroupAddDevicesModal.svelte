@@ -27,7 +27,7 @@
   import Table from '$lib/components/Table.svelte';
   import TableRow from '@trackly/kit/components/TableRow.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
   import {
@@ -38,7 +38,11 @@
   } from '$lib/stores/deviceStatuses.svelte';
   import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
-  import { isAlreadyInGroup, type AlreadyInGroupDetails, type AppError } from '$lib/api/errors';
+  import {
+    isAlreadyInGroup,
+    type AlreadyInGroupDetails,
+    type AppError,
+  } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { pluralizeRu } from '@trackly/kit/utils/pluralize';
   import type { DeviceDto, GroupAddDevicesResultDto, GroupDto, PlaceDto } from '../../bindings';

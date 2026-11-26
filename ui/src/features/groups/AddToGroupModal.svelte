@@ -25,7 +25,7 @@
   import AlreadyInGroupPopup from './AlreadyInGroupPopup.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
-  import { isAlreadyInGroup, type AppError } from '$lib/api/errors';
+  import { isAlreadyInGroup, type AppError } from '@trackly/transport/errors';
   import type { GroupDto } from '../../bindings';
 
   interface Props {

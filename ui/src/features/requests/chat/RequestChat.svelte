@@ -5,8 +5,8 @@
   import { tick, untrack } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import { onWsEvent } from '$lib/api/ws';
-  import { parseAppError } from '$lib/api/errors';
+  import { onWsEvent } from '@trackly/transport/ws';
+  import { parseAppError } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { saveFile } from '@trackly/kit/utils/saveFile';
   import AttachmentViewer from '../../attachments/AttachmentViewer.svelte';

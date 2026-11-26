@@ -29,9 +29,9 @@
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { PlaceDto, PlaceNewDto } from '../../bindings';
 
   interface Props {

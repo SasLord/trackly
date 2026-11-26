@@ -9,8 +9,8 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Textarea from '@trackly/kit/components/Textarea.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { apiCall } from '$lib/api/client';
-  import { parseAppError } from '$lib/api/errors';
+  import { apiCall } from '@trackly/transport/client';
+  import { parseAppError } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import {
     ensureLoaded as ensureStatusesLoaded,

@@ -4,7 +4,7 @@
 // с сервера (chat_unread_summary); клиент ничего не считает локально, а лишь
 // показывает и перечитывает по WS. WS-соединение стор не открывает: его держат
 // layout'ы (refcount-singleton в ws.ts).
-import { onWsEvent } from '$lib/api/ws';
+import { onWsEvent } from '@trackly/transport/ws';
 import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import { pushToast } from '@trackly/kit/stores/toast.svelte';
 import { chat } from './api';

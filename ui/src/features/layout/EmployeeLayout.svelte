@@ -14,9 +14,9 @@
   import ThemeSwitcher from '@trackly/kit/components/ThemeSwitcher.svelte';
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { themeStore, setTheme } from '@trackly/kit/stores/theme.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { connectWs, onWsEvent } from '@trackly/transport/ws';
   import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { appHasFocus, showSystemNotification } from '$lib/platform/systemNotify';

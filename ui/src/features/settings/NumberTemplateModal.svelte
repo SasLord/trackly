@@ -13,9 +13,9 @@
   import Input from '@trackly/kit/components/Input.svelte';
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import NumberMaskHelp from './NumberMaskHelp.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { NextNumberDto, NumberTemplateDto, TemplateTypeDto } from '../../bindings';
 
   interface EditableTemplate {

@@ -89,7 +89,7 @@ const PINNED_SPEC = {
     dirs: [{ dir: 'ui/scripts', pattern: '^check-.*\\.mjs$', recursive: false }],
   },
   'html-commands': {
-    files: ['ui/src/lib/api/client.ts'],
+    files: ['packages/transport/src/client.ts'],
     dirs: [{ dir: 'crates/trackly-app/src/http', pattern: '\\.rs$', recursive: false }],
   },
   'repair-modal-focus': {

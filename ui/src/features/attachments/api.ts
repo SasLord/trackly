@@ -8,8 +8,8 @@
 // GET /api/v1/attachments/{id}/file|thumb (браузер).
 
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { apiCall } from '$lib/api/client';
-import { parseAppError } from '$lib/api/errors';
+import { apiCall } from '@trackly/transport/client';
+import { parseAppError } from '@trackly/transport/errors';
 import type {
   AttachmentHistoryEventDto,
   AttachmentLimitDto,

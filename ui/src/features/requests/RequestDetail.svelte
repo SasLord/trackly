@@ -29,7 +29,7 @@
   import OperationModal from '../cartridges/OperationModal.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { requests, repairs } from './api';
   import RepairDeviceStatus from './RepairDeviceStatus.svelte';
   import { openRepairRequest } from './repairLocks';
@@ -39,11 +39,11 @@
   import RepairCompleteModal from './RepairCompleteModal.svelte';
   import RepairAssignDeviceModal from './RepairAssignDeviceModal.svelte';
   import RepairVisitsSection from './RepairVisitsSection.svelte';
-  import { parseAppError } from '$lib/api/errors';
+  import { parseAppError } from '@trackly/transport/errors';
   import AttachmentsBlock from '../attachments/AttachmentsBlock.svelte';
   import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
   import { attachments } from '../attachments/api';
-  import { onWsEvent } from '$lib/api/ws';
+  import { onWsEvent } from '@trackly/transport/ws';
   import type {
     AttachmentHistoryEventDto,
     RepairStateDto,

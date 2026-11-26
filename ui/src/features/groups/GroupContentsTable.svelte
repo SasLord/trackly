@@ -49,7 +49,7 @@
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { ensureLoaded, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { isAlreadyInGroup, parseAppError, type AppError } from '$lib/api/errors';
+  import { isAlreadyInGroup, parseAppError, type AppError } from '@trackly/transport/errors';
   import type {
     GroupAddDevicesResultDto,
     DeviceDto,

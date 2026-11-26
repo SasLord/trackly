@@ -10,7 +10,7 @@
 // static gates (svelte-check / build) cannot verify.
 
 import { tick } from 'svelte';
-import { apiCall } from '$lib/api/client';
+import { apiCall } from '@trackly/transport/client';
 import type { OccupyingRecordDto, TemplateContextDto } from '../../bindings';
 
 /** D-01/D-04: a «Продолжить» confirmation is given for ONE concrete number —

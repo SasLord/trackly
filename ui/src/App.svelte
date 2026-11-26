@@ -7,7 +7,7 @@
   import ToastHost from '@trackly/kit/components/ToastHost.svelte';
   import LoginPage from './features/auth/LoginPage.svelte';
   import FirstRunWizard from './features/auth/FirstRunWizard.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { trySilentAdSso } from '$lib/api/adSso';
   import { authStore } from '$lib/stores/auth.svelte';
   import { resetUserScoped } from '@trackly/kit/stores/userScoped.svelte';

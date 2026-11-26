@@ -8,7 +8,7 @@
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import type { ServerStatusDto } from '../../bindings';
 
   // NetworkSettingsDto — local type matching the backend DTO.

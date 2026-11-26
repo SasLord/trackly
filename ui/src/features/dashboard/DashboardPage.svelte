@@ -3,7 +3,7 @@
   // 5 виджетов в 2-колоночной адаптивной сетке (breakpoint 1280px).
   // Параллельная загрузка виджетов с независимыми состояниями ошибок (D-10).
   // API: dashboard_get_all_widgets (DASH-01..05) + dashboard_get_consumption_chart (DASH-03).
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import StatWidget from './StatWidget.svelte';
   import ChartWidget from './ChartWidget.svelte';

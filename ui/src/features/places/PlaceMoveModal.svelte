@@ -15,9 +15,9 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { PlaceDto, SubtreeStatsDto } from '../../bindings';
 
   interface Props {

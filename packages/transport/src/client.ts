@@ -1,8 +1,23 @@
 import { parseAppError, type AppError } from './errors';
-import { authStore } from '$lib/stores/auth.svelte';
-import { pushToast } from '@trackly/kit/stores/toast.svelte';
+import { isTauri } from './transport.svelte';
 
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+/**
+ * Реакции на отказы авторизации внедряются приложением (транспорт не знает ни
+ * auth-стора, ни тостов). Без зарегистрированных хуков ничего не происходит.
+ * Trackly регистрирует их в `ui/src/main.ts` до `mount`.
+ */
+export interface ApiHooks {
+  /** 401 / UNAUTHORIZED: сессии нет или она истекла. */
+  onUnauthorized?: (err: AppError) => void;
+  /** 403 / FORBIDDEN: действие запрещено ролью. */
+  onForbidden?: (err: AppError) => void;
+}
+
+let hooks: ApiHooks = {};
+
+export function setApiHooks(next: ApiHooks): void {
+  hooks = next;
+}
 
 /**
  * Команды, чьи HTTP-обработчики ЗАКОННО отвечают `text/html` (печатные формы
@@ -31,11 +46,10 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
       if (err && typeof err === 'object' && 'code' in err) {
         const code = (err as { code: string }).code;
         if (code === 'UNAUTHORIZED' || code === 'Unauthorized') {
-          authStore.user = null;
-          if (typeof window !== 'undefined') window.location.hash = '#/login';
+          hooks.onUnauthorized?.(err);
         }
         if (code === 'FORBIDDEN' || code === 'Forbidden') {
-          pushToast('error', 'Недостаточно прав для этого действия');
+          hooks.onForbidden?.(err);
         }
       }
       throw err;
@@ -50,14 +64,13 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const err = parseAppError(body);
-    // 401 → clear auth and redirect to login.
+    // 401 → хук приложения (сброс пользователя, переход на вход).
     if (res.status === 401) {
-      authStore.user = null;
-      if (typeof window !== 'undefined') window.location.hash = '#/login';
+      hooks.onUnauthorized?.(err);
     }
-    // 403 → toast (D-DENY-01), no redirect/no authStore mutation — still throws so callers can react if needed
+    // 403 → хук приложения (тост, D-DENY-01); ошибка всё равно бросается.
     if (res.status === 403) {
-      pushToast('error', 'Недостаточно прав для этого действия');
+      hooks.onForbidden?.(err);
     }
     throw err;
   }

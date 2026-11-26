@@ -17,7 +17,7 @@
   // дефолтами на apiCall(...) — единственная architecture-level добавка сверх
   // буквального Props-контракта из текста плана.
   import { onDestroy } from 'svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { portal } from '@trackly/kit/utils/portal';
   import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
   import { authStore } from '$lib/stores/auth.svelte';

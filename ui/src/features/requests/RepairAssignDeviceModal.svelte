@@ -6,7 +6,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { parseAppError } from '$lib/api/errors';
+  import { parseAppError } from '@trackly/transport/errors';
   import { repairs } from './api';
   import type { RepairDeviceOptionDto, RequestDto } from '../../bindings';
 

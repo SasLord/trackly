@@ -17,7 +17,7 @@
   // handful of levels, not fetched per row) rather than parsing `full_path`, so
   // each segment carries a real place id for `onSelectAncestor`.
   import { push } from 'svelte-spa-router';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import Tabs from '@trackly/kit/components/Tabs.svelte';
   import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import Table from '$lib/components/Table.svelte';

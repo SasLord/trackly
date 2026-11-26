@@ -26,7 +26,7 @@ const TAG = '[check-unread-store-behavior]';
 const US = 'features/requests/chat/unreadStore.svelte.ts';
 
 const STUBS = {
-  '$lib/api/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }`,
+  '@trackly/transport/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }`,
   './api': `export const chat = {
     unreadSummary: (...a) => globalThis.__h.api.unreadSummary(...a),
     setMuted: (...a) => globalThis.__h.api.setMuted(...a),

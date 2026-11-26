@@ -23,10 +23,10 @@
   import GroupContentsTable from './GroupContentsTable.svelte';
   import GroupPropertiesForm from './GroupPropertiesForm.svelte';
   import { groups } from '$lib/api/groups';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { parseAppError, type AppError } from '$lib/api/errors';
+  import { parseAppError, type AppError } from '@trackly/transport/errors';
   import type { GroupCardDto, HistoryEntryDto } from '../../bindings';
 
   interface Props {

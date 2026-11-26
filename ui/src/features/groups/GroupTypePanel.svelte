@@ -13,7 +13,7 @@
   import GroupTypePropertiesTable from './GroupTypePropertiesTable.svelte';
   import { groupTypes } from '$lib/api/groups';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { GroupTypeDto } from '../../bindings';
 
   interface Props {

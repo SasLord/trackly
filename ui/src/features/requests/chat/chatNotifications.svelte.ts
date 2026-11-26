@@ -3,7 +3,7 @@
 // Фаза 41.5, план 11 (D-21), план 25 (D-G1/D-G2): тост и системное уведомление о чужом
 // сообщении для всех ролей; заглушённая заявка молчит (счётчики при этом растут).
 // Текст сообщения в WS-событии отсутствует и в уведомление не попадает.
-import { onWsEvent } from '$lib/api/ws';
+import { onWsEvent } from '@trackly/transport/ws';
 import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
 import { pushToast, removeToast, toastStore } from '@trackly/kit/stores/toast.svelte';

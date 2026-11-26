@@ -5,7 +5,7 @@
   // Ошибки выводятся по машинному коду, серверные тексты не показываются.
   import { untrack } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import { parseAppError } from '$lib/api/errors';
+  import { parseAppError } from '@trackly/transport/errors';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import AttachmentTypeIcon, { iconKindForMime } from '../../attachments/AttachmentTypeIcon.svelte';
   import { rejectLine } from '../../attachments/rejectText';

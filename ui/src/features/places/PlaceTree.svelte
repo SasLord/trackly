@@ -9,7 +9,7 @@
   // PlacePicker's genuinely lazy children, which this component does not
   // share code with).
   import { onDestroy, untrack } from 'svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { placeContentEventsStore, reloadSeqNow } from '$lib/stores/placeContentEvents.svelte';
@@ -21,7 +21,7 @@
   import PlaceTreeNode from './PlaceTreeNode.svelte';
   import PlaceFormModal from './PlaceFormModal.svelte';
   import PlaceMoveModal from './PlaceMoveModal.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { PlaceDto, PlacePathDto, SubtreeStatsDto } from '../../bindings';
 
   interface Props {

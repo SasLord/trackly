@@ -181,7 +181,7 @@ export async function showSystemNotification(
         try {
           // apiCall, а не сгенерированный bindings.ts: на Windows-CI он не создаётся
           // (export_bindings там отключён), а динамический import ломает vite build.
-          const { apiCall } = await import('$lib/api/client');
+          const { apiCall } = await import('@trackly/transport/client');
           const outcome = await apiCall<NotifyDesktopOutcome>('notify_desktop', {
             title,
             body,

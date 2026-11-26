@@ -8,7 +8,7 @@
   // rest of this component's editing/preview surface is untouched.
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
 
   interface TemplateEditorItem {
     kind: string;

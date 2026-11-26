@@ -31,7 +31,7 @@
 //     флаг эпизода `reconnecting` уже не давал показать его снова. Дедуп (E2)
 //     от этого не защищал: он про стопку одинаковых, а не про вытеснение
 //     единственного.
-//  2. Структурные правила W1-W6 для `src/lib/api/ws.ts` (текст без
+//  2. Структурные правила W1-W6 для `packages/transport/src/ws.ts` (текст без
 //     комментариев, пробелы схлопнуты):
 //       W1 — тост обрыва ставится залипающим (`sticky: true`);
 //       W2 — вызов придушен флагом эпизода (`if (!reconnecting)` +
@@ -73,7 +73,7 @@ import { stripComments } from './_strip.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 const STORE = path.join(UI_ROOT, '../packages/kit/src/stores/toast.svelte.ts');
-const WS = path.join(UI_ROOT, 'src/lib/api/ws.ts');
+const WS = path.join(UI_ROOT, '../packages/transport/src/ws.ts');
 const TAG = '[check-ws-disconnect-toast]';
 const RECONNECT_MESSAGE = 'Соединение с сервером потеряно. Переподключение…';
 /// Зеркало `MAX_TOASTS` из стора (стор его не экспортирует). Используется

@@ -35,7 +35,7 @@
   import AttachmentHistory from '../attachments/AttachmentHistory.svelte';
   import { createAttachmentEvents } from '../attachments/attachmentEvents.svelte';
   import type { AttachmentHistoryEventDto } from '../../bindings';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import { push } from 'svelte-spa-router';
   import { openRequestTarget } from '../requests/requestTarget';

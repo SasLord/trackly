@@ -10,7 +10,7 @@
   import Radio from '@trackly/kit/components/Radio.svelte';
   import Input from '@trackly/kit/components/Input.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import type { AdSettingsDto, SetAdPayload } from '../../bindings-phase9';
 
   let settings = $state<AdSettingsDto>({

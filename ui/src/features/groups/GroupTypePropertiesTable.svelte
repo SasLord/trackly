@@ -21,7 +21,7 @@
   import { pluralizeRu } from '@trackly/kit/utils/pluralize';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { propertyRemovalCopy } from './propertyRemoval';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { GroupTypePropertyDto, PropertyUpdateDto } from '../../bindings';
 
   interface Props {

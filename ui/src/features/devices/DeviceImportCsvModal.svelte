@@ -3,8 +3,8 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Select from '@trackly/kit/components/Select.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { isTauri } from '$lib/stores/transport.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { isTauri } from '@trackly/transport/transport.svelte';
+  import { apiCall } from '@trackly/transport/client';
   import { devices } from './api';
   import type { CsvImportPreviewResponse, CsvImportReport } from '../../bindings';
 

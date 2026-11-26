@@ -26,7 +26,7 @@
   import { groupTypes, groups } from '$lib/api/groups';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { GroupDto, GroupTypeDto } from '../../bindings';
 
   interface Props {

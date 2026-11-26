@@ -15,7 +15,7 @@
   import Badge from '@trackly/kit/components/Badge.svelte';
   import { tick } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { parseAppError } from '$lib/api/errors';
+  import { parseAppError } from '@trackly/transport/errors';
   import { requests, repairs } from './api';
   import type { RequestCategoryDto, RequestPrinterOptionDto } from '../../bindings-phase6';
   import type { RepairDeviceOptionDto } from '../../bindings';

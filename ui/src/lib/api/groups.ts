@@ -9,7 +9,7 @@
 // только UX-слой. Типы запросов и ответов — из сгенерированного `bindings.ts`,
 // имена аргументов — camelCase, как в HTTP-payload'ах роутов
 // (`POST /api/v1/<команда>`) и в Tauri-вызовах.
-import { apiCall } from './client';
+import { apiCall } from '@trackly/transport/client';
 import type {
   DeviceMembershipDto,
   GroupActExpansionDto,

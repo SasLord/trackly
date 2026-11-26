@@ -21,11 +21,44 @@
 //     чем пользователь успевал переключиться из десктопного окна в браузер).
 // NOTE: 'request_status_changed' — NOT 'request_updated' (06-CONTEXT sync).
 
-import type { WsEvent } from '../../bindings-phase6';
+import { isTauri } from './transport.svelte';
+
+/**
+ * Структурная копия `WsEvent` из bindings-phase6 (пакет не импортирует bindings).
+ * Дрейф ловит `ui/src/packages-compat.ts` (взаимная присваиваемость, svelte-check).
+ */
+export type WsEvent =
+  | { type: 'new_request'; requestId: number; requestType: string; requesterName: string }
+  | {
+      type: 'request_status_changed';
+      requestId: number;
+      newStatus: string;
+      requestedByUserId: number;
+      participantUserIds: number[];
+    }
+  | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string }
+  | { type: 'number_space_changed'; contexts: string[] }
+  | { type: 'entities_changed'; placeIds: number[]; deviceIds: number[]; groupIds: number[] }
+  | { type: 'employee_scope_changed' }
+  | {
+      type: 'attachments_changed';
+      parentKind: string;
+      parentId: number;
+      requestedByUserId: number | null;
+      participantUserIds: number[];
+    }
+  | {
+      type: 'chat_message';
+      requestId: number;
+      messageId: number;
+      actorUserId: number | null;
+      actorName: string | null;
+      requestedByUserId: number | null;
+      participantUserIds: number[];
+    }
+  | { type: 'chat_read_changed'; userId: number };
 
 type WsEventHandler = (event: WsEvent) => void;
-
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 let handlers: WsEventHandler[] = [];
 let ws: WebSocket | null = null;

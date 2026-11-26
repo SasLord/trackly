@@ -3,7 +3,7 @@
 // Frontend args в apiCall — camelCase; tauri-specta конвертирует в snake_case Rust-аргументы.
 // DTO shape — camelCase (PrinterDto serde rename_all = "camelCase", S-2).
 
-import { apiCall } from '$lib/api/client';
+import { apiCall } from '@trackly/transport/client';
 import type {
   DiscoveredPrinterDto,
   PrinterDto,

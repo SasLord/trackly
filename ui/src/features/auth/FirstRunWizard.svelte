@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserDto } from '../../bindings';
   import type { UserRole } from '$lib/stores/auth.svelte';

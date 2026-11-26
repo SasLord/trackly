@@ -3,7 +3,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '@trackly/kit/components/Modal.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import AttachmentSettings from './AttachmentSettings.svelte';
 
   // INT-10: команда settings_open_db_folder есть только у десктопа (HTTP-маршрута

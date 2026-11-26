@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
   import { router } from 'svelte-spa-router';
-  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { connectWs, onWsEvent } from '@trackly/transport/ws';
   import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
   import { notifyEntitiesChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { WsEvent } from '../../bindings-phase6';

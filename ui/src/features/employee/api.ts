@@ -2,7 +2,7 @@
 // read-команды. Типы только через `import type` (bindings.ts в рантайме не
 // импортируется). Команда есть в allowlist сотрудника (employee-allowed-commands.json).
 
-import { apiCall } from '$lib/api/client';
+import { apiCall } from '@trackly/transport/client';
 import type { EmployeeDevicesDto } from '../../bindings';
 
 export const employeeDevices = {

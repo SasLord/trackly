@@ -9,7 +9,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import RowChevron from '@trackly/kit/components/icons/RowChevron.svelte';
-  import { onWsEvent } from '$lib/api/ws';
+  import { onWsEvent } from '@trackly/transport/ws';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { saveFile } from '@trackly/kit/utils/saveFile';

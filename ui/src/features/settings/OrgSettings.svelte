@@ -12,8 +12,8 @@
   import NumberTemplateModal from './NumberTemplateModal.svelte';
   import NumberMaskHelp from './NumberMaskHelp.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
-  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { apiCall } from '@trackly/transport/client';
+  import { connectWs, onWsEvent } from '@trackly/transport/ws';
   import { previewShortenPath, monoReadout } from '$lib/utils/placePath';
   import type { WsEvent } from '../../bindings-phase6';
   import type { NumberTemplateDto, TemplateContextDto, TemplateTypeDto } from '../../bindings';

@@ -3,7 +3,7 @@
 // Frontend args в apiCall — camelCase; tauri-specta автоматически конвертирует в
 // snake_case Rust-аргументы (S-5). DTO shape — snake_case (S-2).
 
-import { apiCall } from '$lib/api/client';
+import { apiCall } from '@trackly/transport/client';
 import type {
   AuditEntryDto,
   CartridgeCountsDto,

@@ -2,7 +2,7 @@
 //
 // Backend: organization_get → OrgDto (snake_case JSON).
 
-import { apiCall } from './client';
+import { apiCall } from '@trackly/transport/client';
 import type { OrgDto } from '../../bindings';
 
 export const organization = {

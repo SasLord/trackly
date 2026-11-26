@@ -33,7 +33,7 @@
   import { printers } from './api';
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import { push } from 'svelte-spa-router';
   import { openRequestTarget } from '../requests/requestTarget';

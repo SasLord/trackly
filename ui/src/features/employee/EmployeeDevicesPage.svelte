@@ -4,7 +4,7 @@
   // сервер (D-06, D-20): клиент не сортирует и не фильтрует. Единственные экземпляры
   // карточки и формы заявки стоят здесь, вне строки и вне <td>.
   import { onMount } from 'svelte';
-  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { connectWs, onWsEvent } from '@trackly/transport/ws';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Table from '$lib/components/Table.svelte';

@@ -50,7 +50,10 @@ const ENTRIES = [
 
 // Счётные минимумы против «зелёного по пустоте»: прогон на исправленном коде дал 81 файл и 79 (после 41.6 — 119 и 89)
 // вызова команд; запас на естественное сокращение кода.
-const MIN_FILES = 90;
+// План 42-15: 90 -> 86. Замыкание обходит только ui/src; четыре файла транспорта (client, errors,
+// ws, transport.svelte) переехали в packages/transport и в обход не попадают (92 -> 88 файла).
+// Вызовов команд в них нет (MIN_CALLS не менялся), к проверке роли они отношения не имеют.
+const MIN_FILES = 86;
 const MIN_CALLS = 70;
 
 /**
@@ -640,7 +643,7 @@ function selftest() {
       name: 'staff-команда в EmployeeDevicesPage (device_statuses_list)',
       file: 'src/features/employee/EmployeeDevicesPage.svelte',
       from: '<script lang="ts">',
-      to: `<script lang="ts">\n  import { apiCall } from '$lib/api/client';\n  void apiCall('device_statuses_list');`,
+      to: `<script lang="ts">\n  import { apiCall } from '@trackly/transport/client';\n  void apiCall('device_statuses_list');`,
       expect: /EmployeeDevicesPage\.svelte:\d+: .*device_statuses_list/,
     },
     {

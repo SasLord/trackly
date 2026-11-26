@@ -13,7 +13,7 @@
   import Input from '@trackly/kit/components/Input.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { groups } from '$lib/api/groups';
-  import { parseAppError } from '$lib/api/errors';
+  import { parseAppError } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import GroupUsersField, { type SelectedUser } from './GroupUsersField.svelte';
   import GroupPrintersList, { type LinkedPrinterInfo } from './GroupPrintersList.svelte';

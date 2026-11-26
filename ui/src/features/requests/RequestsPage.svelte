@@ -7,9 +7,9 @@
   import { router } from 'svelte-spa-router';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { connectWs, onWsEvent } from '$lib/api/ws';
-  import { apiCall } from '$lib/api/client';
-  import { parseAppError } from '$lib/api/errors';
+  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { apiCall } from '@trackly/transport/client';
+  import { parseAppError } from '@trackly/transport/errors';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import RequestsMasterDetail from './RequestsMasterDetail.svelte';
   import RequestsSearchAndTabs from './RequestsSearchAndTabs.svelte';

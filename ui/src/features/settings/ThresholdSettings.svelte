@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import Input from '@trackly/kit/components/Input.svelte';
   import Radio from '@trackly/kit/components/Radio.svelte';
 

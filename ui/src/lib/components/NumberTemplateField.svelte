@@ -15,9 +15,9 @@
   import Input from '@trackly/kit/components/Input.svelte';
   import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import IconInsertTemplate from '@trackly/kit/components/icons/IconInsertTemplate.svelte';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { connectWs, onWsEvent } from '@trackly/transport/ws';
   import type { WsEvent } from '../../bindings-phase6';
   import type {
     NextNumberDto,

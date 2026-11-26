@@ -4,7 +4,7 @@
 //
 // Почему он существует: по HTTP отсутствующий `/api/`-маршрут отдаёт index.html с
 // кодом 200 (spa_fallback), а ветка `text/html` в `apiCall`
-// (`ui/src/lib/api/client.ts`, ~строка 60) приводит ЛЮБУЮ строку к типу ответа
+// (`packages/transport/src/client.ts`, ~строка 60) приводит ЛЮБУЮ строку к типу ответа
 // через `as R`. Корень в клиенте сознательно не исправлен — это структурное
 // изменение, записанное рекомендацией в 41.12-VERIFICATION.md. Значит
 // единственная действующая защита — локальная охрана в сторе: без неё стор
@@ -720,7 +720,7 @@ function selftest(root) {
       extra: [
         [
           'src/lib/stores/zzDirect.svelte.ts',
-          "import { apiCall } from '$lib/api/client';\nconst s = $state({ items: [] });\nexport const load = () => apiCall('cartridge_models_list').then((rows) => { s.items = rows; });\n",
+          "import { apiCall } from '@trackly/transport/client';\nconst s = $state({ items: [] });\nexport const load = () => apiCall('cartridge_models_list').then((rows) => { s.items = rows; });\n",
         ],
       ],
     }),
@@ -732,7 +732,7 @@ function selftest(root) {
       extra: [
         [
           'src/features/zz/page-data.ts',
-          "import { apiCall } from '$lib/api/client';\nexport const load = () => apiCall('cartridge_models_list');\n",
+          "import { apiCall } from '@trackly/transport/client';\nexport const load = () => apiCall('cartridge_models_list');\n",
         ],
       ],
     }),
@@ -744,7 +744,7 @@ function selftest(root) {
       extra: [
         [
           'src/lib/stores/zzNoState.svelte.ts',
-          "import { apiCall } from '$lib/api/client';\nexport const load = () => apiCall('cartridge_models_list');\n",
+          "import { apiCall } from '@trackly/transport/client';\nexport const load = () => apiCall('cartridge_models_list');\n",
         ],
       ],
     }),
@@ -771,7 +771,7 @@ function selftest(root) {
           'src/lib/stores/zzTrap.svelte.ts',
           [
             '// шаблоны лежат в templates/*.html',
-            "import { apiCall } from '$lib/api/client';",
+            "import { apiCall } from '@trackly/transport/client';",
             'const s = $state({ items: [] });',
             "export const load = () => apiCall('cartridge_models_list').then((rows) => { s.items = rows; });",
             '/* настоящий блочный комментарий */',

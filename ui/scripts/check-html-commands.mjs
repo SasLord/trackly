@@ -2,7 +2,7 @@
 // [check-html-commands] Паритет белого списка HTML-команд клиента с сервером
 // (quick 261121-heg, INT-35).
 //
-// ЗАЧЕМ. `apiCall` (ui/src/lib/api/client.ts) по HTTP возвращает тело
+// ЗАЧЕМ. `apiCall` (packages/transport/src/client.ts) по HTTP возвращает тело
 // `text/html` как строку ТОЛЬКО для команд из `HTML_COMMANDS`; на любую другую
 // команду HTML означает отсутствующий маршрут (SPA-fallback отдаёт index.html
 // с 200) и превращается в ошибку NOT_FOUND. Если сервер заведёт новый
@@ -17,7 +17,7 @@
 //       тело `spa_fallback` в mod.rs — не маршрут, исключено) — объемлющий
 //       `async fn <handler>` и в том же файле
 //       `.route("/api/v1/<name>", post(<handler>))` → name;
-//   B = строковые литералы `HTML_COMMANDS` в ui/src/lib/api/client.ts.
+//   B = строковые литералы `HTML_COMMANDS` в packages/transport/src/client.ts.
 // Проверки:
 //   [H0] A не пусто, B разобран (защита от вакуумного прохода);
 //   [H1] у каждого text/html-обработчика есть маршрут в том же файле;
@@ -44,7 +44,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TAG = '[check-html-commands]';
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const HTTP_DIR = 'crates/trackly-app/src/http';
-const CLIENT = 'ui/src/lib/api/client.ts';
+const CLIENT = 'packages/transport/src/client.ts';
 const HTML_MARK = /CONTENT_TYPE,\s*"text\/html/g;
 const ROUTE_RE = /\.route\(\s*"\/api\/v1\/(\w+)"\s*,\s*post\(\s*(\w+)\s*\)/g;
 const FN_RE = /async\s+fn\s+(\w+)/g;

@@ -49,7 +49,8 @@ export const EXEMPT = {
   'features/layout/layout-state.svelte.ts': 'состояние выдвижной панели, не данные с сервера',
   [`${KIT_STORES}/toast.svelte.ts`]: 'не кэш данных; очищается отдельно (clearToasts) в App.svelte',
   'lib/stores/auth.svelte.ts': 'сам источник смены пользователя; обнуляется входом и выходом',
-  'lib/api/ws.ts': 'refCount и обработчики соединения: их закрывают размонтируемые Layout',
+  '../../packages/transport/src/ws.ts':
+    'refCount и обработчики соединения: их закрывают размонтируемые Layout',
   'features/attachments/attachmentEvents.svelte.ts':
     'фабрика без модульного состояния: всё внутри createAttachmentEvents',
   [REGISTRY]: 'сам реестр сбросов; хранит функции, а не данные пользователя',

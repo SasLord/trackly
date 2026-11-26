@@ -38,7 +38,7 @@
   import GroupMoveModal from './GroupMoveModal.svelte';
   import AddToGroupModal from './AddToGroupModal.svelte';
   import WriteOffGroupModal from './WriteOffGroupModal.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AppError } from '@trackly/transport/errors';
   import type { GroupDto, GroupTypeDto } from '../../bindings';
 
   const SELECTED_STORAGE_KEY = 'trackly:groups:selected';

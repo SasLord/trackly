@@ -3,8 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "exports": {},
+  "exports": {
+    "./*": "./src/*.ts"
+  },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.0"
+    "@tauri-apps/api": "^2.11.0",
+    "@trackly/kit": "workspace:*"
   }
 }

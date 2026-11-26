@@ -1,5 +1,5 @@
 // Фаза 41.5, план 11: API-обёртка чата. Типы — из сгенерированного bindings.ts.
-import { apiCall } from '$lib/api/client';
+import { apiCall } from '@trackly/transport/client';
 import { uploadAttachment } from '../../attachments/api';
 import type { ChatFeedDto, ChatSendOutcomeDto, UnreadSummaryDto } from '../../../bindings';
 

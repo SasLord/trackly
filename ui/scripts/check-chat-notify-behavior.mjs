@@ -27,7 +27,7 @@ const TAG = '[check-chat-notify-behavior]';
 const CN = 'features/requests/chat/chatNotifications.svelte.ts';
 
 const STUBS = {
-  '$lib/api/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }`,
+  '@trackly/transport/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }`,
   '$lib/stores/auth.svelte': `export const authStore = globalThis.__h.auth;`,
   '$lib/platform/systemNotify': `
     export function appHasFocus() { return globalThis.__h.focus; }

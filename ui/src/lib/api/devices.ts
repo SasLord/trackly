@@ -1,4 +1,4 @@
-import { apiCall } from './client';
+import { apiCall } from '@trackly/transport/client';
 import type {
   ContainerListResponse,
   DeviceEntriesResponse,

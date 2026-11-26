@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserDto } from '../../bindings';
   import type { UserRole } from '$lib/stores/auth.svelte';
-  import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
+  import type { AccessBlockedDetails, AppError } from '@trackly/transport/errors';
   import PendingScreen from './PendingScreen.svelte';
   import BlockedScreen from './BlockedScreen.svelte';
   import AuthShell from '@trackly/kit/components/AuthShell.svelte';

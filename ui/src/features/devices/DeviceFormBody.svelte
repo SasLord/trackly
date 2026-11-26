@@ -109,7 +109,7 @@
     withConfirm,
     type PendingConfirm,
   } from '$lib/numbering/saveChain';
-  import { apiCall } from '$lib/api/client';
+  import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { devices } from './api';
   import { loadDeviceCreateDefaults, saveDeviceCreateDefaults } from './createDefaults';

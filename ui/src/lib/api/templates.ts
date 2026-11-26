@@ -4,7 +4,7 @@
 //          templates_render_preview (kind + sample_act_id → number[] PDF bytes).
 // Used by the future Phase 7 template editor.
 
-import { apiCall } from './client';
+import { apiCall } from '@trackly/transport/client';
 
 export const templates = {
   getActive: (kind: string) => apiCall<string>('templates_get_active', { kind }),
