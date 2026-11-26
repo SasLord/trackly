@@ -38,7 +38,7 @@
 //     not a rejected/deferred idea per 40-CONTEXT.md's "deferred idea"
 //     convention.
 
-import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 
 export const placeContentEventsStore = $state<{
   seq: number;

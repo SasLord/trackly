@@ -6,9 +6,9 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import { saveFile } from '$lib/utils/saveFile';
-  import { formatFileSize } from '$lib/utils/formatFileSize';
-  import { formatDateTimeShort } from '$lib/utils/date';
+  import { saveFile } from '@trackly/kit/utils/saveFile';
+  import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
+  import { formatDateTimeShort } from '@trackly/kit/utils/date';
   import { attachmentUrl, fetchAttachmentBytes } from './api';
   import { actorLabel } from './labels';
   import type { AttachmentDto } from '../../bindings';

@@ -3,7 +3,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { ensureLoaded as ensureStatusesLoaded } from '$lib/stores/deviceStatuses.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
   import {
@@ -11,7 +11,7 @@
     placeContentEventsStore,
   } from '$lib/stores/placeContentEvents.svelte';
   import { apiCall } from '$lib/api/client';
-  import { parseIdFromHash } from '$lib/utils/hashId';
+  import { parseIdFromHash } from '@trackly/kit/utils/hashId';
   import DeviceList from './DeviceList.svelte';
   import DeviceFilters from './DeviceFilters.svelte';
   import DeviceFormModal from './DeviceFormModal.svelte';

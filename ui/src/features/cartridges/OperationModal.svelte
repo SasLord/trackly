@@ -13,7 +13,7 @@
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import CartridgeSelect from '$lib/components/CartridgeSelect.svelte';
   import PrinterSelect from '$lib/components/PrinterSelect.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { cartridges } from './api';
   import { printers } from '../printers/api';
   import type { CartridgeDto, CartridgeTransitionPayload, PrinterDto } from '../../bindings';

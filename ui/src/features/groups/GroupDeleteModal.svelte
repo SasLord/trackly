@@ -9,7 +9,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
   import type { AppError } from '$lib/api/errors';
 
   interface Props {

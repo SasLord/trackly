@@ -14,7 +14,7 @@
   // (implicit label), а не связывается через `for` (как раньше у Select).
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import CompatibilityEditor from './CompatibilityEditor.svelte';
   import { cartridges } from './api';
   import type { CartridgeModelDto } from '../../bindings';

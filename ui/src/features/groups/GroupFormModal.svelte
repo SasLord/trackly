@@ -24,7 +24,7 @@
   import Input from '$lib/components/Input.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { GroupDto, GroupTypeDto } from '../../bindings';

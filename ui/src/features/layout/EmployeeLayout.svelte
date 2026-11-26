@@ -13,12 +13,12 @@
   import { sidebarActivePattern } from './sidebar-config';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import { themeStore, setTheme } from '$lib/stores/theme.svelte';
+  import { themeStore, setTheme } from '@trackly/kit/stores/theme.svelte';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import { startChatRealtime } from '../requests/chat/chatNotifications.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { appHasFocus, showSystemNotification } from '$lib/platform/systemNotify';
   import { openRequestTarget, requestTargetHref } from '../requests/requestTarget';
   import type { WsEvent } from '../../bindings-phase6';

@@ -14,7 +14,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import { groups } from '$lib/api/groups';
   import { parseAppError } from '$lib/api/errors';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import GroupUsersField, { type SelectedUser } from './GroupUsersField.svelte';
   import GroupPrintersList, { type LinkedPrinterInfo } from './GroupPrintersList.svelte';
   import type { GroupCardDto, GroupPropertyValueDto, GroupValueInputDto } from '../../bindings';

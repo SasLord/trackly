@@ -9,7 +9,7 @@
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Radio from '$lib/components/Radio.svelte';
   import Input from '$lib/components/Input.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import type { AdSettingsDto, SetAdPayload } from '../../bindings-phase9';
 

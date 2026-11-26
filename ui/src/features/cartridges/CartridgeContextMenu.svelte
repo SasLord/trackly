@@ -1,7 +1,7 @@
 <script lang="ts">
   // Plan 04-05: CartridgeContextMenu — status-dependent kebab меню с portal + mousedown-outside close.
   // По образцу прежнего DeviceContextMenu.svelte (удалён в 41.1) с добавлением status-based пунктов (D-Op-Transitions-01).
-  import { portal } from '$lib/utils/portal';
+  import { portal } from '@trackly/kit/utils/portal';
   import type { CartridgeDto } from '../../bindings';
 
   interface Props {

@@ -28,7 +28,7 @@
   import { untrack } from 'svelte';
   import { groupTypes, groups as groupsApi } from '$lib/api/groups';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import Input from '$lib/components/Input.svelte';
   import Button from '@trackly/kit/components/Button.svelte';

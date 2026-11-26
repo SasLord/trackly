@@ -39,7 +39,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { acts } from '$lib/api/acts';
   import { apiCall } from '$lib/api/client';
   import { repairs } from '../requests/api';
@@ -50,8 +50,8 @@
     PAGED_PREVIEW_INLINE_SCRIPT,
   } from '$lib/pdfPreview/pagedPreviewBootstrap';
   import { attachBridge } from '$lib/pdfPreview/pagedPreviewBridge';
-  import { themeStore } from '$lib/stores/theme.svelte';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { themeStore } from '@trackly/kit/stores/theme.svelte';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
 
   interface AcceptancePayload {
     deviceId: number;

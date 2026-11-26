@@ -11,8 +11,8 @@
   // aria-activedescendant, two-stage Escape, scrollIntoView).
   import { onDestroy } from 'svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import { portal } from '$lib/utils/portal';
-  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
+  import { portal } from '@trackly/kit/utils/portal';
+  import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
 
   interface Props {
     /** D-03: 'combobox' — type directly in the field (implemented here).

@@ -7,7 +7,7 @@
   import Input from '$lib/components/Input.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DiscoveryResultsTable from './DiscoveryResultsTable.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { printers } from './api';
   import type { DiscoveredPrinterDto } from '../../bindings-phase6';
 

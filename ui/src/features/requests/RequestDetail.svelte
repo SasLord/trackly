@@ -28,7 +28,7 @@
   import DetailField from '$lib/components/DetailField.svelte';
   import OperationModal from '../cartridges/OperationModal.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import { requests, repairs } from './api';
   import RepairDeviceStatus from './RepairDeviceStatus.svelte';

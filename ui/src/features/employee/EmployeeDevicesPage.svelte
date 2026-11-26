@@ -5,7 +5,7 @@
   // карточки и формы заявки стоят здесь, вне строки и вне <td>.
   import { onMount } from 'svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Table from '$lib/components/Table.svelte';
   import Button from '@trackly/kit/components/Button.svelte';

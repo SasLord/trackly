@@ -7,7 +7,7 @@
   // (Phase 27-G1 precedent). D-08: strictly the kind-selector control only — the
   // rest of this component's editing/preview surface is untouched.
   import Dropdown from '$lib/components/Dropdown.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
 
   interface TemplateEditorItem {

@@ -12,7 +12,7 @@
   import Badge from '$lib/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { push } from 'svelte-spa-router';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
 
   interface ReportRow {
     id: number;

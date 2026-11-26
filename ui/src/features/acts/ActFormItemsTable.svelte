@@ -21,8 +21,8 @@
   import { groups } from '$lib/api/groups';
   import { ensureLoaded, statusIdByCode } from '$lib/stores/deviceStatuses.svelte';
   import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
   import { REPAIR_ACT_NOTE, loadOpenRepairs } from '../requests/repairLocks';
   import { STATUS_TO_WRITE_OFF, STATUS_WRITTEN_OFF } from '../devices/deviceRowMenu';
   import type { DeviceDto, DeviceGroup, GroupActUnitDto, GroupSearchHitDto } from '../../bindings';

@@ -11,7 +11,7 @@
   import { onDestroy, untrack } from 'svelte';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { placeContentEventsStore, reloadSeqNow } from '$lib/stores/placeContentEvents.svelte';
   import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';

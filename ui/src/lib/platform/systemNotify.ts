@@ -7,7 +7,7 @@
 // «Новое сообщение в заявке №N · Имя», тело сообщения чата сюда не попадает.
 // Заголовок и тело не логируются.
 
-import { pushToast } from '$lib/stores/toast.svelte';
+import { pushToast } from '@trackly/kit/stores/toast.svelte';
 
 // Исход команды notify_desktop (локальный тип: bindings.ts в рантайме не импортируется).
 type NotifyDesktopOutcome = 'shown' | 'suppressed' | 'unavailable';

@@ -13,7 +13,7 @@
   import Input from '$lib/components/Input.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { groupTypes } from '$lib/api/groups';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { GroupTypeDto, GroupTypeUpdateDto } from '../../bindings';
 

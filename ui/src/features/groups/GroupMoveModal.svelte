@@ -20,8 +20,8 @@
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { groups } from '$lib/api/groups';
-  import { pluralizeRu } from '$lib/utils/pluralize';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { GroupDto, GroupMoveResultDto, GroupMoveStatusPreviewDto } from '../../bindings';

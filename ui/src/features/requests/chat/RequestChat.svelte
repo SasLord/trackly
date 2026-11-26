@@ -7,8 +7,8 @@
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { onWsEvent } from '$lib/api/ws';
   import { parseAppError } from '$lib/api/errors';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { saveFile } from '$lib/utils/saveFile';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { saveFile } from '@trackly/kit/utils/saveFile';
   import AttachmentViewer from '../../attachments/AttachmentViewer.svelte';
   import { attachments, fetchAttachmentBytes } from '../../attachments/api';
   import type { AttachmentDto, ChatFeedDto, ChatItemDto, ChatMessageDto } from '../../../bindings';

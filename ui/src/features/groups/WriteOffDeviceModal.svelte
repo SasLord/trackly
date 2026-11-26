@@ -9,7 +9,7 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Radio from '$lib/components/Radio.svelte';
   import { groups } from '$lib/api/groups';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import type { DeviceDto } from '../../bindings';
 

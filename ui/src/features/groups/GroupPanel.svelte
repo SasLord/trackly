@@ -25,7 +25,7 @@
   import { groups } from '$lib/api/groups';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { parseAppError, type AppError } from '$lib/api/errors';
   import type { GroupCardDto, HistoryEntryDto } from '../../bindings';
 

@@ -13,9 +13,9 @@
 // синхронно в теле эффекта (иначе effect_update_depth_exceeded).
 
 import { devices } from '$lib/api/devices';
-import { pushToast } from '$lib/stores/toast.svelte';
+import { pushToast } from '@trackly/kit/stores/toast.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
-import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import type { DeviceTypeDto } from '../../bindings';
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';

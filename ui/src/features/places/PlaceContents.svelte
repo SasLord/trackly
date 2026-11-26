@@ -28,7 +28,7 @@
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import RowChevron from '$lib/components/icons/RowChevron.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { statusTone } from '$lib/stores/deviceStatuses.svelte';
   import {
     REPAIR_CONFLICT_TOAST,
@@ -40,7 +40,7 @@
     notifyPlaceContentChanged,
     placeContentEventsStore,
   } from '$lib/stores/placeContentEvents.svelte';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto, SubtreeStatsDto } from '../../bindings';
 

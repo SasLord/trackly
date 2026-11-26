@@ -2,7 +2,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Select from '$lib/components/Select.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
   import { apiCall } from '$lib/api/client';
   import { devices } from './api';

@@ -8,6 +8,10 @@
       "svelte": "./src/components/*",
       "default": "./src/components/*"
     },
+    "./utils/calendarIcon.js": {
+      "types": "./src/utils/calendarIcon.d.ts",
+      "default": "./src/utils/calendarIcon.js"
+    },
     "./utils/*": "./src/utils/*.ts",
     "./stores/*": "./src/stores/*.ts"
   },

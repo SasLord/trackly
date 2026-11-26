@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import UsersList from './UsersList.svelte';
   import UserFormModal from './UserFormModal.svelte';

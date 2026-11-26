@@ -11,7 +11,7 @@
   import Badge from '$lib/components/Badge.svelte';
   import NumberTemplateModal from './NumberTemplateModal.svelte';
   import NumberMaskHelp from './NumberMaskHelp.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import { previewShortenPath, monoReadout } from '$lib/utils/placePath';

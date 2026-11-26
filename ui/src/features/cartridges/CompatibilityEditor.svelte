@@ -5,8 +5,8 @@
   // текстового поля «Имя принтера» — V032/Phase 13 single-column contract
   // (CartridgeModelCreateDto.compatibility: string[]).
   import Button from '@trackly/kit/components/Button.svelte';
-  import { portal } from '$lib/utils/portal';
-  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
+  import { portal } from '@trackly/kit/utils/portal';
+  import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
 
   interface Props {
     compatibility: string[];

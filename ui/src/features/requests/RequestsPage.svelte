@@ -5,7 +5,7 @@
   // По паттерну PrintersPage.svelte.
   import { onMount, untrack } from 'svelte';
   import { router } from 'svelte-spa-router';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import { apiCall } from '$lib/api/client';

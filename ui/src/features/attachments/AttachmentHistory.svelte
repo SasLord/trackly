@@ -24,7 +24,7 @@
   // пока оно в «Удалённых»), иначе это обычный текст.
   import Button from '@trackly/kit/components/Button.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { formatDateTimeShort } from '$lib/utils/date';
+  import { formatDateTimeShort } from '@trackly/kit/utils/date';
   import type { AttachmentHistoryEventDto } from '../../bindings';
 
   interface Props {

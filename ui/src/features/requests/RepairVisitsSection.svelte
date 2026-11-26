@@ -8,8 +8,8 @@
   import Badge from '$lib/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { formatFileSize } from '$lib/utils/formatFileSize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
   import { attachments, uploadAttachment } from '../attachments/api';
   import { repairs } from './api';

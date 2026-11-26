@@ -3,7 +3,7 @@
   // Чужие слева, ФИО внутри облака (только у начала группы), роль не показывается;
   // свои справа без ФИО. Время: у начала группы чужих — справа в шапке с автором, иначе внизу пузыря справа. Меню правки и галочек нет.
   // Текст — только интерполяцией (linkify → <a>/текст), без raw-HTML.
-  import { formatDateTimeShort } from '$lib/utils/date';
+  import { formatDateTimeShort } from '@trackly/kit/utils/date';
   import type { AttachmentDto, ChatMessageDto } from '../../../bindings';
   import ChatBubbleFiles from './ChatBubbleFiles.svelte';
   import { timeHHmm } from './chatDates';

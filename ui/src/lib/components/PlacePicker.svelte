@@ -18,8 +18,8 @@
   // буквального Props-контракта из текста плана.
   import { onDestroy } from 'svelte';
   import { apiCall } from '$lib/api/client';
-  import { portal } from '$lib/utils/portal';
-  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
+  import { portal } from '@trackly/kit/utils/portal';
+  import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
   import { authStore } from '$lib/stores/auth.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import Badge from '$lib/components/Badge.svelte';

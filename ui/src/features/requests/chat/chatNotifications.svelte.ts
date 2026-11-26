@@ -4,9 +4,9 @@
 // сообщении для всех ролей; заглушённая заявка молчит (счётчики при этом растут).
 // Текст сообщения в WS-событии отсутствует и в уведомление не попадает.
 import { onWsEvent } from '$lib/api/ws';
-import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
-import { pushToast, removeToast, toastStore } from '$lib/stores/toast.svelte';
+import { pushToast, removeToast, toastStore } from '@trackly/kit/stores/toast.svelte';
 import type { WsEvent } from '../../../bindings-phase6';
 import {
   appHasFocus,

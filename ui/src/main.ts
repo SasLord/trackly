@@ -1,7 +1,7 @@
 import '@trackly/design/global.scss';
 import { mount } from 'svelte';
 import App from './App.svelte';
-import { initTheme } from './lib/stores/theme.svelte';
+import { initTheme } from '@trackly/kit/stores/theme.svelte';
 
 // Apply theme before mount to avoid a flash — must run before Svelte renders.
 initTheme();

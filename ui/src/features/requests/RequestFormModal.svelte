@@ -14,7 +14,7 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import { tick } from 'svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { parseAppError } from '$lib/api/errors';
   import { requests, repairs } from './api';
   import type { RequestCategoryDto, RequestPrinterOptionDto } from '../../bindings-phase6';

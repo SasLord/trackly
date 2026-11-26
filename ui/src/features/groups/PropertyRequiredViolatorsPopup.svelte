@@ -5,7 +5,7 @@
   // от сервера готовым, UI его не вычисляет.
   import Modal from '$lib/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
 
   interface Props {
     /** Группы-нарушители (первые, что есть); показывается не более MAX_ROWS. */

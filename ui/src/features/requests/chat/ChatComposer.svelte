@@ -6,7 +6,7 @@
   import { untrack } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { parseAppError } from '$lib/api/errors';
-  import { formatFileSize } from '$lib/utils/formatFileSize';
+  import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import AttachmentTypeIcon, { iconKindForMime } from '../../attachments/AttachmentTypeIcon.svelte';
   import { rejectLine } from '../../attachments/rejectText';
   import { uploadDraft, chat } from './api';

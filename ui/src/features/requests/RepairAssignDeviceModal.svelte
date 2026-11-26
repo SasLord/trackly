@@ -5,7 +5,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { parseAppError } from '$lib/api/errors';
   import { repairs } from './api';
   import type { RepairDeviceOptionDto, RequestDto } from '../../bindings';

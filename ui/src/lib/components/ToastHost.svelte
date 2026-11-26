@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toastStore, removeToast } from '$lib/stores/toast.svelte';
+  import { toastStore, removeToast } from '@trackly/kit/stores/toast.svelte';
   import Toast from './Toast.svelte';
 </script>
 

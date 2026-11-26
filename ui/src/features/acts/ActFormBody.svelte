@@ -85,7 +85,7 @@
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import {
     afterPopupClosed,
     confirmsFor,

@@ -14,8 +14,8 @@
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
   import { parseAppError } from '$lib/api/errors';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { formatFileSize } from '$lib/utils/formatFileSize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import { attachments, uploadAttachment } from '../attachments/api';
   import { repairs } from './api';
   import type {

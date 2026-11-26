@@ -3,7 +3,7 @@
   // Подписи — из общего historyLabels.ts (chatEventText), сырые коды не выводятся.
   // Текст комментария — только интерполяцией и linkify, без raw-HTML.
   import { chatEventText, entryParts } from '../historyLabels';
-  import { formatDateTimeShort } from '$lib/utils/date';
+  import { formatDateTimeShort } from '@trackly/kit/utils/date';
   import type { ChatEventDto } from '../../../bindings';
   import ChatEventIcon from './ChatEventIcon.svelte';
   import { timeHHmm } from './chatDates';

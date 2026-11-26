@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { themeStore, setTheme } from '$lib/stores/theme.svelte';
+  import { themeStore, setTheme } from '@trackly/kit/stores/theme.svelte';
 
   const options = [
     { key: 'light' as const, label: 'Светлая', ariaLabel: 'Светлая тема' },

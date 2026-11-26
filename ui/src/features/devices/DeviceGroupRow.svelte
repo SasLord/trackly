@@ -9,7 +9,7 @@
   import DeviceListRow from './DeviceListRow.svelte';
   import PrinterMark from './PrinterMark.svelte';
   import { isRowOverlayEvent } from './deviceRowMenu';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { statusLabel, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import { devices } from './api';
   import { groupIdsKey, visibleChildren } from './deviceListMode';

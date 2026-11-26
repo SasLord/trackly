@@ -5,7 +5,7 @@
 import { push } from 'svelte-spa-router';
 import { authStore } from '$lib/stores/auth.svelte';
 import { groups } from '$lib/api/groups';
-import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import { repairs } from './api';
 
 /** Ремонтные команды доступны менеджеру и администратору (TransitionRequests). */

@@ -5,12 +5,12 @@
   // PrinterDetail и DiscoveryModal: Task 2b.
   import { PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import { onMount } from 'svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import { parseIdFromHash } from '$lib/utils/hashId';
+  import { parseIdFromHash } from '@trackly/kit/utils/hashId';
   import PrintersMasterDetail from './PrintersMasterDetail.svelte';
   import PrintersSearchAndTabs from './PrintersSearchAndTabs.svelte';
   import PrintersList from './PrintersList.svelte';

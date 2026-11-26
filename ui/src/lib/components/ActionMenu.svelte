@@ -1,6 +1,6 @@
 <script lang="ts">
   import { setContext, untrack, type Snippet } from 'svelte';
-  import { portal } from '$lib/utils/portal';
+  import { portal } from '@trackly/kit/utils/portal';
   import { ACTION_MENU_CONTEXT, type ActionMenuContext } from './actionMenuContext';
 
   /* Меню действий. Панель ВСЕГДА выводится в `<body>` через `use:portal`

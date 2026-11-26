@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ToastKind, ToastLink } from '$lib/stores/toast.svelte';
+  import type { ToastKind, ToastLink } from '@trackly/kit/stores/toast.svelte';
 
   interface Props {
     kind: ToastKind;

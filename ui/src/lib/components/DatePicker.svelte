@@ -14,7 +14,7 @@
   // API, сообщающего о наличии индикатора, у поля нет. В Chromium/WebView2/Firefox кнопки
   // в DOM нет вовсе (не скрыта CSS) — иначе был бы дубль иконки.
 
-  import { needsOwnCalendarIcon } from '$lib/utils/calendarIcon.js';
+  import { needsOwnCalendarIcon } from '@trackly/kit/utils/calendarIcon.js';
 
   interface Props {
     value: string;

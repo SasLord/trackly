@@ -5,8 +5,8 @@
 // показывает и перечитывает по WS. WS-соединение стор не открывает: его держат
 // layout'ы (refcount-singleton в ws.ts).
 import { onWsEvent } from '$lib/api/ws';
-import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
-import { pushToast } from '$lib/stores/toast.svelte';
+import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
+import { pushToast } from '@trackly/kit/stores/toast.svelte';
 import { chat } from './api';
 
 export const unreadStore = $state({

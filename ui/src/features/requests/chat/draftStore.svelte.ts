@@ -4,7 +4,7 @@
 // ChatComposer: неактивная вкладка не монтируется, и состояние внутри компонента
 // пропало бы при переключении «Чат» / «Информация». Ключ — id заявки; смена
 // заявки сбрасывает черновик.
-import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import { rejectLine } from '../../attachments/rejectText';
 
 export interface Chip {

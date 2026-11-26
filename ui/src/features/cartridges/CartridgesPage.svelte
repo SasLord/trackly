@@ -7,8 +7,8 @@
   import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { parseIdFromHash } from '$lib/utils/hashId';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { parseIdFromHash } from '@trackly/kit/utils/hashId';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import CartridgesSearchAndTabs from './CartridgesSearchAndTabs.svelte';
   import CartridgesMasterDetail from './CartridgesMasterDetail.svelte';

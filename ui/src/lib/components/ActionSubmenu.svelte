@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getContext, onDestroy, type Snippet } from 'svelte';
-  import { portal } from '$lib/utils/portal';
+  import { portal } from '@trackly/kit/utils/portal';
   import { ACTION_MENU_CONTEXT, type ActionMenuContext } from './actionMenuContext';
 
   /* Вложенный попап сбоку внутри ActionMenu (D-35). Общий компонент без знания про

@@ -28,7 +28,7 @@
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
   import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';

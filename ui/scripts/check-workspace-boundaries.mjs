@@ -22,7 +22,7 @@
 //
 // TAURI_IMPORT_ALLOWLIST: файлы пакетов, которым разрешён `@tauri-apps/*` (transport,
 // saveFile и подобное). Расширяется только осознанной правкой этого гейта с обоснованием
-// рядом с записью. Сейчас пуст: ни один переехавший файл Tauri-API не использует.
+// рядом с записью. Сейчас: saveFile (план 12).
 //
 // Чего гейт НЕ видит (честно): импорты через динамически собранную строку; `@trackly/*`,
 // указывающий на пакет, не объявленный в dependencies; тип-импорты из .d.ts без
@@ -50,7 +50,10 @@ const REPO = path.resolve(__dirname, '..', '..');
 const TAG = '[check-workspace-boundaries]';
 
 /** Repo-relative пути (через `/`) файлов пакетов, которым разрешён `@tauri-apps/*`. */
-const TAURI_IMPORT_ALLOWLIST = new Set([]);
+// saveFile: диалог «Сохранить как» и запись файла — динамические импорты
+// @tauri-apps/plugin-dialog/-fs за guard'ом isTauri; доменной зависимости нет, а
+// браузерная ветка (LAN, Link) падает обратно на <a download> (план 12, D-17).
+const TAURI_IMPORT_ALLOWLIST = new Set(['packages/kit/src/utils/saveFile.ts']);
 
 const SRC_EXTS = new Set(['.ts', '.svelte', '.js', '.mjs']);
 const SKIP = new Set(['node_modules', 'dist', '.git', 'target']);

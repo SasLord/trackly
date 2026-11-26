@@ -23,7 +23,7 @@
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { groups } from '$lib/api/groups';
   import AlreadyInGroupPopup from './AlreadyInGroupPopup.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { isAlreadyInGroup, type AppError } from '$lib/api/errors';
   import type { GroupDto } from '../../bindings';

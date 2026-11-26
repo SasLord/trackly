@@ -1,6 +1,6 @@
 // Фаза 41.5, план 13: тексты отказов файла вынесены из AttachmentsBlock, чтобы
 // блок «Вложения» и поле ввода чата говорили одними словами. Чистые функции.
-import { formatFileSize } from '$lib/utils/formatFileSize';
+import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
 
 export function limitMb(maxBytes: number): number {
   return Math.floor(maxBytes / (1024 * 1024));

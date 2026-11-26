@@ -10,8 +10,8 @@
   import { apiCall } from '$lib/api/client';
   import { trySilentAdSso } from '$lib/api/adSso';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { resetUserScoped } from '$lib/stores/userScoped.svelte';
-  import { clearToasts } from '$lib/stores/toast.svelte';
+  import { resetUserScoped } from '@trackly/kit/stores/userScoped.svelte';
+  import { clearToasts } from '@trackly/kit/stores/toast.svelte';
   import type { UserRole } from '$lib/stores/auth.svelte';
   import type { AuthStatusDto } from './bindings';
 

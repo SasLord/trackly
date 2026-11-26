@@ -3,7 +3,7 @@
   // (единый модуль, INT-31); имя PRINTER_DEVICE_TYPE_ID держат якоря check-device-row-menu.
   import { PRINTER_TYPE_ID as PRINTER_DEVICE_TYPE_ID } from '$lib/deviceTypeIds';
   import { groupTypes, groups } from '$lib/api/groups';
-  import { registerUserScopedReset } from '$lib/stores/userScoped.svelte';
+  import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
   import type { GroupTypeDto } from '../../bindings';
 
   // Типы групп общие для всех строк: меню порождает быстрые действия из них
@@ -63,7 +63,7 @@
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import ActionSubmenu from '$lib/components/ActionSubmenu.svelte';

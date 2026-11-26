@@ -30,7 +30,7 @@
   import Checkbox from '$lib/components/Checkbox.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { PlaceDto, PlaceNewDto } from '../../bindings';
 

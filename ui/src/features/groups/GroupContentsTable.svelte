@@ -44,8 +44,8 @@
   } from '../devices/deviceRowMenu';
   import { groups } from '$lib/api/groups';
   import { devices } from '$lib/api/devices';
-  import { pluralizeRu } from '$lib/utils/pluralize';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { ensureLoaded, statusTone } from '$lib/stores/deviceStatuses.svelte';
   import { authStore } from '$lib/stores/auth.svelte';

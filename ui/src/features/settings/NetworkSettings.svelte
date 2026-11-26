@@ -7,7 +7,7 @@
   // (Phase 27-G1 precedent).
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import type { ServerStatusDto } from '../../bindings';
 

@@ -9,7 +9,7 @@
   import DetailField from '$lib/components/DetailField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import {
     ensureLoaded as ensureStatusesLoaded,
     statusByCode,

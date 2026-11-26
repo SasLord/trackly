@@ -4,9 +4,9 @@
   // Loads dropdown data on mount; auto-reloads report on state changes.
   import { onMount } from 'svelte';
   import { apiCall } from '$lib/api/client';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
-  import { saveFile } from '$lib/utils/saveFile';
+  import { saveFile } from '@trackly/kit/utils/saveFile';
   import type { CartridgeModelDto } from '../../bindings';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ReportSubNav from './ReportSubNav.svelte';

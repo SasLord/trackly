@@ -10,8 +10,8 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { formatFileSize } from '$lib/utils/formatFileSize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import { attachments, uploadAttachment } from '../attachments/api';
   import { repairs } from './api';
   import type { RepairStateDto, RepairTransitionResultDto, RequestDto } from '../../bindings';

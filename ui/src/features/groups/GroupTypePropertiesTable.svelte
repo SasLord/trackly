@@ -18,8 +18,8 @@
   import PropertyRequiredViolatorsPopup from './PropertyRequiredViolatorsPopup.svelte';
   import { groupTypes } from '$lib/api/groups';
   import { insertionIndex, reorder } from '$lib/utils/reorder';
-  import { pluralizeRu } from '$lib/utils/pluralize';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { propertyRemovalCopy } from './propertyRemoval';
   import type { AppError } from '$lib/api/errors';
   import type { GroupTypePropertyDto, PropertyUpdateDto } from '../../bindings';

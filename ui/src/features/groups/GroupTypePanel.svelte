@@ -12,7 +12,7 @@
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import GroupTypePropertiesTable from './GroupTypePropertiesTable.svelte';
   import { groupTypes } from '$lib/api/groups';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { GroupTypeDto } from '../../bindings';
 

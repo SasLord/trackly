@@ -92,7 +92,7 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import {
     afterPopupClosed,
     confirmsFor,

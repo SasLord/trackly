@@ -16,7 +16,7 @@
   import ActionMenu from './ActionMenu.svelte';
   import IconInsertTemplate from './icons/IconInsertTemplate.svelte';
   import { apiCall } from '$lib/api/client';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import type { WsEvent } from '../../bindings-phase6';
   import type {

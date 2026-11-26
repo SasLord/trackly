@@ -2,7 +2,7 @@
 // В десктопе webview не должен уходить со страницы: клик перехватывается и адрес
 // открывается во внешнем браузере. В LAN-браузере работает обычная ссылка target=_blank.
 
-import { pushToast } from '$lib/stores/toast.svelte';
+import { pushToast } from '@trackly/kit/stores/toast.svelte';
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 

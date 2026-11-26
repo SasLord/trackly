@@ -4,9 +4,9 @@
   import { onMount } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { parseIdFromHash } from '$lib/utils/hashId';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { parseIdFromHash } from '@trackly/kit/utils/hashId';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import ActsSearchAndTabs from './ActsSearchAndTabs.svelte';
   import ActsMasterDetail from './ActsMasterDetail.svelte';

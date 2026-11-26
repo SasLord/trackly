@@ -101,7 +101,7 @@
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import {
     afterPopupClosed,
     confirmsFor,

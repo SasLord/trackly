@@ -21,8 +21,8 @@
 
   import { onDestroy } from 'svelte';
   import { acts } from '$lib/api/acts';
-  import { portal } from '$lib/utils/portal';
-  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
+  import { portal } from '@trackly/kit/utils/portal';
+  import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
 
   type FieldName = 'giver' | 'receiver';
 

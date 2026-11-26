@@ -16,7 +16,7 @@
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import type { AppError } from '$lib/api/errors';
   import type { PlaceDto, SubtreeStatsDto } from '../../bindings';
 

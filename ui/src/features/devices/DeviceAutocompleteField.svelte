@@ -25,8 +25,8 @@
 
   import { onMount, onDestroy } from 'svelte';
   import { devices } from './api';
-  import { portal } from '$lib/utils/portal';
-  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
+  import { portal } from '@trackly/kit/utils/portal';
+  import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
 
   type FieldName = 'name' | 'model' | 'specs' | 'kit' | 'state';
 

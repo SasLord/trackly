@@ -10,7 +10,7 @@
   import DetailField from '$lib/components/DetailField.svelte';
   import TonerGauge from '../printers/TonerGauge.svelte';
   import { statusTone } from '$lib/deviceStatusTone';
-  import { formatDateTimeShort } from '$lib/utils/date';
+  import { formatDateTimeShort } from '@trackly/kit/utils/date';
   import { requestTargetHref } from '../requests/requestTarget';
   import { JOIN_REPAIR_FOOTER_NOTE } from './employeeDeviceMenu';
   import type { EmployeeDeviceDto } from '../../bindings';

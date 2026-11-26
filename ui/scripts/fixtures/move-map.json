@@ -23,6 +23,54 @@
     {
       "from": "ui/public/theme-init.js",
       "to": "packages/design/public/theme-init.js"
+    },
+    {
+      "from": "ui/src/lib/stores/theme.svelte.ts",
+      "to": "packages/kit/src/stores/theme.svelte.ts"
+    },
+    {
+      "from": "ui/src/lib/stores/toast.svelte.ts",
+      "to": "packages/kit/src/stores/toast.svelte.ts"
+    },
+    {
+      "from": "ui/src/lib/stores/userScoped.svelte.ts",
+      "to": "packages/kit/src/stores/userScoped.svelte.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/portal.ts",
+      "to": "packages/kit/src/utils/portal.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/dropdownAnchor.ts",
+      "to": "packages/kit/src/utils/dropdownAnchor.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/date.ts",
+      "to": "packages/kit/src/utils/date.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/formatFileSize.ts",
+      "to": "packages/kit/src/utils/formatFileSize.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/pluralize.ts",
+      "to": "packages/kit/src/utils/pluralize.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/saveFile.ts",
+      "to": "packages/kit/src/utils/saveFile.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/hashId.ts",
+      "to": "packages/kit/src/utils/hashId.ts"
+    },
+    {
+      "from": "ui/src/lib/utils/calendarIcon.js",
+      "to": "packages/kit/src/utils/calendarIcon.js"
+    },
+    {
+      "from": "ui/src/lib/utils/calendarIcon.d.ts",
+      "to": "packages/kit/src/utils/calendarIcon.d.ts"
     }
   ]
 }

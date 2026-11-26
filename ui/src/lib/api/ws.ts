@@ -70,7 +70,7 @@ let reconnectToastId: string | null = null;
 // `.catch` больше НЕ глотает молча: невидимая ошибка стоила этой сессии
 // лишних витков (отладочная сессия `ws-disconnect-toast-no-show`).
 function showReconnectingToast(): void {
-  import('$lib/stores/toast.svelte')
+  import('@trackly/kit/stores/toast.svelte')
     .then(({ pushToast }) => {
       // sticky: индикация ДЛЯЩЕГОСЯ состояния. Обычный тост живёт 5000 мс, а
       // оба сценария обрыва (кнопка «Остановить сервер», Cmd+Q) пользователь
@@ -94,7 +94,7 @@ function clearReconnectingToast(): void {
     return;
   }
   reconnectToastId = null;
-  import('$lib/stores/toast.svelte')
+  import('@trackly/kit/stores/toast.svelte')
     .then(({ removeToast }) => {
       removeToast(id);
     })

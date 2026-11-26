@@ -3,7 +3,7 @@
   // Показывает минимальный известный уровень среди цветов; формула заливки общая
   // с TonerGauge (tonerFillColor). API не вызывает — данные приходят в DTO строки.
   import { tonerFillColor } from '../printers/tonerFill';
-  import { formatDateTimeShort } from '$lib/utils/date';
+  import { formatDateTimeShort } from '@trackly/kit/utils/date';
 
   interface Props {
     toner: {

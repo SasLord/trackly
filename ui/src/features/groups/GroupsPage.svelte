@@ -19,7 +19,7 @@
 
   import { untrack } from 'svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import {
     notifyPlaceContentChanged,
     placeContentEventsStore,

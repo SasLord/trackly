@@ -39,8 +39,8 @@
   import { ensureLoaded as ensureTypesLoaded, orderedTypes } from '$lib/stores/deviceTypes.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { isAlreadyInGroup, type AlreadyInGroupDetails, type AppError } from '$lib/api/errors';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { pluralizeRu } from '$lib/utils/pluralize';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { pluralizeRu } from '@trackly/kit/utils/pluralize';
   import type { DeviceDto, GroupAddDevicesResultDto, GroupDto, PlaceDto } from '../../bindings';
 
   interface Props {

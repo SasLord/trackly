@@ -6,8 +6,8 @@
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import { formatFileSize } from '$lib/utils/formatFileSize';
-  import { formatDateTimeShort } from '$lib/utils/date';
+  import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
+  import { formatDateTimeShort } from '@trackly/kit/utils/date';
   import AttachmentTypeIcon, { iconKindForMime } from './AttachmentTypeIcon.svelte';
   import { attachmentUrl } from './api';
   import { actorLabel } from './labels';

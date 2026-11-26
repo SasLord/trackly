@@ -23,7 +23,7 @@
   // has no session) and idempotently creates/reuses an open restore
   // request (09-AD-GAPS Defect 1 fix's idempotent INSERT, reused here).
   import { apiCall } from '$lib/api/client';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
   import AuthShell from '$lib/components/AuthShell.svelte';
   import Button from '@trackly/kit/components/Button.svelte';

@@ -10,9 +10,9 @@
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import RowChevron from '$lib/components/icons/RowChevron.svelte';
   import { onWsEvent } from '$lib/api/ws';
-  import { pushToast } from '$lib/stores/toast.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { saveFile } from '$lib/utils/saveFile';
+  import { saveFile } from '@trackly/kit/utils/saveFile';
   import AttachmentTile from './AttachmentTile.svelte';
   import AttachmentViewer from './AttachmentViewer.svelte';
   import { rejectLine } from './rejectText';
