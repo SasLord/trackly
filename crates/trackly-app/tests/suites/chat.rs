@@ -23,3 +23,5 @@ mod chat_send;
 mod chat_thumbs;
 #[path = "../chat_unread.rs"]
 mod chat_unread;
+#[path = "../desktop_resync_bridge.rs"]
+mod desktop_resync_bridge;

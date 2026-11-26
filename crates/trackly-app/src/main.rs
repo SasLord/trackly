@@ -325,11 +325,16 @@ fn main() -> anyhow::Result<()> {
                                 }
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                                // Slow consumer — skipped n events. Continue,
-                                // don't exit (parity with http/ws.rs Pitfall 5).
-                                tracing::warn!(
-                                    "ws_broadcast->tauri bridge lagged {n} events — continuing"
-                                );
+                                // Медленный потребитель: n событий потеряны (D-07).
+                                // Цикл не завершаем, а просим фронтенд перечитать
+                                // данные — тот же ресинк, что `resync_required`
+                                // в веб-сокете.
+                                trackly_app::desktop_event_bridge::resync_on_lagged(n, || {
+                                    let _ = app_handle.emit(
+                                        trackly_app::desktop_event_bridge::RESYNC_EVENT,
+                                        (),
+                                    );
+                                });
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                                 // Sender dropped — AppCtx shutting down.

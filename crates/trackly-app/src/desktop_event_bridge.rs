@@ -30,3 +30,14 @@ pub async fn desktop_event_visible(ctx: &AppCtx, event: &WsEvent) -> bool {
         }
     }
 }
+
+/// Имя Tauri-события «пропущены события, перечитай данные» (Phase 43, D-07).
+/// Служебное: не `WsEvent`, не проходит `desktop_event_visible`.
+pub const RESYNC_EVENT: &str = "trackly-resync";
+
+/// Мост отстал на `skipped` событий (`Lagged`): логируем и просим фронтенд
+/// перечитать данные через `emit` (в main.rs это `app_handle.emit(RESYNC_EVENT, ())`).
+pub fn resync_on_lagged(skipped: u64, emit: impl FnOnce()) {
+    tracing::warn!("ws_broadcast->tauri bridge lagged {skipped} events — resync");
+    emit();
+}
