@@ -66,6 +66,9 @@ const TAURI_IMPORT_ALLOWLIST = new Set([
   // attachments (план 17): convertFileSrc схемы trackly-att в attachmentUrl (десктопная ветка);
   // только api.ts, остальным файлам пакета @tauri-apps/* не нужен.
   'packages/attachments/src/api.ts',
+  // theme (quick 261126-rbg): setBackgroundColor нативного окна под --tr-bg; динамический
+  // импорт @tauri-apps/api/window за guard'ом __TAURI_INTERNALS__, доменной зависимости нет.
+  'packages/kit/src/stores/theme.svelte.ts',
 ]);
 
 const SRC_EXTS = new Set(['.ts', '.svelte', '.js', '.mjs']);

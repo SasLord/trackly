@@ -36,4 +36,19 @@ function applyResolved(): void {
   requestAnimationFrame(() => {
     document.documentElement.classList.remove('theme-switching');
   });
+  void syncWindowBackground();
+}
+
+// Нативный фон окна (полоса при ресайзе WebView2) = --tr-bg текущей темы. Только в Tauri;
+// проверка при каждом вызове, динамический импорт — браузерный бандл API окна не тянет.
+async function syncWindowBackground(): Promise<void> {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+  try {
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--tr-bg').trim();
+    if (!color) return;
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().setBackgroundColor(color);
+  } catch {
+    // окно без права/сбой API не должны ронять UI
+  }
 }

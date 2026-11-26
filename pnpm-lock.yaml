@@ -61,6 +61,9 @@ importers:
 
   packages/kit:
     dependencies:
+      '@tauri-apps/api':
+        specifier: ^2.11.0
+        version: 2.12.5
       '@tauri-apps/plugin-dialog':
         specifier: ^2.7.1
         version: 2.7.1
