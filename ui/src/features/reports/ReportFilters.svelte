@@ -7,7 +7,7 @@
   //   Plan 39-10) + a separate D-11.2/D-11.5 "Складское место" quick filter, kept
   //   visually and logically independent of statusId.
   import Button from '@trackly/kit/components/Button.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
 
   interface ReportFilter {

@@ -8,13 +8,13 @@
   // plaintext (T-28-09-01). Email uses Input type="text" — Input.svelte has
   // no 'email' type either; native HTML5 email validation is lost here, the
   // server-side validation remains authoritative (documented in SUMMARY).
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   // Plan 28-13 (GAP-1): Select (нативный <select>) заменён на кастомный
   // Dropdown (flat + variant="select") для поля «Роль», по прецеденту
   // CartridgeFormBody.svelte (Plan 27-G1).
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import type { UserDto } from '../../bindings';
 

@@ -26,7 +26,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
   import PlacesMasterDetail from './PlacesMasterDetail.svelte';
   import PlaceTree from './PlaceTree.svelte';
   import PlaceFormModal from './PlaceFormModal.svelte';

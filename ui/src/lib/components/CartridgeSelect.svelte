@@ -8,7 +8,7 @@
   // surface as every other picker in the app. The Props contract is unchanged
   // (`value` = selected cartridge id as string, `onchange(idString)`), so the
   // consumer (OperationModal) needs no edits.
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import type { CartridgeDto } from '../../bindings';
 
   interface Props {

@@ -392,7 +392,7 @@
         "ui/src/features/requests/chat/linkify.ts",
         "ui/src/features/requests/RequestDetail.svelte",
         "ui/src/features/layout/sidebar-config.ts",
-        "ui/src/lib/components/DetailPanel.svelte",
+        "packages/kit/src/components/DetailPanel.svelte",
         "ui/src/lib/platform/systemNotify.ts",
         "ui/src/features/requests/requestTarget.ts",
         "ui/src/features/layout/EmployeeLayout.svelte",
@@ -448,7 +448,7 @@
           "dir": "ui/src",
           "pattern": ".",
           "recursive": true,
-          "count": 292
+          "count": 279
         }
       ]
     }

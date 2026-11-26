@@ -4,8 +4,8 @@
   // по образцу DeviceFilters.svelte — счётчики встроены в Tabs, bespoke .status-tab удалён.
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
   // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
-  import Dropdown from '$lib/components/Dropdown.svelte';
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import type { CartridgeCountsDto, CartridgeModelDto } from '../../bindings';
 
   interface FilterOption {

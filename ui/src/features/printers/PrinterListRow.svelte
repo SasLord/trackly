@@ -6,8 +6,8 @@
   // bespoke двухстрочный `.row` заменён на 4-колоночную <TableRow> (имя/IP/статус/тонер).
   // Row-click/keyboard-select навешаны на <td>-ячейки (TableRow не форвардит onclick/role/
   // tabindex в свой <tr>) — тот же паттерн, что ActListRow/DeviceListRow.
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import TonerGauge from './TonerGauge.svelte';
   import DeviceRowMenu from '../devices/DeviceRowMenu.svelte';
   import { isOwnKeyEvent, isRowOverlayEvent } from '../devices/deviceRowMenu';

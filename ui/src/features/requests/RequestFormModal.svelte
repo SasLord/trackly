@@ -3,16 +3,16 @@
   // Тип-переключатель: «Замена картриджа» | «Свободная форма».
   // По паттерну CartridgeFormModal.svelte.
   // D-Req-Form-01: сотрудник не выбирает модель картриджа (только принтер).
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   // Plan 28-11 (GAP-1): Select (нативный select) заменён на кастомный
   // Dropdown (flat + variant="select") — см. CartridgeFormBody.svelte
   // (Phase 27-G1) для канонического паттерна. GroupedPrinterSelect (принтер)
   // остаётся нетронутым — вне области GAP-1's 7-site list.
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import GroupedPrinterSelect from '$lib/components/GroupedPrinterSelect.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import { tick } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { parseAppError } from '$lib/api/errors';

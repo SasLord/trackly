@@ -10,8 +10,8 @@
   // (onclick on every cell for full-row mouse click; role="button"+tabindex+
   // onkeydown on the first cell as the single keyboard entry point, mirroring
   // the previous single-div tab-stop).
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import type { ActDto } from '../../bindings';
 
   interface Props {

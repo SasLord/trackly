@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import AttachmentSettings from './AttachmentSettings.svelte';

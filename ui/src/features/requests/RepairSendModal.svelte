@@ -4,9 +4,9 @@
   // отправки: до создания захода родителя у них нет. Ошибки файлов — списком
   // под полем, без тостов; сама отправка к тому моменту уже состоялась.
   import { untrack } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import DatePicker from '$lib/components/DatePicker.svelte';
+  import DatePicker from '@trackly/kit/components/DatePicker.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';

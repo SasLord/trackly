@@ -3,7 +3,7 @@
   // Per UI-SPEC §DeviceFilters, D-Search-01, DEV-07.
 
   import Input from '$lib/components/Input.svelte';
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import { onMount, untrack } from 'svelte';
   import {

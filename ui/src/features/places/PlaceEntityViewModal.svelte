@@ -25,7 +25,7 @@
   import { untrack, tick } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { openRequestTarget } from '../requests/requestTarget';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';

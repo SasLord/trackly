@@ -3,8 +3,8 @@
   // Одна кнопка (превью + подпись) выполняет основное действие, ActionMenu —
   // соседний элемент поверх угла превью (вложенных кнопок нет).
   // Имена выводятся только интерполяцией текста.
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import { formatDateTimeShort } from '@trackly/kit/utils/date';

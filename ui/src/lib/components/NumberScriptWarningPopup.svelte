@@ -4,7 +4,7 @@
   // кириллицы/латиницы. Презентационный компонент — данные приходят
   // готовыми через пропсы (планы 13-15), включая структурированное
   // предупреждение о двойнике с сервера.
-  import Modal from './Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 
   interface DoppelgangerRecord {

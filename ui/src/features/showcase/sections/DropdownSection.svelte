@@ -4,7 +4,7 @@
   // DeviceDto import (this section proves the primitive works with ANY
   // caller shape, not just the device picker it was extracted from).
   import { onMount, tick } from 'svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
 
   interface DemoGroup {
     id: string;

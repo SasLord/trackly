@@ -11,7 +11,7 @@
   // drill-in group; a single location auto-flattens to its printers). The
   // Props contract is unchanged (`value` = selected printer id as string,
   // `onchange(idString)`), so the consumer (RequestFormModal) needs no edits.
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import type { RequestPrinterOptionDto } from '../../bindings-phase6';
 
   interface Props {

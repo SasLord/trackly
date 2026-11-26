@@ -4,11 +4,11 @@
   import Input from '$lib/components/Input.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Radio from '$lib/components/Radio.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import NumberTemplateModal from './NumberTemplateModal.svelte';
   import NumberMaskHelp from './NumberMaskHelp.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

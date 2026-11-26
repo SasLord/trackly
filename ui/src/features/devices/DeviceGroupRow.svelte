@@ -3,9 +3,9 @@
   // Per UI-SPEC §DeviceGroupRow, DEV-11.
   // On expand: fetches full DeviceDto list via devices.listByIds().
 
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
   import PrinterMark from './PrinterMark.svelte';
   import { isRowOverlayEvent } from './deviceRowMenu';

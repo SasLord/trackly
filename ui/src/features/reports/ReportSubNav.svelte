@@ -5,7 +5,7 @@
   //                    GAP-R5 — badges on ALL tabs (active: real count; inactive: –).
   // Plan 28-03 Task 1 (D-06): both levels moved onto the shared Tabs primitive
   // (segmented for domain, underline+count for report type) — no bespoke tab markup.
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
 
   type DomainKey = 'devices' | 'cartridges' | 'requests' | 'movements';
 

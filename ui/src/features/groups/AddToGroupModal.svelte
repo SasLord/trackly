@@ -18,9 +18,9 @@
   //
   // Монтируется родителем через {#if} (каждый показ — свежий экземпляр).
   import { onMount } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { groups } from '$lib/api/groups';
   import AlreadyInGroupPopup from './AlreadyInGroupPopup.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

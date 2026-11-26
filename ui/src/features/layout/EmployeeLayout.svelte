@@ -8,11 +8,11 @@
   import type { Snippet } from 'svelte';
   import active from 'svelte-spa-router/active';
   import Button from '@trackly/kit/components/Button.svelte';
-  import UnreadBadge from '$lib/components/UnreadBadge.svelte';
+  import UnreadBadge from '@trackly/kit/components/UnreadBadge.svelte';
   import { unreadStore } from '../requests/chat/unreadStore.svelte';
   import { sidebarActivePattern } from './sidebar-config';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { themeStore, setTheme } from '@trackly/kit/stores/theme.svelte';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';

@@ -22,7 +22,7 @@
   import { dropdownAnchor } from '@trackly/kit/utils/dropdownAnchor';
   import { authStore } from '$lib/stores/auth.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import type { PlaceDto, PlaceNewDto, PlacePathDto } from '../../bindings';
 
   interface Props {

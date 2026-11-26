@@ -19,8 +19,8 @@
 
   import Button from '@trackly/kit/components/Button.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
-  import Modal from '$lib/components/Modal.svelte';
-  import DatePicker from '$lib/components/DatePicker.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
+  import DatePicker from '@trackly/kit/components/DatePicker.svelte';
   import type { DeviceDto } from '../../bindings';
 
   interface Props {

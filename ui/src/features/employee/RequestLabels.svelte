@@ -1,7 +1,7 @@
 <script lang="ts">
   // Метки открытых заявок по устройству (41.6, D-07, UI-SPEC §11).
   // Своя заявка — ссылка «Заявка №N»; чужая — нессылочная метка без номера (BOPLA).
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import { requestTargetHref } from '../requests/requestTarget';
 
   interface Props {

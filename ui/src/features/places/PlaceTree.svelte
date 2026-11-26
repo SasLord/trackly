@@ -16,7 +16,7 @@
   import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import PlaceTreeNode from './PlaceTreeNode.svelte';
   import PlaceFormModal from './PlaceFormModal.svelte';

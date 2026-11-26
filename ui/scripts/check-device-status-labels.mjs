@@ -136,7 +136,7 @@ const STORE_PATH = 'src/lib/stores/deviceStatuses.svelte.ts';
 // Карта тонов вынесена в чистый модуль без runtime-импортов (41.6, D-08): сотрудник
 // не должен втягивать стор со справочником. Правила F1-F4 читают её здесь.
 const TONE_PATH = 'src/lib/deviceStatusTone.ts';
-const BADGE_PATH = 'src/lib/components/Badge.svelte';
+const BADGE_PATH = '../packages/kit/src/components/Badge.svelte';
 const TONE_CODES = ['на_складе', 'в_работе', 'на_ремонте', 'в_ремонте', 'на_списание', 'списано'];
 const MUTED_CODES = ['на_ремонте', 'на_списание'];
 const TONE_PAIRS = [
@@ -901,7 +901,7 @@ function checkRepo(root, scope, violations) {
 // В комментариях фикстуры нарочно процитированы запрещённые формы: гейт обязан
 // их игнорировать.
 const CLEAN_ROW = `<script lang="ts">
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import { statusLabel, statusTone } from '${STORE_IMPORT}';
   // раньше: const STATUS_LABELS = { 1: 'На складе', 2: 'В работе' }
   // раньше: { id: 1, label: 'На складе' }
@@ -915,7 +915,7 @@ const CLEAN_ROW = `<script lang="ts">
 `;
 
 const CLEAN_FILTERS = `<script lang="ts">
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import { orderedStatuses } from '${STORE_IMPORT}';
   const all = { id: null, label: 'Все' };
   const tabs = $derived([all, ...orderedStatuses().map((s) => ({ id: s.id, label: s.name }))]);
@@ -943,7 +943,7 @@ const SHOWCASE = `<script lang="ts">
 // Экран «Места»: устройства и принтеры — по стору, картриджи — своя карта
 // (D-07), освобождённая по правилу, а не по файлу.
 const CLEAN_PLACES = `<script lang="ts">
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import { statusTone } from '${STORE_IMPORT}';
   const CARTRIDGE_STATUS_VARIANT_BY_NAME: Record<string, 'default' | 'accent' | 'warning'> = {
     'На складе': 'default',
@@ -987,7 +987,7 @@ export const statusTone = (code: string) => TONES[code];
 `;
 
 const MILESTONE_ROW = `<script lang="ts">
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import { statusTone } from '${STORE_IMPORT}';
   const milestone = { variant: 'default' };
   const unused = statusTone;

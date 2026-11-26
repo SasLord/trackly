@@ -17,8 +17,8 @@
   // (dragging/drop-valid/drop-invalid), driven by the `draggingId`/
   // `dragOverId`/`isInvalidDropTarget` props it already receives.
   import PlaceTreeNode from './PlaceTreeNode.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import type { PlaceDto } from '../../bindings';
 
   interface TreeActions {

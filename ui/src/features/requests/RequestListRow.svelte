@@ -8,9 +8,9 @@
   // on the <td> cells we own here (onclick on every cell for full-row mouse click;
   // role="button"+tabindex+onkeydown on the first cell as the single keyboard
   // entry point, mirroring the previous single-div tab-stop).
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import UnreadBadge from '$lib/components/UnreadBadge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import UnreadBadge from '@trackly/kit/components/UnreadBadge.svelte';
   import { unreadFor } from './chat/unreadStore.svelte';
   import type { RequestDto } from '../../bindings-phase6';
 

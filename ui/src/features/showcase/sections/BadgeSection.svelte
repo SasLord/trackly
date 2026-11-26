@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
 </script>
 
 <section class="badge-section">

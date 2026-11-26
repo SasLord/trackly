@@ -19,10 +19,10 @@
   // (groups_create отвергает не-устройство, «Списано»/«На списание», занятое).
   // После создания пользователь остаётся в списке: тост несёт ссылку на группу.
   import { onMount } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';

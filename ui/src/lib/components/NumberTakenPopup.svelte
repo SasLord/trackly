@@ -3,7 +3,7 @@
   // попап цепочки проверки при сохранении. Презентационный компонент — все
   // данные приходят готовыми через пропсы от вызывающего кода (планы 13-15,
   // волна 6), который отвечает за их происхождение и оркестрацию цепочки.
-  import Modal from './Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 
   export interface NumberTakenRecordSummary {

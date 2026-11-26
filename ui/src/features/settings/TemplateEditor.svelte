@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   // Plan 28-12 (GAP-1): Select (нативный <select>) заменён на кастомный Dropdown
   // (flat + variant="select") — implicit-label pattern, как в CartridgeFormBody.svelte
   // (Phase 27-G1 precedent). D-08: strictly the kind-selector control only — the
   // rest of this component's editing/preview surface is untouched.
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
 

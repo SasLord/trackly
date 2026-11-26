@@ -38,7 +38,7 @@ import { walk as walkRoots } from './_roots.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '../src');
 const KIT_SRC = path.resolve(__dirname, '../../packages/kit/src');
-const COMPONENT = path.join(SRC, 'lib/components/DatePicker.svelte');
+const COMPONENT = path.join(KIT_SRC, 'components/DatePicker.svelte');
 const TAG = '[check-date-picker-layout]';
 const WHY =
   'строчный flex на input сжимает внутренний контейнер Chromium ' +

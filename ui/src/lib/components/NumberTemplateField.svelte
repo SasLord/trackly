@@ -13,7 +13,7 @@
   // ли значение вручную» (D-14/D-19/NUM-07).
   import { onMount, tick, untrack } from 'svelte';
   import Input from './Input.svelte';
-  import ActionMenu from './ActionMenu.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import IconInsertTemplate from './icons/IconInsertTemplate.svelte';
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

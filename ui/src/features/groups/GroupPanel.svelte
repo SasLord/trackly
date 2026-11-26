@@ -14,8 +14,8 @@
   // читает, идёт в untrack (компиляционные гейты слепы к effect_update_depth_exceeded).
   import { untrack } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import Tabs from '$lib/components/Tabs.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';

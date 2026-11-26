@@ -5,7 +5,7 @@
   // (flat + variant="select") — Dropdown не принимает `id`/`for`, поэтому
   // подпись оборачивает поле (implicit label), как в CartridgeFormBody.svelte
   // (Phase 27-G1 precedent).
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Input from '$lib/components/Input.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';

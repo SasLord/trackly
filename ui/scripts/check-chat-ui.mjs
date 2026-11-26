@@ -69,7 +69,7 @@ const REQUIRED = [
   `${CHAT}linkify.ts`,
   'features/requests/RequestDetail.svelte',
   'features/layout/sidebar-config.ts',
-  'lib/components/DetailPanel.svelte',
+  '../../packages/kit/src/components/DetailPanel.svelte',
   'lib/platform/systemNotify.ts',
   'features/requests/requestTarget.ts',
   'features/layout/EmployeeLayout.svelte',
@@ -366,7 +366,7 @@ export function check(files) {
   fired.add('C9');
 
   // C12
-  const dp = get('lib/components/DetailPanel.svelte');
+  const dp = get('../../packages/kit/src/components/DetailPanel.svelte');
   if (dp !== null) {
     const blk = (re) => funcBody(dp, re);
     const base = blk(/(?:^|\n)[ \t]*\.detail-header\s*\{/);
@@ -1024,7 +1024,7 @@ function selftest(files) {
       name: 'C12: перестановка — линия переехала из .header-row в .subheader',
       expect: 'C12',
       make: () => {
-        const rel = 'lib/components/DetailPanel.svelte';
+        const rel = '../../packages/kit/src/components/DetailPanel.svelte';
         const src = files[rel];
         const hrOpen = '.detail-header.with-subheader .header-row {';
         const subOpen = '.detail-header.with-subheader .subheader {';
@@ -1041,7 +1041,7 @@ function selftest(files) {
       name: 'C12: линия под вкладками снята (border-bottom: none)',
       expect: 'C12',
       make: swapText(
-        'lib/components/DetailPanel.svelte',
+        '../../packages/kit/src/components/DetailPanel.svelte',
         '    // Две линии: под строкой «заголовок + кнопки» (.header-row, R2-4) и под строкой вкладок (нижняя граница шапки, R3-3); цвет тот же, что у базовой шапки.\n    border-bottom: 1px solid var(--tr-border);',
         '    border-bottom: none;',
       ),
@@ -1050,7 +1050,7 @@ function selftest(files) {
       name: 'C12: перестановка — линия под вкладками переехала в .subheader',
       expect: 'C12',
       make: () => {
-        const rel = 'lib/components/DetailPanel.svelte';
+        const rel = '../../packages/kit/src/components/DetailPanel.svelte';
         const src = files[rel];
         const wsOpen = '\n  .detail-header.with-subheader {';
         const subOpen = '.detail-header.with-subheader .subheader {';
@@ -1107,7 +1107,7 @@ function selftest(files) {
       name: 'C12: у .header-row снята линия',
       expect: 'C12',
       make: swapText(
-        'lib/components/DetailPanel.svelte',
+        '../../packages/kit/src/components/DetailPanel.svelte',
         '    padding: 0 var(--tr-space-xl) var(--tr-space-md);\n    border-bottom: 1px solid var(--tr-border);',
         '    padding: 0 var(--tr-space-xl) var(--tr-space-md);',
       ),
@@ -1116,7 +1116,7 @@ function selftest(files) {
       name: 'C12: fill-body без отрицательного поля',
       expect: 'C12',
       make: swapText(
-        'lib/components/DetailPanel.svelte',
+        '../../packages/kit/src/components/DetailPanel.svelte',
         '.detail-panel.fill .fill-body {\n    margin: 0 calc(var(--tr-space-xl) * -1);',
         '.detail-panel.fill .fill-body {\n    margin: 0;',
       ),
@@ -1125,7 +1125,7 @@ function selftest(files) {
       name: 'C12: у шапки «Чата» вернулся нижний зазор',
       expect: 'C12',
       make: swapText(
-        'lib/components/DetailPanel.svelte',
+        '../../packages/kit/src/components/DetailPanel.svelte',
         '.detail-panel.fill .detail-header.with-subheader {\n    margin-bottom: 0;',
         '.detail-panel.fill .detail-header.with-subheader {\n    margin-bottom: var(--tr-space-xl);',
       ),
@@ -1152,7 +1152,7 @@ function selftest(files) {
       name: 'C12: снята линия с базового .detail-header (регрессия других страниц)',
       expect: 'C12',
       make: swapText(
-        'lib/components/DetailPanel.svelte',
+        '../../packages/kit/src/components/DetailPanel.svelte',
         '    background: var(--tr-surface-raised);\n    border-bottom: 1px solid var(--tr-border);\n  }',
         '    background: var(--tr-surface-raised);\n  }',
       ),

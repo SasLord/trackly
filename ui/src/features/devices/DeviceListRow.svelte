@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import RowChevron from '$lib/components/icons/RowChevron.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import RowChevron from '@trackly/kit/components/icons/RowChevron.svelte';
   import DeviceRowMenu from './DeviceRowMenu.svelte';
   import PrinterMark from './PrinterMark.svelte';
   import GroupLoadRestButton from './GroupLoadRestButton.svelte';

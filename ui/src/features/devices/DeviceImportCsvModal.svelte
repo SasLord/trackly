@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Select from '$lib/components/Select.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

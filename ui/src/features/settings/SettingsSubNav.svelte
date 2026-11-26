@@ -3,7 +3,7 @@
   // Splits the Settings page into per-subsection views matching the component layout.
   // Plan 28-05 Task 1 (D-06): bespoke tab-bar replaced with the shared Tabs primitive
   // (variant="underline", no count — 6 sections have no counters).
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
 
   const SECTIONS = [
     { key: 'network', label: 'Сеть' },

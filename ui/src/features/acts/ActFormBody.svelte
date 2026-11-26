@@ -83,7 +83,7 @@
   import Input from '$lib/components/Input.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
-  import DatePicker from '$lib/components/DatePicker.svelte';
+  import DatePicker from '@trackly/kit/components/DatePicker.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import {

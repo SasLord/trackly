@@ -6,9 +6,9 @@
   // Plan 27-08 (D-03/D-04): сырая bespoke-таблица заменена примитивами Table/TableRow;
   // сырые checkbox-инпуты → Checkbox-примитив; select-all/per-row/dedup-подсветка
   // и вся логика выбора не изменены — только разметка.
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import type { DiscoveredPrinterDto } from '../../bindings-phase6';
 

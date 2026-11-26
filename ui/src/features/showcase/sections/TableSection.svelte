@@ -2,10 +2,10 @@
   // TableSection — CMP-06 showcase gallery for Table/TableRow (Plan 25-01 primitives).
   // Static demo data only, no API calls — mirrors TabsSection.svelte's structural pattern.
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import Badge from '$lib/components/Badge.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import RowChevron from '$lib/components/icons/RowChevron.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
+  import RowChevron from '@trackly/kit/components/icons/RowChevron.svelte';
 
   type BadgeVariant = 'default' | 'accent' | 'success' | 'warning' | 'destructive';
 

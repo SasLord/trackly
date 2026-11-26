@@ -4,7 +4,7 @@
   // Plan 27-02 (D-05): switch-bar migrated to shared Tabs primitive (variant="underline"),
   // per DeviceFilters.svelte precedent — count now built into Tabs, no bespoke <button class="tab">.
   import Input from '$lib/components/Input.svelte';
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import type { ActsCountsDto } from '../../bindings';
 
   type TabKey = 'handover' | 'returns' | 'archive';

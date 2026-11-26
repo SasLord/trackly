@@ -7,7 +7,7 @@
   // Решение принимает родитель (ActsPage): onConfirm запускает удаление, а
   // deleting блокирует кнопки и закрытие окна, пока запрос не завершён.
   // Монтируется родителем через {#if}.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import type { ActDto } from '../../bindings';
 

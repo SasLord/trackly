@@ -11,7 +11,7 @@
   // `position: fixed`), the exact same reasoning DeviceFormModal.svelte
   // documents for its own popups (Plan 13). ActFormBody OWNS the
   // orchestration state and reports it up via `onPopupChange`.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
   import NumberMismatchPopup from '$lib/components/NumberMismatchPopup.svelte';

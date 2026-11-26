@@ -16,7 +16,7 @@
   // через callback-пропы вместо inline onclick/onkeydown.
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { devices } from '$lib/api/devices';
   import { groups } from '$lib/api/groups';
   import { ensureLoaded, statusIdByCode } from '$lib/stores/deviceStatuses.svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
 
   const underlineTabs = [
     { key: 'all', label: 'Все', count: 12 },

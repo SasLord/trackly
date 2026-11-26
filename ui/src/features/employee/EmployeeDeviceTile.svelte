@@ -2,7 +2,7 @@
   // Плитка устройства сотрудника для узкого экрана (41.6, D-21, UI-SPEC §16).
   // Переключение таблица/плитки выполняет страница; медиа-запросов здесь нет.
   // Одинарный клик по телу открывает карточку (двойной тап конфликтует с масштабом).
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import PrinterMark from '../devices/PrinterMark.svelte';
   import { isOwnKeyEvent, isRowOverlayEvent } from '../devices/deviceRowMenu';
   import { statusTone } from '$lib/deviceStatusTone';

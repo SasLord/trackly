@@ -3,7 +3,7 @@
   // Обёртка над ActionMenu; проп `portal` не передаётся (портал — единственный
   // режим). Набор пунктов считает чистая buildEmployeeMenu. Компонент API не
   // вызывает и staff-команд не знает: о действиях сообщает колбэками.
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { buildEmployeeMenu } from './employeeDeviceMenu';
   import type { EmployeeDeviceDto } from '../../bindings';
 

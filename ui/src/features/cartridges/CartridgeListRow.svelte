@@ -9,8 +9,8 @@
   // row click/keyboard-select is wired on the <td> cells we own here (onclick on
   // every non-kebab cell for full-row mouse click; role="button"+tabindex+onkeydown
   // on the first cell as the single keyboard entry point).
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import CartridgeContextMenu from './CartridgeContextMenu.svelte';
   import type { CartridgeDto } from '../../bindings';
 

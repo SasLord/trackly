@@ -16,7 +16,7 @@
   // OWNS their orchestration (occupied/mismatch/script-mix chain, button
   // behaviour) but reports it up via `onPopupChange`; THIS component
   // renders the actual popups.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
   import NumberMismatchPopup from '$lib/components/NumberMismatchPopup.svelte';

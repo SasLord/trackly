@@ -8,7 +8,7 @@
   // и ранее входившие AD-пользователи; id/full_name/login). Поиска по каталогу
   // AD нет, и обещать его нельзя.
   import { onDestroy } from 'svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { groups } from '$lib/api/groups';
   import type { UserOptionDto } from '../../bindings';
 

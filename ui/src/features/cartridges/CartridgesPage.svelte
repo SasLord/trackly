@@ -5,7 +5,7 @@
   // Два таба: «Картриджи» (master-detail) / «Модели» (полноширинный CRUD-список).
   import { onMount } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { parseIdFromHash } from '@trackly/kit/utils/hashId';

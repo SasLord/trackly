@@ -8,7 +8,7 @@
   // String()-adapter + `key === 'null'` round-trip is required (same pattern as
   // DeviceFilters.svelte).
   import Button from '@trackly/kit/components/Button.svelte';
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import type { RequestCountsDto, RequestFilter } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
 

@@ -5,7 +5,7 @@
   // Единственный скролл-регион — сам DetailPanel (оболочка .content скроллит
   // только внутренние регионы страниц).
   import { untrack } from 'svelte';
-  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';

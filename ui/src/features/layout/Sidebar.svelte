@@ -6,7 +6,7 @@
   import type { UserRole } from '$lib/stores/auth.svelte';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
   import { apiCall } from '$lib/api/client';
-  import UnreadBadge from '$lib/components/UnreadBadge.svelte';
+  import UnreadBadge from '@trackly/kit/components/UnreadBadge.svelte';
   import { unreadStore } from '../requests/chat/unreadStore.svelte';
 
   const visibleItems = $derived(getVisibleItems((authStore.user?.role as UserRole | null) ?? null));

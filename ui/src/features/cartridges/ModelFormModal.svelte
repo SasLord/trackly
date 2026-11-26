@@ -6,13 +6,13 @@
   // Plan 13-06 (R3): свёрнуто до ОДНОГО блока совместимости — compatibility:
   // string[] (V032/Phase 13 single-column contract), CompatibleDevicesEditor
   // (V029 per-device чеклист) удалён.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
   // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
   // Dropdown не принимает `id`/`for`, поэтому подпись оборачивает поле
   // (implicit label), а не связывается через `for` (как раньше у Select).
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import CompatibilityEditor from './CompatibilityEditor.svelte';

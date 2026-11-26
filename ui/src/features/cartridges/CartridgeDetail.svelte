@@ -25,9 +25,9 @@
   // modal, this page keeps rendering the rest of the cartridge's data even
   // if only the movements fetch fails.
   import Button from '@trackly/kit/components/Button.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';

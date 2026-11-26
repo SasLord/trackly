@@ -5,8 +5,8 @@
   // forbids replacing it with a modal). The 4 small text buttons (Изменить/
   // Удалить/Да/Нет) keep the bespoke .btn-action class — Button primitive
   // targets larger CTAs, not inline table-row actions (Claude's Discretion).
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import type { UserDto } from '../../bindings';
 
   const ROLE_LABELS: Record<string, string> = {

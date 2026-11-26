@@ -4,9 +4,9 @@
   // общий PdfPreviewModal (mode='repairDevice'). Все значения — интерполяцией
   // текста, без {@html}.
   import { push } from 'svelte-spa-router';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

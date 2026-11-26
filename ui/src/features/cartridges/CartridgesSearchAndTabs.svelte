@@ -3,7 +3,7 @@
   // Plan 04-04: search input + tab switcher («Картриджи» / «Модели») для CartridgesPage.
   // Паттерн по образцу ActsSearchAndTabs.svelte.
   import Input from '$lib/components/Input.svelte';
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import type { CartridgeCountsDto } from '../../bindings';
 
   type TabKey = 'cartridges' | 'models';

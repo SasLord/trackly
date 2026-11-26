@@ -5,10 +5,10 @@
   // одну функцию enqueue(File[]) и последовательную очередь загрузки.
   // Имена файлов и людей выводятся ТОЛЬКО интерполяцией текста.
   import { onDestroy, onMount, untrack } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import RowChevron from '$lib/components/icons/RowChevron.svelte';
+  import RowChevron from '@trackly/kit/components/icons/RowChevron.svelte';
   import { onWsEvent } from '$lib/api/ws';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';

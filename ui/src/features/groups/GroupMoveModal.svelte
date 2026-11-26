@@ -13,7 +13,7 @@
   // Инвалидация (D-08, INV-7): `notifyPlaceContentChanged` вызывается в ТОЙ ЖЕ
   // функции, что и `groups.move(`, — это требование реестрового гейта.
   import { untrack } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import FormField from '$lib/components/FormField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';

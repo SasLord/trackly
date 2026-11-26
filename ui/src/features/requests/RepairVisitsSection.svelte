@@ -5,9 +5,9 @@
   // приёма-передачи. Права: кнопки только у canManage; сервер авторизует независимо.
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { formatFileSize } from '@trackly/kit/utils/formatFileSize';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';

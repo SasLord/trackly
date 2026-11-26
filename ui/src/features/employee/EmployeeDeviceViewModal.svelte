@@ -3,8 +3,8 @@
   // Данные приходят строкой списка по id; отдельного запроса нет. Модалка рендерится
   // вне <td> (на уровне страницы): Modal наследует стили ячейки, поэтому корень тела
   // явно задаёт выравнивание и перенос.
-  import Modal from '$lib/components/Modal.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';

@@ -39,7 +39,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 const TAG = '[check-modal-isolation]';
 
-const MODAL_FILE = 'src/lib/components/Modal.svelte';
+const MODAL_FILE = '../packages/kit/src/components/Modal.svelte';
 const ROOT_SELECTOR = '.modal-backdrop';
 // Обязательные объявления корневого правила: свойство -> допустимые значения.
 const REQUIRED = [

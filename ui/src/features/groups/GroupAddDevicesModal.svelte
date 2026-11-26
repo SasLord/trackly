@@ -18,14 +18,14 @@
   // истина: пометка «Уже в группе «…»» — подсказка одним groups.forDevices на
   // порцию, отказ сервера показывается текстом в теле модалки.
   import { onDestroy, onMount } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
   import { groups } from '$lib/api/groups';

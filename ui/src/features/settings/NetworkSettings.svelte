@@ -5,7 +5,7 @@
   // Plan 28-12 (GAP-1): Select (нативный <select>) заменён на кастомный Dropdown
   // (flat + variant="select") — implicit-label pattern, как в CartridgeFormBody.svelte
   // (Phase 27-G1 precedent).
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';

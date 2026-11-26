@@ -95,7 +95,7 @@
 
   import { onMount, untrack } from 'svelte';
   import Input from '$lib/components/Input.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';

@@ -81,10 +81,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 const TAG = '[check-action-menu-portal]';
 
-const MENU_FILE = 'src/lib/components/ActionMenu.svelte';
-const TABLE_ROW_FILE = 'src/lib/components/TableRow.svelte';
+const MENU_FILE = '../packages/kit/src/components/ActionMenu.svelte';
+const TABLE_ROW_FILE = '../packages/kit/src/components/TableRow.svelte';
 const GLOBAL_SCSS_FILE = 'packages/design/src/styles/global.scss';
-const SUBMENU_FILE = 'src/lib/components/ActionSubmenu.svelte';
+const SUBMENU_FILE = '../packages/kit/src/components/ActionSubmenu.svelte';
 // Сколько вызовов <ActionMenu есть в src/**/*.svelte (инвентарь плана 41.1-16):
 // 21 = сумма `grep -rc '<ActionMenu' src --include='*.svelte'` по файлам
 // (в плане 41-27 было 13; 41.1-16/41.1-02: 15; 41.8-13 пересчитан от репозитория: 21 —
@@ -799,7 +799,7 @@ const CLEAN_SUBMENU = `<script lang="ts">
 `;
 
 const CALLER_1 = `<script lang="ts">
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
 </script>
 
 <!-- в комментарии: <ActionMenu portal> — не вызов -->
@@ -816,7 +816,7 @@ const CALLER_1 = `<script lang="ts">
 `;
 
 const CALLER_2 = `<script lang="ts">
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
 </script>
 
 <div class="row-actions-host">

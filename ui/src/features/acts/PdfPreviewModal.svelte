@@ -37,7 +37,7 @@
 
   import { makeRepeatTableHeadHandler } from '$lib/pdfPreview/repeatTableHeadHandler';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { acts } from '$lib/api/acts';

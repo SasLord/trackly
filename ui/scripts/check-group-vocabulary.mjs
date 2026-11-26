@@ -447,7 +447,7 @@ function runSelfTest() {
     },
     {
       name: 'негатив: aria-label со словом «группу» в общем компоненте',
-      file: 'src/lib/components/TableRow.svelte',
+      file: '../packages/kit/src/components/TableRow.svelte',
       src: "<button aria-label={open ? 'Свернуть группу' : 'Развернуть'}></button>",
       expectViolations: 1,
     },

@@ -3,7 +3,7 @@
   // шаблону" — второй попап цепочки проверки, показывается только при
   // активном шаблоне и только в попапах создания. Презентационный
   // компонент — данные приходят готовыми через пропсы (планы 13-15).
-  import Modal from './Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 
   interface Props {

@@ -3,9 +3,9 @@
   // Открывается из «Принять в работу» (mode='accept') и «Забрать на склад»
   // (mode='toStorage'). Серверная валидация авторитетна; клиент только собирает выбор.
   import { untrack } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';

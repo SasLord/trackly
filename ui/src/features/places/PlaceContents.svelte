@@ -18,15 +18,15 @@
   // each segment carries a real place id for `onSelectAncestor`.
   import { push } from 'svelte-spa-router';
   import { apiCall } from '$lib/api/client';
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import Badge from '$lib/components/Badge.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import RowChevron from '$lib/components/icons/RowChevron.svelte';
+  import RowChevron from '@trackly/kit/components/icons/RowChevron.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { statusTone } from '$lib/stores/deviceStatuses.svelte';

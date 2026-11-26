@@ -4,7 +4,7 @@
   // компонент: ничего не грузит и не удаляет, группы приходят пропсом, результат
   // уходит в onConfirm. Отмена ничего не меняет — на сервере к этому моменту
   // ничего не удалено.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Radio from '$lib/components/Radio.svelte';
   import type { GroupRestoreChoiceDto, GroupRestoreConflictDto } from '../../bindings';

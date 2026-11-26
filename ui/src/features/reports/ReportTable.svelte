@@ -8,8 +8,8 @@
   // Loading/empty now come from Table's built-in states; error keeps its own
   // sibling branch outside Table (no error-state equivalent in Table's API).
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { push } from 'svelte-spa-router';
   import { pluralizeRu } from '@trackly/kit/utils/pluralize';

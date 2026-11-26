@@ -18,10 +18,10 @@
   // сохранения сервер ещё не видел).
   import { PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import Badge from '$lib/components/Badge.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { devices } from '$lib/api/devices';
   import type { DeviceDto, DeviceListResponse, GroupPrinterDto } from '../../bindings';
 

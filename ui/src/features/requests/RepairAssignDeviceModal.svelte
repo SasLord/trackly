@@ -2,9 +2,9 @@
   // Фаза 41.4, план 17 (D-24): попап «Указать устройство» для ремонтной заявки «Другое».
   // D-33: если устройство уже в открытой заявке, второй попап предлагает объединить заявки.
   import { untrack } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { parseAppError } from '$lib/api/errors';
   import { repairs } from './api';

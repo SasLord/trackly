@@ -71,6 +71,58 @@
     {
       "from": "ui/src/lib/utils/calendarIcon.d.ts",
       "to": "packages/kit/src/utils/calendarIcon.d.ts"
+    },
+    {
+      "from": "ui/src/lib/components/ActionMenu.svelte",
+      "to": "packages/kit/src/components/ActionMenu.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/ActionSubmenu.svelte",
+      "to": "packages/kit/src/components/ActionSubmenu.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/TableRow.svelte",
+      "to": "packages/kit/src/components/TableRow.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Modal.svelte",
+      "to": "packages/kit/src/components/Modal.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/DatePicker.svelte",
+      "to": "packages/kit/src/components/DatePicker.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Badge.svelte",
+      "to": "packages/kit/src/components/Badge.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Tabs.svelte",
+      "to": "packages/kit/src/components/Tabs.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/DetailPanel.svelte",
+      "to": "packages/kit/src/components/DetailPanel.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Dropdown.svelte",
+      "to": "packages/kit/src/components/Dropdown.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/actionMenuContext.ts",
+      "to": "packages/kit/src/components/actionMenuContext.ts"
+    },
+    {
+      "from": "ui/src/lib/components/UnreadBadge.svelte",
+      "to": "packages/kit/src/components/UnreadBadge.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/icons/IconClose.svelte",
+      "to": "packages/kit/src/components/icons/IconClose.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/icons/RowChevron.svelte",
+      "to": "packages/kit/src/components/icons/RowChevron.svelte"
     }
   ]
 }

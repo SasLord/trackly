@@ -6,8 +6,8 @@
   // unchanged (inline, no portal — same as before, no overflow clipping issue
   // inside a <td>: menu positioned `position: absolute` relative to its own
   // wrapper, td has `overflow: visible`).
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import type { CartridgeModelDto } from '../../bindings';
 
   interface Props {

@@ -3,7 +3,7 @@
   // Рендерится блоком вложений как СОСЕДНИЙ Modal верхнего уровня (не внутри
   // чужого Modal-контента). Тосты не выводит: все состояния — внутри тела.
   import { untrack } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { saveFile } from '@trackly/kit/utils/saveFile';

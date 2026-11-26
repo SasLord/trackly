@@ -7,14 +7,14 @@
   // свойства, скрытие вместо удаления) — удобство; отказ показывается его
   // сообщением. Не зеркалим серверные правила (нормализация, 50 свойств).
   import Table from '$lib/components/Table.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import Badge from '$lib/components/Badge.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import Input from '$lib/components/Input.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import PropertyRequiredViolatorsPopup from './PropertyRequiredViolatorsPopup.svelte';
   import { groupTypes } from '$lib/api/groups';
   import { insertionIndex, reorder } from '$lib/utils/reorder';

@@ -2,7 +2,7 @@
   // Plan 06-04: DiscoveryModal — SNMP discovery с 2-step flow (scan → review → admit).
   // По паттерну OperationModal.svelte (Modal + form state + try/catch + pushToast).
   // size="wide" (960px). Reset на open. handleScan → printers.discover. handleCreate → printers.admit.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';

@@ -9,9 +9,9 @@
   // $bindable prop без двустороннего связывания родителя desync'ится от
   // реактивных апдейтов; Dropdown's явная одностороння controlled-value
   // конвенция этой проблемы не имеет).
-  import DatePicker from '$lib/components/DatePicker.svelte';
-  import Tabs from '$lib/components/Tabs.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import DatePicker from '@trackly/kit/components/DatePicker.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
 
   type PeriodMode = 'month' | 'year' | 'range';
 

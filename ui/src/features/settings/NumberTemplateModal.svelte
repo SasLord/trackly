@@ -8,10 +8,10 @@
   // fixture_gate): 300 мс debounce после изменения типа/маски, устаревшие
   // ответы отбрасываются (см. previewRequestId).
   import { onMount, untrack } from 'svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Dropdown from '$lib/components/Dropdown.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import NumberMaskHelp from './NumberMaskHelp.svelte';
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';

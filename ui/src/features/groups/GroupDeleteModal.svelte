@@ -6,7 +6,7 @@
   // это direct_device_count (только прямые члены, серверное; клиент ничего не
   // считает). Тип: удаляется только невстроенный тип без групп; всё остальное
   // отклоняет сервер, его сообщение показывается инлайн (§17.3).
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
   import { pluralizeRu } from '@trackly/kit/utils/pluralize';

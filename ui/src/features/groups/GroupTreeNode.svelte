@@ -44,8 +44,8 @@
   // Нет пункта создания вложенной группы (тот же D-04: два пути с разной
   // семантикой недопустимы).
   import GroupTreeNode from './GroupTreeNode.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import { STATUS_TO_WRITE_OFF } from '../devices/deviceRowMenu';
 
   let groupMenu = $state<ReturnType<typeof ActionMenu> | null>(null);

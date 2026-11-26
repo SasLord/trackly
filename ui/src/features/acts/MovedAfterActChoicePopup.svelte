@@ -3,7 +3,7 @@
   // акта. Презентационный компонент: ничего не грузит и не удаляет, устройства приходят
   // пропсом, выбор (один на все устройства) уходит в onConfirm. Отмена ничего не меняет —
   // на сервере к этому моменту ничего не удалено.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Radio from '$lib/components/Radio.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';

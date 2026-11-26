@@ -9,7 +9,7 @@
   // a sibling branch with a matching container so layout doesn't jump between states.
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import ActItemsTable from './ActItemsTable.svelte';

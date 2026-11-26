@@ -7,7 +7,7 @@
   // Две кнопки, третьей («добавить всю группу вместо этого») нет: попап не
   // правит состав акта за спиной формы. Primary, а не destructive (R-06):
   // действие ничего не удаляет и откатывается удалением акта.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
 
   export interface GroupReleaseItem {

@@ -2,8 +2,8 @@
   // Строка таблицы устройств сотрудника (41.6, D-04, D-05, D-07, D-09, D-18, UI-SPEC §8-§9).
   // Кебаб, правый клик и клавиатура открывают ОДНО меню; двойной клик — карточку.
   // Компонент API не вызывает: о действиях сообщает колбэками.
-  import Badge from '$lib/components/Badge.svelte';
-  import TableRow from '$lib/components/TableRow.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
+  import TableRow from '@trackly/kit/components/TableRow.svelte';
   import PrinterMark from '../devices/PrinterMark.svelte';
   import { isOwnKeyEvent, isRowOverlayEvent } from '../devices/deviceRowMenu';
   import { statusTone } from '$lib/deviceStatusTone';

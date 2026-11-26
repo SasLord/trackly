@@ -3,7 +3,7 @@
   // обязательным». Презентационный (образец — NumberTakenPopup): все данные
   // приходят через props, собственных запросов нет. Список нарушителей приходит
   // от сервера готовым, UI его не вычисляет.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import { pluralizeRu } from '@trackly/kit/utils/pluralize';
 

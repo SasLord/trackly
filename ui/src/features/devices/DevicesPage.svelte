@@ -2,7 +2,7 @@
   import { onMount, tick, untrack } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import ActionMenu from '@trackly/kit/components/ActionMenu.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { ensureLoaded as ensureStatusesLoaded } from '$lib/stores/deviceStatuses.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';

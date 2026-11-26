@@ -27,7 +27,7 @@
   import { groups as groupsApi } from '$lib/api/groups';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
   import PlacesMasterDetail from '../places/PlacesMasterDetail.svelte';
   import GroupTree, { type GroupTreeNodeRef } from './GroupTree.svelte';
   import GroupTypePanel from './GroupTypePanel.svelte';

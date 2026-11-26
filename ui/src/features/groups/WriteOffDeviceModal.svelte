@@ -5,7 +5,7 @@
   //
   // Modal может стоять внутри <td>: тело явно задаёт white-space: normal и
   // text-align: left. Монтируется родителем через {#if}.
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Radio from '$lib/components/Radio.svelte';
   import { groups } from '$lib/api/groups';

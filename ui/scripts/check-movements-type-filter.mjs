@@ -168,9 +168,11 @@ function checkFilters(filtersSrc, violations) {
     return;
   }
 
-  if (!/import\s+Dropdown\s+from\s+'\$lib\/components\/Dropdown\.svelte'/.test(filtersSrc)) {
+  if (
+    !/import\s+Dropdown\s+from\s+'@trackly\/kit\/components\/Dropdown\.svelte'/.test(filtersSrc)
+  ) {
     violations.push(
-      `INV-1: ${REPORT_FILTERS} не импортирует кастомный Dropdown из $lib/components/Dropdown.svelte.`,
+      `INV-1: ${REPORT_FILTERS} не импортирует кастомный Dropdown из @trackly/kit/components/Dropdown.svelte.`,
     );
   }
 

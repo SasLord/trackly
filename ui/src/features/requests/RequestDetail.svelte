@@ -15,15 +15,15 @@
   // territory, not D-01).
   import { untrack } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Badge from '@trackly/kit/components/Badge.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import Modal from '$lib/components/Modal.svelte';
+  import Modal from '@trackly/kit/components/Modal.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   // Plan 28-11 (GAP-1): Select (нативный <select>) заменён на кастомный
   // Dropdown (flat + variant="select") — см. CartridgeFormBody.svelte
   // (Phase 27-G1) для канонического паттерна.
-  import Dropdown from '$lib/components/Dropdown.svelte';
-  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import Dropdown from '@trackly/kit/components/Dropdown.svelte';
+  import DetailPanel from '@trackly/kit/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import OperationModal from '../cartridges/OperationModal.svelte';
@@ -53,7 +53,7 @@
   import type { CurrentUser } from '$lib/stores/auth.svelte';
   import type { RequestHistoryEntry } from './api';
   import { entryText, mergedIntoId } from './historyLabels';
-  import Tabs from '$lib/components/Tabs.svelte';
+  import Tabs from '@trackly/kit/components/Tabs.svelte';
   import RequestChat from './chat/RequestChat.svelte';
   import ChatMuteToggle from './chat/ChatMuteToggle.svelte';
   import { tabStore, setTab } from './chat/tabStore.svelte';
