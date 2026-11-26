@@ -409,9 +409,7 @@
       ]
     },
     "lint-selftest-wiring": {
-      "files": [
-        "ui/package.json"
-      ],
+      "files": ["ui/package.json"],
       "dirs": [
         {
           "dir": "ui/scripts",
@@ -422,9 +420,7 @@
       ]
     },
     "html-commands": {
-      "files": [
-        "ui/src/lib/api/client.ts"
-      ],
+      "files": ["ui/src/lib/api/client.ts"],
       "dirs": [
         {
           "dir": "crates/trackly-app/src/http",
