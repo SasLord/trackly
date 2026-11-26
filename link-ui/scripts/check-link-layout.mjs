@@ -90,9 +90,11 @@ export function check(root) {
       need(w.width === 1000 && w.height === 700, '[L2] размер окна не 1000x700');
       need(w.minWidth === 720 && w.minHeight === 500, '[L2] минимум окна не 720x500');
       need(w.visible === false, '[L2] окно должно создаваться visible:false (window-state)');
+      // фон окна ставит только стор темы (не на macOS): backgroundColor в конфиге
+      // перекрашивает шапку окна macOS при системном цвете заголовка
       need(
-        typeof w.backgroundColor === 'string' && w.backgroundColor.length > 0,
-        '[L2] у окна не задан backgroundColor (фон под тему)',
+        w.backgroundColor === undefined,
+        '[L2] backgroundColor в конфиге окна ломает шапку на macOS (фон ставит стор темы)',
       );
       need(conf.productName === 'Trackly Link', '[L2] productName не «Trackly Link»');
       need(conf.mainBinaryName === 'trackly-link', '[L2] mainBinaryName не trackly-link');
@@ -153,7 +155,12 @@ function selftest() {
     ['L1', 'link-ui/src/App.svelte', '<StatusLine />', ''],
     ['L2', 'crates/link-app/tauri.conf.json', '"minWidth": 720', '"minWidth": 400'],
     ['L2', 'crates/link-app/tauri.conf.json', '"visible": false', '"visible": true'],
-    ['L2', 'crates/link-app/tauri.conf.json', '"backgroundColor": "#eef1f6",', ''],
+    [
+      'L2',
+      'crates/link-app/tauri.conf.json',
+      '"visible": false',
+      '"backgroundColor": "#eef1f6", "visible": false',
+    ],
     ['L3', 'crates/link-app/capabilities/main.json', '"window-state:default"', '"shell:default"'],
     [
       'L3',

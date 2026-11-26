@@ -11,7 +11,8 @@
 //   [W2] после setTheme('dark') последний вызов несёт --tr-bg тёмной темы (#0e1218), а не константу;
 //   [W3] браузер (нет __TAURI_INTERNALS__): ни одного вызова и ни одного запроса импорта
 //        @tauri-apps/api/window;
-//   [W4] setBackgroundColor отклоняется: setTheme не бросает и нет unhandled rejection.
+//   [W4] setBackgroundColor отклоняется: setTheme не бросает и нет unhandled rejection;
+//   [W5] Tauri на macOS (userAgent с «Macintosh»): ни одного вызова — фон NSWindow красит шапку.
 //
 // Usage: node scripts/check-window-bg-theme.mjs [--selftest]
 
@@ -57,6 +58,8 @@ async function runCases(overrides) {
     setItem: (k, v) => store.set(k, String(v)),
   });
   def('requestAnimationFrame', (cb) => cb());
+  const nav = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/120.0' };
+  def('navigator', nav);
   win.getComputedStyle = (el) => ({
     getPropertyValue: (n) => (n === '--tr-bg' ? (COLORS[el.dataset.theme] ?? '') : ''),
   });
@@ -110,6 +113,17 @@ async function runCases(overrides) {
   expect('W4', threw === null, `setTheme бросил: ${threw}`);
   expect('W4', H.calls.length > 0, 'при отказе вызов даже не состоялся (проба не несущая)');
   expect('W4', unhandled.length === 0, `unhandled rejection: ${unhandled.length}`);
+
+  // W5: macOS
+  H.fail = false;
+  nav.userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15';
+  t = await fresh();
+  H.calls.length = 0;
+  store.set('trackly:theme', 'dark');
+  t.initTheme();
+  t.setTheme('light');
+  await settle();
+  expect('W5', H.calls.length === 0, `на macOS вызовы ${JSON.stringify(H.calls)}`);
   return bad;
 }
 
@@ -141,6 +155,13 @@ const MUTANTS = [
     from: "style.getPropertyValue('--tr-bg').trim();",
     to: "style.getPropertyValue('--tr-bg').trim() && '#eef1f6';",
     expect: 'W2',
+  },
+  {
+    name: 'снят пропуск macOS',
+    file: THEME,
+    from: '  if (/Mac/.test(navigator.userAgent)) return;',
+    to: '',
+    expect: 'W5',
   },
   {
     name: 'значение не обрезается',

@@ -39,10 +39,13 @@ function applyResolved(): void {
   void syncWindowBackground();
 }
 
-// Нативный фон окна (полоса при ресайзе WebView2) = --tr-bg текущей темы. Только в Tauri;
-// проверка при каждом вызове, динамический импорт — браузерный бандл API окна не тянет.
+// Нативный фон окна (полоса при ресайзе WebView2) = --tr-bg текущей темы. Только в Tauri и не
+// на macOS: там фон NSWindow перекрашивает и шапку окна, а цвет заголовка остаётся от системной
+// темы (тёмный текст на тёмной шапке); WKWebView ресайзится синхронно, маскировать нечего.
+// Проверка при каждом вызове, динамический импорт — браузерный бандл API окна не тянет.
 async function syncWindowBackground(): Promise<void> {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+  if (/Mac/.test(navigator.userAgent)) return;
   try {
     const style = window.getComputedStyle(document.documentElement);
     const color = style.getPropertyValue('--tr-bg').trim();

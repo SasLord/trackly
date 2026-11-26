@@ -15,8 +15,7 @@
         "title": "Trackly",
         "width": 1280,
         "height": 800,
-        "dragDropEnabled": false,
-        "backgroundColor": "#eef1f6"
+        "dragDropEnabled": false
       }
     ],
     "security": {
