@@ -6,8 +6,8 @@
 // молча ломает выход из сессии и тост 403; svelte-check/build этого не видят (хуки необязательные).
 //
 // Исполняет НАСТОЯЩИЙ packages/transport/src/client.ts через стенд _rune-harness.mjs; подменён
-// только глобальный fetch. Ветка HTTP (LAN-браузер). Tauri-ветка invoke этим гейтом НЕ покрыта:
-// признак isTauri читается при загрузке модуля, второй загрузки в одном процессе нет (UNVERIFIED).
+// только глобальный fetch. Ветка HTTP (LAN-браузер). Tauri-ветка invoke покрыта соседним гейтом
+// check-transport-tauri.mjs (isTauri читается при загрузке модуля — там отдельный процесс с isTauri=true).
 //
 // Кейсы:
 //   [T1] HTTP 401 -> onUnauthorized ровно один раз, onForbidden не вызван, apiCall бросает AppError;

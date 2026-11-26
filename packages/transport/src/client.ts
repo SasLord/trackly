@@ -42,15 +42,15 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
       return await invoke<R>(name, args);
     } catch (e) {
       const err = parseAppError(e);
-      // Tauri errors don't have HTTP status codes; check error code for auth errors.
-      if (err && typeof err === 'object' && 'code' in err) {
-        const code = (err as { code: string }).code;
-        if (code === 'UNAUTHORIZED' || code === 'Unauthorized') {
-          hooks.onUnauthorized?.(err);
-        }
-        if (code === 'FORBIDDEN' || code === 'Forbidden') {
-          hooks.onForbidden?.(err);
-        }
+      // У Tauri-ошибок нет HTTP-статуса: отказ авторизации определяется по коду
+      // `AppError`. Сравнение нормализовано (регистр не важен), чтобы расхождение
+      // `UNAUTHORIZED` / `Unauthorized` не отключало хуки молча (WR-03). Звено
+      // «код из Rust → строка» держит гейт check-transport-tauri (сверка с error.rs).
+      const code = err.code.toUpperCase();
+      if (code === 'UNAUTHORIZED') {
+        hooks.onUnauthorized?.(err);
+      } else if (code === 'FORBIDDEN') {
+        hooks.onForbidden?.(err);
       }
       throw err;
     }
