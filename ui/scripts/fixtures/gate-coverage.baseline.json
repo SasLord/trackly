@@ -336,7 +336,8 @@
     "printer-identity": 303,
     "store-response-shape": 80,
     "tokens": 226,
-    "user-scoped-reset": 303
+    "user-scoped-reset": 303,
+    "ws-resync-registry": 303
   },
   "pinned": {
     "attachments-block": {

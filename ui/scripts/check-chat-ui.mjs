@@ -528,10 +528,13 @@ export function check(files) {
       const eff = effAt < 0 ? null : funcBody(rc.slice(effAt), /^[^{]*\{/);
       if (eff === null || effAt + eff.length < wsAt)
         fail('C16', 'RequestChat: onWsEvent( не внутри $effect');
-      else if (!/const off = onWsEvent\(/.test(eff) || !/return off;/.test(eff))
+      else if (
+        !/const off = onWsEvent\(/.test(eff) ||
+        !/return \(\) => \{[^}]*\boff\(\);/.test(eff)
+      )
         fail(
           'C16',
-          'RequestChat: эффект подписки не возвращает отписку (const off = onWsEvent( … return off;)',
+          'RequestChat: эффект подписки не возвращает отписку (const off = onWsEvent( … return () => { off(); … })',
         );
       const h = funcBody(rc.slice(wsAt), /^[^{]*\{/);
       const ifAt = h === null ? -1 : h.indexOf('if (');
@@ -1611,8 +1614,8 @@ function selftest(files) {
       expect: 'C16',
       make: swapText(
         `${CHAT}RequestChat.svelte`,
-        '      }\n    });\n    return off;\n',
-        '      }\n    });\n    void off;\n',
+        '    return () => {\n      off();\n      offResync();\n',
+        '    return () => {\n      offResync();\n',
       ),
     },
     {
