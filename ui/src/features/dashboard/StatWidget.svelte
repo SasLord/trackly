@@ -1,7 +1,7 @@
 <script lang="ts">
   // Plan 07-05: StatWidget — универсальная карточка-виджет для дашборда.
   // Показывает число, подпись, список разбивки и опциональное предупреждение о низком остатке.
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
 
   interface BreakdownRow {
     label: string;

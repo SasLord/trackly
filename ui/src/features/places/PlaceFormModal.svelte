@@ -24,7 +24,7 @@
   // mount is a fresh form instance, matching `mode`/`place`/`defaultParentId` as
   // given at mount time.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';

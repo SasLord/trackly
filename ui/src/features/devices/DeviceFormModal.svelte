@@ -36,7 +36,7 @@
   import { DEVICE_TYPE_ID, PRINTER_TYPE_ID } from '$lib/deviceTypeIds';
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
   import NumberMismatchPopup from '$lib/components/NumberMismatchPopup.svelte';

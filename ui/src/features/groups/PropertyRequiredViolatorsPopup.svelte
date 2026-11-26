@@ -4,7 +4,7 @@
   // приходят через props, собственных запросов нет. Список нарушителей приходит
   // от сервера готовым, UI его не вычисляет.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { pluralizeRu } from '$lib/utils/pluralize';
 
   interface Props {

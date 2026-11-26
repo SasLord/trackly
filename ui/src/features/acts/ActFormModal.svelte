@@ -12,7 +12,7 @@
   // documents for its own popups (Plan 13). ActFormBody OWNS the
   // orchestration state and reports it up via `onPopupChange`.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
   import NumberMismatchPopup from '$lib/components/NumberMismatchPopup.svelte';
   import NumberScriptWarningPopup from '$lib/components/NumberScriptWarningPopup.svelte';

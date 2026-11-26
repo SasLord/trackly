@@ -3,7 +3,7 @@
   // Plan 10-04 (D-DENY-01): экран показывается, когда Сотрудник переходит по прямой
   // ссылке/хэшу на раздел, к которому у его роли нет доступа. Структура — точная копия
   // NotFound.svelte с изменённым текстом и целевым CTA.
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   // svelte-spa-router passes the current location as a prop (unused here — the
   // copy is the same regardless of which forbidden route was hit).

@@ -7,7 +7,7 @@
   // считает). Тип: удаляется только невстроенный тип без групп; всё остальное
   // отклоняет сервер, его сообщение показывается инлайн (§17.3).
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { groupTypes, groups } from '$lib/api/groups';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import type { AppError } from '$lib/api/errors';

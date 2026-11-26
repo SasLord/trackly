@@ -4,8 +4,8 @@
   // precedent — bespoke .rows/.loading/.empty/.pagination removed, Table now owns the
   // frame/skeleton/empty-state. No pagination — this list never had one, footer only
   // shows the record count (+ spinner while a background refresh is loading).
-  import Spinner from '$lib/components/Spinner.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Table from '$lib/components/Table.svelte';
   import RequestListRow from './RequestListRow.svelte';
   import type { RequestDto } from '../../bindings-phase6';

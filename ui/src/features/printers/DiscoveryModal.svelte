@@ -3,9 +3,9 @@
   // По паттерну OperationModal.svelte (Modal + form state + try/catch + pushToast).
   // size="wide" (960px). Reset на open. handleScan → printers.discover. handleCreate → printers.admit.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DiscoveryResultsTable from './DiscoveryResultsTable.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { printers } from './api';

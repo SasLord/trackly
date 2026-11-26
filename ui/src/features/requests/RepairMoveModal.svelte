@@ -4,7 +4,7 @@
   // (mode='toStorage'). Серверная валидация авторитетна; клиент только собирает выбор.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';

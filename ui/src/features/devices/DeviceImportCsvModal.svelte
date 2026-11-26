@@ -1,6 +1,6 @@
 <script lang="ts">
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Select from '$lib/components/Select.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';

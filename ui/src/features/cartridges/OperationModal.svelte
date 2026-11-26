@@ -5,7 +5,7 @@
   // op prop: 'install' | 'return_to_stock' | 'to_refill' | 'from_refill' | 'write_off'
   // Заголовки, поля, дефолты — по UI-SPEC §Поля OperationModal + D-Op-Fields-01.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
   import Select from '$lib/components/Select.svelte';
   import Textarea from '$lib/components/Textarea.svelte';

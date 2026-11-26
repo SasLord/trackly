@@ -24,8 +24,8 @@
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import RowChevron from '$lib/components/icons/RowChevron.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';

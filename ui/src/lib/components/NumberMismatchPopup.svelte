@@ -4,7 +4,7 @@
   // активном шаблоне и только в попапах создания. Презентационный
   // компонент — данные приходят готовыми через пропсы (планы 13-15).
   import Modal from './Modal.svelte';
-  import Button from './Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   interface Props {
     number: string;

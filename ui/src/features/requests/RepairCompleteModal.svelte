@@ -6,7 +6,7 @@
   // дерево не обходит. Итоговый статус устройства выставляет сервер.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';

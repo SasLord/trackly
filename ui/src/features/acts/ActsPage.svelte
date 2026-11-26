@@ -2,7 +2,7 @@
   // Plan 03-02: master-detail page for #/acts.
   // Switch-bar (Акты/Возвраты/Архив) + search + master-detail layout.
   import { onMount } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { parseIdFromHash } from '$lib/utils/hashId';

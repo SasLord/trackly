@@ -31,8 +31,8 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import GroupTreeNode, {
     rowDomId,
     type TreeItem,

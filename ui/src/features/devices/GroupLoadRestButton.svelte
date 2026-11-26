@@ -1,7 +1,7 @@
 <script lang="ts">
   // Кнопка «загрузить весь состав» усечённой группы (фаза 41.9, D-09/D-10,
   // UI-SPEC §11). Одна и та же для строки АРМ и якорной строки.
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import RowReload from '$lib/components/icons/RowReload.svelte';
 
   interface Props {

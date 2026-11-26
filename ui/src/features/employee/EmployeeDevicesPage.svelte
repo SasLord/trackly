@@ -8,7 +8,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Table from '$lib/components/Table.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import RequestFormModal from '../requests/RequestFormModal.svelte';
   import { requestTargetHref } from '../requests/requestTarget';
   import EmployeeDeviceRow from './EmployeeDeviceRow.svelte';

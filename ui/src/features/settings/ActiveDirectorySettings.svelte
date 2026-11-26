@@ -5,7 +5,7 @@
   // are read-only bootstrap config from trackly.config.toml, shown here
   // for visibility only (UI-SPEC Screen 4 / AdSettingsDto doc).
   import { onMount } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Radio from '$lib/components/Radio.svelte';
   import Input from '$lib/components/Input.svelte';

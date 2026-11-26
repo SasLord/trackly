@@ -4,8 +4,8 @@
   // чужого Modal-контента). Тосты не выводит: все состояния — внутри тела.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { saveFile } from '$lib/utils/saveFile';
   import { formatFileSize } from '$lib/utils/formatFileSize';
   import { formatDateTimeShort } from '$lib/utils/date';

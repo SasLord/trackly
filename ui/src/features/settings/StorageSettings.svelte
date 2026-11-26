@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';

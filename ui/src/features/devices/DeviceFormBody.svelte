@@ -97,7 +97,7 @@
   import Input from '$lib/components/Input.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';

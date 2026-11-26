@@ -11,7 +11,7 @@
   import { untrack } from 'svelte';
   import FormField from '$lib/components/FormField.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { groups } from '$lib/api/groups';
   import { parseAppError } from '$lib/api/errors';
   import { pushToast } from '$lib/stores/toast.svelte';

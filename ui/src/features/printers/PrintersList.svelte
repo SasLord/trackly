@@ -4,8 +4,8 @@
   // Plan 27-07 (D-03): rebuilt on shared Table/TableRow primitives per ActsList.svelte
   // precedent — bespoke .rows/.loading/.empty/.footer removed, Table now owns the
   // frame/skeleton/empty-state.
-  import Spinner from '$lib/components/Spinner.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Table from '$lib/components/Table.svelte';
   import PrinterListRow from './PrinterListRow.svelte';
   import type { PrinterDto } from '../../bindings-phase6';

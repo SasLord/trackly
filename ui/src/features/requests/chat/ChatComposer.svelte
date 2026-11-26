@@ -4,7 +4,7 @@
   // черновики, затем chat_send; отказ любого файла — сообщение не создаётся.
   // Ошибки выводятся по машинному коду, серверные тексты не показываются.
   import { untrack } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { parseAppError } from '$lib/api/errors';
   import { formatFileSize } from '$lib/utils/formatFileSize';
   import AttachmentTypeIcon, { iconKindForMime } from '../../attachments/AttachmentTypeIcon.svelte';

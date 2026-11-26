@@ -4,7 +4,7 @@
   // Plan 04-06: финальная интеграция ModelsList + ModelFormModal.
   // Два таба: «Картриджи» (master-detail) / «Модели» (полноширинный CRUD-список).
   import { onMount } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';

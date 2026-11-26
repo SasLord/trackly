@@ -15,9 +15,9 @@
   import { placeContentEventsStore, reloadSeqNow } from '$lib/stores/placeContentEvents.svelte';
   import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import PlaceTreeNode from './PlaceTreeNode.svelte';
   import PlaceFormModal from './PlaceFormModal.svelte';
   import PlaceMoveModal from './PlaceMoveModal.svelte';

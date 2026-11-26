@@ -3,7 +3,7 @@
   // D-33: если устройство уже в открытой заявке, второй попап предлагает объединить заявки.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { parseAppError } from '$lib/api/errors';

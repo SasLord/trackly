@@ -7,8 +7,8 @@
   // retired in favour of DetailField (contract-compatible: {label, value|null}).
   // Loading state has no DetailPanel equivalent (empty/filled only) — kept as
   // a sibling branch with a matching container so layout doesn't jump between states.
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailPanel from '$lib/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';

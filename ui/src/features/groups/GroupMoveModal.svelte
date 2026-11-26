@@ -14,11 +14,11 @@
   // функции, что и `groups.move(`, — это требование реестрового гейта.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import FormField from '$lib/components/FormField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { groups } from '$lib/api/groups';
   import { pluralizeRu } from '$lib/utils/pluralize';
   import { pushToast } from '$lib/stores/toast.svelte';

@@ -1,6 +1,6 @@
 <script lang="ts">
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
 
   let open = $state(false);

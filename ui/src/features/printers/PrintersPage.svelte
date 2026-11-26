@@ -8,7 +8,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { parseIdFromHash } from '$lib/utils/hashId';
   import PrintersMasterDetail from './PrintersMasterDetail.svelte';

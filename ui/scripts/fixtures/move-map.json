@@ -1,1 +1,12 @@
-{ "moves": [] }
+{
+  "moves": [
+    {
+      "from": "ui/src/lib/components/Button.svelte",
+      "to": "packages/kit/src/components/Button.svelte"
+    },
+    {
+      "from": "ui/src/lib/components/Spinner.svelte",
+      "to": "packages/kit/src/components/Spinner.svelte"
+    }
+  ]
+}

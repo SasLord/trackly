@@ -7,7 +7,7 @@
   import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
   import active from 'svelte-spa-router/active';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import UnreadBadge from '$lib/components/UnreadBadge.svelte';
   import { unreadStore } from '../requests/chat/unreadStore.svelte';
   import { sidebarActivePattern } from './sidebar-config';

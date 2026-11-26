@@ -6,7 +6,7 @@
   import AuthShell from '$lib/components/AuthShell.svelte';
   import FormField from '$lib/components/FormField.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   let login = $state('');
   let fullName = $state('');

@@ -5,7 +5,7 @@
   // заходом через repairs.linkScans.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
   import Input from '$lib/components/Input.svelte';

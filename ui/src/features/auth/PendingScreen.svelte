@@ -3,7 +3,7 @@
   // after `auth_login` returns AppError code REGISTRATION_PENDING (pending
   // registration mode, D-REG-01). No primary CTA — purely informational.
   import AuthShell from '$lib/components/AuthShell.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   interface Props {
     onBackToLogin: () => void;

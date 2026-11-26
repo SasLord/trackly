@@ -4,7 +4,7 @@
   // отправляет, группы приходят пропсом, выбор уходит в onChoose. «Отмена» ничего
   // не меняет — на сервере к этому моменту возврат не оформлен.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import type { GroupSplitChoiceDto, ReturnGroupSplitItemDto } from '../../bindings';
 
   interface Props {

@@ -61,7 +61,7 @@
   // разойдутся. Подавление родного контекстного меню — тоже забота строки.
   import { onMount } from 'svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';

@@ -5,9 +5,9 @@
   // текста, без {@html}.
   import { push } from 'svelte-spa-router';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';

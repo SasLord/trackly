@@ -6,7 +6,7 @@
   // `selectedKeys === []` => явный пустой выбор (backend: 0 строк).
   // `selectedKeys` — allow-list ключей чекбоксов, тот же wire-контракт, что
   // `category_filter_clause` в report_service.rs (см. interfaces PLAN).
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';

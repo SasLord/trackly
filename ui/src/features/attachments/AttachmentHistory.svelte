@@ -22,7 +22,7 @@
   // Строки событий вложений. Имя файла выводится ТОЛЬКО интерполяцией текста;
   // кнопкой-ссылкой оно становится, пока вложение активно (администратору ещё и
   // пока оно в «Удалённых»), иначе это обычный текст.
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { formatDateTimeShort } from '$lib/utils/date';
   import type { AttachmentHistoryEventDto } from '../../bindings';

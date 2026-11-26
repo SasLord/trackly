@@ -1,7 +1,7 @@
 <script lang="ts">
   // Plan 260702-vtf-01: ChartWidget — grouped bar chart с Y-осью, сеткой, value labels и tooltip.
   // DASH-03, D-11: 3/6/12 месяцев, multi-model серии, aria-доступность.
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import PeriodToggle from './PeriodToggle.svelte';
 
   interface ConsumptionPoint {

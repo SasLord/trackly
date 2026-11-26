@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';

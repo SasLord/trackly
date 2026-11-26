@@ -36,9 +36,9 @@
   //   - Закрыть.
 
   import { makeRepeatTableHeadHandler } from '$lib/pdfPreview/repeatTableHeadHandler';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from '$lib/api/acts';
   import { apiCall } from '$lib/api/client';

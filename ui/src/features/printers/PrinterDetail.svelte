@@ -19,9 +19,9 @@
   // compatAggregates effects below). No separate "printer" entity_type is
   // ever passed — a printer's movement history genuinely IS its device's
   // history, not a printer-specific variant (no double-accounting).
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailPanel from '$lib/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import TonerGauge from './TonerGauge.svelte';

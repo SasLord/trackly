@@ -17,7 +17,7 @@
   // 3 часа из UTC-полуночи. Подробности — комментарий внутри
   // dateLocalToUtcSeconds.
 
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';

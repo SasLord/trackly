@@ -1,8 +1,8 @@
 <script lang="ts">
   import { push } from 'svelte-spa-router';
   import Table from '$lib/components/Table.svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import RowReload from '$lib/components/icons/RowReload.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
   import DeviceContainerRow from './DeviceContainerRow.svelte';

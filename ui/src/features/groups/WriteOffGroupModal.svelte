@@ -7,8 +7,8 @@
   // text-align: left. Монтируется родителем через {#if}.
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { groups } from '$lib/api/groups';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';

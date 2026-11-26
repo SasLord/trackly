@@ -6,7 +6,7 @@
   // Table now owns the frame/skeleton/empty-state. Toolbar (heading + «Добавить
   // модель») stays outside Table — Table has no header-toolbar slot.
   // Callbacks-first: ModelFormModal и confirm-delete управляются из CartridgesPage.
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Table from '$lib/components/Table.svelte';
   import ModelListRow from './ModelListRow.svelte';
   import type { CartridgeModelDto } from '../../bindings';

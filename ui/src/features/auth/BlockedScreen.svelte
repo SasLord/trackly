@@ -26,7 +26,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
   import AuthShell from '$lib/components/AuthShell.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   interface Props {
     login: string;

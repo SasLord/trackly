@@ -6,7 +6,7 @@
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { formatFileSize } from '$lib/utils/formatFileSize';

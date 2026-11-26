@@ -27,8 +27,8 @@
   import Badge from '$lib/components/Badge.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import GroupAddDevicesModal from './GroupAddDevicesModal.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import DeviceRowMenu from '../devices/DeviceRowMenu.svelte';

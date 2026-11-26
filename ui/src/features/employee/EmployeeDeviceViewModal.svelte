@@ -5,7 +5,7 @@
   // явно задаёт выравнивание и перенос.
   import Modal from '$lib/components/Modal.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import TonerGauge from '../printers/TonerGauge.svelte';

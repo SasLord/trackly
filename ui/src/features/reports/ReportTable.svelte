@@ -10,7 +10,7 @@
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { push } from 'svelte-spa-router';
   import { pluralizeRu } from '$lib/utils/pluralize';
 

@@ -14,7 +14,7 @@
 
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
-  import Button from './Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import IconClose from './icons/IconClose.svelte';
 
   interface Props {

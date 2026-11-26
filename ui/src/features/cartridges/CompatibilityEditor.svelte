@@ -4,7 +4,7 @@
   // Plan 13-06 (R3/D-04): свёрнуто с пар (Бренд+Модель) до одного свободного
   // текстового поля «Имя принтера» — V032/Phase 13 single-column contract
   // (CartridgeModelCreateDto.compatibility: string[]).
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
 

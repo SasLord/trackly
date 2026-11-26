@@ -3,8 +3,8 @@
   // Лента прокручивается внутри себя (корень height:100% + min-height:0), поле
   // ввода стоит внизу. Один AttachmentViewer — соседним элементом, не в пузыре.
   import { tick, untrack } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { onWsEvent } from '$lib/api/ws';
   import { parseAppError } from '$lib/api/errors';
   import { pushToast } from '$lib/stores/toast.svelte';

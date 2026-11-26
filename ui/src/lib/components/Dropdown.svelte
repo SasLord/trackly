@@ -10,7 +10,7 @@
   // regression floor (Home/End, member-mode arrow navigation,
   // aria-activedescendant, two-stage Escape, scrollIntoView).
   import { onDestroy } from 'svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
 

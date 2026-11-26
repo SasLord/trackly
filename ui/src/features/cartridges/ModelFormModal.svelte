@@ -7,7 +7,7 @@
   // string[] (V032/Phase 13 single-column contract), CompatibleDevicesEditor
   // (V029 per-device чеклист) удалён.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
   // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
   // Dropdown не принимает `id`/`for`, поэтому подпись оборачивает поле

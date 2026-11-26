@@ -3,7 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "exports": {},
+  "exports": {
+    "./components/*": {
+      "svelte": "./src/components/*",
+      "default": "./src/components/*"
+    },
+    "./utils/*": "./src/utils/*.ts",
+    "./stores/*": "./src/stores/*.ts"
+  },
   "dependencies": {
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.4.2",

@@ -7,7 +7,7 @@
   // Тело задаёт white-space: normal и text-align: left: Modal может рендериться
   // внутри <td>, где наследуются nowrap и выравнивание по центру.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import { onMount } from 'svelte';
 
   interface Props {

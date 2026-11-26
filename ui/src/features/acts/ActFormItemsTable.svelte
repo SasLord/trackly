@@ -14,8 +14,8 @@
   // теперь внутри Dropdown; бизнес-логика (fetchGroups/expandGroup/pickGroup/
   // pickDevice/DEF-2A) осталась здесь без изменений по сути, только вызывается
   // через callback-пропы вместо inline onclick/onkeydown.
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { devices } from '$lib/api/devices';
   import { groups } from '$lib/api/groups';

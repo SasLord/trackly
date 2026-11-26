@@ -24,9 +24,9 @@
   // scoped `loadError`, not the panel's loading gate — unlike Plan 40-16's
   // modal, this page keeps rendering the rest of the cartridge's data even
   // if only the movements fetch fails.
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailPanel from '$lib/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';

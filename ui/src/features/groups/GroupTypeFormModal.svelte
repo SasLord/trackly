@@ -9,7 +9,7 @@
   // `code`/`behavior` не отправляются (T-41-19-02); сервер всё равно отклонил бы
   // отличающееся значение (DB-триггер + сервисная проверка, план 07).
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Dropdown from '$lib/components/Dropdown.svelte';
   import { groupTypes } from '$lib/api/groups';

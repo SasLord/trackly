@@ -5,7 +5,7 @@
   // готовыми через пропсы (планы 13-15), включая структурированное
   // предупреждение о двойнике с сервера.
   import Modal from './Modal.svelte';
-  import Button from './Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   interface DoppelgangerRecord {
     kind: string;

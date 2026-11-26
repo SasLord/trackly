@@ -13,7 +13,7 @@
   import Badge from '$lib/components/Badge.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import PropertyRequiredViolatorsPopup from './PropertyRequiredViolatorsPopup.svelte';
   import { groupTypes } from '$lib/api/groups';

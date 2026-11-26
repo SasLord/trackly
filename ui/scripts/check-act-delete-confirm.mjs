@@ -331,8 +331,8 @@ function runSelfTest() {
           MODAL,
           mutate(
             raw[MODAL],
-            "import Button from '$lib/components/Button.svelte';",
-            "import Button from '$lib/components/Button.svelte';\n  import { acts } from './api';",
+            "import Button from '@trackly/kit/components/Button.svelte';",
+            "import Button from '@trackly/kit/components/Button.svelte';\n  import { acts } from './api';",
             'import api',
           ),
         ),

@@ -21,7 +21,7 @@
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
   import { authStore } from '$lib/stores/auth.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import type { PlaceDto, PlaceNewDto, PlacePathDto } from '../../bindings';
 

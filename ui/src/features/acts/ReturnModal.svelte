@@ -24,7 +24,7 @@
   // Pitfall 1's frontend half — these were previously collected but silently
   // dropped from the submit payload).
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';

@@ -4,7 +4,7 @@
   // данные приходят готовыми через пропсы от вызывающего кода (планы 13-15,
   // волна 6), который отвечает за их происхождение и оркестрацию цепочки.
   import Modal from './Modal.svelte';
-  import Button from './Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   export interface NumberTakenRecordSummary {
     kind: 'device' | 'printer' | 'cartridge' | 'drum' | 'act';

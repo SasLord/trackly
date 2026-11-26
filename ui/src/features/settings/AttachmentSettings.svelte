@@ -3,9 +3,9 @@
   // Каталог — только для чтения (без «Открыть папку»), лимит размера файла и отчёт
   // проверки целостности. Работает и в десктопе, и в LAN-браузере.
   import { onMount } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { formatFileSize } from '$lib/utils/formatFileSize';

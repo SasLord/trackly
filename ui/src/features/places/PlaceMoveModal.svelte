@@ -12,8 +12,8 @@
   // Plan 04/05) — the response is mapped inline verbatim rather than
   // duplicated client-side, so the copy can never drift from the backend.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '$lib/stores/toast.svelte';

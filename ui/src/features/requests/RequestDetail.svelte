@@ -14,9 +14,9 @@
   // mini-form, unchanged). The 4 confirm-Modal blocks are untouched (D-04
   // territory, not D-01).
   import { untrack } from 'svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   // Plan 28-11 (GAP-1): Select (нативный <select>) заменён на кастомный

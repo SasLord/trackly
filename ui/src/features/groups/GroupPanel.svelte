@@ -16,8 +16,8 @@
   import { push } from 'svelte-spa-router';
   import Tabs from '$lib/components/Tabs.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import MovementTimeline from '$lib/components/MovementTimeline.svelte';
   import { openRequestTarget } from '../requests/requestTarget';
   import GroupContentsTable from './GroupContentsTable.svelte';

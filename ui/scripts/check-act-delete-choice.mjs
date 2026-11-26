@@ -351,7 +351,9 @@ export function scanSource(files, violations) {
     }
     for (const comp of ['Radio', 'Checkbox', 'Modal', 'Button']) {
       if (
-        !new RegExp(`import\\s+${comp}\\s+from\\s+'\\$lib/components/${comp}\\.svelte'`).test(moved)
+        !new RegExp(
+          `import\\s+${comp}\\s+from\\s+'(?:\\$lib|@trackly/kit)/components/${comp}\\.svelte'`,
+        ).test(moved)
       ) {
         violations.push(`(E) ${MOVED_POPUP}: нет импорта компонента ${comp}.`);
       }

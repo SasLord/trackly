@@ -5,7 +5,7 @@
   // под полем, без тостов; сама отправка к тому моменту уже состоялась.
   import { untrack } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';

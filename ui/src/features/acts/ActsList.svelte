@@ -4,8 +4,8 @@
   // Plan 27-02 (D-03): rebuilt on shared Table/TableRow primitives per
   // DeviceList.svelte precedent — bespoke .rows/.loading/.empty/.pagination
   // removed, Table now owns the frame/skeleton/empty-state.
-  import Spinner from '$lib/components/Spinner.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import Table from '$lib/components/Table.svelte';
   import ActListRow from './ActListRow.svelte';
   import type { ActDto } from '../../bindings';

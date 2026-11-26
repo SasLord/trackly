@@ -9,7 +9,7 @@
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import GroupTypePropertiesTable from './GroupTypePropertiesTable.svelte';
   import { groupTypes } from '$lib/api/groups';
   import { pushToast } from '$lib/stores/toast.svelte';

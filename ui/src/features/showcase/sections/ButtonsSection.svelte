@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import IconInsertTemplate from '$lib/components/icons/IconInsertTemplate.svelte';
 </script>

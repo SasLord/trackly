@@ -5,7 +5,7 @@
   // Имена выводятся только интерполяцией текста.
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Spinner from '@trackly/kit/components/Spinner.svelte';
   import { formatFileSize } from '$lib/utils/formatFileSize';
   import { formatDateTimeShort } from '$lib/utils/date';
   import AttachmentTypeIcon, { iconKindForMime } from './AttachmentTypeIcon.svelte';

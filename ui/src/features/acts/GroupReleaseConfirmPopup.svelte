@@ -8,7 +8,7 @@
   // правит состав акта за спиной формы. Primary, а не destructive (R-06):
   // действие ничего не удаляет и откатывается удалением акта.
   import Modal from '$lib/components/Modal.svelte';
-  import Button from '$lib/components/Button.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
 
   export interface GroupReleaseItem {
     name: string;
