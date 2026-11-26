@@ -60,7 +60,9 @@ fn v054_sets_user_version_and_creates_tables() {
             "author_user_id",
             "body",
             "created_at_utc",
-            "moved_from_request_id"
+            "moved_from_request_id",
+            // V059 (Фаза 43): ключ идемпотентности отправки
+            "client_msg_id"
         ]
     );
     assert_eq!(
