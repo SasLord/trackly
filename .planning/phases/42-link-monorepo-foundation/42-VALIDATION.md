@@ -1,9 +1,9 @@
 ---
 phase: 42
 slug: link-monorepo-foundation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-11-26
 ---
 
@@ -40,14 +40,14 @@ created: 2026-11-26
 
 | Requirement | Behavior | Test Type | Automated Command | File Exists | Status |
 |-------------|----------|-----------|-------------------|-------------|--------|
-| LNK-01 | Trackly собирается, гейты зелёные после переезда | gate+build | `pnpm --dir ui build && pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ | ⬜ pending |
-| LNK-01 | ни один гейт не потерял покрытие | gate (новый) | `node ui/scripts/check-gate-coverage.mjs --selftest && node ui/scripts/check-gate-coverage.mjs` | ❌ W0 | ⬜ pending |
-| LNK-01 | границы пакетов (пакеты не импортируют `ui/`/bindings; Link не импортирует `ui/`) | gate (новый) | `node ui/scripts/check-workspace-boundaries.mjs --selftest && node ui/scripts/check-workspace-boundaries.mjs` | ❌ W0 | ⬜ pending |
-| LNK-01 | компонент из общего пакета собирается в обоих клиентах | build | `pnpm --dir link-ui build && pnpm --dir ui build` | ❌ W0 | ⬜ pending |
-| LNK-01 | независимая версия Link, изоляция релизов | gate (новый) | `node scripts/check-release-isolation.mjs --selftest && node scripts/check-release-isolation.mjs` | ❌ W0 | ⬜ pending |
-| LNK-01 | UI Trackly не сломан | browser stand (D-21) | `cargo test -p trackly-app --test <stand> -- --ignored` + агентский прогон, консоль без ошибок | ❌ W0 | ⬜ pending |
-| LNK-10 | раскладка каркаса + конфиг окна/window-state | gate (новый) | `node link-ui/scripts/check-link-layout.mjs --selftest && node link-ui/scripts/check-link-layout.mjs` | ❌ W0 | ⬜ pending |
-| DST-06 | набор пилота полон, без приватных данных | static | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ✅ | ⬜ pending |
+| LNK-01 | Trackly собирается, гейты зелёные после переезда | gate+build | `pnpm --dir ui build && pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ | ✅ green |
+| LNK-01 | ни один гейт не потерял покрытие | gate (новый) | `node ui/scripts/check-gate-coverage.mjs --selftest && node ui/scripts/check-gate-coverage.mjs` | ✅ | ✅ green |
+| LNK-01 | границы пакетов (пакеты не импортируют `ui/`/bindings; Link не импортирует `ui/`) | gate (новый) | `node ui/scripts/check-workspace-boundaries.mjs --selftest && node ui/scripts/check-workspace-boundaries.mjs` | ✅ | ✅ green |
+| LNK-01 | компонент из общего пакета собирается в обоих клиентах | build | `pnpm --dir link-ui build && pnpm --dir ui build` | ✅ | ✅ green |
+| LNK-01 | независимая версия Link, изоляция релизов | gate (новый) | `node scripts/check-release-isolation.mjs --selftest && node scripts/check-release-isolation.mjs` | ✅ | ✅ green |
+| LNK-01 | UI Trackly не сломан | browser stand (D-21) | `cargo test -p trackly-app --test stand_ui_move -- --ignored` + агентский прогон, консоль без ошибок | ✅ | ✅ green |
+| LNK-10 | раскладка каркаса + конфиг окна/window-state | gate (новый) | `node link-ui/scripts/check-link-layout.mjs --selftest && node link-ui/scripts/check-link-layout.mjs` | ✅ | ✅ green |
+| DST-06 | набор пилота полон, без приватных данных | static | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -55,13 +55,13 @@ created: 2026-11-26
 
 ## Wave 0 Requirements
 
-- [ ] ведомость покрытия гейтов (baseline ДО переезда) + `check-gate-coverage.mjs` (+selftest, в `lint`)
-- [ ] `check-workspace-boundaries.mjs` (+selftest, в `lint`)
-- [ ] `scripts/check-release-isolation.mjs` (+selftest, шаг ci-fast)
-- [ ] `check-link-layout.mjs` (+selftest)
-- [ ] снимок консоли браузерного стенда ДО переезда
-- [ ] спайк source-пакета + SCSS + svelte-check на одном компоненте
-- [ ] перевод `_rune-harness.mjs` и корней обхода на новые пути
+- [x] ведомость покрытия гейтов (baseline ДО переезда) + `check-gate-coverage.mjs` (+selftest, в `lint`)
+- [x] `check-workspace-boundaries.mjs` (+selftest, в `lint`)
+- [x] `scripts/check-release-isolation.mjs` (+selftest, шаг ci-fast)
+- [x] `check-link-layout.mjs` (+selftest)
+- [x] снимок консоли браузерного стенда ДО переезда
+- [x] спайк source-пакета + SCSS + svelte-check на одном компоненте
+- [x] перевод `_rune-harness.mjs` и корней обхода на новые пути
 
 ---
 
@@ -77,11 +77,23 @@ created: 2026-11-26
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 300s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 300s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-11-26
+
+## Validation Audit 2026-11-26
+
+Все автоматические команды карты прогнаны повторно после secure-phase — exit 0:
+`check-gate-coverage` (selftest 17 случаев; PASS 316 файлов, 18 обходчиков), `check-workspace-boundaries`
+(selftest 18; PASS, 59 файлов пакетов + 5 link-ui/src), `check-release-isolation` (selftest + PASS),
+`check-link-layout` (selftest + PASS, 34 признака), `check-privacy` (0 нарушений), `pnpm --dir link-ui build`,
+`pnpm --dir ui build`, `svelte-check` (498 файлов, 0 ошибок), `pnpm --dir ui lint` (77 гейтов подключены).
+Браузерный стенд D-21 повторно не запускался — результат в `42-STAND-RESULT.md` (план 19), сплошной
+cargo-прогон 3083/0 — в `42-19-SUMMARY.md`. Ручные проверки: окно Link и ADR приняты в `42-HUMAN-UAT.md`;
+пилот DST-06 и путь NSIS отложены (D-07), блокируют планирование Фазы 45, не закрытие Фазы 42.
+Новые тесты не требовались: пробелов покрытия нет.

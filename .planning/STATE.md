@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
-status: executing
-last_updated: "2026-11-26T02:24:17.701Z"
-last_activity: 2026-11-26 -- Phase 42 execution started
+status: ready_to_plan
+last_updated: 2026-11-26T15:33:48.558Z
+last_activity: 2026-11-26 -- Phase 42 complete (secure 59/59, validation green)
 progress:
   total_phases: 11
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 19
-  completed_plans: 0
-  percent: 0
+  completed_plans: 19
+  percent: 9
+stopped_at: Phase 42 complete (19/19) — ready to discuss Phase 43
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 42 — link-monorepo-foundation
+**Current focus:** Phase 43 — надёжная доставка событий
 
 ## Current Position
 
-Phase: 42 (link-monorepo-foundation) — EXECUTING
-Plan: 1 of 19
-Status: Executing Phase 42
-Last activity: 2026-11-26 -- Phase 42 execution started
+Phase: 43
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-26 -- Phase 42 закрыта: secure-phase 59/59, VALIDATION зелёная; DST-06 (пилот) и NSIS отложены до Фазы 45
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -40,7 +41,7 @@ Last activity: 2026-11-26 -- Phase 42 execution started
 
 **Velocity:**
 
-- Total plans completed: 462
+- Total plans completed: 481
 - Average duration: —
 - Total execution time: —
 
@@ -92,6 +93,7 @@ Last activity: 2026-11-26 -- Phase 42 execution started
 | 41.5 | 35 | - | - |
 | 41.6 | 12 | - | - |
 | 41.10 | 19 | - | - |
+| 42 | 19 | - | - |
 
 **Recent Trend:**
 
