@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -31,15 +32,6 @@ const PROP_TOKEN = {
 const PARENT_FILE = 'src/features/groups/GroupsPage.svelte';
 // Файл -> причина освобождения (изначально пусто).
 const EXEMPT = {};
-
-function walk(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) walk(full, out);
-    else if (e.name.endsWith('.svelte')) out.push(full);
-  }
-  return out;
-}
 
 /** Тела всех $effect(...) в тексте. */
 function effectBodies(c) {
@@ -105,7 +97,11 @@ export function scan(files) {
 function readAll(root) {
   const base = path.join(root, 'src');
   const out = {};
-  for (const full of walk(base)) {
+  const files = walk({
+    exts: ['.svelte'],
+    roots: path.resolve(root) === UI_ROOT ? null : [base],
+  });
+  for (const full of files) {
     out[path.relative(root, full).split(path.sep).join('/')] = fs.readFileSync(full, 'utf8');
   }
   return out;

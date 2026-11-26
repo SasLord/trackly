@@ -56,6 +56,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { walk } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -270,23 +271,6 @@ function stateInitializer(code, name) {
     }
   }
   return null;
-}
-
-/** Рекурсивный обход `.svelte`-файлов. */
-function walkSvelte(dir) {
-  const found = [];
-  let entries;
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return found;
-  }
-  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) found.push(...walkSvelte(full));
-    else if (e.isFile() && e.name.endsWith('.svelte')) found.push(full);
-  }
-  return found;
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +537,10 @@ function main() {
   const argSrc = argv.find((a) => a.startsWith('--src='));
   const SRC_ROOT = argSrc ? path.resolve(process.cwd(), argSrc.slice('--src='.length)) : UI_ROOT;
 
-  const files = walkSvelte(path.join(SRC_ROOT, 'src'));
+  const files = walk({
+    exts: ['.svelte'],
+    roots: path.resolve(SRC_ROOT) === UI_ROOT ? null : [path.join(SRC_ROOT, 'src')],
+  });
   const checked = files.length;
 
   if (checked === 0) {

@@ -40,6 +40,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk } from './_roots.mjs';
 export { stripComments };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -377,23 +378,13 @@ export function scanSource(relPath, rawSrc, violations) {
   for (const v of found) violations.push(v);
 }
 
-function walk(dir, out) {
-  for (const name of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, name.name);
-    if (name.isDirectory()) {
-      if (name.name === 'node_modules' || name.name === 'dist') continue;
-      walk(full, out);
-    } else if (name.name.endsWith('.svelte') || name.name.endsWith('.ts')) {
-      out.push(full);
-    }
-  }
-}
-
 function scanRoot(root) {
   const srcDir = path.join(root, 'src');
   if (!fs.existsSync(srcDir)) return { violations: [`${TAG} нет каталога ${srcDir}`], files: 0 };
-  const files = [];
-  walk(srcDir, files);
+  const files = walk({
+    exts: ['.svelte', '.ts'],
+    roots: path.resolve(root) === UI_ROOT ? null : [srcDir],
+  });
   const violations = [];
   for (const f of files) {
     const rel = path.relative(root, f).split(path.sep).join('/');

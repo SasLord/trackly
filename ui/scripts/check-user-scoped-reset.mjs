@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '../src');
@@ -184,18 +185,9 @@ export function check(files) {
   return bad;
 }
 
-function walk(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (/\.(ts|svelte)$/.test(e.name)) out.push(p);
-  }
-  return out;
-}
-
 function load() {
   const files = {};
-  for (const f of walk(SRC))
+  for (const f of walk({ exts: ['.ts', '.svelte'] }))
     files[path.relative(SRC, f).split(path.sep).join('/')] = fs.readFileSync(f, 'utf8');
   return files;
 }

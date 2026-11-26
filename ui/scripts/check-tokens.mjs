@@ -24,12 +24,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 
 function parseArgs(argv) {
-  const args = { rules: [1, 2, 3, 4], src: path.join(UI_ROOT, 'src') };
+  const args = { rules: [1, 2, 3, 4], src: path.join(UI_ROOT, 'src'), explicit: false };
   for (const arg of argv) {
     if (arg.startsWith('--rules=')) {
       args.rules = arg
@@ -39,6 +40,7 @@ function parseArgs(argv) {
         .filter((n) => Number.isInteger(n));
     } else if (arg.startsWith('--src=')) {
       args.src = path.resolve(arg.slice('--src='.length));
+      args.explicit = true;
     } else if (arg === '--help' || arg === '-h') {
       args.help = true;
     }
@@ -58,27 +60,13 @@ function printHelp() {
   );
 }
 
-/** Собирает список .svelte/.scss файлов рекурсивно. Устойчив к отсутствующей директории. */
-function collectSourceFiles(srcDir) {
+/**
+ * Список .svelte/.scss файлов. Без явного --src обходит ВСЕ корни SCAN_ROOTS
+ * (ui/src и packages/*\/src), чтобы переехавший kit не ушёл из-под Rule 1-4.
+ */
+function collectSourceFiles(srcDir, explicit) {
   if (!fs.existsSync(srcDir)) return [];
-  let entries;
-  try {
-    entries = fs.readdirSync(srcDir, { recursive: true });
-  } catch {
-    return [];
-  }
-  const files = [];
-  for (const entry of entries) {
-    const rel = typeof entry === 'string' ? entry : String(entry);
-    if (!rel.endsWith('.svelte') && !rel.endsWith('.scss')) continue;
-    const full = path.join(srcDir, rel);
-    try {
-      if (fs.statSync(full).isFile()) files.push(full);
-    } catch {
-      // race/broken symlink — skip
-    }
-  }
-  return files;
+  return walk({ exts: ['.svelte', '.scss'], roots: explicit ? [srcDir] : null });
 }
 
 function readFileSafe(filePath) {
@@ -225,7 +213,7 @@ function main() {
     process.exit(0);
   }
 
-  const files = collectSourceFiles(args.src);
+  const files = collectSourceFiles(args.src, args.explicit);
   let totalViolations = 0;
 
   if (args.rules.includes(1)) {

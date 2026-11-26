@@ -44,6 +44,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk, UI_ROOT } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TAG = '[check-printer-identity]';
@@ -94,18 +95,11 @@ function lineOf(text, index) {
   return n;
 }
 
-function walk(dir) {
-  const out = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walk(full));
-    else if (/\.(svelte|ts)$/.test(entry.name)) out.push(full);
-  }
-  return out;
-}
-
 function listSourceFiles(root) {
-  return walk(path.join(root, SRC_DIR))
+  return walk({
+    exts: ['.svelte', '.ts'],
+    roots: path.resolve(root) === UI_ROOT ? null : [path.join(root, SRC_DIR)],
+  })
     .map((f) => path.relative(root, f).split(path.sep).join('/'))
     .sort();
 }

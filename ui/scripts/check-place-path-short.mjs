@@ -76,6 +76,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -482,20 +483,14 @@ const isScanned = (name) =>
   !name.endsWith('.d.ts') &&
   !/^bindings.*\.ts$/.test(name);
 
-function walk(dir) {
-  const out = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walk(full));
-    else if (entry.isFile() && isScanned(entry.name)) out.push(full);
-  }
-  return out;
-}
-
 /** Относительные пути (`src/...`, с `/`) всех проверяемых файлов, отсортированные. */
 function listSourceFiles(root) {
   try {
-    return walk(path.join(root, SRC_DIR))
+    return walk({
+      exts: ['.svelte', '.ts'],
+      roots: path.resolve(root) === UI_ROOT ? null : [path.join(root, SRC_DIR)],
+    })
+      .filter((f) => isScanned(path.basename(f)))
       .map((f) => path.relative(root, f).split(path.sep).join('/'))
       .sort();
   } catch {
