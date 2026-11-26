@@ -13,6 +13,8 @@
 mod chat_ws_fanout;
 #[path = "../graceful_shutdown_drain.rs"]
 mod graceful_shutdown_drain;
+#[path = "../im_http.rs"]
+mod im_http;
 #[path = "../im_idempotent_send.rs"]
 mod im_idempotent_send;
 #[path = "../im_membership.rs"]

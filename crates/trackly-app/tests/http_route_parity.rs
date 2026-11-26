@@ -201,6 +201,18 @@ const ROUTE_WITHOUT_CMD: &[Verdict] = &[
                  команды invoke нет. Оба транспорта идут через AttachmentService::open_for_read",
     },
     Verdict {
+        name: "im_send",
+        reason: "только браузерный/Link-транспорт ядра IM (Фаза 43): в десктопе Trackly чат скрыт, \
+                 у системного администратора нет личности мессенджера; команды Tauri нет, \
+                 маршрут потребляют Link (Фаза 44) и SPA (Фаза 48); доступ по членству в беседе",
+    },
+    Verdict {
+        name: "im_sync",
+        reason: "только браузерный/Link-транспорт ядра IM (Фаза 43): в десктопе Trackly чат скрыт, \
+                 у системного администратора нет личности мессенджера; команды Tauri нет, \
+                 маршрут потребляют Link (Фаза 44) и SPA (Фаза 48); курсорная выдача по членству",
+    },
+    Verdict {
         name: "attachments_upload",
         reason: "команда attachments_upload есть в Tauri, но это обычная #[tauri::command] без specta \
                  (tauri::ipc::Request не реализует specta::Type), её диспетчеризует main.rs перед \

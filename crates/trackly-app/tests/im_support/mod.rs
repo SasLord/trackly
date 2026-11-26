@@ -3,7 +3,11 @@
 
 use rusqlite::params;
 use tokio::sync::broadcast::{error::TryRecvError, Receiver};
+use tower_sessions::session::{Id, Record};
+use tower_sessions::SessionStore;
 use trackly_app::context::AppCtx;
+use trackly_app::http::auth::SessionIdentity;
+use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::services::im_hub::ImSignal;
 use trackly_core::auth::{Identity, Role};
 use trackly_infra::error_conversions::map_rusqlite;
@@ -84,4 +88,24 @@ pub async fn last_seq(ctx: &AppCtx, conv: i64) -> i64 {
         })
         .await
         .unwrap()
+}
+
+/// Cookie настоящей сессии (запись в RusqliteSessionStore).
+pub async fn cookie(ctx: &AppCtx, user_id: i64, role: Role) -> String {
+    let store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+    let id = Id::default();
+    let si = SessionIdentity {
+        user_id: Some(user_id),
+        role: role.as_str().to_string(),
+    };
+    let mut record = Record {
+        id,
+        data: Default::default(),
+        expiry_date: time::OffsetDateTime::now_utc() + time::Duration::days(1),
+    };
+    record
+        .data
+        .insert("identity".to_string(), serde_json::to_value(&si).unwrap());
+    store.create(&mut record).await.expect("session");
+    format!("id={id}")
 }
