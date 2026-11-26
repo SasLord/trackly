@@ -75,6 +75,8 @@ let reconnecting = false;
 // real teardown (Tauri unlisten / browser ws.close) shared by every consumer.
 let refCount = 0;
 let activeCleanup: (() => void) | null = null;
+// Поколение соединения: растёт при каждом сносе (WR-02), см. teardown().
+let epoch = 0;
 
 // WR-04 ревью 41.7: висящий таймер переподключения. Без хранения его нельзя было
 // отменить: release()/disconnectWs() в окне backoff закрывали только `ws`, а
@@ -206,6 +208,7 @@ export async function connectWs(): Promise<() => void> {
   refCount += 1;
 
   if (refCount === 1) {
+    const myEpoch = epoch;
     // First consumer: establish the real connection.
     if (isTauri) {
       // Tauri path: native events, no WebSocket needed.
@@ -214,12 +217,21 @@ export async function connectWs(): Promise<() => void> {
         const unlisten = await listen<WsEvent>('trackly-event', (e) => {
           dispatch(e.payload);
         });
-        activeCleanup = unlisten;
+        if (epoch !== myEpoch) {
+          // WR-02: пока listen() ждал, соединение уже снесли (последний потребитель
+          // сделал release()/disconnectWs()). Сохранять `unlisten` некуда — снимаем
+          // подписку сразу, иначе она живёт вечно, а следующий connectWs() даёт дубль.
+          unlisten();
+        } else {
+          activeCleanup = unlisten;
+        }
       } catch (e) {
         // FE-WR-09: a rejected connect hands the caller no release function,
         // so the count taken above must be given back here — otherwise it
         // stays > 0 forever and a later first consumer never reconnects.
-        refCount = Math.max(0, refCount - 1);
+        // Если эпоха сменилась, счётчик уже обнулён сносом (и мог быть взят заново
+        // новым первым потребителем) — чужой счёт не трогаем.
+        if (epoch === myEpoch) refCount = Math.max(0, refCount - 1);
         throw e;
       }
     } else {
@@ -254,15 +266,21 @@ export async function connectWs(): Promise<() => void> {
     }
     released = true;
     refCount = Math.max(0, refCount - 1);
-    if (refCount === 0 && activeCleanup) {
-      activeCleanup();
-      activeCleanup = null;
-    }
+    if (refCount === 0) teardown();
   };
 }
 
 export function disconnectWs(): void {
   refCount = 0;
+  teardown();
+}
+
+/**
+ * Снос соединения. Всегда сдвигает `epoch`: connectWs(), ещё ждущий `listen()`, по
+ * возвращении видит, что его эпоха устарела, и снимает свою подписку сам (WR-02).
+ */
+function teardown(): void {
+  epoch += 1;
   if (activeCleanup) {
     activeCleanup();
     activeCleanup = null;
