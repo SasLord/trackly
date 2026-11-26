@@ -8,8 +8,11 @@
 //     показывался НИ РАЗУ — транзиентный тост с TTL 5000 мс истекал раньше, чем
 //     пользователь успевал переключиться из десктопного окна в LAN-браузер
 //     (оба сценария обрыва запускаются действием в ДРУГОМ окне).
-// Отсюда ДВА инварианта, которые обязаны держаться ОДНОВРЕМЕННО:
-//   не больше одного тоста за эпизод И не меньше одного, наблюдаемого.
+// Отсюда инварианты, которые обязаны держаться ОДНОВРЕМЕННО:
+//   не больше одного тоста за эпизод, не меньше одного, наблюдаемого, и (фаза 43,
+//   D-14) не раньше RECONNECT_TOAST_DELAY_MS (5 с) после обрыва — кратковременный
+//   обрыв не мигает тостом, — при этом таймер отложенного показа отменяем (иначе
+//   призрачный тост уже восстановленного соединения, класс WR-04).
 // Починка одного инварианта ломала другой, поэтому они закреплены вместе.
 //
 // `svelte-check` / `eslint` / `pnpm build` этот класс дефектов не видят: обе
@@ -31,7 +34,7 @@
 //     флаг эпизода `reconnecting` уже не давал показать его снова. Дедуп (E2)
 //     от этого не защищал: он про стопку одинаковых, а не про вытеснение
 //     единственного.
-//  2. Структурные правила W1-W6 для `packages/transport/src/ws.ts` (текст без
+//  2. Структурные правила W1-W7 для `packages/transport/src/ws.ts` (текст без
 //     комментариев, пробелы схлопнуты):
 //       W1 — тост обрыва ставится залипающим (`sticky: true`);
 //       W2 — вызов придушен флагом эпизода (`if (!reconnecting)` +
@@ -50,10 +53,16 @@
 //            зовёт `clearTimeout(reconnectTimer)` и обнуляет переменную. Иначе
 //            release() в окне backoff оставлял таймер, который открывал сокет
 //            без потребителя, а следующий первый потребитель — второй
-//            (дубли событий, класс GAP-12-10).
+//            (дубли событий, класс GAP-12-10);
+//       W7 — тост обрыва отложен и отменяем (D-14, фаза 43): модульная
+//            `reconnectToastTimer`; внутри гарда эпизода её значение присваивается
+//            из `setTimeout`, колбэк обнуляет её и зовёт `showReconnectingToast()`,
+//            задержка не меньше 5000 мс; тело `onopen` и `activeCleanup` зовут
+//            `clearTimeout(reconnectToastTimer)` с обнулением. Поведение (5 с,
+//            отмена на onopen/release) исполняет check-ws-resync.mjs.
 //
 // `--selftest` прогоняет те же проверки на встроенных эталонах: эталон обязан
-// пройти, мутанты M1-M15 — провалиться. `--file-ws=<path>` подменяет путь
+// пройти, мутанты M1-M19 — провалиться. `--file-ws=<path>` подменяет путь
 // ws.ts (мутационная проверка гейта на дореформенном исходнике из git).
 //
 // Реальных данных организации и людей гейт не содержит.
@@ -312,6 +321,56 @@ function runStructural(wsSrc) {
       'W6: browser-cleanup (activeCleanup) не зовёт clearTimeout(reconnectTimer) с обнулением — release() в окне backoff оставит живой таймер',
     );
   }
+
+  // W7 — тост обрыва отложен и отменяем (D-14).
+  if (!/\blet\s+reconnectToastTimer\b/.test(text)) {
+    failures.push(
+      'W7: нет модульной переменной reconnectToastTimer — отложенный тост обрыва нечем отменить',
+    );
+  }
+  if (
+    !/if\s*\(\s*!reconnecting\s*\)\s*\{\s*reconnecting\s*=\s*true\s*;\s*reconnectToastTimer\s*=\s*setTimeout\(\s*\(\s*\)\s*=>\s*\{\s*reconnectToastTimer\s*=\s*null\s*;\s*showReconnectingToast\(\s*\)\s*;?\s*\}\s*,/.test(
+      text,
+    )
+  ) {
+    failures.push(
+      'W7: в гарде эпизода тост не откладывается через reconnectToastTimer = setTimeout(() => { reconnectToastTimer = null; showReconnectingToast(); }, …) — либо тост показывается сразу (мигает на коротком обрыве), либо таймер нечем отменить',
+    );
+  }
+  const delayMatch = /reconnectToastTimer\s*=\s*setTimeout\(.*?\}\s*,\s*(\w+)\s*\)/.exec(text);
+  let delayMs = null;
+  if (delayMatch) {
+    if (/^\d+$/.test(delayMatch[1])) {
+      delayMs = Number(delayMatch[1]);
+    } else {
+      const decl = new RegExp(`\\b${delayMatch[1]}\\s*=\\s*(\\d+)`).exec(text);
+      delayMs = decl ? Number(decl[1]) : null;
+    }
+  }
+  if (delayMs === null || delayMs < 5000) {
+    failures.push(
+      `W7: задержка тоста обрыва ${delayMs === null ? 'не определена' : `${delayMs} мс`} — должна быть не меньше 5000 мс (D-14), иначе короткий обрыв снова мигает тостом`,
+    );
+  }
+  const openBody = arrowBody(text, 'onopen = () => {');
+  if (
+    openBody === null ||
+    !/clearTimeout\(\s*reconnectToastTimer\s*\)/.test(openBody) ||
+    !/reconnectToastTimer\s*=\s*null/.test(openBody)
+  ) {
+    failures.push(
+      'W7: ws.onopen не отменяет таймер тоста (clearTimeout(reconnectToastTimer) с обнулением) — после быстрого переподключения всплывёт призрачный тост',
+    );
+  }
+  if (
+    cleanupBody === null ||
+    !/clearTimeout\(\s*reconnectToastTimer\s*\)/.test(cleanupBody) ||
+    !/reconnectToastTimer\s*=\s*null/.test(cleanupBody)
+  ) {
+    failures.push(
+      'W7: activeCleanup не отменяет таймер тоста — после release() всплывёт тост уже снесённого соединения',
+    );
+  }
   return failures;
 }
 
@@ -380,6 +439,8 @@ let refCount = 0;
 let reconnectDelay = 1000;
 let reconnectToastId = null;
 let reconnectTimer = null;
+let reconnectToastTimer = null;
+const RECONNECT_TOAST_DELAY_MS = 5000;
 let activeCleanup = null;
 
 function showReconnectingToast() {
@@ -414,6 +475,10 @@ function connectBrowser() {
     if (reconnecting) {
       reconnecting = false;
       clearReconnectingToast();
+      if (reconnectToastTimer !== null) {
+        clearTimeout(reconnectToastTimer);
+        reconnectToastTimer = null;
+      }
     }
     reconnectDelay = 1000;
   };
@@ -423,7 +488,10 @@ function connectBrowser() {
     }
     if (!reconnecting) {
       reconnecting = true;
-      showReconnectingToast();
+      reconnectToastTimer = setTimeout(() => {
+        reconnectToastTimer = null;
+        showReconnectingToast();
+      }, RECONNECT_TOAST_DELAY_MS);
     }
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -441,6 +509,10 @@ function openFirst() {
     if (reconnectTimer !== null) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
+    }
+    if (reconnectToastTimer !== null) {
+      clearTimeout(reconnectToastTimer);
+      reconnectToastTimer = null;
     }
     if (ws) {
       ws.onclose = null;
@@ -526,13 +598,15 @@ const WS_MUTANTS = [
   {
     id: 'M6',
     name: 'снят флаг эпизода — спам тостов каждую секунду (Bug A)',
-    from: '    if (!reconnecting) {\n      reconnecting = true;\n      showReconnectingToast();\n    }',
+    from:
+      '    if (!reconnecting) {\n      reconnecting = true;\n      reconnectToastTimer = setTimeout(() => {\n' +
+      '        reconnectToastTimer = null;\n        showReconnectingToast();\n      }, RECONNECT_TOAST_DELAY_MS);\n    }',
     to: '    showReconnectingToast();',
   },
   {
     id: 'M7',
     name: 'снят вызов тоста из onclose — индикация обрыва мертва',
-    from: '      showReconnectingToast();',
+    from: '        showReconnectingToast();\n',
     to: '',
   },
   {
@@ -565,6 +639,34 @@ const WS_MUTANTS = [
     name: 'таймер переподключения не сохраняется (возврат WR-04)',
     from: '    reconnectTimer = setTimeout(() => {',
     to: '    setTimeout(() => {',
+  },
+  {
+    id: 'M16',
+    name: 'таймер отложенного тоста не сохраняется (нечем отменить — призрачный тост)',
+    from: '      reconnectToastTimer = setTimeout(() => {',
+    to: '      setTimeout(() => {',
+  },
+  {
+    id: 'M17',
+    name: 'clearTimeout таймера тоста снят из onopen — тост всплывает после восстановления',
+    from:
+      '      if (reconnectToastTimer !== null) {\n        clearTimeout(reconnectToastTimer);\n' +
+      '        reconnectToastTimer = null;\n      }\n',
+    to: '',
+  },
+  {
+    id: 'M18',
+    name: 'clearTimeout таймера тоста снят из activeCleanup — тост всплывает после release',
+    from:
+      '    if (reconnectToastTimer !== null) {\n      clearTimeout(reconnectToastTimer);\n' +
+      '      reconnectToastTimer = null;\n    }\n',
+    to: '',
+  },
+  {
+    id: 'M19',
+    name: 'задержка тоста заменена на 0 — короткий обрыв мигает тостом',
+    from: '      }, RECONNECT_TOAST_DELAY_MS);',
+    to: '      }, 0);',
   },
   {
     id: 'M14',
@@ -603,7 +705,7 @@ async function selftest() {
   const goodWs = runStructural(GOOD_WS);
   if (goodWs.length) {
     console.error(
-      `${TAG} SELFTEST FAIL — эталонный ws.ts не прошёл W1-W6:\n  - ${goodWs.join('\n  - ')}`,
+      `${TAG} SELFTEST FAIL — эталонный ws.ts не прошёл W1-W7:\n  - ${goodWs.join('\n  - ')}`,
     );
     process.exit(1);
   }
@@ -624,7 +726,7 @@ async function selftest() {
     const failures = runStructural(GOOD_WS.split(m.from).join(m.to));
     if (!failures.length) {
       console.error(
-        `${TAG} SELFTEST FAIL — мутант ${m.id} «${m.name}» прошёл W1-W6: гейт его не ловит`,
+        `${TAG} SELFTEST FAIL — мутант ${m.id} «${m.name}» прошёл W1-W7: гейт его не ловит`,
       );
       process.exit(1);
     }
@@ -663,7 +765,7 @@ async function main() {
     console.error(`${TAG} FAIL —\n  - ${failures.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log(`${TAG} OK — исполняемые E1-E5 по стору тостов, структурные W1-W6 по ws.ts`);
+  console.log(`${TAG} OK — исполняемые E1-E5 по стору тостов, структурные W1-W7 по ws.ts`);
 }
 
 main();

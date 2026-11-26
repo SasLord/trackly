@@ -26,6 +26,7 @@
 //
 // Usage: node scripts/check-ws-resync.mjs [--selftest]
 
+import { setImmediate } from 'node:timers';
 import { gateMain, installHarness, pkgUrl } from './_rune-harness.mjs';
 
 const TAG = '[check-ws-resync]';

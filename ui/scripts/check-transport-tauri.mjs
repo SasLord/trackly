@@ -15,7 +15,9 @@
 //        (гонка WR-02: подписка жила вечно);
 //   [W2] после такой гонки новый connectWs() даёт ровно одну живую подписку (событие -> один вызов);
 //   [W3] обычный путь: два потребителя делят одну подписку, снимается только последним release();
-//   [W4] listen() отклонён -> connectWs бросает, счётчик возвращён (следующий connectWs зовёт listen снова).
+//   [W4] listen() отклонён -> connectWs бросает, счётчик возвращён (следующий connectWs зовёт listen снова);
+//   [W5] событие `trackly-resync` (мост десктопа при Lagged, фаза 43) -> ровно один вызов onWsResync-обработчика.
+// Соединение Tauri = ДВЕ подписки: `trackly-event` и `trackly-resync` (фаза 43, D-08).
 //
 // Usage: node scripts/check-transport-tauri.mjs [--selftest]
 
@@ -128,19 +130,24 @@ async function runCases(overrides) {
   const subs = new Set();
   let listenCalls = 0;
   let gate = null; // управление моментом завершения listen()
-  globalThis.__listen = (_name, cb) => {
+  globalThis.__listen = (name, cb) => {
     listenCalls += 1;
-    const sub = { cb };
+    const sub = { cb, name };
     const done = () => {
       subs.add(sub);
       return () => subs.delete(sub);
     };
     if (gate === 'reject') return Promise.reject(new Error('listen failed'));
-    if (gate === 'hold')
+    if (gate === 'hold') {
+      gate = null; // держим только первый listen(): вторая подписка соединения проходит сразу
       return new Promise((res) => (globalThis.__resolveListen = () => res(done())));
+    }
     return Promise.resolve(done());
   };
-  const emit = () => subs.forEach((s) => s.cb({ payload: { type: 'employee_scope_changed' } }));
+  const emit = () =>
+    subs.forEach((s) => {
+      if (s.name === 'trackly-event') s.cb({ payload: { type: 'employee_scope_changed' } });
+    });
   const fresh = async (n) => {
     subs.clear();
     listenCalls = 0;
@@ -165,7 +172,15 @@ async function runCases(overrides) {
     seen += 1;
   });
   emit();
-  expect('W2', subs.size === 1 && seen === 1, `подписок ${subs.size}, доставок ${seen}: ждали 1/1`);
+  expect('W2', subs.size === 2 && seen === 1, `подписок ${subs.size}, доставок ${seen}: ждали 2/1`);
+  // [W5] trackly-resync -> один ресинк
+  let resyncs = 0;
+  const offR = ws.onWsResync(() => {
+    resyncs += 1;
+  });
+  [...subs].filter((x) => x.name === 'trackly-resync').forEach((x) => x.cb({ payload: null }));
+  expect('W5', resyncs === 1, `trackly-resync: ресинков ${resyncs}, ждали 1`);
+  offR();
   off();
   rel();
   expect('W2', subs.size === 0, 'release() последнего потребителя не снял подписку');
@@ -176,11 +191,11 @@ async function runCases(overrides) {
   const r2 = await ws.connectWs();
   expect(
     'W3',
-    listenCalls === 1 && subs.size === 1,
+    listenCalls === 2 && subs.size === 2,
     `listen зван ${listenCalls}, подписок ${subs.size}`,
   );
   r1();
-  expect('W3', subs.size === 1, 'первый release() снял общую подписку');
+  expect('W3', subs.size === 2, 'первый release() снял общую подписку');
   r2();
   expect('W3', subs.size === 0, 'последний release() не снял подписку');
 
@@ -198,7 +213,7 @@ async function runCases(overrides) {
   const rel4 = await ws.connectWs();
   expect(
     'W4',
-    listenCalls === 2 && subs.size === 1,
+    listenCalls === 3 && subs.size === 2,
     `после отказа listen зван ${listenCalls}, подписок ${subs.size}`,
   );
   rel4();
@@ -261,6 +276,13 @@ const MUTANTS = [
     from: '    if (refCount === 0) teardown();',
     to: '    if (refCount === -1) teardown();',
     expect: 'W3',
+  },
+  {
+    name: 'ws: trackly-resync не вызывает ресинк',
+    file: WS,
+    from: '          resyncAll();\n        });\n        const unlisten = () => {',
+    to: '          void 0;\n        });\n        const unlisten = () => {',
+    expect: 'W5',
   },
   {
     name: 'ws: отказ listen не возвращает счётчик',
