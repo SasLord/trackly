@@ -17,6 +17,9 @@
 //        дубль означает, что переезд оставил копию;
 //   [B4] `link-ui/src` не импортирует `ui/` (ни `$lib`, ни `ui/src`, ни относительный выход
 //        из `link-ui`), а из `@tauri-apps/*` допускается только `@tauri-apps/api/core`;
+//   [B6] lint link-ui (check-link-layout) реально запускается: скрипт `lint` в link-ui/package.json
+//        зовёт check-link-layout.mjs, а ci-fast.yml и ci-full.yml содержат шаг
+//        `pnpm --dir link-ui lint` (WR-01: гейт был нигде не подключён);
 //   [B5] если есть `crates/link-app/Cargo.toml`: в нём нет `version.workspace` и есть
 //        литеральная `version = "X.Y.Z"` (D-10: инъекция версии release.yml её не касается).
 //
@@ -188,6 +191,23 @@ export function check(root) {
       v.push('[B5] crates/link-app: нет литеральной version = "X.Y.Z" (D-10)');
     }
   }
+  // [B6]
+  const linkPkg = path.join(root, 'link-ui', 'package.json');
+  if (!fs.existsSync(linkPkg)) {
+    v.push('[B6] link-ui/package.json отсутствует');
+  } else {
+    const lintScript = JSON.parse(fs.readFileSync(linkPkg, 'utf8')).scripts?.lint ?? '';
+    if (!/check-link-layout\.mjs/.test(lintScript)) {
+      v.push('[B6] link-ui: скрипт lint не запускает check-link-layout.mjs');
+    }
+  }
+  for (const wf of ['ci-fast.yml', 'ci-full.yml']) {
+    const f = path.join(root, '.github', 'workflows', wf);
+    const t = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+    // Строка-комментарий с командой шагом не считается.
+    const wired = t.split('\n').some((l) => /^\s*run:\s*pnpm --dir link-ui lint\s*$/.test(l));
+    if (!wired) v.push(`[B6] .github/workflows/${wf}: нет шага 'run: pnpm --dir link-ui lint'`);
+  }
   return {
     violations: v,
     info: `файлов пакетов: ${pkgFiles}; link-ui/src: ${linkFiles} файлов; Cargo.toml Link ${cargoChecked ? 'проверен' : 'отсутствует'}`,
@@ -290,6 +310,36 @@ function selftest() {
       'B4',
     ],
     [
+      'ci-fast без шага lint link-ui [B6]',
+      (r) => {
+        const f = path.join(r, '.github/workflows/ci-fast.yml');
+        fs.writeFileSync(
+          f,
+          fs.readFileSync(f, 'utf8').replace('run: pnpm --dir link-ui lint', 'run: echo skipped'),
+        );
+      },
+      'B6',
+    ],
+    [
+      'ci-full без шага lint link-ui [B6]',
+      (r) => {
+        const f = path.join(r, '.github/workflows/ci-full.yml');
+        fs.writeFileSync(
+          f,
+          fs.readFileSync(f, 'utf8').replace('run: pnpm --dir link-ui lint', 'run: echo skipped'),
+        );
+      },
+      'B6',
+    ],
+    [
+      'link-ui lint без check-link-layout [B6]',
+      (r) => {
+        const f = path.join(r, 'link-ui/package.json');
+        fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/check-link-layout\.mjs/g, 'x.mjs'));
+      },
+      'B6',
+    ],
+    [
       'link-ui с api/core проходит',
       (r) => {
         fs.mkdirSync(path.join(r, 'link-ui/src'), { recursive: true });
@@ -340,6 +390,7 @@ function selftest() {
     try {
       copyTree(path.join(REPO, 'packages'), path.join(tmp, 'packages'));
       copyTree(path.join(REPO, 'link-ui'), path.join(tmp, 'link-ui'));
+      copyTree(path.join(REPO, '.github', 'workflows'), path.join(tmp, '.github', 'workflows'));
       mutate(tmp);
       // Button.svelte реального дерева лежит в packages: для B0-мутанта (packages стёрт)
       // B3 тоже сработает — сверяем наличие ожидаемого кода, а не его единственность.

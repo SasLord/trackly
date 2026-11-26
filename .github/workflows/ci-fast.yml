@@ -148,9 +148,13 @@ jobs:
         working-directory: ui
         run: pnpm lint
 
-      # link-ui не имеет своего lint-скрипта: eslint/prettier/границы пакетов покрывает
-      # `pnpm lint` в ui/ (prettier ../link-ui, check-workspace-boundaries). Здесь —
-      # сборка и svelte-check, чтобы Link не ломался молча.
+      # У link-ui есть свой lint-скрипт (check-link-layout: размеры окна, visible:false,
+      # права capabilities, запрет fetch/WebSocket/{@html}); eslint/prettier/границы
+      # пакетов покрывает `pnpm lint` в ui/. Здесь — lint, сборка и svelte-check Link.
+      # Шаг обязан существовать: гейт [B6] check-workspace-boundaries краснит его снятие.
+      - name: link-ui lint
+        run: pnpm --dir link-ui lint
+
       - name: Build link-ui
         run: pnpm --dir link-ui build
 

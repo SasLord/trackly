@@ -150,6 +150,11 @@ jobs:
         working-directory: ui
         run: pnpm lint
 
+      # check-link-layout (каркас Link) живёт в lint link-ui, а не в `pnpm lint` ui/.
+      - name: link-ui lint
+        if: runner.os != 'Windows'
+        run: pnpm --dir link-ui lint
+
   procmon:
     name: procmon (windows-latest)
     needs: matrix
