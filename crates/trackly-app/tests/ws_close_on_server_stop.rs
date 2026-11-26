@@ -244,6 +244,8 @@ async fn assert_socket_live(h: &Harness, ws: &mut TlsWs) {
             .expect("поток закрыт до остановки сервера")
             .expect("ошибка сокета до остановки сервера");
         match msg {
+            // Служебный hello (Phase 43 D-13) — не контрольный кадр, пропускаем.
+            TMessage::Text(t) if t.contains(r#""type":"hello""#) => continue,
             TMessage::Text(t) => {
                 assert!(
                     t.contains("number_space_changed"),

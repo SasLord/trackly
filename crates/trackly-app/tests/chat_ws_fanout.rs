@@ -74,9 +74,12 @@ async fn connect(addr: SocketAddr, cookie: &str) -> Ws {
         .into_client_request()
         .unwrap();
     req.headers_mut().insert("cookie", cookie.parse().unwrap());
-    let (ws, _) = tokio_tungstenite::connect_async(req)
+    let (mut ws, _) = tokio_tungstenite::connect_async(req)
         .await
         .expect("ws connect");
+    // Первый кадр сервера — служебный hello (Phase 43 D-13): потребляем сразу.
+    let (raw, v) = frame(&mut ws, "hello").await;
+    assert_eq!(v["type"], "hello", "первым кадром ждали hello: {raw}");
     ws
 }
 

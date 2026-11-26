@@ -84,10 +84,13 @@ async fn connect_ws(addr: SocketAddr, cookie: &str) -> Ws {
         .headers_mut()
         .insert("cookie", cookie.parse().expect("cookie header"));
     let tcp = TcpStream::connect(addr).await.expect("tcp connect");
-    let (ws, resp) = client_async(request, MaybeTlsStream::Plain(tcp))
+    let (mut ws, resp) = client_async(request, MaybeTlsStream::Plain(tcp))
         .await
         .expect("ws handshake (101 expected, 401 means the cookie was rejected)");
     assert_eq!(resp.status().as_u16(), 101, "handshake must upgrade");
+    // Первый кадр сервера — служебный hello (Phase 43 D-13): потребляем сразу.
+    let hello = next_json(&mut ws, "hello").await;
+    assert_eq!(hello["type"], "hello", "первым кадром ждали hello: {hello}");
     ws
 }
 

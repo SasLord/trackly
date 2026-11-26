@@ -37,7 +37,11 @@ mod tls_server_smoke;
 mod ws_broadcast_fanout;
 #[path = "../ws_close_on_server_stop.rs"]
 mod ws_close_on_server_stop;
+#[path = "../ws_heartbeat.rs"]
+mod ws_heartbeat;
 #[path = "../ws_http_single_broadcast.rs"]
 mod ws_http_single_broadcast;
+#[path = "../ws_resync_required.rs"]
+mod ws_resync_required;
 #[path = "../ws_upgrade_serve_connection.rs"]
 mod ws_upgrade_serve_connection;
