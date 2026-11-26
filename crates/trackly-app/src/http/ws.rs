@@ -12,7 +12,7 @@
 //! `Lagged(n)` от `broadcast::Receiver` означает, что клиент отстал и n событий
 //! потеряны. Сессию не завершаем (НЕ `break`), но и молча не продолжаем: клиенту
 //! уходит служебный кадр `{"type":"resync_required"}`, по которому он перечитывает
-//! данные. Ёмкость канала (128) не увеличивается. Канал IM подключается в Плане 08.
+//! данные. Ёмкость канала (128) не увеличивается. То же для канала IM (Lagged -> `resync_required`).
 //!
 //! ## Служебные кадры протокола (Phase 43 D-03, D-13)
 //!
@@ -35,6 +35,11 @@
 //! внешняя отмена hyper-соединения до него не доходит. Подробности — в докблоке
 //! функции (отладочная сессия `ws-disconnect-toast-no-show`).
 //!
+//! ## Сигналы IM (Phase 43 D-04)
+//!
+//! Отдельная ветка `select!`: `{"type":"im_changed","conversationId":N,"rev":M}` из
+//! `ImHub` пользователя, без тела сообщения; `is_visible_to` к IM не применяется.
+//!
 //! ## Visibility filter (T-06-06-I)
 //!
 //! Каждое событие проверяется через `WsEvent::is_visible_to(&identity)` перед
@@ -49,6 +54,7 @@ use axum::{
     routing::any,
     Router,
 };
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::broadcast;
@@ -59,6 +65,7 @@ use crate::context::AppCtx;
 use crate::dto::printer::WsEvent;
 use crate::http::auth::session_identity;
 use crate::server::ServerShutdown;
+use crate::services::im_hub::{ImHub, ImSignal};
 use trackly_core::auth::Identity;
 
 /// Сколько ждём отправку прощального Close-кадра при остановке сервера.
@@ -155,14 +162,20 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     let rx = ctx.ws_broadcast.subscribe();
+    // D-04: канал IM только у пользователя с личностью (у системного администратора
+    // десктопа user_id нет — ветка IM для него неактивна).
+    let im_rx = identity.user_id.map(|uid| ctx.im_hub.subscribe(uid));
+    let im_hub = ctx.im_hub.clone();
     let shutdown = server_shutdown.map(|Extension(ServerShutdown(token))| token);
     let timings = timings.map(|Extension(t)| t).unwrap_or_default();
-    ws.on_upgrade(move |socket| handle_ws_socket(socket, identity, rx, shutdown, timings))
+    ws.on_upgrade(move |socket| {
+        handle_ws_socket(socket, identity, rx, im_rx, im_hub, shutdown, timings)
+    })
 }
 
 /// WebSocket connection loop.
 ///
-/// Первым кадром уходит hello. Затем `tokio::select!` на пяти ветвях:
+/// Первым кадром уходит hello. Затем `tokio::select!` на шести ветвях (шестая — сигналы IM):
 ///   1. `rx.recv()` — fan-out broadcast events to the connected client
 ///      (Lagged -> `resync_required`).
 ///   2. `socket.recv()` — клиентские кадры: disconnect, текстовый ping -> pong;
@@ -183,9 +196,24 @@ pub async fn ws_handler(
 /// сервером потеряно» не показывался НИКОГДА (отладочная сессия
 /// `ws-disconnect-toast-no-show`, GAP-1 фазы 41.7).
 async fn handle_ws_socket(
+    socket: WebSocket,
+    identity: Identity,
+    rx: broadcast::Receiver<WsEvent>,
+    im_rx: Option<broadcast::Receiver<ImSignal>>,
+    im_hub: Arc<ImHub>,
+    shutdown: Option<CancellationToken>,
+    timings: WsTimings,
+) {
+    ws_loop(socket, identity, rx, im_rx, shutdown, timings).await;
+    // Подписка IM снимается при любом выходе; пустые каналы чистятся.
+    im_hub.prune();
+}
+
+async fn ws_loop(
     mut socket: WebSocket,
     identity: Identity,
     mut rx: broadcast::Receiver<WsEvent>,
+    mut im_rx: Option<broadcast::Receiver<ImSignal>>,
     shutdown: Option<CancellationToken>,
     timings: WsTimings,
 ) {
@@ -240,6 +268,36 @@ async fn handle_ws_socket(
             _ = ping_tick.tick() => {
                 if !send_msg(&mut socket, Message::Ping(Vec::new().into())).await {
                     break;
+                }
+            }
+            im_event = async {
+                match im_rx.as_mut() {
+                    Some(r) => r.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // D-04: сигнал IM не проходит is_visible_to — получатели определены
+                // сервисом по членству; кадр без тела: conversationId и rev.
+                match im_event {
+                    Ok(signal) => match serde_json::to_string(&signal) {
+                        Ok(json) => {
+                            if !send_text(&mut socket, &json).await {
+                                break;
+                            }
+                        }
+                        Err(e) => tracing::warn!("ws: serialize ImSignal failed: {e}"),
+                    },
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        // D-07: как и у общего канала — сообщаем о потере сигналов.
+                        tracing::warn!("ws: im client lagged {n} signals — resync_required");
+                        if !send_text(&mut socket, r#"{"type":"resync_required"}"#).await {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Канал закрыт: читать больше нечего, соединение остаётся.
+                        im_rx = None;
+                    }
                 }
             }
             event = rx.recv() => {

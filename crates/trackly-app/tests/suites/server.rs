@@ -21,6 +21,8 @@ mod im_idempotent_send;
 mod im_membership;
 #[path = "../im_sync.rs"]
 mod im_sync;
+#[path = "../im_ws_fanout.rs"]
+mod im_ws_fanout;
 #[path = "../request_accept_assignee.rs"]
 mod request_accept_assignee;
 #[path = "../request_idempotent_create.rs"]
