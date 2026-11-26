@@ -43,25 +43,25 @@ created: 2026-11-26
 
 | Requirement | Behavior | Test Type | Automated Command | File Exists | Status |
 |-------------|----------|-----------|-------------------|-------------|--------|
-| DLV-01 | `Lagged` общего канала и канала IM → `resync_required` | integration | `cargo test -p trackly-app --test server ws_resync` | ❌ W0 | ⬜ pending |
-| DLV-01 | Мост десктопа: Lagged → `trackly-resync` | unit | `cargo test -p trackly-app --lib desktop_event_bridge` | ❌ W0 | ⬜ pending |
-| DLV-01 | `im_sync` по курсору `rev`, `reload:true` по порогу | integration | `cargo test -p trackly-app --test server im_sync` | ❌ W0 | ⬜ pending |
+| DLV-01 | `Lagged` общего канала и канала IM → `resync_required` | integration | `cargo test -p trackly-app --test app_server ws_resync` | ❌ W0 | ⬜ pending |
+| DLV-01 | Мост десктопа: Lagged → `trackly-resync` | unit | `cargo test -p trackly-app --test app_chat desktop_bridge` | ❌ W0 | ⬜ pending |
+| DLV-01 | `im_sync` по курсору `rev`, `reload:true` по порогу | integration | `cargo test -p trackly-app --test app_server im_sync` | ❌ W0 | ⬜ pending |
 | DLV-01 | Клиентский ресинк на `onopen`-после-обрыва и `resync_required` | JS-исполняющий гейт | `node ui/scripts/check-ws-resync.mjs --selftest && node ui/scripts/check-ws-resync.mjs` | ❌ W0 | ⬜ pending |
 | DLV-01 | Реестр: каждый `onWsEvent` имеет ресинк или освобождение | structural gate | `node ui/scripts/check-ws-resync-registry.mjs` | ❌ W0 | ⬜ pending |
-| DLV-02 | Не-участник не получает сигнал | integration | `cargo test -p trackly-app --test server im_ws_fanout` | ❌ W0 | ⬜ pending |
-| DLV-02 | Исключение: следующий сигнал не приходит; история до выхода видна; правки после — нет | integration | `cargo test -p trackly-app --test server im_membership` | ❌ W0 | ⬜ pending |
-| DLV-02 | `im_send`/`im_sync` отвергают не-участника | HTTP | `cargo test -p trackly-app --test server im_http` | ❌ W0 | ⬜ pending |
-| DLV-03 | Повтор `im_send`/`chat_send`/`requests_create` с тем же id → одна сущность, сигнал не повторён | integration | `cargo test -p trackly-app --test <suite> idempot` | ❌ W0 | ⬜ pending |
-| DLV-03 | UNIQUE-индексы, `user_version` миграций | infra | `cargo test -p trackly-infra --test <suite> im_migration` | ❌ W0 | ⬜ pending |
-| DLV-04 | `hello`, ping, закрытие молчащего peer (инжектируемые тайминги) | integration | `cargo test -p trackly-app --test server ws_heartbeat` | ❌ W0 | ⬜ pending |
-| DLV-04 | Остановка сервера закрывает WS (регрессия) | regression | `cargo test -p trackly-app --test server ws_close_on_server_stop` | ✅ | ⬜ pending |
+| DLV-02 | Не-участник не получает сигнал | integration | `cargo test -p trackly-app --test app_server im_ws_fanout` | ❌ W0 | ⬜ pending |
+| DLV-02 | Исключение: следующий сигнал не приходит; история до выхода видна; правки после — нет | integration | `cargo test -p trackly-app --test app_server im_membership` | ❌ W0 | ⬜ pending |
+| DLV-02 | `im_send`/`im_sync` отвергают не-участника | HTTP | `cargo test -p trackly-app --test app_server im_http` | ❌ W0 | ⬜ pending |
+| DLV-03 | Повтор `im_send`/`chat_send`/`requests_create` с тем же id → одна сущность, сигнал не повторён | integration | `cargo test -p trackly-app --test app_server idempot` + `--test app_chat idempot` | ❌ W0 | ⬜ pending |
+| DLV-03 | UNIQUE-индексы, `user_version` миграций | infra | `cargo test -p trackly-infra --test infra_tests im_migration` | ❌ W0 | ⬜ pending |
+| DLV-04 | `hello`, ping, закрытие молчащего peer (инжектируемые тайминги) | integration | `cargo test -p trackly-app --test app_server ws_heartbeat` | ❌ W0 | ⬜ pending |
+| DLV-04 | Остановка сервера закрывает WS (регрессия) | regression | `cargo test -p trackly-app --test app_server ws_close_on_server_stop` | ✅ | ⬜ pending |
 | DLV-04 | Тост через 5 с, ≤1 за эпизод, отмена на `onopen`, `online`/`visibilitychange` | JS-исполняющий гейт | `node ui/scripts/check-ws-disconnect-toast.mjs --selftest && node ui/scripts/check-ws-disconnect-toast.mjs` | ✅ расширить | ⬜ pending |
-| gates | Паритет http↔tauri (`ROUTE_WITHOUT_CMD`) | gate | `cargo test -p trackly-app --test <suite> http_route_parity` | ✅ править | ⬜ pending |
-| gates | `suite_wiring` | gate | `cargo test -p trackly-app --test suite_wiring` | ✅ | ⬜ pending |
+| gates | Паритет http↔tauri (`ROUTE_WITHOUT_CMD`) | gate | `cargo test -p trackly-app --test app_gates http_route_parity` | ✅ править | ⬜ pending |
+| gates | `suite_wiring` | gate | `cargo test -p trackly-app --test app_gates suite_wiring` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-Имена `--test <suite>` сверяются с `[[test]]` в `Cargo.toml` при планировании.
+Имена целей сверены (43-PATTERNS.md): `app_server`, `app_chat`, `app_gates`, `infra_tests`.
 
 ---
 
