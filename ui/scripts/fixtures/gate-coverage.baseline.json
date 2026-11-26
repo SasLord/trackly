@@ -317,5 +317,144 @@
     "js": 3,
     "scss": 3,
     "css": 0
+  },
+  "perGate": {
+    "act-delete-confirm": 21,
+    "act-number-no-regex-split": 303,
+    "action-menu-portal": 223,
+    "date-picker-layout": 223,
+    "device-list-mode": 303,
+    "device-row-menu": 303,
+    "device-status-labels": 303,
+    "device-type-labels": 303,
+    "employee-device-menu": 9,
+    "focus-outline": 226,
+    "group-vocabulary": 303,
+    "history-timeline-refresh": 223,
+    "path-settings-form": 223,
+    "place-path-short": 303,
+    "printer-identity": 303,
+    "store-response-shape": 80,
+    "tokens": 226,
+    "user-scoped-reset": 303
+  },
+  "pinned": {
+    "attachments-block": {
+      "files": [
+        "ui/src/features/printers/PrinterDetail.svelte",
+        "ui/src/features/cartridges/CartridgeDetail.svelte",
+        "ui/src/features/places/PlaceEntityViewModal.svelte",
+        "crates/trackly-app/src/services/attachment_service.rs"
+      ],
+      "dirs": [
+        {
+          "dir": "ui/src/features/attachments",
+          "pattern": "\\.svelte$|^api\\.ts$",
+          "recursive": false,
+          "count": 6
+        }
+      ]
+    },
+    "chat-effects": {
+      "files": [
+        "ui/src/features/requests/chat/RequestChat.svelte",
+        "ui/src/features/requests/chat/ChatComposer.svelte",
+        "ui/src/features/requests/RequestDetail.svelte",
+        "ui/src/features/requests/chat/draftStore.svelte.ts"
+      ],
+      "dirs": [
+        {
+          "dir": "ui/src/features/requests",
+          "pattern": "\\.svelte$",
+          "recursive": false,
+          "count": 15
+        },
+        {
+          "dir": "ui/src/features/requests/chat",
+          "pattern": "\\.svelte$",
+          "recursive": false,
+          "count": 9
+        }
+      ]
+    },
+    "chat-ui": {
+      "files": [
+        "ui/src/features/requests/chat/RequestChat.svelte",
+        "ui/src/features/requests/chat/ChatComposer.svelte",
+        "ui/src/features/requests/chat/ChatMessage.svelte",
+        "ui/src/features/requests/chat/ChatMuteToggle.svelte",
+        "ui/src/features/requests/chat/ChatEvent.svelte",
+        "ui/src/features/requests/chat/ChatAttachmentEvent.svelte",
+        "ui/src/features/requests/chat/chatNotifications.svelte.ts",
+        "ui/src/features/requests/chat/unreadStore.svelte.ts",
+        "ui/src/features/requests/chat/draftStore.svelte.ts",
+        "ui/src/features/requests/chat/tabStore.svelte.ts",
+        "ui/src/features/requests/chat/linkify.ts",
+        "ui/src/features/requests/RequestDetail.svelte",
+        "ui/src/features/layout/sidebar-config.ts",
+        "ui/src/lib/components/DetailPanel.svelte",
+        "ui/src/lib/platform/systemNotify.ts",
+        "ui/src/features/requests/requestTarget.ts",
+        "ui/src/features/layout/EmployeeLayout.svelte",
+        "ui/src/features/requests/RequestsPage.svelte",
+        "crates/trackly-app/src/tauri_cmds/system_notify.rs"
+      ],
+      "dirs": [
+        {
+          "dir": "ui/src/features/requests/chat",
+          "pattern": "\\.svelte$",
+          "recursive": false,
+          "count": 9
+        }
+      ]
+    },
+    "lint-selftest-wiring": {
+      "files": [
+        "ui/package.json"
+      ],
+      "dirs": [
+        {
+          "dir": "ui/scripts",
+          "pattern": "^check-.*\\.mjs$",
+          "recursive": false,
+          "count": 73
+        }
+      ]
+    },
+    "html-commands": {
+      "files": [
+        "ui/src/lib/api/client.ts"
+      ],
+      "dirs": [
+        {
+          "dir": "crates/trackly-app/src/http",
+          "pattern": "\\.rs$",
+          "recursive": false,
+          "count": 26
+        }
+      ]
+    },
+    "repair-modal-focus": {
+      "files": [],
+      "dirs": [
+        {
+          "dir": "ui/src/features/requests",
+          "pattern": "^Repair.*Modal\\.svelte$",
+          "recursive": false,
+          "count": 6
+        }
+      ]
+    },
+    "place-tree-invalidation": {
+      "files": [],
+      "dirs": [
+        {
+          "dir": "ui/src",
+          "pattern": ".",
+          "recursive": true,
+          "count": 309
+        }
+      ]
+    }
   }
 }
