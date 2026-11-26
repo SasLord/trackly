@@ -174,6 +174,8 @@ export type RequestCreateDto = {
   cartridgeModelId: number | null;
   categoryId: number | null;
   description: string | null;
+  /** D-11: клиентский id идемпотентности (повтор возвращает ту же заявку). */
+  clientRequestId?: string | null;
 };
 
 /**

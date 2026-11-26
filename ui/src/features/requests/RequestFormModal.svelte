@@ -16,6 +16,7 @@
   import { tick } from 'svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { parseAppError } from '@trackly/transport/errors';
+  import { newClientId, sendWithRetry } from '@trackly/transport/sendWithRetry';
   import { requests, repairs } from './api';
   import type { RequestCategoryDto, RequestPrinterOptionDto } from '../../bindings-phase6';
   import type { RepairDeviceOptionDto } from '../../bindings';
@@ -141,12 +142,16 @@
   // Поколение загрузки списка устройств ремонта: ответ прошлого открытия формы
   // не должен перезаписать свежий список (R2-3). Не $state: в разметке не участвует.
   let repairLoadGen = 0;
+  // D-12: клиентский id идемпотентности живёт с открытия формы до успеха; повторное
+  // «Отправить» после сбоя уходит с тем же id. Не $state и не создаётся в handleSubmit.
+  let clientRequestId = newClientId();
 
   $effect(() => {
     const isOpen = open;
     if (isOpen && !_wasOpen) {
       openInstanceCounter += 1;
       // Reset form state on open.
+      clientRequestId = newClientId();
       requestType = 'cartridge_replace';
       printerDeviceId = null;
       description = '';
@@ -329,13 +334,16 @@
         onClose();
         return;
       }
-      const created = await requests.create({
-        requestType,
-        printerDeviceId: requestType === 'cartridge_replace' ? printerDeviceId : null,
-        cartridgeModelId: null,
-        categoryId: requestType === 'free_form' ? categoryId : null,
-        description: description.trim() || null,
-      });
+      const created = await sendWithRetry(() =>
+        requests.create({
+          requestType,
+          printerDeviceId: requestType === 'cartridge_replace' ? printerDeviceId : null,
+          cartridgeModelId: null,
+          categoryId: requestType === 'free_form' ? categoryId : null,
+          description: description.trim() || null,
+          clientRequestId,
+        }),
+      );
       if (!prefill) pushToast('success', 'Заявка отправлена');
       maybeRequestNotifyPermission();
       onSuccess(created);

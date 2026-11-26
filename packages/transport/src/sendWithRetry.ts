@@ -1,5 +1,10 @@
 import { parseAppError } from './errors';
 
+interface CryptoLike {
+  randomUUID?: () => string;
+  getRandomValues?: <T extends ArrayBufferView>(array: T) => T;
+}
+
 /// Паузы перед повторами (D-12): три повтора, 1 с, 2 с, 4 с.
 export const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
@@ -39,7 +44,7 @@ export async function sendWithRetry<T>(
 
 /// Клиентский id идемпотентности: ^[A-Za-z0-9_-]{1,64}$ (серверная проверка is_valid_client_id).
 export function newClientId(): string {
-  const c = (globalThis as { crypto?: Crypto }).crypto;
+  const c = (globalThis as { crypto?: CryptoLike }).crypto;
   if (c && typeof c.randomUUID === 'function') return c.randomUUID();
   if (c && typeof c.getRandomValues === 'function') {
     const bytes = c.getRandomValues(new Uint8Array(16));
