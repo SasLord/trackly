@@ -26,7 +26,10 @@ const MIN_REASON = 20;
 const WS_FILE = 'packages/transport/src/ws.ts';
 
 /** путь (от корня репозитория) -> причина освобождения (>= 20 символов). */
-export const EXEMPTIONS = {};
+export const EXEMPTIONS = {
+  'ui/src/features/requests/chat/chatNotifications.svelte.ts':
+    'тосты о новых сообщениях; перечитывать нечего, ресинк обязан быть тихим (D-09); счётчики перечитывает unreadStore',
+};
 
 const RE_EVENT = /\bonWsEvent\s*\(/g;
 const RE_RESYNC = /\bonWsResync\s*\(/g;

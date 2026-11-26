@@ -7,7 +7,7 @@
   import { router } from 'svelte-spa-router';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { connectWs, onWsEvent } from '@trackly/transport/ws';
+  import { connectWs, onWsEvent, onWsResync } from '@trackly/transport/ws';
   import { apiCall } from '@trackly/transport/client';
   import { parseAppError } from '@trackly/transport/errors';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -192,8 +192,14 @@
         // WS connection is non-fatal.
       });
     const unsubscribe = onWsEvent(handleWsEvent);
+    // D-08: после обрыва перечитываем список и счётчики (фильтры/страница сохраняются).
+    const unsubscribeResync = onWsResync(() => {
+      void refresh();
+      void loadCounts();
+    });
     return () => {
       unsubscribe();
+      unsubscribeResync();
       unlisten?.();
     };
   });

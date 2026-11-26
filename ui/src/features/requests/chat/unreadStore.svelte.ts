@@ -4,7 +4,7 @@
 // с сервера (chat_unread_summary); клиент ничего не считает локально, а лишь
 // показывает и перечитывает по WS. WS-соединение стор не открывает: его держат
 // layout'ы (refcount-singleton в ws.ts).
-import { onWsEvent } from '@trackly/transport/ws';
+import { onWsEvent, onWsResync } from '@trackly/transport/ws';
 import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import { pushToast } from '@trackly/kit/stores/toast.svelte';
 import { chat } from './api';
@@ -145,8 +145,13 @@ export function startUnreadRealtime(): () => void {
         break;
     }
   });
+  // D-08/D-09: ресинк тихо перечитывает сводку, тостов не показывает.
+  const offResync = onWsResync(() => {
+    void refreshUnread();
+  });
   return () => {
     off();
+    offResync();
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;

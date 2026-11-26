@@ -16,6 +16,7 @@
 //   [U5] toggleMute оптимистичен; при ошибке откат + тост «Не удалось изменить оповещения»;
 //        повторный вызов во время полёта → false и без второго запроса;
 //   [U6] resetUserScoped обнуляет стор, а запоздавший ответ прежнего пользователя его не перезаписывает;
+//   [U8] ресинк WS перечитывает сводку ровно один раз, mutedIds целы, тостов нет, после stop обработчик снят;
 //   [U7] битый ответ (HTML-строка spa_fallback, нечисловые поля) прежние числа не трогает.
 //
 // Usage: node scripts/check-unread-store-behavior.mjs [--selftest]
@@ -26,7 +27,8 @@ const TAG = '[check-unread-store-behavior]';
 const US = 'features/requests/chat/unreadStore.svelte.ts';
 
 const STUBS = {
-  '@trackly/transport/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }`,
+  '@trackly/transport/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }
+  export function onWsResync(h) { const s = globalThis.__h.resync; s.add(h); return () => s.delete(h); }`,
   './api': `export const chat = {
     unreadSummary: (...a) => globalThis.__h.api.unreadSummary(...a),
     setMuted: (...a) => globalThis.__h.api.setMuted(...a),
@@ -36,6 +38,7 @@ const STUBS = {
 async function runCases(overrides) {
   const H = {
     ws: new Set(),
+    resync: new Set(),
     calls: 0,
     summary: { items: [], mutedRequestIds: [] },
     api: {
@@ -119,7 +122,23 @@ async function runCases(overrides) {
   await waitCall('U4', { type: 'new_request', requestId: 9 }, true);
   await waitCall('U4', { type: 'chat_read_changed', requestId: 8, userId: 1 }, true);
   await waitCall('U4', { type: 'printer_status', printerId: 1 }, false);
+  // U8: ресинк тихий
+  toast.clearToasts();
+  const mutedBefore = JSON.stringify(s.mutedIds);
+  const callsBefore = H.calls;
+  expect('U8', H.resync.size === 1, `обработчиков ресинка: ${H.resync.size}, ожидался 1`);
+  for (const h of [...H.resync]) h();
+  await until(() => H.calls > callsBefore, 500);
+  await new Promise((r) => setTimeout(r, 300));
+  expect(
+    'U8',
+    H.calls === callsBefore + 1,
+    `перечитываний сводки на ресинк: ${H.calls - callsBefore}`,
+  );
+  expect('U8', JSON.stringify(s.mutedIds) === mutedBefore, 'ресинк изменил mutedIds');
+  expect('U8', toast.toastStore.items.length === 0, 'ресинк породил тост');
   stop();
+  expect('U8', H.resync.size === 0, `после stop остались обработчики ресинка: ${H.resync.size}`);
   expect('U4', H.ws.size === 0, `после stop подписок WS: ${H.ws.size}`);
 
   // U5
@@ -255,6 +274,13 @@ const MUTANTS = [
     from: "      case 'chat_read_changed':\n",
     to: '',
     expect: 'U4',
+  },
+  {
+    name: 'ресинк не зарегистрирован',
+    file: US,
+    from: 'const offResync = onWsResync(() => {\n    void refreshUnread();\n  });',
+    to: 'const offResync = () => {};',
+    expect: 'U8',
   },
   {
     name: 'сброс пользователя не чистит mutedIds',

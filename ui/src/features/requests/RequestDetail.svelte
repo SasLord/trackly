@@ -43,7 +43,7 @@
   import AttachmentsBlock from '@trackly/attachments/AttachmentsBlock.svelte';
   import AttachmentHistory from '@trackly/attachments/AttachmentHistory.svelte';
   import { attachments } from '@trackly/attachments/api';
-  import { onWsEvent } from '@trackly/transport/ws';
+  import { onWsEvent, onWsResync } from '@trackly/transport/ws';
   import type {
     AttachmentHistoryEventDto,
     RepairStateDto,
@@ -395,7 +395,17 @@
         void loadRepairState(id);
       }
     });
-    return off;
+    // D-08/D-10: ресинк перечитывает историю и состояние ремонта, формы не трогает.
+    const offResync = onWsResync(() => {
+      const id = request?.id;
+      if (id === undefined) return;
+      void loadHistory(id, true);
+      if (request?.requestType === 'repair') void loadRepairState(id);
+    });
+    return () => {
+      off();
+      offResync();
+    };
   });
 
   type HistoryRow =

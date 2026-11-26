@@ -5,7 +5,7 @@
   import { tick, untrack } from 'svelte';
   import Button from '@trackly/kit/components/Button.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
-  import { onWsEvent } from '@trackly/transport/ws';
+  import { onWsEvent, onWsResync } from '@trackly/transport/ws';
   import { parseAppError } from '@trackly/transport/errors';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
   import { saveFile } from '@trackly/kit/utils/saveFile';
@@ -251,7 +251,14 @@
         void load(false);
       }
     });
-    return off;
+    // D-08/D-10: ресинк перечитывает ленту; черновик и компонент не трогаются.
+    const offResync = onWsResync(() => {
+      void load(false);
+    });
+    return () => {
+      off();
+      offResync();
+    };
   });
 
   // Закрытая заявка: черновик пропадает без отправки (D-07).

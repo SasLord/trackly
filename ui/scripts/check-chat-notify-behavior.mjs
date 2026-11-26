@@ -27,7 +27,8 @@ const TAG = '[check-chat-notify-behavior]';
 const CN = 'features/requests/chat/chatNotifications.svelte.ts';
 
 const STUBS = {
-  '@trackly/transport/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }`,
+  '@trackly/transport/ws': `export function onWsEvent(h) { const s = globalThis.__h.ws; s.add(h); return () => s.delete(h); }
+  export function onWsResync(h) { const s = globalThis.__h.resync; s.add(h); return () => s.delete(h); }`,
   '$lib/stores/auth.svelte': `export const authStore = globalThis.__h.auth;`,
   '$lib/platform/systemNotify': `
     export function appHasFocus() { return globalThis.__h.focus; }
@@ -43,6 +44,7 @@ const STUBS = {
 async function runCases(overrides) {
   const H = {
     ws: new Set(),
+    resync: new Set(),
     auth: { user: { id: 1, login: 'ivanov', fullName: 'Иванов И.И.', role: 'manager' } },
     focus: true,
     sys: [],
@@ -217,7 +219,22 @@ async function runCases(overrides) {
   emit(msg(17));
   expect('N9', toast.toastStore.items.length === 0, 'без пользователя показан тост');
 
+  // N10: ресинк тихий — сводка с «новыми» данными не порождает тостов и ОС-уведомлений
+  H.auth.user = { id: 1, login: 'ivanov', fullName: 'Иванов И.И.', role: 'manager' };
+  clear();
+  H.sys.length = 0;
+  H.summary = { items: [{ requestId: 21, count: 4 }], mutedRequestIds: [] };
+  expect('N10', H.resync.size >= 1, 'ресинк-обработчик не зарегистрирован');
+  for (const h of [...H.resync]) h();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(
+    'N10',
+    toast.toastStore.items.length === 0 && H.sys.length === 0,
+    `ресинк породил уведомления: тостов ${toast.toastStore.items.length}, ОС ${H.sys.length}`,
+  );
+
   stop();
+  expect('N10', H.resync.size === 0, `после stop остались обработчики ресинка: ${H.resync.size}`);
   expect('N0', H.ws.size === 0, `после stop остались подписки WS: ${H.ws.size}`);
   return bad;
 }
@@ -273,6 +290,13 @@ const MUTANTS = [
     from: "activate: () => openRequestTarget(ev.requestId, 'chat'),",
     to: "activate: () => openRequestTarget(ev.requestId, 'info'),",
     expect: 'N2',
+  },
+  {
+    name: 'ресинк показывает тост',
+    file: 'features/requests/chat/unreadStore.svelte.ts',
+    from: 'const offResync = onWsResync(() => {\n    void refreshUnread();',
+    to: "const offResync = onWsResync(() => {\n    pushToast('info', 'x');\n    void refreshUnread();",
+    expect: 'N10',
   },
   {
     name: 'смена пользователя не чистит карту тостов',
