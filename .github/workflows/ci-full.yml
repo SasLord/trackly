@@ -81,10 +81,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: ui/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: pnpm install (frozen lockfile)
-        working-directory: ui
         run: pnpm install --frozen-lockfile
 
       # rust-embed embeds the SPA via #[derive(RustEmbed)] #[folder = "../../ui/dist"]
@@ -98,6 +97,13 @@ jobs:
         run: |
           mkdir -p ui/dist
           [ -f ui/dist/index.html ] || printf '<!doctype html><title>placeholder</title>\n' > ui/dist/index.html
+
+      # tauri::generate_context! в link-app требует существования link-ui/dist при компиляции.
+      - name: Seed link-ui/dist placeholder
+        shell: bash
+        run: |
+          mkdir -p link-ui/dist
+          [ -f link-ui/dist/index.html ] || printf '<!doctype html><title>placeholder</title>\n' > link-ui/dist/index.html
 
       # Build the REAL Svelte SPA into ui/dist. Needed not just for compilation but
       # for tests/security_headers::server_serves_embedded_spa_index, which serves
@@ -178,6 +184,13 @@ jobs:
         run: |
           mkdir -p ui/dist
           [ -f ui/dist/index.html ] || printf '<!doctype html><title>placeholder</title>\n' > ui/dist/index.html
+
+      # tauri::generate_context! в link-app требует существования link-ui/dist при компиляции.
+      - name: Seed link-ui/dist placeholder
+        shell: bash
+        run: |
+          mkdir -p link-ui/dist
+          [ -f link-ui/dist/index.html ] || printf '<!doctype html><title>placeholder</title>\n' > link-ui/dist/index.html
 
       - name: Build trackly-app + procmon-check (release)
         run: |

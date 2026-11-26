@@ -231,10 +231,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: ui/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: pnpm install (frozen lockfile)
-        working-directory: ui
         run: pnpm install --frozen-lockfile
 
       # Version injection: extract from tag (v1.2.3 → 1.2.3) and patch both
