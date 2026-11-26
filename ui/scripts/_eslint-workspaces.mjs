@@ -15,17 +15,14 @@ const REPO = path.resolve(UI, '..');
 const ESLINT = path.join(UI, 'node_modules', 'eslint', 'bin', 'eslint.js');
 
 let failed = false;
-for (const [dir, required] of [
-  ['packages', true],
-  ['link-ui', true],
-]) {
+for (const dir of ['packages', 'link-ui']) {
   const cwd = path.join(REPO, dir);
   const hasSrc =
     dir === 'packages'
       ? fs.readdirSync(cwd).some((n) => fs.existsSync(path.join(cwd, n, 'src')))
       : fs.existsSync(path.join(cwd, 'src'));
   if (!hasSrc) {
-    // required у обоих корней: пропуск = вакуумный проход (WR-04).
+    // Оба корня обязательны: пропуск = вакуумный проход (WR-04).
     console.error(`[eslint-workspaces] ${dir}: нет ни одного src/ — пустое покрытие недопустимо`);
     process.exit(1);
   }
