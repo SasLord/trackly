@@ -242,7 +242,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 43-08-PLAN.md — маршруты im_send/im_sync, ветка ImHub в WS, Lagged IM, паритет http-tauri, тесты на реальном сокете
+- [x] 43-08-PLAN.md — маршруты im_send/im_sync, ветка ImHub в WS, Lagged IM, паритет http-tauri, тесты на реальном сокете
 - [ ] 43-09-PLAN.md — sendWithRetry/newClientId, форма заявки с одним clientRequestId
 
 **Wave 5** *(blocked on Wave 4 completion)*

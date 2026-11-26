@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 7 of 12 complete (43-01..43-07 done)
+Plan: 8 of 12 complete (43-01..43-08 done)
 Status: Executing Phase 43
-Last activity: 2026-11-26 -- Phase 43 execution started
+Last activity: 2026-11-27 -- 43-08 (транспорт IM: маршруты, ветка ImHub в WS)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
