@@ -22,32 +22,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { walk } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
-
-/** Собирает список .svelte/.scss файлов рекурсивно. Устойчив к отсутствующей директории. */
-function collectSourceFiles(srcDir) {
-  if (!fs.existsSync(srcDir)) return [];
-  let entries;
-  try {
-    entries = fs.readdirSync(srcDir, { recursive: true });
-  } catch {
-    return [];
-  }
-  const files = [];
-  for (const entry of entries) {
-    const rel = typeof entry === 'string' ? entry : String(entry);
-    if (!rel.endsWith('.svelte') && !rel.endsWith('.scss')) continue;
-    const full = path.join(srcDir, rel);
-    try {
-      if (fs.statSync(full).isFile()) files.push(full);
-    } catch {
-      // race/broken symlink — skip
-    }
-  }
-  return files;
-}
 
 function readFileSafe(filePath) {
   try {
@@ -139,7 +117,7 @@ function checkFocusOutline(files) {
 }
 
 function main() {
-  const files = collectSourceFiles(path.join(UI_ROOT, 'src'));
+  const files = walk({ exts: ['.svelte', '.scss'] });
   const violations = checkFocusOutline(files);
 
   for (const v of violations) {
@@ -153,7 +131,7 @@ function main() {
     process.exit(1);
   }
 
-  console.error('[check-focus-outline] PASS — 0 нарушений');
+  console.error(`[check-focus-outline] PASS — 0 нарушений (файлов: ${files.length})`);
   process.exit(0);
 }
 

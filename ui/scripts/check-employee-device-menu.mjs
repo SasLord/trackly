@@ -21,12 +21,12 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { Buffer } from 'node:buffer';
 import { stripComments } from './_strip.mjs';
+import { walk as walkRoots } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 const TAG = '[check-employee-device-menu]';
 const MODULE_FILE = path.join(UI_ROOT, 'src/features/employee/employeeDeviceMenu.ts');
-const EMPLOYEE_DIR = path.join(UI_ROOT, 'src/features/employee');
 const FIXTURE = path.join(__dirname, 'fixtures/employee-device-menu/cases.json');
 const MIN_CASES = 10;
 
@@ -122,16 +122,9 @@ function structural(moduleSrc, employeeFiles, caseCount) {
 
 function readEmployeeFiles() {
   const out = [];
-  const walk = (dir) => {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (/\.(svelte|ts)$/.test(e.name)) {
-        out.push({ name: path.relative(UI_ROOT, p), src: fs.readFileSync(p, 'utf8') });
-      }
-    }
-  };
-  walk(EMPLOYEE_DIR);
+  for (const p of walkRoots({ exts: ['.svelte', '.ts'], subdirs: ['features/employee'] })) {
+    out.push({ name: path.relative(UI_ROOT, p), src: fs.readFileSync(p, 'utf8') });
+  }
   return out;
 }
 

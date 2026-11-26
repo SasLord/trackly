@@ -83,6 +83,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk as walkRoots, UI_ROOT as ROOTS_UI } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TAG = '[check-device-type-labels]';
@@ -181,19 +182,12 @@ function lineOf(text, index) {
   return n;
 }
 
-function walk(dir) {
-  const out = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walk(full));
-    else if (/\.(svelte|ts)$/.test(entry.name)) out.push(full);
-  }
-  return out;
-}
-
 /** Все .svelte/.ts под <root>/src (пути от root, с «/»). Пропуск GENERATED не выполняется здесь. */
 function listSourceFiles(root) {
-  return walk(path.join(root, SRC_DIR))
+  return walkRoots({
+    exts: ['.svelte', '.ts'],
+    roots: path.resolve(root) === ROOTS_UI ? null : [path.join(root, SRC_DIR)],
+  })
     .map((f) => path.relative(root, f).split(path.sep).join('/'))
     .sort();
 }

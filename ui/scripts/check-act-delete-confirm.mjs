@@ -45,6 +45,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk as walkRoots, UI_ROOT as ROOTS_UI } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -203,23 +204,15 @@ export function scanSource(files, violations) {
 function readSources(root) {
   const out = {};
   const base = path.join(root, ACTS_DIR);
-  const walk = (dir) => {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const abs = path.join(dir, e.name);
-      if (e.isDirectory()) walk(abs);
-      else if (/\.(svelte|ts)$/.test(e.name)) {
-        const rel = path.relative(root, abs).split(path.sep).join('/');
-        out[rel] = fs.readFileSync(abs, 'utf8');
-      }
-    }
-  };
-  walk(base);
+  const found = walkRoots({
+    exts: ['.svelte', '.ts'],
+    subdirs: ['features/acts'],
+    roots: path.resolve(root) === ROOTS_UI ? null : [base],
+  });
+  for (const abs of found) {
+    const rel = path.relative(root, abs).split(path.sep).join('/');
+    out[rel] = fs.readFileSync(abs, 'utf8');
+  }
   return out;
 }
 

@@ -105,6 +105,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { Buffer } from 'node:buffer';
 import { stripComments } from './_strip.mjs';
+import { walk as walkRoots, UI_ROOT as ROOTS_UI } from './_roots.mjs';
 export { stripComments };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1119,22 +1120,14 @@ export function scanStructural(files, opts = {}) {
   return { violations, notes };
 }
 
-function walkSrc(srcDir, out = []) {
-  for (const e of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    const p = path.join(srcDir, e.name);
-    if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === 'dist') continue;
-      walkSrc(p, out);
-    } else if (e.name.endsWith('.svelte') || e.name.endsWith('.ts')) out.push(p);
-  }
-  return out;
-}
-
 function readTree(root) {
   const srcDir = path.join(root, 'src');
   if (!fs.existsSync(srcDir)) return null;
   const files = new Map();
-  for (const abs of walkSrc(srcDir)) {
+  for (const abs of walkRoots({
+    exts: ['.svelte', '.ts'],
+    roots: path.resolve(root) === ROOTS_UI ? null : [srcDir],
+  })) {
     files.set(path.relative(root, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
   }
   return files;

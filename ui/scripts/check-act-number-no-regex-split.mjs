@@ -52,15 +52,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk as walkRoots, UI_ROOT as ROOTS_UI } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 const TAG = '[check-act-number-no-regex-split]';
 
-// Относительные (от корня ui/) POSIX-пути файлов, исключённых из сканирования.
-const EXCLUDED_FILES = new Set(['src/bindings.ts']);
-const EXCLUDED_DIRS = new Set(['node_modules']);
-const EXTENSIONS = new Set(['.svelte', '.ts']);
+// Обход файлов (.svelte/.ts, без src/bindings.ts и node_modules) — общий walk() из _roots.mjs.
 
 // (A) Regex-литерал, начинающийся с anchored digit-prefix: `/^\d`, `/^(\d`,
 // `/^[0-9]` — ловит буквальный литерал ГДЕ УГОДНО в файле (inline внутри
@@ -76,29 +74,6 @@ const DIGIT_PREFIX_REGEX_LITERAL_RE = /(?<![\w)\]])\/\^\(?(?:\\d|\[0-9\])/g;
 // (B) Любое употребление `number_raw` вне explicit whitelist.
 const NUMBER_RAW_RE = /\bnumber_raw\b/g;
 const ALLOWED_NUMBER_RAW_FILES = new Set(['src/features/acts/ActFormBody.svelte']);
-
-/** Рекурсивно собрать файлы нужных расширений под `root/dir` (POSIX-пути от root). */
-function collectFiles(root, dir, out) {
-  const abs = path.join(root, dir);
-  let entries;
-  try {
-    entries = fs.readdirSync(abs, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    const rel = dir ? `${dir}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      if (EXCLUDED_DIRS.has(entry.name)) continue;
-      collectFiles(root, rel, out);
-      continue;
-    }
-    if (!EXTENSIONS.has(path.extname(entry.name))) continue;
-    if (EXCLUDED_FILES.has(rel)) continue;
-    out.push(rel);
-  }
-  return out;
-}
 
 /** Номер строки (1-based) по индексу символа в тексте. */
 function lineAt(src, index) {
@@ -272,7 +247,10 @@ function main() {
     process.exit(1);
   }
 
-  const files = collectFiles(SRC_ROOT, 'src', []);
+  const files = walkRoots({
+    exts: ['.svelte', '.ts'],
+    roots: path.resolve(SRC_ROOT) === ROOTS_UI ? null : [srcDir],
+  }).map((abs) => path.relative(SRC_ROOT, abs).split(path.sep).join('/'));
   const violations = [];
   for (const rel of files) {
     checkFile(SRC_ROOT, rel, violations);
@@ -284,7 +262,7 @@ function main() {
     process.exit(1);
   }
 
-  console.error(`${TAG} PASS — 0 нарушений`);
+  console.error(`${TAG} PASS — 0 нарушений (файлов: ${files.length})`);
   process.exit(0);
 }
 

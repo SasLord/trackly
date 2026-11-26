@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk as walkRoots } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '../src');
@@ -314,15 +315,6 @@ export function checkOverrides(raw, file = '?') {
   return bad;
 }
 
-function walk(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (e.name.endsWith('.svelte')) out.push(p);
-  }
-  return out;
-}
-
 const wrap = (decls) =>
   `<input class="date-picker"/><style lang="scss">.date-picker { ${decls} }</style>`;
 
@@ -467,7 +459,7 @@ if (process.argv.includes('--selftest')) {
     pathToFileURL(path.join(SRC, 'lib/utils/calendarIcon.js')).href
   );
   bad.push(...checkDetector(needsOwnCalendarIcon).map((b) => `calendarIcon.js: ${b}`));
-  const files = walk(SRC);
+  const files = walkRoots({ exts: ['.svelte'] });
   for (const f of files) {
     bad.push(...checkOverrides(fs.readFileSync(f, 'utf8'), path.relative(SRC, f)));
   }

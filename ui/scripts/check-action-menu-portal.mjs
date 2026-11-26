@@ -75,6 +75,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+import { walk as walkRoots, UI_ROOT as ROOTS_UI } from './_roots.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
@@ -634,15 +635,6 @@ function scanSources(files, minCallSites, violations) {
   }
 }
 
-function walk(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (e.name.endsWith('.svelte')) out.push(p);
-  }
-  return out;
-}
-
 function checkRepo(root, violations) {
   const srcDir = path.join(root, 'src');
   if (!fs.existsSync(srcDir)) {
@@ -650,7 +642,10 @@ function checkRepo(root, violations) {
     return;
   }
   const files = new Map();
-  for (const abs of walk(srcDir)) {
+  for (const abs of walkRoots({
+    exts: ['.svelte'],
+    roots: path.resolve(root) === ROOTS_UI ? null : [srcDir],
+  })) {
     files.set(path.relative(root, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
   }
   const globalPath = path.join(root, GLOBAL_SCSS_FILE);
