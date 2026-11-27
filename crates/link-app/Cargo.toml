@@ -27,6 +27,8 @@ tauri-plugin-single-instance = { workspace = true }
 link-proto = { workspace = true }
 reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
+# Stream/Sink поверх tokio-tungstenite (уже в графе trackly-app).
+futures-util = "0.3"
 rustls = { workspace = true }
 # Свои features: у workspace-записи включён aws-lc-rs (Pitfall 2).
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

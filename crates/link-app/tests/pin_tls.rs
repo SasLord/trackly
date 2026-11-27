@@ -421,3 +421,217 @@ async fn http_device_headers_sent_and_secret_not_in_debug() {
     assert!(!format!("{creds:?}").contains("s3cr3t-value-xyz"));
     assert!(!format!("{http:?}").contains("s3cr3t-value-xyz"));
 }
+
+// ---------------------------------------------------------------- WS
+
+use futures_util::{SinkExt, StreamExt};
+use link_app::ws_client::{connect, WsConn, WsError, WsFrame};
+use link_proto::dto::REVOKED_CLOSE_CODE;
+use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::Message;
+
+struct WsSrv {
+    addr: std::net::SocketAddr,
+    upgrades: Arc<AtomicUsize>,
+    cookies: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+/// Мок WS на TLS: `reject` — отвечать 401 на апгрейде; иначе отправить `script` и держать соединение.
+async fn spawn_ws(id: &Ident, reject: bool, script: Vec<Message>) -> WsSrv {
+    let acceptor = TlsAcceptor::from(server_config(&id.cert_der, &id.key));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let srv = WsSrv {
+        addr,
+        upgrades: Arc::new(AtomicUsize::new(0)),
+        cookies: Arc::new(std::sync::Mutex::new(Vec::new())),
+    };
+    let (upgrades, cookies) = (srv.upgrades.clone(), srv.cookies.clone());
+    tokio::spawn(async move {
+        loop {
+            let Ok((tcp, _)) = listener.accept().await else {
+                return;
+            };
+            let (acceptor, upgrades, cookies, script) = (
+                acceptor.clone(),
+                upgrades.clone(),
+                cookies.clone(),
+                script.clone(),
+            );
+            tokio::spawn(async move {
+                let Ok(tls) = acceptor.accept(tcp).await else {
+                    return;
+                };
+                let cb = |req: &Request, resp: Response| -> Result<Response, ErrorResponse> {
+                    upgrades.fetch_add(1, Ordering::SeqCst);
+                    if let Some(c) = req.headers().get("cookie") {
+                        cookies
+                            .lock()
+                            .unwrap()
+                            .push(c.to_str().unwrap().to_string());
+                    }
+                    if reject {
+                        let mut r = ErrorResponse::new(None);
+                        *r.status_mut() =
+                            tokio_tungstenite::tungstenite::http::StatusCode::UNAUTHORIZED;
+                        return Err(r);
+                    }
+                    Ok(resp)
+                };
+                let Ok(mut ws) = tokio_tungstenite::accept_hdr_async(tls, cb).await else {
+                    return;
+                };
+                for m in script {
+                    if ws.send(m).await.is_err() {
+                        return;
+                    }
+                }
+                while ws.next().await.is_some() {}
+            });
+        }
+    });
+    srv
+}
+
+fn hello(secs: u64) -> Message {
+    Message::text(format!(
+        r#"{{"type":"hello","protocol":1,"pingIntervalSecs":25,"idleTimeoutSecs":{secs}}}"#
+    ))
+}
+
+fn close(code: u16) -> Message {
+    Message::Close(Some(CloseFrame {
+        code: CloseCode::from(code),
+        reason: "".into(),
+    }))
+}
+
+#[tokio::test]
+async fn ws_connects_by_pin_with_cookie_and_parses_frames() {
+    let id = ident("srv.example.local");
+    let script = vec![
+        hello(60),
+        Message::text(r#"{"type":"resync_required"}"#),
+        Message::text(r#"{"type":"pong"}"#),
+        Message::text(r#"{"type":"request_created","id":7}"#),
+        close(1000),
+    ];
+    let srv = spawn_ws(&id, false, script).await;
+    let http = LinkHttp::new("127.0.0.1", srv.addr.port(), pin_of(&id), None).unwrap();
+    http.seed_cookie("sid=abc; Path=/");
+    let mut ws = connect(&http, "/api/v1/ws").await.unwrap();
+    assert_eq!(
+        ws.next_frame().await,
+        WsFrame::Hello {
+            idle_timeout_secs: 60
+        }
+    );
+    assert_eq!(ws.next_frame().await, WsFrame::ResyncRequired);
+    // pong проглочен, дальше сразу событие.
+    match ws.next_frame().await {
+        WsFrame::Event(v) => assert_eq!(v["type"], "request_created"),
+        f => panic!("{f:?}"),
+    }
+    assert_eq!(ws.next_frame().await, WsFrame::Closed { revoked: false });
+    assert_eq!(srv.cookies.lock().unwrap().as_slice(), ["sid=abc"]);
+}
+
+#[tokio::test]
+async fn ws_wrong_pin_no_upgrade() {
+    let id = ident("srv.example.local");
+    let other = ident("srv.example.local");
+    let srv = spawn_ws(&id, false, vec![hello(60)]).await;
+    let http = LinkHttp::new("127.0.0.1", srv.addr.port(), pin_of(&other), None).unwrap();
+    let err = connect(&http, "/api/v1/ws").await.err().unwrap();
+    assert!(matches!(err, WsError::PinMismatch { .. }), "{err:?}");
+    assert_eq!(srv.upgrades.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn ws_revoked_close_code_is_flagged() {
+    let id = ident("srv.example.local");
+    let srv = spawn_ws(&id, false, vec![hello(60), close(REVOKED_CLOSE_CODE)]).await;
+    let http = LinkHttp::new("127.0.0.1", srv.addr.port(), pin_of(&id), None).unwrap();
+    let mut ws = connect(&http, "/api/v1/ws").await.unwrap();
+    let _ = ws.next_frame().await;
+    assert_eq!(ws.next_frame().await, WsFrame::Closed { revoked: true });
+}
+
+#[tokio::test]
+async fn ws_upgrade_401_is_unauthorized() {
+    let id = ident("srv.example.local");
+    let srv = spawn_ws(&id, true, vec![]).await;
+    let http = LinkHttp::new("127.0.0.1", srv.addr.port(), pin_of(&id), None).unwrap();
+    let err = connect(&http, "/api/v1/ws").await.err().unwrap();
+    assert_eq!(err, WsError::Unauthorized);
+}
+
+/// Сторож без сети: пара duplex и замороженное время.
+async fn duplex_pair() -> (
+    WsConn<tokio::io::DuplexStream>,
+    tokio_tungstenite::WebSocketStream<tokio::io::DuplexStream>,
+) {
+    use tokio_tungstenite::tungstenite::protocol::Role;
+    let (a, b) = tokio::io::duplex(4096);
+    let client = tokio_tungstenite::WebSocketStream::from_raw_socket(a, Role::Client, None).await;
+    let server = tokio_tungstenite::WebSocketStream::from_raw_socket(b, Role::Server, None).await;
+    (WsConn::new(client), server)
+}
+
+#[tokio::test(start_paused = true)]
+async fn ws_watchdog_pings_then_declares_dead() {
+    let (mut conn, mut server) = duplex_pair().await;
+    server.send(hello(30)).await.unwrap();
+    assert_eq!(
+        conn.next_frame().await,
+        WsFrame::Hello {
+            idle_timeout_secs: 30
+        }
+    );
+    let started = tokio::time::Instant::now();
+    let reader = tokio::spawn(async move {
+        // Сервер молчит и pong не отвечает; фиксируем, что пришёл пробный ping.
+        let m = server.next().await.unwrap().unwrap();
+        (m, server)
+    });
+    assert_eq!(conn.next_frame().await, WsFrame::Dead);
+    let waited = started.elapsed();
+    assert!(
+        waited >= Duration::from_secs(35) && waited < Duration::from_secs(36),
+        "{waited:?}"
+    );
+    let (m, _server) = reader.await.unwrap();
+    assert_eq!(m.into_text().unwrap().as_str(), r#"{"type":"ping"}"#);
+}
+
+#[tokio::test(start_paused = true)]
+async fn ws_watchdog_pong_keeps_connection_alive() {
+    let (mut conn, mut server) = duplex_pair().await;
+    server.send(hello(30)).await.unwrap();
+    assert_eq!(
+        conn.next_frame().await,
+        WsFrame::Hello {
+            idle_timeout_secs: 30
+        }
+    );
+    tokio::spawn(async move {
+        while let Some(Ok(m)) = server.next().await {
+            if m.is_text() {
+                server
+                    .send(Message::text(r#"{"type":"pong"}"#))
+                    .await
+                    .unwrap();
+                server
+                    .send(Message::text(r#"{"type":"resync_required"}"#))
+                    .await
+                    .unwrap();
+            }
+        }
+    });
+    // Ping ушёл, pong проглочен, живость подтверждена, дошёл следующий кадр.
+    assert_eq!(conn.next_frame().await, WsFrame::ResyncRequired);
+}
+
+use std::time::Duration;

@@ -3671,6 +3671,7 @@ dependencies = [
  "auto-launch",
  "base64 0.22.1",
  "cross-krb5",
+ "futures-util",
  "keyring-core",
  "link-proto",
  "rcgen",

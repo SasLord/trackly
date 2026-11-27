@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 pub const HEADER_DEVICE: &str = "x-link-device";
 pub const HEADER_SECRET: &str = "x-link-secret";
 
+/// Код WS Close-кадра, которым сервер рвёт соединение отозванного устройства/входа
+/// (D-23, пишется в ws_auth_middleware плана 14; читает ws_client Link).
+pub const REVOKED_CLOSE_CODE: u16 = 4401;
+
 pub const LINK_REVOKED: &str = "LINK_REVOKED";
 pub const LINK_DEVICE_BANNED: &str = "LINK_DEVICE_BANNED";
 pub const LINK_INVITE_INVALID: &str = "LINK_INVITE_INVALID";

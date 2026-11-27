@@ -128,6 +128,12 @@ impl LinkHttp {
         &self.base
     }
 
+    /// Положить cookie сессии в jar (восстановление сессии и тесты WS без входа).
+    #[doc(hidden)]
+    pub fn seed_cookie(&self, cookie: &str) {
+        self.jar.add_cookie_str(cookie, &self.base);
+    }
+
     pub fn device(&self) -> Option<&DeviceCreds> {
         self.device.as_ref()
     }
