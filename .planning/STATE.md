@@ -4,14 +4,14 @@ milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
 status: ready_to_plan
 last_updated: 2026-11-27T13:46:21.252Z
-last_activity: 2026-11-27 -- Phase 43 complete (verification passed, 21/21)
+last_activity: 2026-11-27 -- Phase 44 context gathered (25 decisions D-01..D-25)
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 40
   completed_plans: 40
   percent: 18
-stopped_at: Phase 43 complete (21/21) — ready to discuss Phase 44
+stopped_at: Phase 44 context gathered — ready to plan Phase 44
 ---
 
 # Project State
@@ -1548,8 +1548,8 @@ Nyquist-покрытия; тройное дублирование предика
 ## Session Continuity
 
 Last session: 2026-11-26
-Stopped at: Phase 42 context gathered
-Resume file: .planning/phases/42-link-monorepo-foundation/42-CONTEXT.md
+Stopped at: Phase 44 context gathered
+Resume file: .planning/phases/44-link/44-CONTEXT.md
 
 None
 
