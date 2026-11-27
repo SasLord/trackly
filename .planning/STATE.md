@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
-status: executing
-last_updated: "2026-11-27T03:03:42.232Z"
-last_activity: 2026-11-27 -- Phase 43 plan 20 complete (WR-04 client)
+status: ready_to_plan
+last_updated: 2026-11-27T13:46:21.252Z
+last_activity: 2026-11-27 -- Phase 43 complete (verification passed, 21/21)
 progress:
   total_phases: 11
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 40
-  completed_plans: 31
-  percent: 9
+  completed_plans: 40
+  percent: 18
+stopped_at: Phase 43 complete (21/21) — ready to discuss Phase 44
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 43 — reliable-event-delivery
+**Current focus:** Phase 44 — link — транспорт, пин сертификата и вход
 
 ## Current Position
 
-Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 21 of 21 complete — 43-21 закрыт (гейты зелёные, живая проверка A–F на стенде); далее верификация фазы
-Status: Ready to execute
-Last activity: 2026-11-27 -- Phase 43 planning complete
+Phase: 44
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-27 -- Phase 43 закрыта: верификация passed, повторное ревью без критических (3 WR — долг до фазы 48)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -40,7 +41,7 @@ Last activity: 2026-11-27 -- Phase 43 planning complete
 
 **Velocity:**
 
-- Total plans completed: 481
+- Total plans completed: 502
 - Average duration: —
 - Total execution time: —
 
@@ -93,6 +94,7 @@ Last activity: 2026-11-27 -- Phase 43 planning complete
 | 41.6 | 12 | - | - |
 | 41.10 | 19 | - | - |
 | 42 | 19 | - | - |
+| 43 | 21 | - | - |
 
 **Recent Trend:**
 
