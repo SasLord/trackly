@@ -24,6 +24,7 @@
 //! - [`tls`] — генерация self-signed, загрузка из PEM, fingerprint
 //! - [`rusqlite_session_store`] — tower-sessions SessionStore impl
 
+pub mod link_hub;
 pub mod rusqlite_session_store;
 pub mod tls;
 
