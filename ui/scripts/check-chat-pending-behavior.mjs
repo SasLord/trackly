@@ -329,8 +329,8 @@ const MUTANTS = [
   {
     name: 'доменный отказ оставляет запись',
     file: PS,
-    from: '    removeItem(clientMsgId);\n    if (outcome.rejectCode !== null',
-    to: "    if (outcome.rejectCode !== null && outcome.rejectCode !== 'x') setStatus(clientMsgId, 'failed'); else removeItem(clientMsgId);\n    if (outcome.rejectCode !== null",
+    from: "if (keepOnDomainFailure) setStatus(clientMsgId, 'failed');\n      else removeItem(clientMsgId);",
+    to: "setStatus(clientMsgId, 'failed');",
     expect: 'P5',
   },
   {
@@ -350,15 +350,15 @@ const MUTANTS = [
   {
     name: 'повтор снова снимает запись при отказе',
     file: PS,
-    from: 'if (!keepOnDomainFailure) removeItem(clientMsgId);\n    if (outcome.rejectCode',
-    to: 'removeItem(clientMsgId);\n    if (outcome.rejectCode',
+    from: "if (keepOnDomainFailure) setStatus(clientMsgId, 'failed');\n      else removeItem(clientMsgId);",
+    to: 'removeItem(clientMsgId);',
     expect: 'P9',
   },
   {
     name: 'повтор снова снимает запись при ошибке',
     file: PS,
-    from: 'if (!keepOnDomainFailure) removeItem(clientMsgId);\n    return { kind: \'error\'',
-    to: 'removeItem(clientMsgId);\n    return { kind: \'error\'',
+    from: "if (!keepOnDomainFailure) removeItem(clientMsgId);\n    else setStatus(clientMsgId, 'failed');",
+    to: 'removeItem(clientMsgId);',
     expect: 'P10',
   },
   {

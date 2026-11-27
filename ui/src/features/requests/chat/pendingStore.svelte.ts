@@ -1,7 +1,10 @@
 // Очередь неотправленных сообщений чата (фаза 43-10; D-11, D-12, DLV-03).
 // Живёт только в памяти вкладки и сбрасывается при смене пользователя. Все попытки одного
 // сообщения (автоповторы и ручной «Повторить») идут с ОДНИМ clientMsgId — сервер возвращает
-// уже созданное сообщение вместо дубля. Черновики вложений стор не трогает.
+// уже созданное сообщение вместо дубля. Черновики вложений стор сам не удаляет: серверная
+// chat.discardDrafts стирает ВСЕ черновики автора по заявке, в том числе удерживаемые записями
+// очереди (CR-02), поэтому композер зовёт discardUnheldDrafts. Отказ на ПОВТОРЕ запись не снимает:
+// пузырь остаётся «Не отправлено», текст не теряется.
 import { registerUserScopedReset } from '@trackly/kit/stores/userScoped.svelte';
 import { isNetworkFailure, newClientId, sendWithRetry } from '@trackly/transport/sendWithRetry';
 import { chat } from './api';
@@ -40,24 +43,31 @@ function setStatus(clientMsgId: string, status: 'sending' | 'failed') {
   pending.items = pending.items.map((p) => (p.clientMsgId === clientMsgId ? { ...p, status } : p));
 }
 
-async function dispatch(item: PendingMessage, opts?: SubmitOptions): Promise<SubmitResult> {
+async function dispatch(
+  item: PendingMessage,
+  opts?: SubmitOptions,
+  keepOnDomainFailure = false,
+): Promise<SubmitResult> {
   const { clientMsgId, requestId, text, draftIds } = item;
   try {
     const outcome = await sendWithRetry(
       () => chat.send(requestId, text, draftIds, clientMsgId),
       opts?.sleep ? { sleep: opts.sleep } : {},
     );
-    removeItem(clientMsgId);
     if (outcome.rejectCode !== null || outcome.message === null) {
+      if (keepOnDomainFailure) setStatus(clientMsgId, 'failed');
+      else removeItem(clientMsgId);
       return { kind: 'rejected', code: outcome.rejectCode };
     }
+    removeItem(clientMsgId);
     return { kind: 'sent', message: outcome.message };
   } catch (error) {
     if (isNetworkFailure(error)) {
       setStatus(clientMsgId, 'failed');
       return { kind: 'failed', clientMsgId };
     }
-    removeItem(clientMsgId);
+    if (!keepOnDomainFailure) removeItem(clientMsgId);
+    else setStatus(clientMsgId, 'failed');
     return { kind: 'error', error };
   }
 }
@@ -87,7 +97,22 @@ export async function retryMessage(
   const item = pending.items.find((p) => p.clientMsgId === clientMsgId);
   if (!item || item.status !== 'failed') return null;
   setStatus(clientMsgId, 'sending');
-  return dispatch({ ...item, status: 'sending' }, opts);
+  return dispatch({ ...item, status: 'sending' }, opts, true);
+}
+
+/** Серверная очистка черновиков заявки, если их не держит ни одна запись очереди (CR-02). */
+export async function discardUnheldDrafts(requestId: number): Promise<void> {
+  const holds = pending.items.some((p) => p.requestId === requestId && p.draftIds.length > 0);
+  if (holds) return;
+  await chat.discardDrafts(requestId);
+}
+
+/** Снимает «неотправленную» запись и возвращает её текст для поля ввода; null — записи нет/идёт отправка. */
+export function returnToDraft(clientMsgId: string): string | null {
+  const item = pending.items.find((p) => p.clientMsgId === clientMsgId);
+  if (!item || item.status === 'sending') return null;
+  removeItem(item.clientMsgId);
+  return item.text;
 }
 
 registerUserScopedReset(() => {
