@@ -33,7 +33,7 @@
 
   // D-08/D-10: после обрыва/Lagged перечитываем всё (пустой список = «всё»), без сброса ввода.
   function handleResync(): void {
-    notifyEntitiesChanged([]);
+    notifyEntitiesChanged([], { all: true });
   }
 
   onMount(() => {

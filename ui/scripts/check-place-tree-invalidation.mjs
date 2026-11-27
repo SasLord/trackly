@@ -644,7 +644,8 @@ function checkTree(treeSrc, violations) {
     violations.push({
       file: TREE,
       inv: 'INV-12',
-      message: 'resetStatsCache отсутствует или не делает statsGen += 1 / statsInFlight.clear() / statsCache = {}',
+      message:
+        'resetStatsCache отсутствует или не делает statsGen += 1 / statsInFlight.clear() / statsCache = {}',
       hint: 'Ресинк после обрыва обязан обнулять кэш счётчиков (D-08), иначе они остаются устаревшими до ручного «Обновить».',
     });
   }
@@ -693,7 +694,10 @@ function checkTree(treeSrc, violations) {
 function checkLayout(layoutSrc, violations) {
   const code = stripComments(layoutSrc);
   const body = functionBody(code, 'handleResync');
-  if (body === null || !/notifyEntitiesChanged\(\s*\[\]\s*,\s*\{\s*all:\s*true\s*\}\s*\)/.test(body)) {
+  if (
+    body === null ||
+    !/notifyEntitiesChanged\(\s*\[\]\s*,\s*\{\s*all:\s*true\s*\}\s*\)/.test(body)
+  ) {
     violations.push({
       file: LAYOUT,
       inv: 'INV-12',
@@ -736,15 +740,12 @@ function checkStore(storeSrc, violations) {
     violations.push({
       file: STORE,
       inv: 'INV-12',
-      message: 'resetSeqNow отсутствует/возвращает не resetSeq либо resetSeq не обнуляется в registerUserScopedReset',
+      message:
+        'resetSeqNow отсутствует/возвращает не resetSeq либо resetSeq не обнуляется в registerUserScopedReset',
       hint: 'Без resetSeq ресинк не может сообщить PlaceTree о полном сбросе кэша.',
     });
   }
-  if (
-    entities === null ||
-    !/resetSeq\s*\+=\s*1/.test(entities) ||
-    !/opts\??\.all/.test(entities)
-  ) {
+  if (entities === null || !/resetSeq\s*\+=\s*1/.test(entities) || !/opts\??\.all/.test(entities)) {
     violations.push({
       file: STORE,
       inv: 'INV-12',
@@ -2290,8 +2291,7 @@ function selftest() {
     },
     {
       name: 'INV-12: store — resetSeq не поднимается',
-      run: () =>
-        run(swap(STORE, 'resetSeq += 1', 'void 0', 'resetSeq += 1 снят')),
+      run: () => run(swap(STORE, 'resetSeq += 1', 'void 0', 'resetSeq += 1 снят')),
       expectInv: ['INV-12'],
     },
     {
@@ -2300,9 +2300,9 @@ function selftest() {
         run(
           swap(
             TREE,
-            'if (seenResetSeq !== rs) {',
-            'if (seenResetSeq !== rs && false) {',
-            'сброс в эффекте отключён',
+            'seenResetSeq = rs;\n      resetStatsCache();',
+            'seenResetSeq = rs;',
+            'вызов resetStatsCache в эффекте снят',
           ),
         ),
       expectInv: ['INV-12'],

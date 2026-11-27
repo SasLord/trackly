@@ -12,7 +12,11 @@
   import { apiCall } from '@trackly/transport/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '@trackly/kit/stores/toast.svelte';
-  import { placeContentEventsStore, reloadSeqNow } from '$lib/stores/placeContentEvents.svelte';
+  import {
+    placeContentEventsStore,
+    reloadSeqNow,
+    resetSeqNow,
+  } from '$lib/stores/placeContentEvents.svelte';
   import Input from '@trackly/kit/components/Input.svelte';
   import Checkbox from '@trackly/kit/components/Checkbox.svelte';
   import Button from '@trackly/kit/components/Button.svelte';
@@ -299,10 +303,18 @@
     }
   }
 
+  let seenResetSeq = 0;
   $effect(() => {
     void showArchived;
     void refreshToken;
     void reloadSeqNow(); // Фаза 41.7 (D-17): перезагрузка по событию другого клиента (reloadSeq стора)
+    // WR-05: ресинк обязан сбрасывать кэш счётчиков — потерянные события не доставили placeIds.
+    // Сброс внутри этого же эффекта (новых $effect нет); seenResetSeq — не $state.
+    const rs = resetSeqNow();
+    if (seenResetSeq !== rs) {
+      seenResetSeq = rs;
+      resetStatsCache();
+    }
     void loadTree();
   });
 
@@ -329,10 +341,14 @@
   let statsGen = 0;
 
   /** «Обновить»: сбрасывает кэш счётчиков (иначе числа остаются прежними) и перечитывает дерево. */
-  function refreshTree(): void {
+  function resetStatsCache(): void {
     statsGen += 1;
     statsInFlight.clear();
     statsCache = {};
+  }
+
+  function refreshTree(): void {
+    resetStatsCache();
     void loadTree();
   }
 

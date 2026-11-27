@@ -44,10 +44,12 @@ export const placeContentEventsStore = $state<{
   seq: number;
   placeIds: number[];
   reloadSeq: number;
+  resetSeq: number;
 }>({
   seq: 0,
   placeIds: [],
   reloadSeq: 0,
+  resetSeq: 0,
 });
 
 // D-39: при смене пользователя счётчики событий прежней сессии обнуляются.
@@ -55,6 +57,7 @@ registerUserScopedReset(() => {
   placeContentEventsStore.seq = 0;
   placeContentEventsStore.placeIds = [];
   placeContentEventsStore.reloadSeq = 0;
+  placeContentEventsStore.resetSeq = 0;
 });
 
 export function notifyPlaceContentChanged(placeIds: number[]): void {
@@ -71,8 +74,17 @@ export function reloadSeqNow(): number {
   return placeContentEventsStore.reloadSeq;
 }
 
+// WR-05 (43-18): счётчик полного сброса кэша счётчиков мест. Читается функцией
+// по той же причине, что reloadSeqNow (INV-1: один эффект со стором в PlaceTree).
+export function resetSeqNow(): number {
+  return placeContentEventsStore.resetSeq;
+}
+
 // Фаза 41.7 (D-17): вызывается только WS-мостом (Layout.svelte).
-export function notifyEntitiesChanged(placeIds: number[]): void {
+// opts.all (WR-05): ресинк после обрыва — потерянные события не донесли placeIds,
+// поэтому кэш счётчиков сбрасывается целиком.
+export function notifyEntitiesChanged(placeIds: number[], opts?: { all?: boolean }): void {
   placeContentEventsStore.reloadSeq += 1;
+  if (opts?.all === true) placeContentEventsStore.resetSeq += 1;
   if (placeIds.length > 0) notifyPlaceContentChanged(placeIds);
 }
