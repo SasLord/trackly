@@ -353,3 +353,163 @@ async fn ws_of_another_device_survives_foreign_revoke() {
     );
     assert!(stays_open(&mut wb).await, "WS чужого устройства не рвётся");
 }
+
+// --- D-12: хуки блокировки/удаления ------------------------------------------
+
+use trackly_app::dto::auth::UserPatch;
+use trackly_core::auth::Identity;
+
+fn active_patch(on: bool) -> UserPatch {
+    UserPatch {
+        full_name: None,
+        role: None,
+        email: None,
+        is_active: Some(on),
+        password: None,
+    }
+}
+
+async fn user_version(ctx: &AppCtx, uid: i64) -> i64 {
+    ctx.auth.get_user_by_id(uid).await.unwrap().version
+}
+
+async fn active_logins(ctx: &AppCtx, uid: i64) -> i64 {
+    ctx.link.count_active_logins(uid).await.unwrap()
+}
+
+async fn device_banned(ctx: &AppCtx, device: &str) -> bool {
+    ctx.link
+        .list_banned_devices()
+        .await
+        .unwrap()
+        .iter()
+        .any(|d| d.device_id == device)
+}
+
+/// Test 1 (D-12): блокировка через update_user отзывает входы, устройство остаётся разрешённым.
+#[tokio::test]
+async fn blocking_user_revokes_logins_but_not_device_and_closes_ws() {
+    let f = fx().await;
+    enroll(&f.ctx, f.admin, DEV_A).await;
+    let (uid, _, cookie) = link_user(&f.ctx, "lebedev", "Лебедев Л.Л.", DEV_A).await;
+    let addr = serve(&f.ctx).await;
+    let mut ws = connect(addr, &cookie).await;
+    assert_eq!(active_logins(&f.ctx, uid).await, 1);
+
+    let v = user_version(&f.ctx, uid).await;
+    f.ctx
+        .auth
+        .update_user(uid, v, active_patch(false), &Identity::trusted_admin())
+        .await
+        .unwrap();
+
+    assert_eq!(active_logins(&f.ctx, uid).await, 0);
+    assert!(
+        !device_banned(&f.ctx, DEV_A).await,
+        "устройство не запрещается"
+    );
+    assert_eq!(
+        close_code(&mut ws).await,
+        Some(link_proto::dto::REVOKED_CLOSE_CODE)
+    );
+    let r = status_call(&build_router(&f.ctx, store(&f.ctx)), &cookie).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(r.json["code"], "LINK_REVOKED");
+}
+
+/// Test 2a: soft-delete через delete_user.
+#[tokio::test]
+async fn deleting_user_revokes_logins() {
+    let f = fx().await;
+    enroll(&f.ctx, f.admin, DEV_A).await;
+    let (uid, _, _) = link_user(&f.ctx, "belov", "Белов Б.Б.", DEV_A).await;
+    let v = user_version(&f.ctx, uid).await;
+    f.ctx
+        .auth
+        .delete_user(uid, v, &Identity::trusted_admin())
+        .await
+        .unwrap();
+    assert_eq!(active_logins(&f.ctx, uid).await, 0);
+}
+
+/// Test 2b: отклонение уже принятой AD-регистрации мягко удаляет пользователя.
+#[tokio::test]
+async fn rejecting_accepted_ad_registration_revokes_logins() {
+    use trackly_app::dto::request::RequestTransitionPayload;
+    let f = fx().await;
+    enroll(&f.ctx, f.admin, DEV_A).await;
+    let (uid, _, cookie) = link_user(&f.ctx, "gusev", "Гусев Г.Г.", DEV_A).await;
+    let req_id = f
+        .ctx
+        .writer
+        .execute(move |c| {
+            c.execute(
+                "INSERT INTO requests (request_type, status, requested_by_user_id, ad_subtype, \
+                 created_at_utc, updated_at_utc) \
+                 VALUES ('ad_register', 'open', ?1, 'register', 1700000000, 1700000000)",
+                params![uid],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(c.last_insert_rowid())
+        })
+        .await
+        .unwrap();
+    f.ctx
+        .requests
+        .transition(
+            RequestTransitionPayload::Reject {
+                request_id: req_id,
+                version: 1,
+                notes: None,
+            },
+            &Identity {
+                user_id: Some(f.admin),
+                role: trackly_core::auth::Role::Admin,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(active_logins(&f.ctx, uid).await, 0);
+    let r = status_call(&build_router(&f.ctx, store(&f.ctx)), &cookie).await;
+    assert_eq!(r.json["code"], "LINK_REVOKED");
+}
+
+/// Test 3: повторная активация не оживляет отозванные входы.
+#[tokio::test]
+async fn reactivation_does_not_revive_revoked_logins() {
+    let f = fx().await;
+    enroll(&f.ctx, f.admin, DEV_A).await;
+    let (uid, _, cookie) = link_user(&f.ctx, "titov", "Титов Т.Т.", DEV_A).await;
+    let admin = Identity::trusted_admin();
+    let v = user_version(&f.ctx, uid).await;
+    f.ctx
+        .auth
+        .update_user(uid, v, active_patch(false), &admin)
+        .await
+        .unwrap();
+    let v = user_version(&f.ctx, uid).await;
+    f.ctx
+        .auth
+        .update_user(uid, v, active_patch(true), &admin)
+        .await
+        .unwrap();
+    assert_eq!(active_logins(&f.ctx, uid).await, 0);
+    let r = status_call(&build_router(&f.ctx, store(&f.ctx)), &cookie).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(r.json["code"], "LINK_REVOKED");
+}
+
+/// Test 6: блокировка пользователя без входов Link ничего не ломает.
+#[tokio::test]
+async fn blocking_user_without_link_logins_is_harmless() {
+    let f = fx().await;
+    let uid = seed_user(&f.ctx, "popov", "Попов П.П.", "employee").await;
+    let v = user_version(&f.ctx, uid).await;
+    let dto = f
+        .ctx
+        .auth
+        .update_user(uid, v, active_patch(false), &Identity::trusted_admin())
+        .await
+        .unwrap();
+    assert!(!dto.is_active);
+}

@@ -29,6 +29,8 @@ mod link_auth;
 mod link_enroll;
 #[path = "../link_revoke.rs"]
 mod link_revoke;
+#[path = "../link_revoked_device.rs"]
+mod link_revoked_device;
 #[path = "../link_service.rs"]
 mod link_service;
 #[path = "../request_accept_assignee.rs"]

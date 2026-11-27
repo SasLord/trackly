@@ -50,6 +50,9 @@ pub struct RequestService {
     pub(crate) cartridge_repo: Arc<SqliteCartridgeRepository>,
     /// WS broadcast sender (D-Notify-01).
     pub(crate) ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
+    /// Link (Phase 44, D-12): отклонение уже принятой регистрации мягко удаляет
+    /// пользователя — его входы Link отзываются. `None` = хук выключен.
+    pub(crate) link: Option<Arc<crate::services::link_service::LinkService>>,
 }
 
 /// Linked request id from an audit payload (`into_request_id` / `merged_request_id`).
@@ -84,7 +87,14 @@ impl RequestService {
             audit_repo: Arc::new(SqliteAuditLogRepository),
             cartridge_repo: Arc::new(SqliteCartridgeRepository),
             ws_tx,
+            link: None,
         }
+    }
+
+    /// Builder: подключить сервис Link (D-12).
+    pub fn with_link(mut self, link: Arc<crate::services::link_service::LinkService>) -> Self {
+        self.link = Some(link);
+        self
     }
 
     // -----------------------------------------------------------------------
@@ -1105,6 +1115,7 @@ impl RequestService {
 
         let now = self.clock.unix_seconds();
         let user_id = caller.user_id;
+        let ad_subtype_was_register = ad_subtype == "register";
         let request_repo = self.request_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let notes_json = notes
@@ -1166,6 +1177,22 @@ impl RequestService {
                 Ok(())
             })
             .await?;
+
+        // D-12: пользователь мягко удалён отклонением регистрации — входы Link
+        // отзываются ПОСЛЕ коммита. Сбой не откатывает отклонение (guard проверяет
+        // users.deleted_at_utc независимо).
+        if ad_subtype_was_register && user_is_active {
+            if let Some(link) = &self.link {
+                if let Err(e) = link
+                    .revoke_user_logins(target_user_id, user_id.unwrap_or(0), false)
+                    .await
+                {
+                    tracing::warn!(
+                        "link: не удалось отозвать входы пользователя {target_user_id}: {e}"
+                    );
+                }
+            }
+        }
 
         let dto = self.get(request_id, caller).await?;
 

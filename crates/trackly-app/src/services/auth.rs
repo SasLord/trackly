@@ -202,6 +202,9 @@ pub struct AuthService {
     /// `new()`) = фича выключена — существующие call sites/тесты не
     /// затронуты. Заполняется через `with_admin_logins`.
     pub(crate) admin_logins: Arc<std::collections::HashSet<String>>,
+    /// Link (Phase 44, D-12): блокировка/удаление пользователя отзывает его входы
+    /// Link. `None` = хук выключен (тесты, не собирающие Link).
+    pub(crate) link: Option<Arc<crate::services::link_service::LinkService>>,
 }
 
 impl AuthService {
@@ -222,6 +225,28 @@ impl AuthService {
             ws_tx,
             directory,
             admin_logins: Arc::new(std::collections::HashSet::new()),
+            link: None,
+        }
+    }
+
+    /// Builder: подключить сервис Link, чтобы блокировка и удаление пользователя
+    /// отзывали его входы (Phase 44, D-12).
+    pub fn with_link(mut self, link: Arc<crate::services::link_service::LinkService>) -> Self {
+        self.link = Some(link);
+        self
+    }
+
+    /// D-12: после коммита блокировки/удаления отзывает все входы пользователя Link
+    /// (устройства остаются разрешёнными). Сбой не откатывает операцию: `link_guard`
+    /// всё равно проверяет `users.is_active` на каждом запросе.
+    async fn revoke_link_logins(&self, user_id: i64, caller: &Identity) {
+        if let Some(link) = &self.link {
+            if let Err(e) = link
+                .revoke_user_logins(user_id, caller.user_id.unwrap_or(0), false)
+                .await
+            {
+                tracing::warn!("link: не удалось отозвать входы пользователя {user_id}: {e}");
+            }
         }
     }
 
@@ -1807,6 +1832,7 @@ impl AuthService {
             // Validate role string
             Role::from_str(role_str)?;
         }
+        let deactivates_user = patch.is_active == Some(false);
 
         // WR-01: optional password change on edit. Empty string / None → no
         // change; a non-empty new password is validated (len >= 8, same rule
@@ -1969,6 +1995,11 @@ impl AuthService {
             })
             .await?;
 
+        // D-12: блокировка (is_active -> false) отзывает входы Link ПОСЛЕ коммита.
+        if deactivates_user {
+            self.revoke_link_logins(id, caller).await;
+        }
+
         self.get_user_by_id(id).await
     }
 
@@ -2056,7 +2087,11 @@ impl AuthService {
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(())
             })
-            .await
+            .await?;
+
+        // D-12: удалённый пользователь теряет входы Link ПОСЛЕ коммита.
+        self.revoke_link_logins(id, caller).await;
+        Ok(())
     }
 
     /// Сменить пароль пользователя (пользователь меняет себе).

@@ -100,7 +100,12 @@ async fn link_guard(
     req: Request,
     next: Next,
 ) -> Response {
-    if req.uri().path().starts_with("/api/v1/link_") {
+    if req
+        .uri()
+        .path()
+        .strip_prefix("/api/v1/")
+        .is_some_and(|name| name.starts_with("link_"))
+    {
         return next.run(req).await;
     }
     if let Ok(Some(login_id)) = session.get::<i64>(link::SESSION_LOGIN_KEY).await {

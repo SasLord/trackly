@@ -216,6 +216,8 @@ pub async fn ws_handler(
 /// открытым, браузерный `ws.onclose` не наступал, и тост D-18 «Соединение с
 /// сервером потеряно» не показывался НИКОГДА (отладочная сессия
 /// `ws-disconnect-toast-no-show`, GAP-1 фазы 41.7).
+// Восемь аргументов: каждый — независимый источник завершения/сигналов соединения.
+#[allow(clippy::too_many_arguments)]
 async fn handle_ws_socket(
     socket: WebSocket,
     identity: Identity,

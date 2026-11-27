@@ -518,7 +518,9 @@ impl AppCtx {
                 ws_broadcast.clone(),
                 directory,
             )
-            .with_admin_logins(config.ad.admin_logins.clone()),
+            .with_admin_logins(config.ad.admin_logins.clone())
+            // Phase 44 D-12: блокировка/удаление пользователя отзывает его входы Link.
+            .with_link(link.clone()),
         );
         // Системный пользователь «Администратор» (quick 261117-w2q): от его
         // имени действует десктоп без входа. Идемпотентно; ошибку не глотаем.
@@ -553,12 +555,16 @@ impl AppCtx {
             ws_broadcast.clone(),
         ));
 
-        let requests = Arc::new(RequestService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-            ws_broadcast.clone(),
-        ));
+        let requests = Arc::new(
+            RequestService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                ws_broadcast.clone(),
+            )
+            // Phase 44 D-12: отклонение принятой регистрации отзывает входы Link.
+            .with_link(link.clone()),
+        );
 
         // Spawn poll task with child CancellationToken (D-Arch-01, D-Poll-01).
         let poll_token = CancellationToken::new();
