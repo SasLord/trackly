@@ -34,6 +34,10 @@
 //     Итого инварианты: не больше одного, не меньше одного, не раньше 5 с, таймер отменяем.
 //   * D-15: `online` и `visibilitychange` (visible) сбрасывают backoff и открывают сокет
 //     сразу; при открытом сокете шлют ping и при молчании PROBE_TIMEOUT_MS рвут его.
+//   * CR-03: обработчики сокета привязаны к КОНКРЕТНОМУ сокету (замещённый или осиротевший
+//     сокет не диспатчит события и не обнуляет `ws` живого), `handleLost` снимает пробу и
+//     висящий reconnectTimer, таймер пробы помнит свой сокет, `connectBrowser` не открывает
+//     второй сокет поверх живого (иначе двойной сокет и дубли событий, класс GAP-12-10).
 // NOTE: 'request_status_changed' — NOT 'request_updated' (06-CONTEXT sync).
 
 import { isTauri } from './transport.svelte';
@@ -78,6 +82,9 @@ type WsControlFrame =
   | { type: 'hello'; protocol: number; pingIntervalSecs: number; idleTimeoutSecs: number }
   | { type: 'resync_required' }
   | { type: 'pong' };
+
+/** Версия служебного протокола WS, которую понимает этот клиент (IN-06). */
+const WS_PROTOCOL_VERSION = 1;
 
 /** Задержка показа тоста обрыва (D-14). */
 export const RECONNECT_TOAST_DELAY_MS = 5000;
@@ -217,10 +224,13 @@ function clearReconnectingToast(): void {
 }
 
 function connectBrowser(): void {
+  if (ws !== null) return; // CR-03: живой или открывающийся сокет второй раз не создаём
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws`);
+  const sock = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws`);
+  ws = sock;
 
-  ws.onmessage = (e) => {
+  sock.onmessage = (e) => {
+    if (ws !== sock) return; // замещённый сокет событий не диспатчит
     clearProbe(); // любой кадр доказывает, что сокет жив
     try {
       const msg = JSON.parse(e.data) as WsEvent | WsControlFrame;
@@ -228,7 +238,15 @@ function connectBrowser(): void {
         resyncAll();
         return;
       }
-      if (msg.type === 'hello' || msg.type === 'pong') {
+      if (msg.type === 'hello') {
+        if (msg.protocol !== WS_PROTOCOL_VERSION) {
+          console.warn(
+            'Версия протокола WS не поддерживается этим клиентом; перезагрузите страницу.',
+          );
+        }
+        return;
+      }
+      if (msg.type === 'pong') {
         return;
       }
       dispatch(msg);
@@ -237,7 +255,8 @@ function connectBrowser(): void {
     }
   };
 
-  ws.onopen = () => {
+  sock.onopen = () => {
+    if (ws !== sock) return;
     if (reconnecting) {
       // Successfully reconnected after a failure — эпизод закрыт, залипающую
       // индикацию обрыва снимаем.
@@ -252,15 +271,24 @@ function connectBrowser(): void {
     reconnectDelay = 1000; // Reset backoff on success.
   };
 
-  ws.onclose = handleLost;
+  sock.onclose = () => {
+    if (ws !== sock) return;
+    handleLost();
+  };
 
-  ws.onerror = () => {
+  sock.onerror = () => {
     // onclose fires after onerror; backoff handled there.
   };
 }
 
 // Потеря соединения (onclose или проба живости): тост обрыва по таймеру + backoff.
 function handleLost(): void {
+  // CR-03: проба и прежний таймер переподключения не должны пережить потерю сокета.
+  clearProbe();
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   ws = null;
   // Plan 12-17: once the last consumer has released the singleton,
   // `activeCleanup` (set below) nulls the `onclose` handler before
@@ -325,8 +353,10 @@ function probeOrReconnect(): void {
   } catch {
     // send на полумёртвом сокете может бросить — проба всё равно истечёт.
   }
+  const probed = ws;
   probeTimer = setTimeout(() => {
     probeTimer = null;
+    if (ws !== probed) return; // сокет уже сменился — пробой чужой сокет не убиваем
     const dead = ws;
     if (dead) {
       // Закрытие полуоткрытого сокета браузером может идти долго — onclose не ждём.

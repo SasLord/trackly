@@ -120,6 +120,7 @@ export async function until(cond, ms = 2000) {
  * дополнительно каждый мутант НАСТОЯЩЕГО исходника обязан покраснеть ожидаемым кейсом.
  *
  * mutants: [{ name, file (отн. src), from, to | edits: [[from, to], ...], expect (код кейса) }]
+ *   либо { ..., equivalent: true, reason } — одиночное снятие, обязанное НЕ менять результат.
  *   edits применяются по порядку — так строится перестановка (вырезать + вставить ниже).
  * runCases(overrides) → Promise<string[]> нарушений «[КОД] текст».
  */
@@ -167,6 +168,19 @@ export async function gateMain({ tag, scriptUrl, mutants, runCases }) {
   mutants.forEach((m, i) => {
     const bad = run(i);
     const crash = bad.find((b) => b.startsWith('[CRASH]'));
+    // equivalent: задокументированный эквивалент (одиночное снятие слоя, закрытого соседним) —
+    // обязан НЕ менять результат: так эквивалентность подтверждена, а не предположена.
+    if (m.equivalent) {
+      const eqOk = !crash && bad.length === 0;
+      console.log(
+        `${tag} эквивалент «${m.name}» (${m.reason}): ${eqOk ? 'результат не изменился' : 'РЕЗУЛЬТАТ ИЗМЕНИЛСЯ'}`,
+      );
+      if (!eqOk) {
+        missed++;
+        console.error(`${tag}   ${crash ?? `нарушения: ${JSON.stringify(bad)}`}`);
+      }
+      return;
+    }
     const ok = !crash && bad.some((b) => b.startsWith(`[${m.expect}]`));
     console.log(`${tag} мутант «${m.name}»: ${ok ? 'обнаружен' : 'НЕ ОБНАРУЖЕН'} [${m.expect}]`);
     if (!ok) {

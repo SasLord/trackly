@@ -338,7 +338,11 @@ async function runCases(overrides) {
   c.s.drop();
   advance(2 * 5000 + 30000 + 1000);
   const live12 = sockets.filter((s) => s.readyState !== 3);
-  expect('R12', live12.length === 1, `открыто сокетов ${live12.length}, нужен ровно 1 (двойной сокет)`);
+  expect(
+    'R12',
+    live12.length === 1,
+    `открыто сокетов ${live12.length}, нужен ровно 1 (двойной сокет)`,
+  );
   h.events.length = 0;
   for (const s of sockets) {
     s.onmessage?.({
@@ -464,6 +468,136 @@ const MUTANTS = [
     from: "if (msg.type === 'resync_required') {",
     to: "if (msg.type === '__never__') {",
     expect: 'R1',
+  },
+  // CR-03: защита от второго сокета эшелонирована ((i) clearProbe в handleLost, (ii) `ws !== probed`,
+  // (iii) clearTimeout(reconnectTimer) в handleLost, (iv) `ws !== null` в connectBrowser, (v) привязка
+  // onclose к своему сокету), поэтому мутанты строятся по КЛАССАМ защиты, а одиночные снятия (i)-(iv)
+  // — документированные эквиваленты: selftest проверяет, что они не меняют результат.
+  {
+    name: 'MA: сняты (i)+(ii)+(iii)+(iv) — прежний код, двойной сокет',
+    file: WS,
+    edits: [
+      [
+        '  // CR-03: проба и прежний таймер переподключения не должны пережить потерю сокета.\n  clearProbe();\n',
+        '',
+      ],
+      [
+        '    if (ws !== probed) return; // сокет уже сменился — пробой чужой сокет не убиваем\n',
+        '',
+      ],
+      [
+        '  if (reconnectTimer !== null) {\n    clearTimeout(reconnectTimer);\n    reconnectTimer = null;\n  }\n  ws = null;',
+        '  ws = null;',
+      ],
+      [
+        '  if (ws !== null) return; // CR-03: живой или открывающийся сокет второй раз не создаём\n',
+        '',
+      ],
+    ],
+    expect: 'R12',
+  },
+  {
+    name: 'MA: сняты (i)+(ii)+(iii)+(iv) — проба убивает новый сокет',
+    file: WS,
+    edits: [
+      [
+        '  // CR-03: проба и прежний таймер переподключения не должны пережить потерю сокета.\n  clearProbe();\n',
+        '',
+      ],
+      [
+        '    if (ws !== probed) return; // сокет уже сменился — пробой чужой сокет не убиваем\n',
+        '',
+      ],
+      [
+        '  if (reconnectTimer !== null) {\n    clearTimeout(reconnectTimer);\n    reconnectTimer = null;\n  }\n  ws = null;',
+        '  ws = null;',
+      ],
+      [
+        '  if (ws !== null) return; // CR-03: живой или открывающийся сокет второй раз не создаём\n',
+        '',
+      ],
+    ],
+    expect: 'R13',
+  },
+  {
+    name: 'MB: сняты (i)+(ii) — проба убивает ещё CONNECTING сокет',
+    file: WS,
+    edits: [
+      [
+        '  // CR-03: проба и прежний таймер переподключения не должны пережить потерю сокета.\n  clearProbe();\n',
+        '',
+      ],
+      [
+        '    if (ws !== probed) return; // сокет уже сменился — пробой чужой сокет не убиваем\n',
+        '',
+      ],
+    ],
+    expect: 'R13',
+  },
+  {
+    name: 'MC: onclose не привязан к своему сокету (слой v)',
+    file: WS,
+    edits: [
+      [
+        '  sock.onclose = () => {\n    if (ws !== sock) return;\n    handleLost();\n  };',
+        '  sock.onclose = handleLost;',
+      ],
+    ],
+    expect: 'R12b',
+  },
+  {
+    name: 'MD: проверка hello.protocol убрана',
+    file: WS,
+    edits: [['        if (msg.protocol !== WS_PROTOCOL_VERSION) {', '        if (false) {']],
+    expect: 'R2',
+  },
+  {
+    name: 'одиночное снятие (i)',
+    file: WS,
+    edits: [
+      [
+        '  // CR-03: проба и прежний таймер переподключения не должны пережить потерю сокета.\n  clearProbe();\n',
+        '',
+      ],
+    ],
+    equivalent: true,
+    reason: 'закрыто слоем (ii): проба сверяет сокет',
+  },
+  {
+    name: 'одиночное снятие (ii)',
+    file: WS,
+    edits: [
+      [
+        '    if (ws !== probed) return; // сокет уже сменился — пробой чужой сокет не убиваем\n',
+        '',
+      ],
+    ],
+    equivalent: true,
+    reason: 'закрыто слоем (i): handleLost снимает пробу',
+  },
+  {
+    name: 'одиночное снятие (iii)',
+    file: WS,
+    edits: [
+      [
+        '  if (reconnectTimer !== null) {\n    clearTimeout(reconnectTimer);\n    reconnectTimer = null;\n  }\n  ws = null;',
+        '  ws = null;',
+      ],
+    ],
+    equivalent: true,
+    reason: 'закрыто слоем (v): повторный handleLost замещённого сокета отсечён привязкой onclose',
+  },
+  {
+    name: 'одиночное снятие (iv)',
+    file: WS,
+    edits: [
+      [
+        '  if (ws !== null) return; // CR-03: живой или открывающийся сокет второй раз не создаём\n',
+        '',
+      ],
+    ],
+    equivalent: true,
+    reason: 'закрыто слоем (iii): прежний reconnectTimer гасится в handleLost',
   },
 ];
 
