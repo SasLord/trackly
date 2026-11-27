@@ -21,7 +21,7 @@ path = "src/main.rs"
 
 [dependencies]
 # tray-icon только здесь: серверное приложение трея не получает.
-tauri = { workspace = true, features = ["tray-icon", "image-png"] }
+tauri = { workspace = true, features = ["tray-icon", "image-png", "image-ico"] }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 link-proto = { workspace = true }
@@ -54,6 +54,8 @@ apple-native-keyring-store = { version = "1.0.3", features = ["keychain"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = { version = "1.0.1", features = ["rt-tokio-crypto-rust"] }
+# Проба StatusNotifierWatcher (D-20); та же zbus 5.x, что уже в графе от secret-service.
+zbus = "5"
 
 [build-dependencies]
 tauri-build = { workspace = true }
