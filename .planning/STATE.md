@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 12 of 21 complete — планы 43-13..43-21 (gap closure CR-01..03 + WR-01..07) готовы к исполнению
+Plan: 13 of 21 complete — 43-13 закрыт (CR-01, WR-01, WR-06); далее 43-14..43-21
 Status: Ready to execute
 Last activity: 2026-11-27 -- Phase 43 planning complete
 
