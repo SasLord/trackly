@@ -18,6 +18,7 @@
   import { parseAppError } from '@trackly/transport/errors';
   import { newClientId, sendWithRetry } from '@trackly/transport/sendWithRetry';
   import { requests, repairs } from './api';
+  import { createRequestIdIssuer, requestSignature } from './requestIdPolicy';
   import type { RequestCategoryDto, RequestPrinterOptionDto } from '../../bindings-phase6';
   import type { RepairDeviceOptionDto } from '../../bindings';
 
@@ -142,16 +143,17 @@
   // Поколение загрузки списка устройств ремонта: ответ прошлого открытия формы
   // не должен перезаписать свежий список (R2-3). Не $state: в разметке не участвует.
   let repairLoadGen = 0;
-  // D-12: клиентский id идемпотентности живёт с открытия формы до успеха; повторное
-  // «Отправить» после сбоя уходит с тем же id. Не $state и не создаётся в handleSubmit.
-  let clientRequestId = newClientId();
+  // D-11/D-12 (уточнение WR-02): id держится, пока тело заявки не менялось (повтор после
+  // потери ответа не создаёт дубль); правка формы после сбоя выпускает новый id. Передаётся
+  // ссылка на newClientId, а не вызов; в handleSubmit id не генерируется.
+  const idIssuer = createRequestIdIssuer(newClientId);
 
   $effect(() => {
     const isOpen = open;
     if (isOpen && !_wasOpen) {
       openInstanceCounter += 1;
       // Reset form state on open.
-      clientRequestId = newClientId();
+      idIssuer.reset();
       requestType = 'cartridge_replace';
       printerDeviceId = null;
       description = '';
@@ -334,6 +336,9 @@
         onClose();
         return;
       }
+      const attemptId = idIssuer.idFor(
+        requestSignature(requestType, printerDeviceId, categoryId, description),
+      );
       const created = await sendWithRetry(() =>
         requests.create({
           requestType,
@@ -341,7 +346,7 @@
           cartridgeModelId: null,
           categoryId: requestType === 'free_form' ? categoryId : null,
           description: description.trim() || null,
-          clientRequestId,
+          clientRequestId: attemptId,
         }),
       );
       if (!prefill) pushToast('success', 'Заявка отправлена');

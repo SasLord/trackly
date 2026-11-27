@@ -53,7 +53,9 @@ export function check(form) {
   // [I2]
   const decl = /\bcreateRequestIdIssuer\(/.exec(f);
   if (!decl || decl.index > hs)
-    bad.push('[I2] объявление выдатчика createRequestIdIssuer( отсутствует или стоит после handleSubmit');
+    bad.push(
+      '[I2] объявление выдатчика createRequestIdIssuer( отсутствует или стоит после handleSubmit',
+    );
 
   // тело handleSubmit: до закрывающего `</script>` (функция последняя в скрипте)
   const end = f.indexOf('</script>', hs);
@@ -137,14 +139,30 @@ async function runCases(overrides) {
   guard('Q4', () => {
     const sig = mod.requestSignature;
     const base = sig('cartridge_replace', 5, null, 'текст');
-    expect('Q4', base === sig('cartridge_replace', 5, null, 'текст'), 'Q4: равные значения -> разные подписи');
+    expect(
+      'Q4',
+      base === sig('cartridge_replace', 5, null, 'текст'),
+      'Q4: равные значения -> разные подписи',
+    );
     expect('Q4', base !== sig('free_form', 5, null, 'текст'), 'Q4: тип не влияет');
     expect('Q4', base !== sig('cartridge_replace', 6, null, 'текст'), 'Q4: принтер не влияет');
     expect('Q4', base !== sig('cartridge_replace', 5, null, 'другой'), 'Q4: описание не влияет');
-    expect('Q4', base === sig('cartridge_replace', 5, null, '  текст \n'), 'Q4: trim описания не учтён');
-    expect('Q4', base === sig('cartridge_replace', 5, 9, 'текст'), 'Q4: категория попала в подпись cartridge_replace');
+    expect(
+      'Q4',
+      base === sig('cartridge_replace', 5, null, '  текст \n'),
+      'Q4: trim описания не учтён',
+    );
+    expect(
+      'Q4',
+      base === sig('cartridge_replace', 5, 9, 'текст'),
+      'Q4: категория попала в подпись cartridge_replace',
+    );
     const ff = sig('free_form', null, 3, 'т');
-    expect('Q4', ff !== sig('free_form', null, 4, 'т'), 'Q4: категория не влияет на подпись free_form');
+    expect(
+      'Q4',
+      ff !== sig('free_form', null, 4, 'т'),
+      'Q4: категория не влияет на подпись free_form',
+    );
     expect('Q4', ff === sig('free_form', 7, 3, 'т'), 'Q4: принтер попал в подпись free_form');
   });
   return bad;
@@ -176,8 +194,8 @@ const MUTANTS = [
   {
     name: 'подпись игнорирует описание',
     file: F,
-    from: 'description.trim()]',
-    to: "'']",
+    from: '    description.trim(),\n  ]);',
+    to: "    '',\n  ]);",
     expect: 'Q4',
   },
   {
