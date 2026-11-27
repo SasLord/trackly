@@ -20,6 +20,7 @@
     cert_path: string;
     server_url: string | null;
     fingerprint: string | null;
+    spki_fingerprint: string | null;
     desktop_lock_enabled: boolean;
   }
 
@@ -31,6 +32,7 @@
     cert_path: '',
     server_url: null,
     fingerprint: null,
+    spki_fingerprint: null,
     desktop_lock_enabled: false,
   });
 
@@ -53,6 +55,8 @@
   let serverRunning = $state(false);
   let serverUrl = $state<string | null>(null);
   let serverFingerprint = $state<string | null>(null);
+  let serverSpki = $state<string | null>(null);
+  let spkiCopied = $state(false);
 
   async function loadSettings() {
     try {
@@ -63,6 +67,7 @@
         serverRunning = true;
         serverUrl = s.server_url;
         serverFingerprint = s.fingerprint ?? null;
+        serverSpki = s.spki_fingerprint ?? null;
       }
     } catch (e: unknown) {
       const msg =
@@ -106,6 +111,7 @@
       serverRunning = status.running;
       serverUrl = status.url ?? null;
       serverFingerprint = status.fingerprint ?? null;
+      serverSpki = status.spki_fingerprint ?? null;
       if (enable && status.running) {
         pushToast('success', 'Сервер запущен');
       } else if (!enable) {
@@ -146,6 +152,27 @@
   const formattedFingerprint = $derived(
     serverFingerprint ? serverFingerprint.replace(/(.{2})(?=.)/g, '$1:').toUpperCase() : null,
   );
+
+  // SPKI-отпечаток для Link (D-06): пары через двоеточие, верхний регистр;
+  // если значение уже с двоеточиями — не дублируем.
+  const formattedSpki = $derived(
+    serverSpki
+      ? serverSpki.includes(':')
+        ? serverSpki.toUpperCase()
+        : serverSpki.replace(/(.{2})(?=.)/g, '$1:').toUpperCase()
+      : null,
+  );
+
+  async function copySpki() {
+    if (!formattedSpki) return;
+    try {
+      await navigator.clipboard.writeText(formattedSpki);
+      spkiCopied = true;
+      setTimeout(() => (spkiCopied = false), 2000);
+    } catch {
+      pushToast('error', 'Не удалось скопировать отпечаток');
+    }
+  }
 </script>
 
 <div class="network-settings">
@@ -182,6 +209,19 @@
           <div class="info-row">
             <span class="info-label">Отпечаток сертификата:</span>
             <code class="fingerprint">{formattedFingerprint}</code>
+          </div>
+        {/if}
+        {#if formattedSpki}
+          <div class="info-row">
+            <span class="info-label">Отпечаток для Link (SPKI):</span>
+            <code class="fingerprint">{formattedSpki}</code>
+            <Button variant="secondary" size="sm" onclick={copySpki}>
+              {spkiCopied ? 'Скопировано' : 'Скопировать отпечаток'}
+            </Button>
+          </div>
+          <div class="spki-caption">
+            Link сверяет этот отпечаток. Он не меняется при продлении сертификата — только при смене
+            ключа.
           </div>
         {/if}
         <div class="info-instruction">
@@ -377,6 +417,11 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     word-break: break-all;
+  }
+
+  .spki-caption {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
   }
 
   .info-instruction {
