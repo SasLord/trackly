@@ -87,6 +87,42 @@ async fn refresh_session_role(
     next.run(req).await
 }
 
+/// Отзыв на лету для Link-сессий (Phase 44, D-14): вход, устройство и пользователь
+/// проверяются на КАЖДОМ запросе, а не только при выдаче сессии.
+///
+/// Браузерная сессия (без `link_login_id`) выходит рано, не трогая link-таблицы.
+/// Публичные маршруты Link (`/api/v1/link_*`) не проверяются: устаревшая cookie не
+/// должна ломать повторный вход. Ошибка чтения БД сессию НЕ сбрасывает (как в
+/// `refresh_session_role`): сбой диска не должен выкидывать всех сотрудников.
+async fn link_guard(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    req: Request,
+    next: Next,
+) -> Response {
+    if req.uri().path().starts_with("/api/v1/link_") {
+        return next.run(req).await;
+    }
+    if let Ok(Some(login_id)) = session.get::<i64>(link::SESSION_LOGIN_KEY).await {
+        match ctx.link.is_login_valid(login_id).await {
+            Ok(valid) => {
+                if !valid {
+                    let _ = session.flush().await;
+                    return link::link_err(
+                        axum::http::StatusCode::UNAUTHORIZED,
+                        link_proto::dto::LINK_REVOKED,
+                        "Доступ отозван",
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("link_guard: чтение состояния входа не удалось: {e}");
+            }
+        }
+    }
+    next.run(req).await
+}
+
 /// Построить полный axum Router со всеми middleware.
 ///
 /// Топология:
@@ -213,6 +249,12 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .layer(axum::middleware::from_fn_with_state(
             ctx.clone(),
             refresh_session_role,
+        ))
+        // Отзыв Link на лету: ВНУТРИ session-слоя; выполняется раньше role-refresh
+        // (последний добавленный слой — внешний).
+        .layer(axum::middleware::from_fn_with_state(
+            ctx.clone(),
+            link_guard,
         ))
         // Session layer применяется ко всем маршрутам
         .layer(session_layer);

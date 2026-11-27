@@ -27,6 +27,8 @@ mod im_ws_fanout;
 mod link_auth;
 #[path = "../link_enroll.rs"]
 mod link_enroll;
+#[path = "../link_revoke.rs"]
+mod link_revoke;
 #[path = "../link_service.rs"]
 mod link_service;
 #[path = "../request_accept_assignee.rs"]

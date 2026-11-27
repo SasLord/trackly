@@ -51,7 +51,7 @@ const MAX_META_LEN: usize = 128;
 // Ответы
 // ---------------------------------------------------------------------------
 
-fn link_err(status: StatusCode, code: &str, message: &str) -> Response {
+pub(crate) fn link_err(status: StatusCode, code: &str, message: &str) -> Response {
     (
         status,
         Json(LinkError {

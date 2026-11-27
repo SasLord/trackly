@@ -157,10 +157,22 @@ pub async fn ws_auth_middleware(session: Session, mut req: Request, next: Next) 
 pub async fn ws_handler(
     State(ctx): State<AppCtx>,
     Extension(identity): Extension<Identity>,
+    session: Session,
     server_shutdown: Option<Extension<ServerShutdown>>,
     timings: Option<Extension<WsTimings>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
+    // Link (D-14): соединение устройства регистрируется в хабе, чтобы отзыв рвал его
+    // сразу. Браузерные сессии токена не получают.
+    let link_cancel = match session
+        .get::<String>(crate::http::link::SESSION_DEVICE_KEY)
+        .await
+    {
+        Ok(Some(device_id)) => identity
+            .user_id
+            .map(|uid| ctx.link_hub.register(&device_id, uid)),
+        _ => None,
+    };
     let rx = ctx.ws_broadcast.subscribe();
     // D-04: канал IM только у пользователя с личностью (у системного администратора
     // десктопа user_id нет — ветка IM для него неактивна).
@@ -169,7 +181,16 @@ pub async fn ws_handler(
     let shutdown = server_shutdown.map(|Extension(ServerShutdown(token))| token);
     let timings = timings.map(|Extension(t)| t).unwrap_or_default();
     ws.on_upgrade(move |socket| {
-        handle_ws_socket(socket, identity, rx, im_rx, im_hub, shutdown, timings)
+        handle_ws_socket(
+            socket,
+            identity,
+            rx,
+            im_rx,
+            im_hub,
+            shutdown,
+            link_cancel,
+            timings,
+        )
     })
 }
 
@@ -202,9 +223,10 @@ async fn handle_ws_socket(
     im_rx: Option<broadcast::Receiver<ImSignal>>,
     im_hub: Arc<ImHub>,
     shutdown: Option<CancellationToken>,
+    link_cancel: Option<CancellationToken>,
     timings: WsTimings,
 ) {
-    ws_loop(socket, identity, rx, im_rx, shutdown, timings).await;
+    ws_loop(socket, identity, rx, im_rx, shutdown, link_cancel, timings).await;
     // Подписка IM снимается при любом выходе; пустые каналы чистятся.
     im_hub.prune();
 }
@@ -215,8 +237,17 @@ async fn ws_loop(
     mut rx: broadcast::Receiver<WsEvent>,
     mut im_rx: Option<broadcast::Receiver<ImSignal>>,
     shutdown: Option<CancellationToken>,
+    link_cancel: Option<CancellationToken>,
     timings: WsTimings,
 ) {
+    // Токен отзыва Link: у браузерных соединений его нет — вечно-pending ветвь.
+    let link_cancelled = async {
+        match link_cancel.as_ref() {
+            Some(t) => t.cancelled().await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(link_cancelled);
     // `select!` требует future в каждой ветви. Когда токена нет (роутер поднят
     // без `start_server`), подставляем вечно-pending ветвь, чтобы поведение
     // осталось прежним, а не «мгновенно закрыть сокет».
@@ -242,6 +273,19 @@ async fn ws_loop(
 
     loop {
         tokio::select! {
+            () = &mut link_cancelled => {
+                // D-14: доступ отозван — закрываем кодом 4401 без ожидания запроса.
+                let frame = axum::extract::ws::CloseFrame {
+                    code: link_proto::dto::REVOKED_CLOSE_CODE,
+                    reason: "revoked".into(),
+                };
+                let _ = tokio::time::timeout(
+                    CLOSE_SEND_TIMEOUT,
+                    socket.send(Message::Close(Some(frame))),
+                )
+                .await;
+                break;
+            }
             () = shutdown.cancelled() => {
                 // Закрываемся вежливо: браузер получит onclose с кодом нормального
                 // закрытия вместо обрыва 1006. Ошибку отправки игнорируем — сокет
