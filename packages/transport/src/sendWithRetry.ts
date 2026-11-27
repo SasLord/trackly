@@ -8,10 +8,24 @@ interface CryptoLike {
 /// Паузы перед повторами (D-12): три повтора, 1 с, 2 с, 4 с.
 export const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
-/// Сетевой сбой = значение без формы AppError (отказ fetch, обрыв).
-/// Любой AppError с кодом — доменный отказ сервера, повторять его бессмысленно.
+/// Коды, при которых повтор осмыслен (D-12): отказ fetch (его в apiCall превращают в
+/// NETWORK_ERROR) и шлюзовые ответы 502/503/504. Остальные HTTP-ответы (400/413/422 …)
+/// и доменные AppError повторять бессмысленно.
+export const RETRYABLE_CODES: ReadonlySet<string> = new Set([
+  'NETWORK_ERROR',
+  'HTTP_502',
+  'HTTP_503',
+  'HTTP_504',
+]);
+
+/// Прямой отказ fetch у вызывающих, обходящих apiCall.
+const FETCH_FAILURE_RE = /fetch|network|load failed/i;
+
+/// Сетевой сбой: NETWORK_ERROR, HTTP 502/503/504 или TypeError отказа fetch.
+/// Программные ошибки (TypeError иного рода) и любой иной AppError не повторяются.
 export function isNetworkFailure(e: unknown): boolean {
-  return parseAppError(e).code === 'UnknownError';
+  const code = parseAppError(e).code;
+  return RETRYABLE_CODES.has(code) || (e instanceof TypeError && FETCH_FAILURE_RE.test(e.message));
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

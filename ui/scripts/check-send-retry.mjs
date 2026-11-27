@@ -242,10 +242,17 @@ async function runCases(overrides) {
 
 const MUTANTS = [
   {
-    name: 'isNetworkFailure вернулся к «любое без формы AppError» (WR-07)',
+    name: 'программный TypeError считается сетевым сбоем (WR-07)',
+    file: FILE,
+    from: 'e instanceof TypeError && FETCH_FAILURE_RE.test(e.message)',
+    to: 'e instanceof TypeError',
+    expect: 'S9',
+  },
+  {
+    name: 'любой HTTP_* считается сетевым сбоем (WR-07)',
     file: FILE,
     from: 'return RETRYABLE_CODES.has(code) || (e instanceof TypeError && FETCH_FAILURE_RE.test(e.message));',
-    to: "return parseAppError(e).code === 'UnknownError' || RETRYABLE_CODES.has(code);",
+    to: "return RETRYABLE_CODES.has(code) || code.startsWith('HTTP_');",
     expect: 'S7',
   },
   {

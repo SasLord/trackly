@@ -56,14 +56,30 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
     }
   }
   // Phase 5+ HTTP path.
-  const res = await fetch(`/api/v1/${name}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(args),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1/${name}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(args),
+    });
+  } catch {
+    // Отказ fetch (нет связи, обрыв): единственный повторяемый «сетевой» код (D-12).
+    const netErr: AppError = { code: 'NETWORK_ERROR', message: 'Нет связи с сервером' };
+    throw netErr;
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const err = parseAppError(body);
+    let err = parseAppError(body);
+    if (err.code === 'UnknownError') {
+      // Тело не формы AppError (прокси, не-JSON): синтетическая ошибка с кодом статуса.
+      // Тело не включается в message (T-43-15-02).
+      err = {
+        code: `HTTP_${res.status}`,
+        message: `Сервер вернул ошибку (HTTP ${res.status})`,
+        details: { status: res.status },
+      };
+    }
     // 401 → хук приложения (сброс пользователя, переход на вход).
     if (res.status === 401) {
       hooks.onUnauthorized?.(err);
