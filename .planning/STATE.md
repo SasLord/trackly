@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
 status: executing
-last_updated: "2026-11-27T15:54:40.330Z"
-last_activity: 2026-11-27 -- Phase 44 planning complete
+last_updated: "2026-11-27T15:56:43.813Z"
+last_activity: 2026-11-27 -- Phase 44 execution started
 progress:
   total_phases: 11
   completed_phases: 2
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 44 — link — транспорт, пин сертификата и вход
+**Current focus:** Phase 44 — link
 
 ## Current Position
 
-Phase: 44
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-11-27 -- Phase 44 planning complete
+Phase: 44 (link) — EXECUTING
+Plan: 1 of 20
+Status: Executing Phase 44
+Last activity: 2026-11-27 -- Phase 44 execution started
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
