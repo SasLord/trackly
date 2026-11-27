@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 11 of 12 complete (43-01..43-11 done; осталась живая проверка 43-12)
-Status: Executing Phase 43
-Last activity: 2026-11-27 -- 43-11 (протокол доставки в ADR 0003, сплошной прогон зелёный)
+Plan: 12 of 12 complete (живая проверка 43-12 пройдена на Windows-черновике 1.5.0-phase43)
+Status: Executing Phase 43 — планы выполнены, идут ревью и верификация
+Last activity: 2026-11-27 -- 43-12 (UAT approved, DLV-01..04 Complete)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
