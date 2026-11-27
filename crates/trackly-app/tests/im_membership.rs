@@ -108,10 +108,17 @@ async fn removed_member_cannot_send() {
         .await
         .unwrap();
     ctx.im.remove_member(conv, b).await.unwrap();
-    // Даже replay уже отправленного не обходит членство.
+    // WR-06 / D-11: повтор уже сохранённого сообщения отвечает replay,
+    // а НОВАЯ отправка исключённого по-прежнему 403.
     let r = ctx
         .im
         .send(&ident(b, Role::Employee), conv, "x1", "было")
+        .await
+        .unwrap();
+    assert!(r.replay);
+    let r = ctx
+        .im
+        .send(&ident(b, Role::Employee), conv, "x2", "новое")
         .await;
     assert!(matches!(r, Err(AppError::Forbidden)), "{r:?}");
 }

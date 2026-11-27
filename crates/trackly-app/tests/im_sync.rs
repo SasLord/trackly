@@ -184,12 +184,17 @@ async fn removed_member_gets_frozen_history_once() {
     let after = ctx.im.sync(&me, &req(&[])).await.unwrap();
     assert_eq!(seqs(&after), vec![1, 2, 3]);
     assert_eq!(after.conversations[0].conversation.last_seq, 3);
+    // WR-01: отстающий курсор даёт дельту окна (rev > 1), а не перезагрузку.
     let with_old_cursor = ctx.im.sync(&me, &req(&[(conv, 1)])).await.unwrap();
-    assert_eq!(seqs(&with_old_cursor), vec![1, 2, 3]);
+    assert_eq!(seqs(&with_old_cursor), vec![2, 3]);
+    assert!(!with_old_cursor.conversations[0].reload);
 
-    // Курсор применён (left_seq) — беседа больше не возвращается.
+    // Курсор применён (left_seq): CR-01 — вместо пропуска беседы приходит
+    // read-only сводка без сообщений и без reload.
     let done = ctx.im.sync(&me, &req(&[(conv, 3)])).await.unwrap();
-    assert!(done.conversations.is_empty());
+    assert_eq!(done.conversations.len(), 1);
+    assert!(done.conversations[0].messages.is_empty());
+    assert!(done.conversations[0].conversation.read_only && !done.conversations[0].reload);
 }
 
 #[tokio::test]
@@ -228,4 +233,86 @@ async fn edit_after_leaving_is_not_delivered() {
         other.conversations[0].messages[0].body_text,
         "правка после выхода"
     );
+}
+
+/// CR-01: дочитавший беседу и затем исключённый получает read-only сводку
+/// на каждый sync (messages пуст, reload=false), а не пропуск беседы.
+#[tokio::test]
+async fn caught_up_then_removed_gets_read_only_summary() {
+    let (ctx, _d) = build_ctx().await;
+    let a = seed_user(&ctx, "is_a7", "Иванов И.И.", "employee").await;
+    let b = seed_user(&ctx, "is_b7", "Петров П.П.", "employee").await;
+    let conv = ctx
+        .im
+        .create_conversation(a, "room", Some("Отдел"), &[b])
+        .await
+        .unwrap();
+    say(&ctx, a, conv, 3).await;
+    ctx.im.remove_member(conv, b).await.unwrap();
+    let me = ident(b, Role::Employee);
+
+    for _ in 0..2 {
+        let r = ctx.im.sync(&me, &req(&[(conv, 3)])).await.unwrap();
+        assert_eq!(r.conversations.len(), 1);
+        let c = &r.conversations[0];
+        assert!(c.conversation.read_only);
+        assert_eq!(c.conversation.left_seq, Some(3));
+        assert_eq!(c.conversation.last_seq, 3);
+        assert!(c.messages.is_empty());
+        assert!(!c.reload);
+    }
+
+    // D-05: новые сообщения других участников исключённому не отдаются.
+    say(&ctx, a, conv, 2).await;
+    let r = ctx.im.sync(&me, &req(&[(conv, 3)])).await.unwrap();
+    let c = &r.conversations[0];
+    assert!(c.messages.is_empty() && !c.reload);
+    assert_eq!(c.conversation.last_seq, 3);
+}
+
+/// WR-01: отстающий курсор исключённого даёт дельту в окне, без reload.
+#[tokio::test]
+async fn removed_member_lagging_cursor_gets_windowed_delta() {
+    let (ctx, _d) = build_ctx().await;
+    let a = seed_user(&ctx, "is_a8", "Иванов И.И.", "employee").await;
+    let b = seed_user(&ctx, "is_b8", "Петров П.П.", "employee").await;
+    let conv = ctx
+        .im
+        .create_conversation(a, "room", Some("Отдел"), &[b])
+        .await
+        .unwrap();
+    say(&ctx, a, conv, 5).await;
+    ctx.im.remove_member(conv, b).await.unwrap();
+    say(&ctx, a, conv, 3).await;
+    let me = ident(b, Role::Employee);
+
+    let r = ctx.im.sync(&me, &req(&[(conv, 2)])).await.unwrap();
+    let c = &r.conversations[0];
+    assert!(c.conversation.read_only && !c.reload);
+    let revs: Vec<i64> = c.messages.iter().map(|m| m.rev).collect();
+    assert_eq!(revs, vec![3, 4, 5]);
+    assert!(c.messages.iter().all(|m| m.seq <= 5));
+}
+
+/// WR-01: превышение порога у исключённого — последняя страница окна, reload.
+#[tokio::test]
+async fn removed_member_over_threshold_reloads_within_window() {
+    let (ctx, _d) = build_ctx().await;
+    let a = seed_user(&ctx, "is_a9", "Иванов И.И.", "employee").await;
+    let b = seed_user(&ctx, "is_b9", "Петров П.П.", "employee").await;
+    let conv = ctx
+        .im
+        .create_conversation(a, "room", Some("Отдел"), &[b])
+        .await
+        .unwrap();
+    say(&ctx, a, conv, 205).await;
+    ctx.im.remove_member(conv, b).await.unwrap();
+    say(&ctx, a, conv, 2).await;
+    let me = ident(b, Role::Employee);
+
+    let r = ctx.im.sync(&me, &req(&[(conv, 0)])).await.unwrap();
+    let c = &r.conversations[0];
+    assert!(c.reload && c.conversation.read_only);
+    assert!(c.messages.len() <= 50);
+    assert_eq!(c.messages.last().unwrap().seq, 205);
 }

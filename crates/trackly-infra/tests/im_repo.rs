@@ -100,7 +100,7 @@ fn duplicate_client_id_is_distinguishable_conflict() {
             },
         )
         .unwrap_err();
-    assert!(SqliteImRepository::is_unique_conflict(&err), "{err:?}");
+    assert!(SqliteImRepository::is_constraint_conflict(&err), "{err:?}");
 }
 
 #[test]

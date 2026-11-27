@@ -111,8 +111,9 @@ const WINDOW_SQL: &str = "conversation_id = ?1 AND seq >= ?2 \
     AND (?3 IS NULL OR seq <= ?3) AND (?4 IS NULL OR rev <= ?4)";
 
 impl SqliteImRepository {
-    /// Конфликт UNIQUE при вставке — для обработки как replay.
-    pub fn is_unique_conflict(err: &AppError) -> bool {
+    /// Любой Conflict (UNIQUE, CHECK, FK) при вставке. Безопасность держится на
+    /// повторном поиске по ключу: не найден — исходная ошибка пробрасывается.
+    pub fn is_constraint_conflict(err: &AppError) -> bool {
         matches!(err, AppError::Conflict { .. })
     }
 

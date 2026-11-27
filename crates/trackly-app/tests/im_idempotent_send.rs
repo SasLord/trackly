@@ -106,3 +106,43 @@ async fn client_msg_id_hidden_from_non_author() {
     );
     assert_eq!(theirs.conversations[0].messages[0].client_msg_id, None);
 }
+
+/// WR-06 / D-11: повтор после исключения автора — replay, новая отправка — 403.
+#[tokio::test]
+async fn replay_after_author_removed_still_returns_original() {
+    let (ctx, _d) = build_ctx().await;
+    let a = seed_user(&ctx, "ii_a4", "Иванов И.И.", "employee").await;
+    let b = seed_user(&ctx, "ii_b4", "Петров П.П.", "employee").await;
+    let conv = ctx
+        .im
+        .create_conversation(a, "room", Some("Отдел"), &[b])
+        .await
+        .unwrap();
+    let me = ident(b, Role::Employee);
+    let first = ctx.im.send(&me, conv, "cid-x", "текст").await.unwrap();
+    ctx.im.remove_member(conv, b).await.unwrap();
+    let mut ra = ctx.im_hub.subscribe(a);
+    let again = ctx.im.send(&me, conv, "cid-x", "текст").await.unwrap();
+    assert!(again.replay);
+    assert_eq!(again.message.id, first.message.id);
+    assert!(drain(&mut ra).is_empty());
+    let err = ctx
+        .im
+        .send(&me, conv, "cid-new", "новый")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, trackly_core::error::AppError::Forbidden),
+        "{err:?}"
+    );
+    let stranger = seed_user(&ctx, "ii_x4", "Кузнецов К.К.", "employee").await;
+    let err = ctx
+        .im
+        .send(&ident(stranger, Role::Employee), conv, "cid-x", "текст")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, trackly_core::error::AppError::NotFound { .. }),
+        "{err:?}"
+    );
+}

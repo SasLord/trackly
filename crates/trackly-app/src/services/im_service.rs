@@ -133,13 +133,16 @@ impl ImService {
                         id: conversation_id,
                     },
                 )?;
-                if !can_post(member.left_at_utc) {
-                    return Err(AppError::Forbidden);
-                }
+                // D-11: replay раньше can_post — повтор уже сохранённого сообщения
+                // отвечает оригиналом и после исключения автора; новая отправка
+                // исключённого по-прежнему 403.
                 if let Some(existing) =
                     repo.find_by_client_id_on(&tx, conversation_id, user_id, &client_id)?
                 {
                     return Ok(Written::Replay(existing));
+                }
+                if !can_post(member.left_at_utc) {
+                    return Err(AppError::Forbidden);
                 }
                 let seq = repo.bump_last_seq_on(&tx, conversation_id)?;
                 let inserted = repo.insert_message_on(
@@ -158,8 +161,9 @@ impl ImService {
                 );
                 let id = match inserted {
                     Ok(id) => id,
-                    Err(e) if SqliteImRepository::is_unique_conflict(&e) => {
-                        // Гонка повтора: откатываем счётчик и отдаём оригинал.
+                    Err(e) if SqliteImRepository::is_constraint_conflict(&e) => {
+                        // Страховка (defence-in-depth): при единственном писателе
+                        // ветка недостижима. Гонка повтора: откатываем счётчик и отдаём оригинал.
                         drop(tx);
                         let existing = repo
                             .find_by_client_id_on(conn, conversation_id, user_id, &client_id)?
@@ -348,25 +352,50 @@ impl ImService {
             for (conv, m) in repo.conversations_of_user_on(&tx, user_id)? {
                 let cursor = cursors.get(&conv.id).copied();
                 let (messages, reload, last_seq, read_only) = match m.left_seq {
-                    // D-06: исключённый получает замороженную историю один раз.
-                    // Выборки «rev > cursor» здесь нет намеренно: правка после
-                    // выхода (rev > left_seq) не должна просочиться.
-                    // Принятое ограничение Фазы 43: сообщение, изменённое после
-                    // выхода, не отдаётся вовсе — снимка ревизии нет, путей правки
-                    // в 43 нет. Фаза 47 обязана добавить снимок ревизии или
-                    // надгробие, чтобы «история до выхода видна» выполнялась и для
-                    // изменённых сообщений.
+                    // D-06: исключённый видит только окно [visible_from, left_seq].
+                    // Дельта rev > cursor допустима: запрос ограничен окном
+                    // (hi_seq и max_rev = left_seq), поэтому сообщения после выхода
+                    // и правки после выхода не просачиваются (D-05). Сообщение,
+                    // изменённое после выхода, из окна выпадает, и копия клиента
+                    // остаётся замороженной: принятое ограничение Фазы 43, снимок
+                    // ревизии или надгробие добавит Фаза 47.
+                    // CR-01: сводка read_only отдаётся на каждый sync, признак
+                    // «знаю о выходе» в курсор не вводится (контракт Link).
                     Some(left_seq) if m.left_at_utc.is_some() => {
-                        if cursor.is_some_and(|c| c >= left_seq) {
-                            continue;
-                        }
                         let w = member_window(m.visible_from_seq, Some(left_seq));
-                        (
-                            repo.messages_last_page_on(&tx, conv.id, &w, limit)?,
-                            true,
-                            left_seq,
-                            true,
-                        )
+                        match cursor {
+                            Some(c) if c >= left_seq => (Vec::new(), false, left_seq, true),
+                            Some(c) => {
+                                let n = repo.count_after_rev_on(&tx, conv.id, c, &w)?;
+                                if n > SYNC_RELOAD_THRESHOLD {
+                                    (
+                                        repo.messages_last_page_on(&tx, conv.id, &w, limit)?,
+                                        true,
+                                        left_seq,
+                                        true,
+                                    )
+                                } else {
+                                    (
+                                        repo.messages_after_rev_on(
+                                            &tx,
+                                            conv.id,
+                                            c,
+                                            &w,
+                                            SYNC_RELOAD_THRESHOLD,
+                                        )?,
+                                        false,
+                                        left_seq,
+                                        true,
+                                    )
+                                }
+                            }
+                            None => (
+                                repo.messages_last_page_on(&tx, conv.id, &w, limit)?,
+                                true,
+                                left_seq,
+                                true,
+                            ),
+                        }
                     }
                     _ => {
                         let w = member_window(m.visible_from_seq, None);
