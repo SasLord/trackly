@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 15 of 21 complete — 43-20 закрыт (WR-04 клиент: сверка очереди с лентой); далее 43-21
+Plan: 21 of 21 complete — 43-21 закрыт (гейты зелёные, живая проверка A–F на стенде); далее верификация фазы
 Status: Ready to execute
 Last activity: 2026-11-27 -- Phase 43 planning complete
 
