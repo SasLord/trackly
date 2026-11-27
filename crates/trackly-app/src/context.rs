@@ -32,7 +32,7 @@ use trackly_infra::{AppConfig, Paths};
 
 use crate::dto::printer::WsEvent;
 use crate::pdf::PdfRenderer;
-use crate::server::ServerHandle;
+use crate::server::{ServerHandle, TlsInfo};
 use crate::services::attachment_store::AttachmentStore;
 use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AttachmentService, AuthService,
@@ -151,6 +151,13 @@ pub struct AppCtx {
 }
 
 impl AppCtx {
+    /// TLS-сведения запущенного сервера (`None`, если сервер остановлен).
+    ///
+    /// Читатель для выпуска кода-приглашения Link: без повторного чтения TLS с диска.
+    pub async fn server_tls_info(&self) -> Option<TlsInfo> {
+        self.server_ctl.lock().await.as_ref().map(|h| h.tls.clone())
+    }
+
     /// Полный lifecycle: probe-read downgrade check → writer open → migrations
     /// → writer worker spawn → reader pool → assemble.
     ///

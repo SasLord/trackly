@@ -150,10 +150,8 @@ pub async fn build_settings_get_network(
     let net = resolve_effective_network(ctx).await?;
     let desktop_lock_enabled = ctx.auth.get_desktop_lock_enabled().await?;
 
-    let running = {
-        let guard = ctx.server_ctl.lock().await;
-        guard.is_some()
-    };
+    let tls_info = ctx.server_tls_info().await;
+    let running = tls_info.is_some();
 
     let server_url = if running {
         Some(format!(
@@ -171,7 +169,8 @@ pub async fn build_settings_get_network(
         port: net.port as i64,
         cert_path: net.cert_path,
         server_url,
-        fingerprint: None, // TODO: store fingerprint in server_ctl
+        fingerprint: tls_info.as_ref().map(|t| t.fingerprint_hex.clone()),
+        spki_fingerprint: tls_info.map(|t| t.spki_fingerprint_hex),
         desktop_lock_enabled,
     })
 }
@@ -252,6 +251,7 @@ pub async fn build_server_toggle(
             running: false,
             url: None,
             fingerprint: None,
+            spki_fingerprint: None,
         });
     }
 
@@ -286,8 +286,10 @@ pub async fn build_server_toggle(
     };
 
     let fingerprint = tls_bundle.fingerprint_hex.clone();
+    let spki_fingerprint = tls_bundle.spki_fingerprint_hex.clone();
     let host = net.host.clone();
     let port = net.port;
+    let tls_info = crate::server::TlsInfo::from_bundle(&tls_bundle, &host, port);
     // Адрес для пользователя: для wildcard-bind показываем реальный LAN-IP,
     // а не бесполезный https://0.0.0.0:port (bind по-прежнему на `host`).
     let url = format!("https://{}:{}", tls::display_host(&host), port);
@@ -320,7 +322,11 @@ pub async fn build_server_toggle(
         }
     });
 
-    let handle = ServerHandle { cancel, task };
+    let handle = ServerHandle {
+        tls: tls_info,
+        cancel,
+        task,
+    };
     {
         let mut guard = ctx.server_ctl.lock().await;
         *guard = Some(handle);
@@ -330,6 +336,7 @@ pub async fn build_server_toggle(
         running: true,
         url: Some(url),
         fingerprint: Some(fingerprint),
+        spki_fingerprint: Some(spki_fingerprint),
     })
 }
 

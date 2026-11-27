@@ -68,10 +68,39 @@ const DRAIN_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
 #[derive(Clone)]
 pub struct ServerShutdown(pub CancellationToken);
 
+/// Публичные сведения о TLS запущенного сервера (D-06).
+///
+/// Только отпечатки и адрес: PEM и приватный ключ сюда не попадают (T-44-09).
+#[derive(Clone, Debug)]
+pub struct TlsInfo {
+    /// SHA-256 DER-сертификата (XX:XX:..., 95 символов).
+    pub fingerprint_hex: String,
+    /// SHA-256 SPKI листа (XX:XX:..., 95 символов) — пин клиентов Link.
+    pub spki_fingerprint_hex: String,
+    /// Bind-адрес сервера.
+    pub host: String,
+    /// Порт сервера.
+    pub port: u16,
+}
+
+impl TlsInfo {
+    /// Собрать из bundle и эффективных host/port.
+    pub fn from_bundle(bundle: &tls::TlsBundle, host: &str, port: u16) -> Self {
+        Self {
+            fingerprint_hex: bundle.fingerprint_hex.clone(),
+            spki_fingerprint_hex: bundle.spki_fingerprint_hex.clone(),
+            host: host.to_string(),
+            port,
+        }
+    }
+}
+
 /// Handle для управления жизненным циклом запущенного сервера.
 ///
 /// Хранит cancel-token (дочерний к AppCtx.shutdown) и JoinHandle.
 pub struct ServerHandle {
+    /// Публичные TLS-сведения запущенного сервера (без ключа и PEM).
+    pub tls: TlsInfo,
     /// Дочерний CancellationToken для этого инстанса сервера.
     /// `cancel()` останавливает сервер, не трогая мастер-shutdown.
     pub cancel: CancellationToken,

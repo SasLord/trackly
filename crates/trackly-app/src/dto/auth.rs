@@ -134,6 +134,9 @@ pub struct NetworkSettingsDto {
     pub server_url: Option<String>,
     /// SHA-256 fingerprint сертификата (hex, без двоеточий). `None` если сервер не запущен.
     pub fingerprint: Option<String>,
+    /// SHA-256 SPKI листа (XX:XX:..., 95 символов) — стабильный при перевыпуске
+    /// сертификата на том же ключе. `None` если сервер не запущен.
+    pub spki_fingerprint: Option<String>,
     /// Флаг «десктоп требует входа» (D-Desktop-02) — дублируется здесь
     /// для удобства формы настроек.
     pub desktop_lock_enabled: bool,
@@ -149,6 +152,8 @@ pub struct ServerStatusDto {
     pub url: Option<String>,
     /// SHA-256 fingerprint сертификата (hex). `None` если не запущен или нет TLS.
     pub fingerprint: Option<String>,
+    /// SHA-256 SPKI листа. `None` если не запущен или нет TLS.
+    pub spki_fingerprint: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +316,7 @@ mod tests {
             cert_path: String::new(),
             server_url: None,
             fingerprint: None,
+            spki_fingerprint: None,
             desktop_lock_enabled: false,
         };
         let json = serde_json::to_string(&dto).unwrap();

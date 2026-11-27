@@ -80,6 +80,7 @@ pub async fn build_server_toggle_tauri(
             running: false,
             url: None,
             fingerprint: None,
+            spki_fingerprint: None,
         });
     }
 
@@ -116,8 +117,10 @@ pub async fn build_server_toggle_tauri(
     };
 
     let fingerprint = tls_bundle.fingerprint_hex.clone();
+    let spki_fingerprint = tls_bundle.spki_fingerprint_hex.clone();
     let host = net.host.clone();
     let port = net.port;
+    let tls_info = crate::server::TlsInfo::from_bundle(&tls_bundle, &host, port);
     // Адрес для пользователя: для wildcard-bind показываем реальный LAN-IP,
     // а не https://0.0.0.0:port (bind остаётся на `host`).
     let url = format!("https://{}:{}", tls::display_host(&host), port);
@@ -151,13 +154,18 @@ pub async fn build_server_toggle_tauri(
 
     {
         let mut guard = ctx.server_ctl.lock().await;
-        *guard = Some(ServerHandle { cancel, task });
+        *guard = Some(ServerHandle {
+            tls: tls_info,
+            cancel,
+            task,
+        });
     }
 
     Ok(ServerStatusDto {
         running: true,
         url: Some(url),
         fingerprint: Some(fingerprint),
+        spki_fingerprint: Some(spki_fingerprint),
     })
 }
 
@@ -166,12 +174,14 @@ pub async fn build_server_status_tauri(ctx: &AppCtx) -> Result<ServerStatusDto, 
     // INT-29: тот же гейт, что у HTTP-версии; десктоп действует от системного Администратора.
     let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
     trackly_core::auth::authorize(&caller, &trackly_core::auth::Action::ManageSettings)?;
-    let guard = ctx.server_ctl.lock().await;
-    let running = guard.is_some();
+    let tls_info = ctx.server_tls_info().await;
     Ok(ServerStatusDto {
-        running,
-        url: None,
-        fingerprint: None,
+        running: tls_info.is_some(),
+        url: tls_info
+            .as_ref()
+            .map(|t| format!("https://{}:{}", tls::display_host(&t.host), t.port)),
+        fingerprint: tls_info.as_ref().map(|t| t.fingerprint_hex.clone()),
+        spki_fingerprint: tls_info.map(|t| t.spki_fingerprint_hex),
     })
 }
 
@@ -355,10 +365,8 @@ pub async fn build_settings_get_network_tauri(
     let net = crate::http::settings::resolve_effective_network(ctx).await?;
     let desktop_lock_enabled = ctx.auth.get_desktop_lock_enabled().await?;
 
-    let running = {
-        let guard = ctx.server_ctl.lock().await;
-        guard.is_some()
-    };
+    let tls_info = ctx.server_tls_info().await;
+    let running = tls_info.is_some();
 
     let server_url = if running {
         Some(format!(
@@ -376,7 +384,8 @@ pub async fn build_settings_get_network_tauri(
         port: net.port as i64,
         cert_path: net.cert_path,
         server_url,
-        fingerprint: None,
+        fingerprint: tls_info.as_ref().map(|t| t.fingerprint_hex.clone()),
+        spki_fingerprint: tls_info.map(|t| t.spki_fingerprint_hex),
         desktop_lock_enabled,
     })
 }

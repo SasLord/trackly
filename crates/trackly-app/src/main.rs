@@ -31,7 +31,7 @@
 use tauri::{Emitter, Manager};
 use trackly_app::context::AppCtx;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
-use trackly_app::server::{start_server_on_addr, ServerHandle};
+use trackly_app::server::{start_server_on_addr, ServerHandle, TlsInfo};
 use trackly_app::services::run_supervisor;
 use trackly_app::webview_env;
 use trackly_infra::Paths;
@@ -216,6 +216,7 @@ fn main() -> anyhow::Result<()> {
             let child_token = ctx.shutdown.child_token();
             let cancel = child_token.clone();
 
+            let tls_info = TlsInfo::from_bundle(&tls_bundle, &host, port);
             let task = tokio::spawn(async move {
                 if let Err(e) = start_server_on_addr(router, addr, tls_bundle.acceptor, child_token).await {
                     tracing::error!("server error: {e}");
@@ -224,7 +225,7 @@ fn main() -> anyhow::Result<()> {
 
             {
                 let mut guard = ctx.server_ctl.lock().await;
-                *guard = Some(ServerHandle { cancel, task });
+                *guard = Some(ServerHandle { tls: tls_info, cancel, task });
             }
 
             tracing::info!("axum HTTPS server started on https://{}:{}", host, port);
