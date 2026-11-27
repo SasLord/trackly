@@ -590,3 +590,374 @@ async fn loop_external_login_after_needs_login_connects() {
     assert_eq!(last_state(&sink), Some(connected_state()));
     h.stop().await;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Интеграция: RealTransport (LinkHttp + пин + WS) против локального TLS-мока (HTTP resume и WS
+// на одном порту, как у настоящего сервера). Реальное время, вымышленные имена.
+// ---------------------------------------------------------------------------------------------
+
+mod integration {
+    use super::*;
+
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use futures_util::SinkExt;
+    use link_app::authflow::Platform;
+    use link_app::config::{LinkConfig, LocalState, SourceKind};
+    use link_app::connection::RealTransport;
+    use link_app::http_client::{DeviceCreds, LinkHttp};
+    use link_app::secrets::{login_token_key, InMemoryStore, Secret, TokenStore};
+    use link_app::sso::MockSso;
+    use link_proto::dto::REVOKED_CLOSE_CODE;
+    use link_proto::spki::spki_sha256;
+    use rcgen::{CertificateParams, KeyPair};
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadBuf};
+    use tokio::net::TcpListener;
+    use tokio_rustls::TlsAcceptor;
+    use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+    use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+    use tokio_tungstenite::tungstenite::Message;
+
+    const RESUME_OK: &str =
+        r#"{"user":{"id":1,"login":"ivanov","displayName":"Иванов И.И."},"method":"password"}"#;
+
+    /// Поток с «возвращёнными» уже прочитанными байтами: нужен, чтобы отдать разобранный
+    /// HTTP-заголовок WS-рукопожатию.
+    struct Pre<S> {
+        head: Vec<u8>,
+        pos: usize,
+        inner: S,
+    }
+
+    impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Pre<S> {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            if self.pos < self.head.len() {
+                let n = (self.head.len() - self.pos).min(buf.remaining());
+                let start = self.pos;
+                buf.put_slice(&self.head[start..start + n]);
+                self.pos += n;
+                return Poll::Ready(Ok(()));
+            }
+            Pin::new(&mut self.inner).poll_read(cx, buf)
+        }
+    }
+
+    impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Pre<S> {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Pin::new(&mut self.inner).poll_write(cx, buf)
+        }
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.inner).poll_flush(cx)
+        }
+        fn poll_shutdown(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.inner).poll_shutdown(cx)
+        }
+    }
+
+    #[derive(Default)]
+    struct Mock {
+        /// По сценарию на каждое принятое WS-соединение; пусто — hello и тишина.
+        ws_scripts: Mutex<VecDeque<Vec<Message>>>,
+        requests: AtomicUsize,
+        resumes: AtomicUsize,
+        upgrades: AtomicUsize,
+    }
+
+    fn server_cfg(cert: &[u8], key: &KeyPair) -> Arc<rustls::ServerConfig> {
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        Arc::new(
+            rustls::ServerConfig::builder_with_provider(provider)
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_no_client_auth()
+                .with_single_cert(
+                    vec![CertificateDer::from(cert.to_vec())],
+                    PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())),
+                )
+                .unwrap(),
+        )
+    }
+
+    fn ws_hello() -> Message {
+        Message::text(r#"{"type":"hello","protocol":1,"pingIntervalSecs":25,"idleTimeoutSecs":60}"#)
+    }
+
+    struct Cert {
+        key: KeyPair,
+        der: Vec<u8>,
+    }
+
+    fn cert() -> Cert {
+        let key = KeyPair::generate().unwrap();
+        let der = CertificateParams::new(vec!["srv.example.local".to_string()])
+            .unwrap()
+            .self_signed(&key)
+            .unwrap()
+            .der()
+            .to_vec();
+        Cert { key, der }
+    }
+
+    async fn spawn_server(c: &Cert, mock: Arc<Mock>) -> u16 {
+        let acceptor = TlsAcceptor::from(server_cfg(&c.der, &c.key));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((tcp, _)) = listener.accept().await else {
+                    return;
+                };
+                let (acceptor, mock) = (acceptor.clone(), mock.clone());
+                tokio::spawn(async move {
+                    let Ok(mut tls) = acceptor.accept(tcp).await else {
+                        return;
+                    };
+                    let mut buf: Vec<u8> = Vec::new();
+                    loop {
+                        let mut chunk = [0u8; 2048];
+                        let head_end = loop {
+                            if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                                break p + 4;
+                            }
+                            match tls.read(&mut chunk).await {
+                                Ok(0) | Err(_) => return,
+                                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                            }
+                        };
+                        mock.requests.fetch_add(1, Ordering::SeqCst);
+                        let head = String::from_utf8_lossy(&buf[..head_end]).to_ascii_lowercase();
+                        if head.contains("upgrade: websocket") {
+                            mock.upgrades.fetch_add(1, Ordering::SeqCst);
+                            let script = mock.ws_scripts.lock().unwrap().pop_front();
+                            let pre = Pre {
+                                head: buf.clone(),
+                                pos: 0,
+                                inner: tls,
+                            };
+                            let Ok(mut ws) = tokio_tungstenite::accept_async(pre).await else {
+                                return;
+                            };
+                            let script = script.unwrap_or_else(|| vec![ws_hello()]);
+                            let hold = !script.iter().any(|m| matches!(m, Message::Close(_)));
+                            for m in script {
+                                if ws.send(m).await.is_err() {
+                                    return;
+                                }
+                            }
+                            if hold {
+                                while futures_util::StreamExt::next(&mut ws).await.is_some() {}
+                            } else {
+                                let _ = ws.flush().await;
+                            }
+                            return;
+                        }
+                        // Обычный HTTP: тело игнорируем (тела resume малы и приходят вместе).
+                        let clen = head
+                            .lines()
+                            .find_map(|l| {
+                                l.strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        while buf.len() < head_end + clen {
+                            match tls.read(&mut chunk).await {
+                                Ok(0) | Err(_) => return,
+                                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                            }
+                        }
+                        buf.drain(..head_end + clen);
+                        mock.resumes.fetch_add(1, Ordering::SeqCst);
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                            RESUME_OK.len(),
+                            RESUME_OK
+                        );
+                        if tls.write_all(resp.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        port
+    }
+
+    struct Rig {
+        transport: Arc<RealTransport>,
+        tokens: Arc<TokenStore>,
+        local: Arc<tokio::sync::Mutex<LocalState>>,
+        key: String,
+        _tmp: tempfile::TempDir,
+    }
+
+    /// `client_pin_of` — чей отпечаток закреплён у клиента (для теста подмены).
+    fn rig(port: u16, client_pin_of: &Cert) -> Rig {
+        let tmp = tempfile::tempdir().unwrap();
+        let local = LocalState::load_or_init(tmp.path()).unwrap();
+        let pin = spki_sha256(&client_pin_of.der).unwrap();
+        let http = LinkHttp::new(
+            "127.0.0.1",
+            port,
+            pin,
+            Some(DeviceCreds {
+                device_id: local.device_id.clone(),
+                secret: "dev-secret".into(),
+            }),
+        )
+        .unwrap();
+        let tokens = Arc::new(TokenStore::new(Some(Box::new(InMemoryStore::new()))));
+        let key = login_token_key("127.0.0.1", port);
+        tokens.set(&key, &Secret::new("tok"));
+        let local = Arc::new(tokio::sync::Mutex::new(local));
+        let transport = Arc::new(RealTransport {
+            http: Arc::new(http),
+            sso: Arc::new(MockSso(Err(link_app::sso::SsoProviderError::NoTicket))),
+            tokens: tokens.clone(),
+            local: local.clone(),
+            cfg: LinkConfig {
+                host: "127.0.0.1".into(),
+                port,
+                pin,
+                spn: None,
+                source: SourceKind::User,
+            },
+            platform: Platform::Other,
+        });
+        Rig {
+            transport,
+            tokens,
+            local,
+            key,
+            _tmp: tmp,
+        }
+    }
+
+    fn spawn_sup(r: &Rig, sink: &Arc<FakeSink>) -> SupervisorHandle {
+        let mut cfg = SupervisorConfig::new(SERVER, meta());
+        cfg.jitter = Arc::new(|| 0.0);
+        ConnectionSupervisor::spawn(r.transport.clone(), sink.clone(), cfg)
+    }
+
+    async fn wait_for(what: &str, cond: impl Fn() -> bool) {
+        for _ in 0..300 {
+            if cond() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("не дождались: {what}");
+    }
+
+    fn is_connected(sink: &FakeSink) -> bool {
+        matches!(last_state(sink), Some(LinkState::Connected { .. }))
+    }
+
+    #[tokio::test]
+    async fn integration_connects_and_bridges_event() {
+        let c = cert();
+        let mock = Arc::new(Mock::default());
+        mock.ws_scripts.lock().unwrap().push_back(vec![
+            ws_hello(),
+            Message::text(r#"{"type":"message","id":7}"#),
+        ]);
+        let port = spawn_server(&c, mock.clone()).await;
+        let r = rig(port, &c);
+        let sink = Arc::new(FakeSink::default());
+        let h = spawn_sup(&r, &sink);
+        wait_for("Connected", || is_connected(&sink)).await;
+        wait_for("событие", || !sink.events.lock().unwrap().is_empty()).await;
+        assert_eq!(sink.events.lock().unwrap()[0]["id"], 7);
+        assert_eq!(mock.resumes.load(Ordering::SeqCst), 1);
+        assert_eq!(resyncs(&sink), 0);
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn integration_short_drop_is_silent_then_one_resync() {
+        let c = cert();
+        let mock = Arc::new(Mock::default());
+        // Первое соединение: hello и штатный Close (не 4401); второе: hello и тишина.
+        mock.ws_scripts.lock().unwrap().push_back(vec![
+            ws_hello(),
+            Message::Close(Some(CloseFrame {
+                code: CloseCode::Away,
+                reason: "".into(),
+            })),
+        ]);
+        let port = spawn_server(&c, mock.clone()).await;
+        let r = rig(port, &c);
+        let sink = Arc::new(FakeSink::default());
+        let h = spawn_sup(&r, &sink);
+        wait_for("второе подключение", || {
+            mock.upgrades.load(Ordering::SeqCst) >= 2
+        })
+        .await;
+        wait_for("ресинк", || resyncs(&sink) == 1).await;
+        assert!(is_connected(&sink));
+        // Обрыв короче порога: за всё время только одно состояние Connected.
+        assert_eq!(sink.states.lock().unwrap().len(), 1);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(resyncs(&sink), 1);
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn integration_foreign_certificate_is_pin_mismatch_without_any_request() {
+        let served = cert();
+        let pinned = cert();
+        let mock = Arc::new(Mock::default());
+        let port = spawn_server(&served, mock.clone()).await;
+        let r = rig(port, &pinned);
+        let sink = Arc::new(FakeSink::default());
+        let h = spawn_sup(&r, &sink);
+        wait_for("PinMismatch", || {
+            matches!(last_state(&sink), Some(LinkState::PinMismatch { .. }))
+        })
+        .await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(mock.requests.load(Ordering::SeqCst), 0);
+        assert_eq!(mock.upgrades.load(Ordering::SeqCst), 0);
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn integration_close_4401_revokes_and_stops() {
+        let c = cert();
+        let mock = Arc::new(Mock::default());
+        mock.ws_scripts.lock().unwrap().push_back(vec![
+            ws_hello(),
+            Message::Close(Some(CloseFrame {
+                code: CloseCode::from(REVOKED_CLOSE_CODE),
+                reason: "".into(),
+            })),
+        ]);
+        let port = spawn_server(&c, mock.clone()).await;
+        let r = rig(port, &c);
+        let sink = Arc::new(FakeSink::default());
+        let h = spawn_sup(&r, &sink);
+        wait_for("Revoked", || {
+            matches!(last_state(&sink), Some(LinkState::Revoked { .. }))
+        })
+        .await;
+        assert!(r.tokens.get(&r.key).is_none(), "токен стёрт");
+        assert!(r.local.lock().await.revoked, "revoked=true на диске");
+        // Цикл остановлен: ни новых подключений, ни повторного входа.
+        tokio::time::sleep(Duration::from_millis(1_500)).await;
+        assert_eq!(mock.upgrades.load(Ordering::SeqCst), 1);
+        assert_eq!(mock.resumes.load(Ordering::SeqCst), 1);
+        h.stop().await;
+    }
+}
