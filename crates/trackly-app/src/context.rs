@@ -250,12 +250,15 @@ impl AppCtx {
         let ws_broadcast = Arc::new(ws_tx);
         let im_hub = Arc::new(crate::services::im_hub::ImHub::new());
         let link_hub = Arc::new(crate::server::link_hub::LinkHub::new());
-        let link = Arc::new(crate::services::link_service::LinkService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-            link_hub.clone(),
-        ));
+        let link = Arc::new(
+            crate::services::link_service::LinkService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                link_hub.clone(),
+            )
+            .with_ws_tx(ws_broadcast.clone()),
+        );
 
         // Phase 40.2 Plan 08 (D-14): `with_ws_tx` wires the SAME shared
         // broadcast sender every other service below uses, so

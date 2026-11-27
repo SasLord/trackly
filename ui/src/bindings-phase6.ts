@@ -227,6 +227,9 @@ export type RequestCountsDto = {
  * a payload-less signal, visible only to Employee, meaning "re-read your own
  * devices" (no ids leak). `entities_changed` stays invisible to Employee.
  *
+ * Phase 44-16 added `WsEvent::LinkChanged` (`link_changed`): payload-less, Admin only,
+ * "re-read the Link section" (logins, invite codes, banned computers).
+ *
  * No Rust<->TS gate covers WsEvent — the JSON-literal
  * unit test in `dto/printer.rs` is the safety net.
  *
@@ -248,6 +251,7 @@ export type WsEvent =
   | { type: 'number_space_changed'; contexts: string[] }
   | { type: 'entities_changed'; placeIds: number[]; deviceIds: number[]; groupIds: number[] }
   | { type: 'employee_scope_changed' }
+  | { type: 'link_changed' }
   | {
       type: 'attachments_changed';
       parentKind: string;

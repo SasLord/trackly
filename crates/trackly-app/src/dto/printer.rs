@@ -392,6 +392,13 @@ pub enum WsEvent {
     ///
     /// Wire format: `{ "type": "employee_scope_changed" }`
     EmployeeScopeChanged {},
+    /// Phase 44-16: payload-less signal "re-read the Link section" (active
+    /// logins, invite codes, banned computers). Visible ONLY to Admin; carries
+    /// no ids so nothing about users or computers leaks. Sent from
+    /// `LinkService` after commit.
+    ///
+    /// Wire format: `{ "type": "link_changed" }`
+    LinkChanged {},
     /// Attachments of a parent changed (Phase 41.3, D-25). NOT
     /// `EntitiesChanged`: Employee must see it for their own request.
     /// Sent after commit and outside `writer.execute` (D-15).
@@ -453,6 +460,7 @@ impl WsEvent {
     ///   no author branching (do NOT model this on `RequestStatusChanged`).
     /// - `EmployeeScopeChanged` (Phase 41.6, D-19) → Employee only; no payload,
     ///   the client re-reads its own devices.
+    /// - `LinkChanged` (Phase 44-16) → Admin only; no payload.
     /// - `AttachmentsChanged` (Phase 41.3) / `ChatMessage` (Phase 41.5, D-23) →
     ///   Admin | Manager, request author, or participant.
     /// - `ChatReadChanged` (Phase 41.5, D-19) → only the marker owner.
@@ -482,6 +490,7 @@ impl WsEvent {
                 matches!(identity.role, Role::Admin | Role::Manager)
             }
             WsEvent::EmployeeScopeChanged {} => matches!(identity.role, Role::Employee),
+            WsEvent::LinkChanged {} => matches!(identity.role, Role::Admin),
             WsEvent::AttachmentsChanged {
                 requested_by_user_id,
                 participant_user_ids,
@@ -804,6 +813,18 @@ mod tests {
             }
             other => panic!("unexpected variant: {other:?}"),
         }
+    }
+
+    #[test]
+    fn link_changed_wire_format_and_admin_only_visibility() {
+        let event = WsEvent::LinkChanged {};
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::json!({ "type": "link_changed" })
+        );
+        assert!(event.is_visible_to(&identity(Some(1), Role::Admin)));
+        assert!(!event.is_visible_to(&identity(Some(2), Role::Manager)));
+        assert!(!event.is_visible_to(&identity(Some(3), Role::Employee)));
     }
 
     #[test]

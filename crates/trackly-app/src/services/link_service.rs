@@ -17,6 +17,10 @@ use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 
+use crate::dto::link::{
+    BannedDeviceDto, InviteRowDto, LinkLoginRowDto, UserLinkStatusDto, INVITE_TTL_HOURS,
+};
+use crate::dto::printer::WsEvent;
 use crate::server::link_hub::LinkHub;
 
 /// Не чаще раза в это число секунд обновляем `last_seen_utc` при проверке устройства.
@@ -244,6 +248,23 @@ pub struct LinkService {
     readers: Arc<ReaderPool>,
     clock: Arc<dyn Clock + Send + Sync>,
     hub: Arc<LinkHub>,
+    ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
+}
+
+/// Записи старше этого срока (использованные/истёкшие/отозванные коды) в списке
+/// не показываются (UI-SPEC §8.3).
+const INVITE_LIST_RETENTION_SECS: i64 = 30 * 24 * 3600;
+
+/// Срок кода из допустимого набора часов в секундах; иначе `Validation`.
+pub fn ttl_hours_to_secs(hours: i32) -> Result<i64, AppError> {
+    if INVITE_TTL_HOURS.contains(&hours) {
+        Ok(i64::from(hours) * 3600)
+    } else {
+        Err(AppError::Validation {
+            field: "ttlHours".into(),
+            message: "срок действия кода: 1 час, 24 часа или 7 суток".into(),
+        })
+    }
 }
 
 fn invite_status(now: i64, expires: i64, used: Option<i64>, revoked: Option<i64>) -> &'static str {
@@ -270,7 +291,24 @@ impl LinkService {
             readers,
             clock,
             hub,
+            ws_tx: None,
         }
+    }
+
+    /// Подключить общий канал WS: изменения входов/кодов/запретов уходят админам.
+    pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
+        self.ws_tx = Some(ws_tx);
+        self
+    }
+
+    /// `WsEvent::LinkChanged` (без полезной нагрузки, виден только Admin).
+    /// Вызывать ТОЛЬКО после успешного `.await?` записи и вне замыкания писателя.
+    fn broadcast_link_changed(&self, op: &'static str) {
+        let Some(tx) = &self.ws_tx else {
+            return;
+        };
+        tracing::debug!(op, "link_changed");
+        let _ = tx.send(WsEvent::LinkChanged {});
     }
 
     async fn read<T, F>(&self, f: F) -> Result<T, AppError>
@@ -331,6 +369,7 @@ impl LinkService {
                 Ok(conn.last_insert_rowid())
             })
             .await?;
+        self.broadcast_link_changed("create_invite");
         Ok(InviteIssued {
             id,
             code,
@@ -391,7 +430,9 @@ impl LinkService {
                     }),
                 }
             })
-            .await
+            .await?;
+        self.broadcast_link_changed("revoke_invite");
+        Ok(())
     }
 
     // ----- устройства ------------------------------------------------------
@@ -478,6 +519,7 @@ impl LinkService {
             })
             .await?;
         out?;
+        self.broadcast_link_changed("enroll");
         Ok(device_secret)
     }
 
@@ -561,7 +603,9 @@ impl LinkService {
                 }
                 Ok(())
             })
-            .await
+            .await?;
+        self.broadcast_link_changed("allow_device");
+        Ok(())
     }
 
     pub async fn list_banned_devices(&self) -> Result<Vec<BannedDeviceRow>, AppError> {
@@ -614,6 +658,7 @@ impl LinkService {
                 Ok(id)
             })
             .await?;
+        self.broadcast_link_changed("record_login");
         Ok(LoginIssued {
             login_id,
             device_token: token,
@@ -702,6 +747,7 @@ impl LinkService {
         if let Some(d) = device {
             self.hub.revoke_device(&d);
         }
+        self.broadcast_link_changed("logout");
         Ok(())
     }
 
@@ -740,6 +786,7 @@ impl LinkService {
             })
             .await?;
         self.hub.revoke_device(&device);
+        self.broadcast_link_changed("revoke_login");
         Ok(())
     }
 
@@ -787,6 +834,7 @@ impl LinkService {
         for d in &devices {
             self.hub.revoke_device(d);
         }
+        self.broadcast_link_changed("revoke_user_logins");
         Ok(count)
     }
 
@@ -816,6 +864,105 @@ impl LinkService {
             db(rows.collect::<rusqlite::Result<Vec<_>>>())
         })
         .await
+    }
+
+    /// D-12: активные входы для таблицы админки (новые сверху).
+    pub async fn list_login_dtos(&self) -> Result<Vec<LinkLoginRowDto>, AppError> {
+        let mut rows = self.list_active_logins().await?;
+        rows.sort_by(|a, b| b.created_at_utc.cmp(&a.created_at_utc));
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let login = r.user_login.unwrap_or_default();
+                LinkLoginRowDto {
+                    login_id: r.login_id,
+                    user_id: r.user_id,
+                    full_name: r.full_name.unwrap_or_else(|| login.clone()),
+                    login,
+                    hostname: r.hostname.unwrap_or_default(),
+                    method: r.method,
+                    created_at: r.created_at_utc,
+                }
+            })
+            .collect())
+    }
+
+    /// D-13: запрещённые компьютеры с последним пользователем.
+    pub async fn list_banned_dtos(&self) -> Result<Vec<BannedDeviceDto>, AppError> {
+        self.read(|conn| {
+            let mut st = db(conn.prepare(
+                "SELECT d.device_id, d.hostname, u.full_name, d.revoked_at_utc \
+                   FROM link_devices d LEFT JOIN users u ON u.id = d.last_user_id \
+                  WHERE d.revoked_at_utc IS NOT NULL ORDER BY d.revoked_at_utc DESC, d.device_id",
+            ))?;
+            let rows = db(st.query_map([], |r| {
+                Ok(BannedDeviceDto {
+                    device_id: r.get(0)?,
+                    hostname: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    last_user_full_name: r.get(2)?,
+                    revoked_at: r.get(3)?,
+                })
+            }))?;
+            db(rows.collect::<rusqlite::Result<Vec<_>>>())
+        })
+        .await
+    }
+
+    /// Коды для таблицы админки; использованные/истёкшие/отозванные старше 30 дней скрыты.
+    pub async fn list_invite_dtos(&self) -> Result<Vec<InviteRowDto>, AppError> {
+        let now = self.clock.unix_seconds();
+        self.read(move |conn| {
+            let mut st = db(conn.prepare(
+                "SELECT i.id, i.created_at_utc, u.full_name, i.expires_at_utc, i.used_at_utc, \
+                        i.revoked_at_utc, d.hostname \
+                   FROM link_invites i \
+                   LEFT JOIN users u ON u.id = i.created_by_user_id \
+                   LEFT JOIN link_devices d ON d.device_id = i.used_by_device_id \
+                  ORDER BY i.id DESC",
+            ))?;
+            let rows = db(st.query_map([], |r| {
+                let expires: i64 = r.get(3)?;
+                let used: Option<i64> = r.get(4)?;
+                let revoked: Option<i64> = r.get(5)?;
+                Ok((
+                    InviteRowDto {
+                        id: r.get(0)?,
+                        created_at: r.get(1)?,
+                        created_by_full_name: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                        expires_at: expires,
+                        status: invite_status(now, expires, used, revoked).to_string(),
+                        used_by_hostname: r.get(6)?,
+                    },
+                    used,
+                    revoked,
+                ))
+            }))?;
+            let all = db(rows.collect::<rusqlite::Result<Vec<_>>>())?;
+            Ok(all
+                .into_iter()
+                .filter(|(dto, used, revoked)| {
+                    if dto.status == "active" {
+                        return true;
+                    }
+                    // Момент, с которого код перестал быть активным.
+                    let ended = match dto.status.as_str() {
+                        "used" => used.unwrap_or(dto.expires_at),
+                        "revoked" => revoked.unwrap_or(dto.expires_at),
+                        _ => dto.expires_at,
+                    };
+                    now - ended <= INVITE_LIST_RETENTION_SECS
+                })
+                .map(|(dto, _, _)| dto)
+                .collect())
+        })
+        .await
+    }
+
+    /// Счётчик активных входов пользователя для карточки.
+    pub async fn user_link_status(&self, user_id: i64) -> Result<UserLinkStatusDto, AppError> {
+        Ok(UserLinkStatusDto {
+            active_logins: self.count_active_logins(user_id).await?,
+        })
     }
 
     pub async fn count_active_logins(&self, user_id: i64) -> Result<i64, AppError> {

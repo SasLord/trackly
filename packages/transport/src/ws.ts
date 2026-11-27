@@ -59,6 +59,7 @@ export type WsEvent =
   | { type: 'number_space_changed'; contexts: string[] }
   | { type: 'entities_changed'; placeIds: number[]; deviceIds: number[]; groupIds: number[] }
   | { type: 'employee_scope_changed' }
+  | { type: 'link_changed' }
   | {
       type: 'attachments_changed';
       parentKind: string;
