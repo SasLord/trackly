@@ -180,6 +180,26 @@ const CMD_WITHOUT_ROUTE: &[Verdict] = &[
 /// Обратное направление: ловит мёртвые и только-браузерные маршруты.
 const ROUTE_WITHOUT_CMD: &[Verdict] = &[
     Verdict {
+        name: "link_enroll",
+        reason: "только HTTP: транспорт Link (клиент Tauri-приложения Link ходит по HTTP; у десктопа Trackly нет такой команды), http/link.rs::router",
+    },
+    Verdict {
+        name: "link_auth_login",
+        reason: "только HTTP: транспорт Link (клиент Tauri-приложения Link ходит по HTTP; у десктопа Trackly нет такой команды), http/link.rs::router",
+    },
+    Verdict {
+        name: "link_auth_sso",
+        reason: "только HTTP: транспорт Link (клиент Tauri-приложения Link ходит по HTTP; у десктопа Trackly нет такой команды), http/link.rs::router",
+    },
+    Verdict {
+        name: "link_resume",
+        reason: "только HTTP: транспорт Link (клиент Tauri-приложения Link ходит по HTTP; у десктопа Trackly нет такой команды), http/link.rs::router",
+    },
+    Verdict {
+        name: "link_logout",
+        reason: "только HTTP: транспорт Link (клиент Tauri-приложения Link ходит по HTTP; у десктопа Trackly нет такой команды), http/link.rs::router",
+    },
+    Verdict {
         name: "auth_ad_sso",
         reason: "только браузерный транспорт: SPNEGO/Kerberos-негоциация делается самим \
                  браузером через GET (http/sso.rs::router), командой invoke не выражается — \
