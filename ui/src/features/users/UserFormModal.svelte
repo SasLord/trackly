@@ -16,6 +16,8 @@
   // CartridgeFormBody.svelte (Plan 27-G1).
   import Dropdown from '@trackly/kit/components/Dropdown.svelte';
   import Checkbox from '@trackly/kit/components/Checkbox.svelte';
+  import { pushToast } from '@trackly/kit/stores/toast.svelte';
+  import { linkApi } from '../link/linkApi';
   import type { UserDto } from '../../bindings';
 
   interface UserFormData {
@@ -97,6 +99,43 @@
       }
     }
   });
+
+  // Секция «Link» (D-12): активные входы пользователя, отзыв сразу и независимо от «Сохранить».
+  // null = статус не загружен (ошибка загрузки не блокирует форму).
+  let linkLogins = $state<number | null>(null);
+  let confirmingRevoke = $state(false);
+  let revoking = $state(false);
+
+  $effect(() => {
+    confirmingRevoke = false;
+    linkLogins = null;
+    if (open && mode === 'edit' && user) {
+      const id = user.id;
+      linkApi
+        .userStatus(id)
+        .then((st) => {
+          if (user?.id === id) linkLogins = st.activeLogins;
+        })
+        .catch(() => {
+          linkLogins = null;
+        });
+    }
+  });
+
+  async function revokeLink() {
+    if (!user) return;
+    revoking = true;
+    try {
+      const res = await linkApi.userRevoke(user.id);
+      linkLogins = 0;
+      confirmingRevoke = false;
+      pushToast('success', `Входы Link отозваны: ${res.revoked}`);
+    } catch {
+      pushToast('error', 'Не удалось отозвать входы Link. Повторите.');
+    } finally {
+      revoking = false;
+    }
+  }
 
   function validate(): boolean {
     loginErr = null;
@@ -252,6 +291,46 @@
         Активен
       </Checkbox>
     </div>
+    {#if mode === 'edit' && !form.is_active}
+      <span class="link-caption">Блокировка также отзовёт все входы Link этого пользователя.</span>
+    {/if}
+
+    {#if mode === 'edit' && user && linkLogins !== null}
+      <div class="link-section">
+        <span class="link-caption">Link</span>
+        <div class="link-row">
+          <span class="link-count">Активных входов: {linkLogins}</span>
+          {#if confirmingRevoke}
+            <span class="link-confirm">
+              Отозвать все входы Link ({linkLogins})? Компьютеры будут запрещены.
+            </span>
+            <Button variant="destructive" size="sm" loading={revoking} onclick={revokeLink}>
+              Отозвать
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={revoking}
+              onclick={() => (confirmingRevoke = false)}
+            >
+              Отмена
+            </Button>
+          {:else}
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={linkLogins === 0}
+              onclick={() => (confirmingRevoke = true)}
+            >
+              Отозвать входы Link
+            </Button>
+            {#if linkLogins === 0}
+              <span class="link-caption">Нет активных входов</span>
+            {/if}
+          {/if}
+        </div>
+      </div>
+    {/if}
 
     {#if error}
       <div class="server-error">{error}</div>
@@ -338,6 +417,36 @@
       color: var(--tr-text-tertiary);
       cursor: not-allowed;
     }
+  }
+
+  .link-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-xs);
+    border-top: 1px solid var(--tr-border);
+    padding-top: var(--tr-space-xl);
+  }
+
+  .link-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--tr-space-xs);
+  }
+
+  .link-count {
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-text-primary);
+  }
+
+  .link-confirm {
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-danger);
+  }
+
+  .link-caption {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
   }
 
   .field-error {

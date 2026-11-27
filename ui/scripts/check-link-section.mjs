@@ -13,6 +13,8 @@
 //        InviteModal использует Dropdown с variant="select";
 //   [S4] <Modal нет в LoginsTab/InvitesTab и нет внутри незакрытых <td / <TableRow;
 //        подтверждение отзыва входа и попап кода рендерятся в LinkPage;
+//   [S6] UserFormModal: секция «Отозвать входы Link» + вызов users_revoke_link/userRevoke,
+//        без вложенного <Modal (подтверждение только инлайн);
 //   [S5] нет литеральных цветов (#hex, rgb(, hsl() в разметке и <style>.
 // --selftest: мутанты РЕАЛЬНЫХ файлов обязаны краснеть, чистые — зеленеть.
 //
@@ -36,6 +38,7 @@ const LINK_FILES = [
   'InviteModal.svelte',
   'linkApi.ts',
 ].map((f) => `${LINK_DIR}/${f}`);
+const USER_FORM = 'src/features/users/UserFormModal.svelte';
 const TAB_FILES = new Set([`${LINK_DIR}/LoginsTab.svelte`, `${LINK_DIR}/InvitesTab.svelte`]);
 
 function balanced(src, openIdx, open, close) {
@@ -126,12 +129,25 @@ export function scan(files) {
   const lp = get(`${LINK_DIR}/LinkPage.svelte`);
   if (lp !== undefined && !/<Modal\b|<InviteModal\b/.test(stripComments(lp)))
     v.push('[S4] LinkPage: нет Modal/InviteModal на уровне страницы');
+
+  // S6
+  const uf = get(USER_FORM);
+  if (uf === undefined) v.push(`[S6] нет ${USER_FORM}`);
+  else {
+    const code = stripComments(uf);
+    if (!/Отозвать входы Link/.test(code))
+      v.push('[S6] UserFormModal: нет кнопки «Отозвать входы Link»');
+    if (!/users_revoke_link|userRevoke\b/.test(code))
+      v.push('[S6] UserFormModal: нет вызова users_revoke_link');
+    if ((code.match(/<Modal\b/g) ?? []).length > 1)
+      v.push('[S6] UserFormModal: вложенный <Modal (подтверждение только инлайн)');
+  }
   return v;
 }
 
 function loadReal() {
   const m = new Map();
-  for (const p of [SIDEBAR, ROUTES, ...LINK_FILES]) {
+  for (const p of [SIDEBAR, ROUTES, USER_FORM, ...LINK_FILES]) {
     const abs = path.join(UI_ROOT, p);
     if (fs.existsSync(abs)) m.set(p, fs.readFileSync(abs, 'utf8'));
   }
@@ -232,6 +248,22 @@ function selftest() {
         'hex',
       ),
       /\[S5\].*hex/,
+    ],
+    [
+      'UserFormModal без отзыва входов',
+      mutate(real, USER_FORM, 'userRevoke', 'userRevokeX', 'uf-revoke'),
+      /\[S6\].*users_revoke_link/,
+    ],
+    [
+      'вложенный Modal в UserFormModal',
+      mutate(
+        real,
+        USER_FORM,
+        '{#snippet footer()}',
+        '<Modal open={false} title="x" onClose={() => {}} />\n  {#snippet footer()}',
+        'uf-modal',
+      ),
+      /\[S6\].*вложенный/,
     ],
   ];
   let bad = 0;
