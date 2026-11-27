@@ -245,13 +245,25 @@ async function runCases(overrides) {
   await guard('P11', async () => {
     await failOne([5]);
     await st.discardUnheldDrafts(1);
-    expect('P11', H.discards.length === 0, `P11: очистка при удерживаемых черновиках ${H.discards.length}`);
+    expect(
+      'P11',
+      H.discards.length === 0,
+      `P11: очистка при удерживаемых черновиках ${H.discards.length}`,
+    );
     await st.discardUnheldDrafts(2);
-    expect('P11', H.discards.length === 1 && H.discards[0][0] === 2, 'P11: другая заявка не очищена');
+    expect(
+      'P11',
+      H.discards.length === 1 && H.discards[0][0] === 2,
+      'P11: другая заявка не очищена',
+    );
     await failOne([]);
     H.discards = [];
     await st.discardUnheldDrafts(1);
-    expect('P11', H.discards.length === 1 && H.discards[0][0] === 1, 'P11: запись без черновиков заблокировала очистку');
+    expect(
+      'P11',
+      H.discards.length === 1 && H.discards[0][0] === 1,
+      'P11: запись без черновиков заблокировала очистку',
+    );
     reset();
     await st.discardUnheldDrafts(1);
     expect('P11', H.discards.length === 1, 'P11: пустая очередь не очищена');
@@ -288,17 +300,34 @@ async function runCases(overrides) {
   });
 
   // C1-C4: структурные правила компонентов
-  const rd = (f) => stripComments(fs.readFileSync(path.join(SRC, CHAT, f), 'utf8'));
+  // Мутанты применяются и к структурным правилам: те же правки, что получает загрузчик модулей.
+  const rd = (f) => {
+    const full = path.join(SRC, CHAT, f);
+    let text = fs.readFileSync(full, 'utf8');
+    for (const [from, to] of (overrides && overrides[full]) || []) {
+      if (!text.includes(from)) throw new Error(`якорь мутанта не найден в ${f}`);
+      text = text.replace(from, to);
+    }
+    return stripComments(text);
+  };
   {
     const comp = rd('ChatComposer.svelte');
-    expect('C1', !comp.includes('chat.discardDrafts('), 'C1: ChatComposer зовёт chat.discardDrafts напрямую');
+    expect(
+      'C1',
+      !comp.includes('chat.discardDrafts('),
+      'C1: ChatComposer зовёт chat.discardDrafts напрямую',
+    );
     const n = comp.split('discardUnheldDrafts(').length - 1;
     expect('C2', n >= 3, `C2: discardUnheldDrafts( встречается ${n} раз, нужно не менее 3`);
     const i = comp.indexOf('async function send()');
     const j = comp.indexOf('</script>', i);
     const body = i >= 0 ? comp.slice(i, j) : '';
     expect('C3', i >= 0 && !body.includes('clearDraft('), 'C3: send() вызывает clearDraft(');
-    expect('C4', rd('ChatPendingMessage.svelte').includes('onToDraft'), 'C4: нет onToDraft в ChatPendingMessage');
+    expect(
+      'C4',
+      rd('ChatPendingMessage.svelte').includes('onToDraft(item.clientMsgId)'),
+      'C4: нет onToDraft в ChatPendingMessage',
+    );
   }
 
   return bad;
@@ -315,15 +344,15 @@ const MUTANTS = [
   {
     name: 'запись снимается при сетевом сбое',
     file: PS,
-    from: "setStatus(clientMsgId, 'failed');",
-    to: 'removeItem(clientMsgId);',
+    from: "if (isNetworkFailure(error)) {\n      setStatus(clientMsgId, 'failed');",
+    to: 'if (isNetworkFailure(error)) {\n      removeItem(clientMsgId);',
     expect: 'P2',
   },
   {
     name: 'retry генерирует новый id',
     file: PS,
-    from: "return dispatch({ ...item, status: 'sending' }, opts);",
-    to: "return dispatch({ ...item, clientMsgId: newClientId(), status: 'sending' }, opts);",
+    from: "return dispatch({ ...item, status: 'sending' }, opts, true);",
+    to: "return dispatch({ ...item, clientMsgId: newClientId(), status: 'sending' }, opts, true);",
     expect: 'P3',
   },
   {
@@ -392,15 +421,15 @@ const MUTANTS = [
   {
     name: 'send() вызывает clearDraft',
     file: CHAT + 'ChatComposer.svelte',
-    from: "const sentText = draft.text;",
-    to: "const sentText = draft.text; clearDraft();",
+    from: 'const sentText = draft.text;',
+    to: 'const sentText = draft.text; clearDraft();',
     expect: 'C3',
   },
   {
     name: 'нет кнопки onToDraft',
     file: CHAT + 'ChatPendingMessage.svelte',
-    from: 'onToDraft: (_clientMsgId: string) => void;',
-    to: '',
+    from: 'onclick={() => onToDraft(item.clientMsgId)}',
+    to: 'disabled',
     expect: 'C4',
   },
 ];

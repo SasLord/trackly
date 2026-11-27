@@ -12,7 +12,8 @@
   } from '@trackly/attachments/AttachmentTypeIcon.svelte';
   import { rejectLine } from '@trackly/attachments/rejectText';
   import { uploadDraft, chat } from './api';
-  import { submitMessage } from './pendingStore.svelte';
+  import { discardUnheldDrafts, submitMessage } from './pendingStore.svelte';
+  import { restoreText } from './draftPolicy';
   import { rejectText } from './sendOutcomeText';
   import {
     addFiles as storeAddFiles,
@@ -158,7 +159,7 @@
           draft.chips = draft.chips.map((c) => (c.id === chip.id ? { ...c, rejected: true } : c));
           fail(rejectLine(chip.file.name, code, chip.file.size, maxBytes));
           try {
-            await chat.discardDrafts(sentFor);
+            await discardUnheldDrafts(sentFor);
           } catch {
             // Осиротевшие черновики подчищает сервер.
           }
@@ -167,35 +168,46 @@
         }
         draftIds.push(res.attachment.id);
       }
-      const result = await submitMessage(sentFor, draft.text, draftIds);
+      // WR-03: текст и чипы фиксируются до отправки; поле очищается сразу (запись в очереди
+      // зарегистрирована синхронно), поэтому набранное за время автоповторов не стирается.
+      const sentText = draft.text;
+      const sentChipIds = new Set(draft.chips.map((c) => c.id));
+      const settled = submitMessage(sentFor, sentText, draftIds);
+      if (draft.requestId === sentFor) draft.text = '';
+      const result = await settled;
       if (result.kind === 'failed') {
         // Сообщение осталось в ленте пузырём «Не отправлено»; черновики вложений нужны повтору.
-        if (draft.requestId === sentFor) clearDraft();
+        if (draft.requestId === sentFor) {
+          for (const id of sentChipIds) removeChip(id);
+          draft.errors = [];
+        }
         return;
       }
       if (result.kind === 'error') {
         try {
-          await chat.discardDrafts(sentFor);
+          await discardUnheldDrafts(sentFor);
         } catch {
           // см. выше
         }
+        if (draft.requestId === sentFor) draft.text = restoreText(sentText, draft.text);
         fail(rejectText(isForbidden(result.error) ? 'forbidden' : null));
         return;
       }
       if (draft.requestId !== sentFor) return;
       if (result.kind === 'rejected') {
         try {
-          await chat.discardDrafts(sentFor);
+          await discardUnheldDrafts(sentFor);
         } catch {
           // см. выше
         }
+        draft.text = restoreText(sentText, draft.text);
         fail(rejectText(result.code));
         if (result.code === 'closed') onClosed();
         return;
       }
       const message = result.message;
       const keepErrors = draft.errors;
-      clearDraft();
+      for (const id of sentChipIds) removeChip(id);
       draft.errors = keepErrors;
       onSent(message);
     } finally {

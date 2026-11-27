@@ -8,9 +8,10 @@
   interface Props {
     item: PendingMessage;
     onRetry: (_clientMsgId: string) => void;
+    onToDraft: (_clientMsgId: string) => void;
   }
 
-  const { item, onRetry }: Props = $props();
+  const { item, onRetry, onToDraft }: Props = $props();
 
   const failed = $derived(item.status === 'failed');
 </script>
@@ -27,6 +28,9 @@
     {#if failed}
       <span class="status-text">Не отправлено</span>
       <Button variant="link" size="sm" onclick={() => onRetry(item.clientMsgId)}>Повторить</Button>
+      <Button variant="link" size="sm" onclick={() => onToDraft(item.clientMsgId)}
+        >В поле ввода</Button
+      >
     {:else}
       <span class="status-text">Отправляется…</span>
       <Button variant="link" size="sm" disabled>Повторить</Button>

@@ -9,7 +9,7 @@
 //   [C0] обязательные файлы присутствуют (отсутствие = красный, не «пропуск»);
 //   [C1] в chat/*.svelte нет `{@html}` и `<select`; ссылки с rel/target; текст через linkify;
 //   [C2] ChatComposer: isComposing раньше вызова отправки в обработчике клавиш;
-//   [C3] ChatComposer.send: uploadDraft раньше chat.send, есть discardDrafts;
+//   [C3] ChatComposer.send: uploadDraft раньше chat.send, есть discardUnheldDrafts;
 //   [C4] RequestChat: присваивание firstUnreadId раньше markRead; setActiveChat ставится/снимается;
 //        ровно один <AttachmentViewer, не внутри <ol;
 //   [C5] chatNotifications: порядок actorUserId → isMuted → pushToast → showSystemNotification, фокус через appHasFocus,
@@ -186,7 +186,7 @@ export function check(files) {
       const cs = sb.indexOf('submitMessage(');
       if (up < 0 || cs < 0) fail('C3', 'ChatComposer.send: нет uploadDraft( или submitMessage(');
       else if (up > cs) fail('C3', 'ChatComposer.send: uploadDraft стоит ПОСЛЕ submitMessage');
-      if (!sb.includes('discardDrafts(')) fail('C3', 'ChatComposer.send: нет discardDrafts(');
+      if (!sb.includes('discardUnheldDrafts(')) fail('C3', 'ChatComposer.send: нет discardDrafts(');
     }
     fired.add('C3');
   }
@@ -199,7 +199,7 @@ export function check(files) {
       fail('C17', 'ChatComposer: прямой вызов chat.send( мимо очереди неотправленных');
     const fb = funcBody(comp, /if \(result\.kind === 'failed'\) \{/);
     if (fb === null) fail('C17', "ChatComposer: нет ветки result.kind === 'failed'");
-    else if (fb.includes('discardDrafts('))
+    else if (fb.includes('discardDrafts(') || fb.includes('discardUnheldDrafts('))
       fail('C17', "ChatComposer: ветка 'failed' отбрасывает черновики вложений (нужны повтору)");
   }
   const rcp = get(`${CHAT}RequestChat.svelte`);
@@ -857,7 +857,7 @@ function selftest(files) {
       make: reorder(
         `${CHAT}ChatComposer.svelte`,
         'const res = await uploadDraft(sentFor, chip.file);',
-        'const result = await submitMessage(sentFor, draft.text, draftIds);',
+        'const settled = submitMessage(sentFor, sentText, draftIds);',
       ),
     },
     {
@@ -1662,8 +1662,8 @@ function selftest(files) {
       expect: 'C17',
       make: swapText(
         `${CHAT}ChatComposer.svelte`,
-        'const result = await submitMessage(sentFor, draft.text, draftIds);',
-        'const result = await submitMessage(sentFor, draft.text, draftIds);\n      void chat.send(sentFor, draft.text, draftIds);',
+        'const settled = submitMessage(sentFor, sentText, draftIds);',
+        'const settled = submitMessage(sentFor, sentText, draftIds);\n      void chat.send(sentFor, draft.text, draftIds);',
       ),
     },
     {
@@ -1678,7 +1678,11 @@ function selftest(files) {
     {
       name: 'C17: лента не выводит пузыри неотправленных',
       expect: 'C17',
-      make: swapText(`${CHAT}RequestChat.svelte`, '<ChatPendingMessage item={p} {onRetry} />', ''),
+      make: swapText(
+        `${CHAT}RequestChat.svelte`,
+        '<ChatPendingMessage item={p} {onRetry} {onToDraft} />',
+        '',
+      ),
     },
     {
       name: 'C17: пропала подпись «Повторить»',

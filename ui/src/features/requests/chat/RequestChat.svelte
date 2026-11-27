@@ -21,7 +21,8 @@
   import { dayKey, dayLabel, sameGroup } from './chatDates';
   import { chat } from './api';
   import { clearDraft, draft, useDraftFor } from './draftStore.svelte';
-  import { pendingFor, retryMessage } from './pendingStore.svelte';
+  import { pendingFor, retryMessage, returnToDraft } from './pendingStore.svelte';
+  import { restoreText } from './draftPolicy';
   import { rejectText } from './sendOutcomeText';
   import { dismissChatToast } from './chatNotifications.svelte';
   import { setActiveChat } from './unreadStore.svelte';
@@ -306,6 +307,20 @@
     }
   }
 
+  function onToDraft(clientMsgId: string) {
+    const item = pendingFor(requestId).find((p) => p.clientMsgId === clientMsgId);
+    const hadFiles = (item?.draftIds.length ?? 0) > 0;
+    const text = returnToDraft(clientMsgId);
+    if (text === null || draft.requestId !== requestId) return;
+    draft.text = restoreText(text, draft.text);
+    if (hadFiles) {
+      draft.errors = [
+        ...draft.errors,
+        'Вложения этого сообщения не возвращены в поле: приложите файлы заново.',
+      ];
+    }
+  }
+
   function onClosed() {
     clearDraft();
     void load(false);
@@ -476,7 +491,7 @@
           {/if}
         {/each}
         {#each pendingList as p (p.clientMsgId)}
-          <ChatPendingMessage item={p} {onRetry} />
+          <ChatPendingMessage item={p} {onRetry} {onToDraft} />
         {/each}
         {#if !hasMessages && pendingList.length === 0}
           <li class="empty">
