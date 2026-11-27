@@ -2,8 +2,8 @@
 phase: 44
 slug: link
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-11-27
 ---
 
@@ -41,26 +41,26 @@ created: 2026-11-27
 
 | Req | Behavior | Test Type | Automated Command | File Exists | Status |
 |-----|----------|-----------|-------------------|-------------|--------|
-| LNK-08 | SPKI совпал → ok; не совпал → отказ, ни один запрос не ушёл; имя хоста игнорируется | unit + интеграция (локальный TLS) | `cargo test -p link-app net::pin` | ❌ W0 | ⬜ pending |
-| LNK-08/D-06 | `spki_sha256` golden; смена SAN → тот же SPKI | unit | `cargo test -p link-proto`; `cargo test -p trackly-app --lib server::tls` | ❌ W0 | ⬜ pending |
-| LNK-07 | enroll: код одноразовый, срок, гонка погашения | integration | `cargo test -p trackly-app --test app_server -- link_enroll` | ❌ W0 | ⬜ pending |
-| LNK-07 | пароль → `device_token`; resume; logout; 429 | integration | `... -- link_auth` | ❌ | ⬜ pending |
-| LNK-07 | отзыв устройства/пользователя/блокировка → 401 `LINK_REVOKED`, WS закрыт | integration | `... -- link_revoke` | ❌ | ⬜ pending |
-| LNK-07 | отозванное устройство не входит ни паролем, ни SSO | integration | `... -- link_revoked_device` | ❌ | ⬜ pending |
-| LNK-07 | миграция V060, `user_version = 60` | infra | `cargo test -p trackly-infra --test infra_tests link_migration` | ❌ | ⬜ pending |
-| — | новые маршруты в реестрах/паритете | integration | `cargo test -p trackly-app --test app_server -- http_route_parity` | ✅ | ⬜ pending |
-| LNK-06 | SSO-клиент: заголовок, классификация отказов, IP → без попытки | unit (`MockSso`) | `cargo test -p link-app auth::sso` | ❌ | ⬜ pending |
-| LNK-09 | автомат связи: 5 с, backoff ≤30 с, сброс после сна, «нет связи» ≠ «вход недействителен» | unit (`tokio::time::pause`) | `cargo test -p link-app core::` | ❌ | ⬜ pending |
-| LNK-09 | ресинк после реконнекта | integration (мок-WS) | `cargo test -p link-app net::ws` | ❌ | ⬜ pending |
-| D-01/D-02 | конфиг: приоритет, невалидный, отсутствует | unit | `cargo test -p link-app config` | ❌ | ⬜ pending |
-| D-03 | код-приглашение: CRC, срок, несовпадение пина → ничего не сохранено | unit + integration | `cargo test -p link-proto invite`; `cargo test -p link-app setup` | ❌ | ⬜ pending |
-| LNK-03 | значение `Run` в кавычках; восстановление записи | unit | `cargo test -p link-app shell::autostart` | ❌ | ⬜ pending |
-| LNK-04/LNK-11 | политика окна: трей есть/нет → hide/minimize, skip_taskbar | unit | `cargo test -p link-app shell::window` | ❌ | ⬜ pending |
-| LNK-05 | второй запуск → show+focus | unit | `cargo test -p link-app` | частично | ⬜ pending |
-| LNK-02 | модель меню трея, серая иконка | unit | `cargo test -p link-app shell::tray` | ❌ | ⬜ pending |
-| UI | экраны Link по UI-SPEC | lint | `pnpm --dir link-ui lint && pnpm --dir link-ui svelte-check` | ✅ | ⬜ pending |
-| UI | раздел «Link» в Trackly | lint | `pnpm --dir ui lint && pnpm --dir ui svelte-check` | ✅ | ⬜ pending |
-| Privacy | нет реальных реквизитов | скрипт | `node scripts/check-privacy.mjs` | ✅ | ⬜ pending |
+| LNK-08 | SPKI совпал → ok; не совпал → отказ, ни один запрос не ушёл; имя хоста игнорируется | unit + интеграция (локальный TLS) | `cargo test -p link-app net::pin` | ✅ | ✅ green |
+| LNK-08/D-06 | `spki_sha256` golden; смена SAN → тот же SPKI | unit | `cargo test -p link-proto`; `cargo test -p trackly-app --lib server::tls` | ✅ | ✅ green |
+| LNK-07 | enroll: код одноразовый, срок, гонка погашения | integration | `cargo test -p trackly-app --test app_server -- link_enroll` | ✅ | ✅ green |
+| LNK-07 | пароль → `device_token`; resume; logout; 429 | integration | `... -- link_auth` | ✅ | ✅ green |
+| LNK-07 | отзыв устройства/пользователя/блокировка → 401 `LINK_REVOKED`, WS закрыт | integration | `... -- link_revoke` | ✅ | ✅ green |
+| LNK-07 | отозванное устройство не входит ни паролем, ни SSO | integration | `... -- link_revoked_device` | ✅ | ✅ green |
+| LNK-07 | миграция V060, `user_version = 60` | infra | `cargo test -p trackly-infra --test infra_tests link_migration` | ✅ | ✅ green |
+| — | новые маршруты в реестрах/паритете | integration | `cargo test -p trackly-app --test app_server -- http_route_parity` | ✅ | ✅ green |
+| LNK-06 | SSO-клиент: заголовок, классификация отказов, IP → без попытки | unit (`MockSso`) | `cargo test -p link-app auth::sso` | ✅ | ✅ green |
+| LNK-09 | автомат связи: 5 с, backoff ≤30 с, сброс после сна, «нет связи» ≠ «вход недействителен» | unit (`tokio::time::pause`) | `cargo test -p link-app core::` | ✅ | ✅ green |
+| LNK-09 | ресинк после реконнекта | integration (мок-WS) | `cargo test -p link-app net::ws` | ✅ | ✅ green |
+| D-01/D-02 | конфиг: приоритет, невалидный, отсутствует | unit | `cargo test -p link-app config` | ✅ | ✅ green |
+| D-03 | код-приглашение: CRC, срок, несовпадение пина → ничего не сохранено | unit + integration | `cargo test -p link-proto invite`; `cargo test -p link-app setup` | ✅ | ✅ green |
+| LNK-03 | значение `Run` в кавычках; восстановление записи | unit | `cargo test -p link-app shell::autostart` | ✅ | ✅ green |
+| LNK-04/LNK-11 | политика окна: трей есть/нет → hide/minimize, skip_taskbar | unit | `cargo test -p link-app shell::window` | ✅ | ✅ green |
+| LNK-05 | второй запуск → show+focus | unit | `cargo test -p link-app` | ✅ | ✅ green |
+| LNK-02 | модель меню трея, серая иконка | unit | `cargo test -p link-app shell::tray` | ✅ | ✅ green |
+| UI | экраны Link по UI-SPEC | lint | `pnpm --dir link-ui lint && pnpm --dir link-ui svelte-check` | ✅ | ✅ green |
+| UI | раздел «Link» в Trackly | lint | `pnpm --dir ui lint && pnpm --dir ui svelte-check` | ✅ | ✅ green |
+| Privacy | нет реальных реквизитов | скрипт | `node scripts/check-privacy.mjs` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -68,11 +68,11 @@ created: 2026-11-27
 
 ## Wave 0 Requirements
 
-- [ ] `crates/link-proto` (+ golden-фикстура PEM, `tests/`)
-- [ ] фикстура локального TLS-сервера для `net::pin` (rcgen)
-- [ ] `MockSso`, `InMemoryStore` (keyring-трейт), фейковый `ConfigSource`
-- [ ] suite-файл серверных тестов Link в `tests/suites/` + регистрация в `suite_wiring`
-- [ ] human-verify чекпоинт на установку новых крейтов (slopcheck не запускался)
+- [x] `crates/link-proto` (+ golden-фикстура PEM, `tests/`)
+- [x] фикстура локального TLS-сервера для `net::pin` (rcgen)
+- [x] `MockSso`, `InMemoryStore` (keyring-трейт), фейковый `ConfigSource`
+- [x] suite-файл серверных тестов Link в `tests/suites/` + регистрация в `suite_wiring`
+- [x] human-verify чекпоинт на установку новых крейтов (slopcheck не запускался)
 
 ---
 
@@ -94,11 +94,11 @@ created: 2026-11-27
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** pending (автоматика зелёная 2026-11-28; статус approved - после живой проверки, раздел Manual-Only)
