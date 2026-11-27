@@ -334,3 +334,39 @@ async fn chat_feed_first_unread() {
         assert_eq!(feed.first_unread_id, None);
     })
 }
+
+/// WR-04 (D-11, D-12): клиентский id сообщения виден в ленте только автору.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn feed_exposes_client_msg_id_to_author_only() {
+    timed!(async {
+        let (ctx, _dir) = fixture::make_test_ctx().await;
+        let author = seed_user(&ctx, "ivanov", "Иванов И.И.", "employee").await;
+        let mgr = seed_user(&ctx, "petrov", "Петров П.П.", "manager").await;
+        let admin = seed_user(&ctx, "sidorov", "Сидоров С.С.", "admin").await;
+        let r = seed_request(&ctx, author, "repair", "open").await;
+        let who = ident(author, Role::Employee);
+        let sent = ctx
+            .chat
+            .send(&who, r, "С id", &[], Some("m-1"))
+            .await
+            .unwrap()
+            .message
+            .unwrap();
+        let plain = ctx
+            .chat
+            .send(&who, r, "Без id", &[], None)
+            .await
+            .unwrap()
+            .message
+            .unwrap();
+
+        let own = ctx.chat.feed(&who, r).await.unwrap().items;
+        assert_eq!(msg(&own, &sent.key).client_msg_id.as_deref(), Some("m-1"));
+        assert_eq!(msg(&own, &plain.key).client_msg_id, None);
+
+        for viewer in [ident(mgr, Role::Manager), ident(admin, Role::Admin)] {
+            let items = ctx.chat.feed(&viewer, r).await.unwrap().items;
+            assert_eq!(msg(&items, &sent.key).client_msg_id, None);
+        }
+    })
+}

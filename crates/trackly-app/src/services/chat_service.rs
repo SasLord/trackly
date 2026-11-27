@@ -77,6 +77,7 @@ fn message_dto(
                 .is_some_and(|u| access.participants.contains(&u)),
         )
     });
+    let is_own = caller_id.is_some() && m.author_user_id == caller_id;
     ChatMessageDto {
         key: format!("m{}", m.id),
         id: m.id,
@@ -84,9 +85,14 @@ fn message_dto(
         actor_user_id: m.author_user_id,
         actor_name: m.author_name.clone(),
         author_role: role.map(str::to_string),
-        is_own: caller_id.is_some() && m.author_user_id == caller_id,
+        is_own,
         text: m.body.clone(),
         moved_from_request_id: m.moved_from_request_id,
+        client_msg_id: if is_own {
+            m.client_msg_id.clone()
+        } else {
+            None
+        },
         attachments,
     }
 }
@@ -101,7 +107,6 @@ enum Written {
 
 /// Replay of a stored message: its live attachments, nothing written.
 fn replay_of(
-    repo: &SqliteChatRepository,
     conn: &rusqlite::Connection,
     request_id: i64,
     row: ChatMessageRow,
@@ -111,7 +116,6 @@ fn replay_of(
         .into_iter()
         .filter(|a| a.message_id == Some(row.id) && a.deleted_at_utc.is_none())
         .collect();
-    let _ = repo;
     Ok(Written::Replay(row, atts))
 }
 
@@ -509,7 +513,7 @@ impl ChatService {
                 // after the request was closed returns the stored message.
                 if let Some(cid) = client_msg_id.as_deref() {
                     if let Some(row) = repo.find_by_client_id_on(&tx, request_id, user_id, cid)? {
-                        return replay_of(&repo, &tx, request_id, row);
+                        return replay_of(&tx, request_id, row);
                     }
                 }
                 // TOCTOU: the status is read here, in the writer, not before.
@@ -547,13 +551,14 @@ impl ChatService {
                     match repo.set_client_msg_id_on(&tx, message_id, cid) {
                         Ok(()) => {}
                         Err(AppError::Conflict { .. }) => {
-                            // Safety net (V059 UNIQUE): treat as replay.
+                            // Safety net (V059 UNIQUE), defence-in-depth: with the single
+                            // writer this branch is unreachable; treat as replay.
                             drop(tx);
                             let conn2 = &*conn;
                             return match repo
                                 .find_by_client_id_on(conn2, request_id, user_id, cid)?
                             {
-                                Some(row) => replay_of(&repo, conn2, request_id, row),
+                                Some(row) => replay_of(conn2, request_id, row),
                                 None => Err(AppError::Conflict {
                                     reason: "client_msg_id".into(),
                                 }),

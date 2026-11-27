@@ -175,3 +175,29 @@ async fn send_without_client_id_unchanged() {
         assert_eq!(count(&ctx, "SELECT COUNT(*) FROM chat_messages").await, 2);
     })
 }
+
+/// WR-04: replay отдаёт то же сообщение с clientMsgId автора.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn replay_returns_client_msg_id() {
+    timed!(async {
+        let (ctx, _dir) = fixture::make_test_ctx().await;
+        let author = seed_user(&ctx, "ivanov", "Иванов И.И.", "employee").await;
+        let who = ident(author, Role::Employee);
+        let r = seed_request(&ctx, author, "repair", "open").await;
+        let first = ctx
+            .chat
+            .send(&who, r, "Привет", &[], Some("m-1"))
+            .await
+            .unwrap();
+        let second = ctx
+            .chat
+            .send(&who, r, "Привет", &[], Some("m-1"))
+            .await
+            .unwrap();
+        assert_eq!(first.message.unwrap().client_msg_id.as_deref(), Some("m-1"));
+        assert_eq!(
+            second.message.unwrap().client_msg_id.as_deref(),
+            Some("m-1")
+        );
+    })
+}

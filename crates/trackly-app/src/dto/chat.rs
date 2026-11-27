@@ -27,6 +27,8 @@ pub struct ChatMessageDto {
     pub text: String,
     #[specta(type = Option<i32>)]
     pub moved_from_request_id: Option<i64>,
+    /// Клиентский id отправки; только автору, как в `ImMessageDto` (D-11, D-12).
+    pub client_msg_id: Option<String>,
     pub attachments: Vec<AttachmentDto>,
 }
 

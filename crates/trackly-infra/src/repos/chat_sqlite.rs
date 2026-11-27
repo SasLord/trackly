@@ -38,6 +38,8 @@ pub struct ChatMessageRow {
     pub body: String,
     pub created_at_utc: i64,
     pub moved_from_request_id: Option<i64>,
+    /// Клиентский id отправки (D-11); наружу отдаётся только автору.
+    pub client_msg_id: Option<String>,
 }
 
 /// Событие аудита для ленты.
@@ -62,7 +64,7 @@ pub struct ReadMark {
 const MESSAGE_MARKER_FILTER: &str = "COALESCE(a.payload_json, '') NOT LIKE '%\"message_id\"%'";
 
 const MSG_SELECT: &str = "SELECT m.id, m.request_id, m.author_user_id, u.full_name, u.role, \
-    m.body, m.created_at_utc, m.moved_from_request_id \
+    m.body, m.created_at_utc, m.moved_from_request_id, m.client_msg_id \
     FROM chat_messages m LEFT JOIN users u ON u.id = m.author_user_id";
 
 fn map_msg(r: &Row<'_>) -> rusqlite::Result<ChatMessageRow> {
@@ -75,6 +77,7 @@ fn map_msg(r: &Row<'_>) -> rusqlite::Result<ChatMessageRow> {
         body: r.get(5)?,
         created_at_utc: r.get(6)?,
         moved_from_request_id: r.get(7)?,
+        client_msg_id: r.get(8)?,
     })
 }
 
