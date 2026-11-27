@@ -10,7 +10,7 @@
 // без скобки не считается.
 //
 // Защита от «зелёного по пустоте»: найденных подписчиков не меньше
-// MIN_SUBSCRIBERS (инвентарь от репозитория на 2026-11-26; поднимать при росте,
+// MIN_SUBSCRIBERS (инвентарь от репозитория на 2026-11-28; поднимать при росте,
 // не опускать). Устаревшее освобождение и мёртвая запись (у файла ресинк есть)
 // тоже ошибки.
 //
@@ -21,7 +21,7 @@ import path from 'node:path';
 import { stripComments } from './_strip.mjs';
 import { REPO, walk } from './_roots.mjs';
 
-export const MIN_SUBSCRIBERS = 13;
+export const MIN_SUBSCRIBERS = 14;
 const MIN_REASON = 20;
 const WS_FILE = 'packages/transport/src/ws.ts';
 

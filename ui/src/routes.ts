@@ -9,6 +9,7 @@ import CartridgesPage from './pages/CartridgesPage.svelte';
 import RequestsPage from './pages/RequestsPage.svelte';
 import ReportsPage from './pages/ReportsPage.svelte';
 import UsersPage from './pages/UsersPage.svelte';
+import LinkPage from './features/link/LinkPage.svelte';
 import SettingsPage from './pages/SettingsPage.svelte';
 import NotFound from './pages/NotFound.svelte';
 import LoginPage from './features/auth/LoginPage.svelte';
@@ -29,6 +30,7 @@ export const routes = {
   '/requests': RequestsPage,
   '/reports': ReportsPage,
   '/users': UsersPage,
+  '/link': LinkPage,
   '/settings': SettingsPage,
   '/showcase': ComponentShowcasePage,
   '*': NotFound,
