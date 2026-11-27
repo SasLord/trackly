@@ -24,7 +24,7 @@ completed: 2026-11-28
 
 ## Коммиты
 - 5d9a2526 — tls.rs: SPKI, перевыпуск на сохранённом ключе, 6 новых тестов
-- (следующий) — TlsInfo в ServerHandle, `AppCtx::server_tls_info`, DTO, get-настройки и статус
+- 3140ad39 — TlsInfo в ServerHandle, `AppCtx::server_tls_info`, DTO, get-настройки и статус
 
 ## Что сделано
 - `TlsBundle.spki_fingerprint_hex` заполняется в `generate_self_signed` и `load_from_pem` (в т.ч. пользовательский cert_path).
