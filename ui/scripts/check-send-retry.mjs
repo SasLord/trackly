@@ -200,7 +200,11 @@ async function runCases(overrides) {
         },
         { sleep },
       );
-      expect('S9', n === 2 && J(sleeps) === J([1000]), `S9 «${msg}»: вызовов ${n}, паузы ${J(sleeps)}`);
+      expect(
+        'S9',
+        n === 2 && J(sleeps) === J([1000]),
+        `S9 «${msg}»: вызовов ${n}, паузы ${J(sleeps)}`,
+      );
     });
   }
   // S10
@@ -215,7 +219,11 @@ async function runCases(overrides) {
       },
       { sleep },
     );
-    expect('S10', r === 'ok' && n === 2 && J(sleeps) === J([1000]), `S10: вызовов ${n}, паузы ${J(sleeps)}`);
+    expect(
+      'S10',
+      r === 'ok' && n === 2 && J(sleeps) === J([1000]),
+      `S10: вызовов ${n}, паузы ${J(sleeps)}`,
+    );
   });
   // S5 / S6
   const real = globalThis.crypto;

@@ -56,7 +56,7 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
     }
   }
   // Phase 5+ HTTP path.
-  let res: Response;
+  let res: Awaited<ReturnType<typeof fetch>>;
   try {
     res = await fetch(`/api/v1/${name}`, {
       method: 'POST',
