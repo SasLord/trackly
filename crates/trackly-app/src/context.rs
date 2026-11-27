@@ -146,6 +146,10 @@ pub struct AppCtx {
     pub chat: Arc<ChatService>,
     /// Каналы сигналов мессенджера по пользователям (Phase 43, D-04).
     pub im_hub: Arc<crate::services::im_hub::ImHub>,
+    /// Phase 44: разрыв WS Link по устройству/пользователю (D-14).
+    pub link_hub: Arc<crate::server::link_hub::LinkHub>,
+    /// Phase 44: коды-приглашения, устройства, входы, отзыв Link.
+    pub link: Arc<crate::services::link_service::LinkService>,
     /// Ядро мессенджера: send/sync/состав беседы (Phase 43).
     pub im: Arc<crate::services::im_service::ImService>,
 }
@@ -245,6 +249,13 @@ impl AppCtx {
         let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
         let ws_broadcast = Arc::new(ws_tx);
         let im_hub = Arc::new(crate::services::im_hub::ImHub::new());
+        let link_hub = Arc::new(crate::server::link_hub::LinkHub::new());
+        let link = Arc::new(crate::services::link_service::LinkService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            link_hub.clone(),
+        ));
 
         // Phase 40.2 Plan 08 (D-14): `with_ws_tx` wires the SAME shared
         // broadcast sender every other service below uses, so
@@ -602,6 +613,8 @@ impl AppCtx {
             attachments,
             chat,
             im_hub,
+            link_hub,
+            link,
             im,
         })
     }

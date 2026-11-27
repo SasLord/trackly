@@ -31,6 +31,7 @@ pub(crate) mod history_events;
 pub mod history_service;
 pub mod im_hub;
 pub mod im_service;
+pub mod link_service;
 pub mod number_template_service;
 pub mod org_db_service;
 pub mod organization_service;

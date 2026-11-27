@@ -198,6 +198,13 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let link_hub = Arc::new(crate::server::link_hub::LinkHub::new());
+        let link = Arc::new(crate::services::link_service::LinkService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            link_hub.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -210,6 +217,8 @@ mod tests {
             attachments,
             chat,
             im_hub: Arc::new(crate::services::im_hub::ImHub::new()),
+            link_hub,
+            link,
             im,
             paths: paths_arc,
             org_db,

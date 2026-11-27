@@ -23,6 +23,8 @@ mod im_membership;
 mod im_sync;
 #[path = "../im_ws_fanout.rs"]
 mod im_ws_fanout;
+#[path = "../link_service.rs"]
+mod link_service;
 #[path = "../request_accept_assignee.rs"]
 mod request_accept_assignee;
 #[path = "../request_idempotent_create.rs"]
