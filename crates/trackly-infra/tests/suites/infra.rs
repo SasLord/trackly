@@ -73,6 +73,8 @@ mod history_events_repo;
 mod im_migration;
 #[path = "../im_repo.rs"]
 mod im_repo;
+#[path = "../link_migration.rs"]
+mod link_migration;
 #[path = "../migration_idempotency.rs"]
 mod migration_idempotency;
 #[path = "../number_templates_migration.rs"]
