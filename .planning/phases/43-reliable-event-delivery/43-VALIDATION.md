@@ -1,10 +1,11 @@
 ---
 phase: 43
 slug: reliable-event-delivery
-status: automated-green
+status: validated
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-11-26
+audited: 2026-11-27
 ---
 
 # Phase 43 — Validation Strategy
@@ -69,8 +70,17 @@ created: 2026-11-26
 | 43-09-T2 | DLV-03 | форма заявки держит один clientRequestId | structural gate | `node ui/scripts/check-request-create-idempotency.mjs --selftest && node ui/scripts/check-request-create-idempotency.mjs` | ui/scripts/check-request-create-idempotency.mjs | ✅ |
 | 43-10-T1 | DLV-03 | стор неотправленных: один id на все попытки | JS-исполняющий гейт | `node ui/scripts/check-chat-pending-behavior.mjs --selftest && node ui/scripts/check-chat-pending-behavior.mjs` | ui/scripts/check-chat-pending-behavior.mjs | ✅ |
 | 43-10-T2 | DLV-03 | структура UI чата («Не отправлено», «Повторить») | structural gate | `node ui/scripts/check-chat-ui.mjs --selftest && node ui/scripts/check-chat-ui.mjs` | ui/scripts/check-chat-ui.mjs | ✅ |
+| 43-13 | DLV-02, DLV-03 | im_sync/im_send после закрытия CR-01 (курсор, replay, окно исключённого) | integration | `cargo test -p trackly-app --test app_server im_` + `cargo test -p trackly-infra --test infra_tests im_repo` | tests/{im_sync,im_idempotent_send,im_membership}.rs, crates/trackly-infra/tests/im_repo.rs | ✅ |
+| 43-14 | DLV-04 | проба/onclose: один живой сокет, запоздалый onclose не обнуляет ws (R12, R12b, R13) | JS-исполняющий гейт | `node ui/scripts/check-ws-resync.mjs --selftest && node ui/scripts/check-ws-resync.mjs` | ui/scripts/check-ws-resync.mjs | ✅ |
+| 43-15 | DLV-03 | повтор только сетевых сбоев и 502/503/504; 4xx и TypeError — нет (S7–S10) | JS-исполняющий гейт | `node ui/scripts/check-send-retry.mjs --selftest && node ui/scripts/check-send-retry.mjs` | ui/scripts/check-send-retry.mjs | ✅ |
+| 43-16 | DLV-03 | черновики вложений неотправленного, текст в поле не дублируется (P9–P14, C1–C4) | JS-исполняющий гейт | `node ui/scripts/check-chat-pending-behavior.mjs --selftest && node ui/scripts/check-chat-ui.mjs --selftest` | ui/scripts/check-chat-pending-behavior.mjs | ✅ |
+| 43-17 | DLV-03 | новый clientRequestId при правке формы, один id без правок (Q1–Q4, I1–I5) | JS-исполняющий гейт | `node ui/scripts/check-request-create-idempotency.mjs --selftest && node ui/scripts/check-request-create-idempotency.mjs` | ui/scripts/check-request-create-idempotency.mjs | ✅ |
+| 43-18 | DLV-01 | ресинк дерева мест сбрасывает кеш счётчиков (INV-12) | structural gate | `node ui/scripts/check-place-tree-invalidation.mjs --selftest && node ui/scripts/check-place-tree-invalidation.mjs` | ui/scripts/check-place-tree-invalidation.mjs | ✅ |
+| 43-19 | DLV-03 | client_msg_id в ленте чата у автора, replay chat_send | integration | `cargo test -p trackly-app --test app_chat chat_` | tests/{chat_feed,chat_idempotent_send}.rs | ✅ |
+| 43-20 | DLV-03 | сверка очереди неотправленных с лентой по client_msg_id (P15, P15b, P15c, C5) | JS-исполняющий гейт | `node ui/scripts/check-chat-pending-behavior.mjs --selftest && node ui/scripts/check-chat-pending-behavior.mjs` | ui/scripts/check-chat-pending-behavior.mjs | ✅ |
+| 43-21 | all | сквозные гейты по областям 43-13..43-20 + живая проверка A–F на стенде (LAN-путь) | full + стенд | см. план 43-21 | — | ✅ |
 | 43-11-T2 | all | сплошной прогон: fmt, clippy, cargo test --workspace, lint, svelte-check, build | full | см. план 43-11 | — | ✅ |
-| 43-12-T2/T3 | all | живая проверка LAN-браузер и десктоп | manual | чек-лист плана 43-12 | — | ⬜ pending |
+| 43-12-T2/T3 | all | живая проверка LAN-браузер и десктоп | manual | чек-лист плана 43-12 | — | ✅ (Windows, сборка 1.5.0-phase43, «approved») |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -111,4 +121,17 @@ created: 2026-11-26
 - [x] Feedback latency < 180s
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** автоматические проверки зелёные (2026-11-27: сплошной прогон 3148 passed / 0 failed / 7 ignored); ручные проверки — за Планом 43-12
+**Approval:** автоматические проверки зелёные (2026-11-27: сплошной прогон 3148 passed / 0 failed / 7 ignored); ручные проверки пройдены (План 43-12, Windows; План 43-21, стенд A–F)
+
+---
+
+## Validation Audit 2026-11-27
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 (требования DLV-01..04 покрыты; в карте не было строк планов 43-13..43-21) |
+| Resolved | 9 строк карты добавлено, статус 43-12 обновлён |
+| Escalated | 0 |
+
+Перепроверено: 8 JS-гейтов (`--selftest` + боевой прогон) — зелёные; `infra_tests im_repo` 7/7, `app_server im_` 25/25, `app_chat chat_` 48/48.
+Не покрыто автоматикой (как и раньше): десктоп WKWebView/WebView2 для правок 43-13..43-20 — живая проверка 43-21 шла только по LAN-пути.
