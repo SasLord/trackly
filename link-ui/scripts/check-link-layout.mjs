@@ -10,6 +10,8 @@
 //   [L2] tauri.conf.json: размеры 1000x700, минимум 720x500, visible:false, имя и бинарник;
 //   [L3] capabilities/main.json: ровно core:default, window-state:default и
 //        core:window:allow-set-background-color (фон окна под тему, quick 261126-rbg);
+//   [L5] App.svelte не использует screenFor / <AccountMenu / <OfflineBanner (план 44-13);
+//   [L6] в link-ui/src есть «Доверять» (кнопки принятия сертификата нет нигде, D-07);
 //   [L4] в link-ui/src есть {@html, fetch(, XMLHttpRequest, WebSocket (сети в webview нет, ADR 0002).
 // Отсутствие файла — нарушение, не SKIP.
 //
@@ -80,6 +82,9 @@ export function check(root) {
     need(/<main[\s>]/.test(a), '[L1] App.svelte: нет <main');
     need(a.includes('Здесь скоро будет чат'), '[L1] App.svelte: нет заглушки чата');
     need(/<StatusLine[\s/>]/.test(a), '[L1] App.svelte: нет StatusLine');
+    need(/\bscreenFor\s*\(/.test(a), '[L5] App.svelte: экран выбирается не через screenFor');
+    need(/<AccountMenu[\s/>]/.test(a), '[L5] App.svelte: нет AccountMenu');
+    need(/<OfflineBanner[\s/>]/.test(a), '[L5] App.svelte: нет OfflineBanner');
   }
 
   const confText = read(root, 'crates/link-app/tauri.conf.json', violations, 'L2');
@@ -121,6 +126,12 @@ export function check(root) {
     }
   }
 
+  for (const f of svelte) {
+    checks++;
+    if (stripComments(fs.readFileSync(f, 'utf8')).includes('Доверять'))
+      violations.push(`[L6] ${path.relative(root, f)}: «Доверять» (принятие сертификата запрещено)`);
+  }
+
   for (const f of files.filter((x) => /\.(svelte|ts)$/.test(x))) {
     const t = stripComments(fs.readFileSync(f, 'utf8'));
     const rel = path.relative(root, f);
@@ -153,6 +164,10 @@ function selftest() {
     ['L1', 'link-ui/src/App.svelte', '<aside', '<div'],
     ['L1', 'link-ui/src/App.svelte', 'Здесь скоро будет чат', 'Пусто'],
     ['L1', 'link-ui/src/App.svelte', '<StatusLine />', ''],
+    ['L5', 'link-ui/src/App.svelte', 'screenFor(st)', 'String(st)'],
+    ['L5', 'link-ui/src/App.svelte', '<AccountMenu', '<div'],
+    ['L5', 'link-ui/src/App.svelte', '<OfflineBanner />', ''],
+    ['L6', 'link-ui/src/App.svelte', 'Беседы появятся здесь', 'Доверять'],
     ['L2', 'crates/link-app/tauri.conf.json', '"minWidth": 720', '"minWidth": 400'],
     ['L2', 'crates/link-app/tauri.conf.json', '"visible": false', '"visible": true'],
     [

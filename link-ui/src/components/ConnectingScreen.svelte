@@ -2,7 +2,9 @@
   // UI-SPEC §6.2: экран «Подключение…» (старт и автовход). Кнопок нет.
   import AuthShell from '@trackly/kit/components/AuthShell.svelte';
   import Spinner from '@trackly/kit/components/Spinner.svelte';
+  import Button from '@trackly/kit/components/Button.svelte';
   import LinkLogo from './LinkLogo.svelte';
+  import { quit } from '../lib/linkApi';
 
   interface Props {
     /** Что делаем сейчас: проверяем сервер или выполняем автовход. */
@@ -11,9 +13,11 @@
     server?: string;
     /** Сервер молчит дольше 15 с. */
     slow?: boolean;
+    /** Linux без трея: кнопка «Закрыть Link» (D-20). */
+    showQuit?: boolean;
   }
 
-  const { phase = 'server', server, slow = false }: Props = $props();
+  const { phase = 'server', server, slow = false, showQuit = false }: Props = $props();
 </script>
 
 <AuthShell maxWidth={400}>
@@ -29,6 +33,11 @@
   </div>
   {#if server}
     <p class="server">Сервер: {server}</p>
+  {/if}
+  {#if showQuit}
+    <div class="quit">
+      <Button variant="link" onclick={() => quit().catch(() => {})}>Закрыть Link</Button>
+    </div>
   {/if}
 </AuthShell>
 
@@ -62,6 +71,12 @@
   }
 
   .server {
+    margin-top: var(--tr-space-md);
+  }
+
+  .quit {
+    display: flex;
+    justify-content: center;
     margin-top: var(--tr-space-md);
   }
 </style>
