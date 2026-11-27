@@ -20,6 +20,7 @@ pub mod groups;
 pub mod health;
 pub mod history;
 pub mod im;
+pub mod link;
 pub mod number_templates;
 pub mod organization;
 pub mod places;
@@ -204,6 +205,8 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(dashboard::router())
         .merge(settings_org::router())
         .merge(sso::router())
+        // Link: публичные маршруты входа/enrollment (вне защиты сессией, проверка устройства).
+        .merge(link::router())
         // Role-refresh middleware — INNER to the session layer (session must be loaded
         // first). Rewrites the session's cached role from the DB so role changes apply
         // without a re-login (see `refresh_session_role`).

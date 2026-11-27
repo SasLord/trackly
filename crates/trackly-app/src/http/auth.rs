@@ -119,6 +119,39 @@ pub async fn session_identity(session: &Session) -> Result<Identity, AppError> {
 // build_* helpers
 // ---------------------------------------------------------------------------
 
+/// Выдать сессию аутентифицированному пользователю: flush (T-05-SF) → insert identity →
+/// expiry. Общая часть `build_auth_login` и входов Link; порядок шагов не менять.
+pub async fn establish_session(
+    session: &Session,
+    user: &UserDto,
+    expiry: tower_sessions::Expiry,
+) -> Result<(), AppError> {
+    // T-05-SF: flush BEFORE insert (session fixation prevention).
+    session.flush().await.map_err(|e| AppError::Internal {
+        source_chain: format!("session flush (login): {e}"),
+    })?;
+    // `flush()` стирает данные и запись в хранилище, но загруженная запись сохраняет СТАРЫЙ
+    // идентификатор, и следующий `insert` создал бы сессию под ним (tower-sessions 0.15):
+    // подложенный до входа cookie остался бы валидным. `cycle_id()` выдаёт новый идентификатор.
+    session.cycle_id().await.map_err(|e| AppError::Internal {
+        source_chain: format!("session cycle_id (login): {e}"),
+    })?;
+
+    let role = Role::from_str(&user.role)?;
+    let identity = Identity {
+        user_id: Some(user.id),
+        role,
+    };
+    session
+        .insert("identity", SessionIdentity::from(&identity))
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("session insert (login): {e}"),
+        })?;
+    session.set_expiry(Some(expiry));
+    Ok(())
+}
+
 /// Аутентификация по логину + пароль → сессия.
 ///
 /// **Session fixation mitigation (T-05-SF):**
@@ -145,24 +178,6 @@ pub async fn build_auth_login(
     let remember = payload.req.remember;
     let user = ctx.auth.login(payload.req).await?;
 
-    // T-05-SF: flush BEFORE insert (session fixation prevention).
-    session.flush().await.map_err(|e| AppError::Internal {
-        source_chain: format!("session flush (login): {e}"),
-    })?;
-
-    let role = Role::from_str(&user.role)?;
-    let identity = Identity {
-        user_id: Some(user.id),
-        role,
-    };
-    let session_identity = SessionIdentity::from(&identity);
-    session
-        .insert("identity", session_identity)
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("session insert (login): {e}"),
-        })?;
-
     // D-UX-02: remember=true → persistent sliding 30-day cookie;
     // remember=false → session-only cookie (cleared on browser close).
     let expiry = if remember {
@@ -170,7 +185,7 @@ pub async fn build_auth_login(
     } else {
         tower_sessions::Expiry::OnSessionEnd
     };
-    session.set_expiry(Some(expiry));
+    establish_session(&session, &user, expiry).await?;
 
     Ok(user)
 }

@@ -23,6 +23,10 @@ mod im_membership;
 mod im_sync;
 #[path = "../im_ws_fanout.rs"]
 mod im_ws_fanout;
+#[path = "../link_auth.rs"]
+mod link_auth;
+#[path = "../link_enroll.rs"]
+mod link_enroll;
 #[path = "../link_service.rs"]
 mod link_service;
 #[path = "../request_accept_assignee.rs"]

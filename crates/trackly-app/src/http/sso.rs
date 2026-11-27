@@ -94,12 +94,44 @@ async fn issue_sso_session(
     Ok(user.full_name)
 }
 
-/// `GET /api/v1/auth_ad_sso` — the SPNEGO/Negotiate handshake endpoint.
-pub async fn handler_ad_sso(
-    State(ctx): State<AppCtx>,
-    session: Session,
-    headers: HeaderMap,
-) -> Response {
+/// Why the Negotiate core could not authenticate the caller. Shared by the browser
+/// endpoint (`handler_ad_sso`) and the Link endpoint (`http::link`), which map the
+/// variants to their own response shapes.
+pub(crate) enum SsoFailure {
+    /// SSO is off or SPN/keytab are not configured.
+    Disabled,
+    /// No usable `Authorization: Negotiate` — answer with a challenge (optionally with a
+    /// continuation reply token).
+    Challenge(Option<Vec<u8>>),
+    /// The Negotiate token is not valid base64.
+    BadToken,
+    /// The keytab file cannot be read.
+    KeytabUnavailable,
+    /// The ticket was not accepted (details are logged, never returned).
+    Denied,
+}
+
+/// A successfully accepted ticket: the AD account and the optional mutual-auth reply.
+pub(crate) struct Negotiated {
+    pub username: String,
+    pub reply_token: Vec<u8>,
+}
+
+/// `Negotiate [<base64>]` header value for a challenge / mutual-auth reply.
+pub(crate) fn negotiate_header(reply: Option<&[u8]>) -> Option<HeaderValue> {
+    let header_value = match reply {
+        Some(r) if !r.is_empty() => format!("Negotiate {}", b64().encode(r)),
+        _ => "Negotiate".to_string(),
+    };
+    HeaderValue::from_str(&header_value).ok()
+}
+
+/// The shared Negotiate core: gate (live toggle + SPN/keytab), header parsing, keytab
+/// read and ticket validation. Does not touch the session or the user table.
+pub(crate) async fn negotiate_identity(
+    ctx: &AppCtx,
+    headers: &HeaderMap,
+) -> Result<Negotiated, SsoFailure> {
     let ad = &ctx.config.ad;
 
     // Gate: SSO must be explicitly enabled (live app_settings toggle, editable in the AD
@@ -107,11 +139,7 @@ pub async fn handler_ad_sso(
     // nothing else. A read failure is treated as "off" (fail closed).
     let sso_on = ctx.auth.ad_sso_enabled().await.unwrap_or(false);
     if !sso_on || ad.spn.is_empty() || ad.keytab_path.is_empty() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Вход через Active Directory недоступен на этом сервере" })),
-        )
-            .into_response();
+        return Err(SsoFailure::Disabled);
     }
 
     // Extract the Negotiate token, or challenge if absent.
@@ -126,19 +154,10 @@ pub async fn handler_ad_sso(
             h[NEGOTIATE_PREFIX.len()..].trim()
         }
         // No/foreign auth scheme → send the Negotiate challenge (browser retries with a ticket).
-        _ => return negotiate_challenge(None),
+        _ => return Err(SsoFailure::Challenge(None)),
     };
 
-    let token = match b64().decode(token_b64) {
-        Ok(t) => t,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Некорректный Negotiate-токен" })),
-            )
-                .into_response()
-        }
-    };
+    let token = b64().decode(token_b64).map_err(|_| SsoFailure::BadToken)?;
 
     // Read the service keytab (bytes never logged). Missing/unreadable ⇒ 503.
     let keytab_bytes = match std::fs::read(&ad.keytab_path) {
@@ -148,11 +167,7 @@ pub async fn handler_ad_sso(
                 "AD SSO: не удалось прочитать keytab {}: {e}",
                 ad.keytab_path
             );
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "error": "Файл keytab недоступен на сервере" })),
-            )
-                .into_response();
+            return Err(SsoFailure::KeytabUnavailable);
         }
     };
 
@@ -163,6 +178,31 @@ pub async fn handler_ad_sso(
 
     match accept_spnego(&ad.spn, &keytab_bytes, &client_computer_name, &token) {
         Ok(SsoOutcome::Authenticated {
+            username,
+            reply_token,
+        }) => Ok(Negotiated {
+            username,
+            reply_token,
+        }),
+        // Kerberos usually completes in one step; a continuation just re-challenges.
+        Ok(SsoOutcome::Continue { reply_token }) => Err(SsoFailure::Challenge(Some(reply_token))),
+        Ok(SsoOutcome::Denied) => Err(SsoFailure::Denied),
+        Err(e) => {
+            // Do not leak internals (bad SPN, keytab mismatch, crypto detail) to the client.
+            tracing::warn!("AD SSO accept failed: {e}");
+            Err(SsoFailure::Denied)
+        }
+    }
+}
+
+/// `GET /api/v1/auth_ad_sso` — the SPNEGO/Negotiate handshake endpoint.
+pub async fn handler_ad_sso(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    headers: HeaderMap,
+) -> Response {
+    match negotiate_identity(&ctx, &headers).await {
+        Ok(Negotiated {
             username,
             reply_token,
         }) => match issue_sso_session(&ctx, &session, &username).await {
@@ -184,22 +224,27 @@ pub async fn handler_ad_sso(
             // Pending/blocked/etc. — surface the same typed error password AD login returns.
             Err(e) => AppErrorResponse::from(e).into_response(),
         },
-        // Kerberos usually completes in one step; a continuation just re-challenges.
-        Ok(SsoOutcome::Continue { reply_token }) => negotiate_challenge(Some(&reply_token)),
-        Ok(SsoOutcome::Denied) => (
+        Err(SsoFailure::Disabled) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Вход через Active Directory недоступен на этом сервере" })),
+        )
+            .into_response(),
+        Err(SsoFailure::Challenge(reply)) => negotiate_challenge(reply.as_deref()),
+        Err(SsoFailure::BadToken) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Некорректный Negotiate-токен" })),
+        )
+            .into_response(),
+        Err(SsoFailure::KeytabUnavailable) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Файл keytab недоступен на сервере" })),
+        )
+            .into_response(),
+        Err(SsoFailure::Denied) => (
             StatusCode::UNAUTHORIZED,
             Json(json!({ "error": "Не удалось подтвердить вход через Active Directory" })),
         )
             .into_response(),
-        Err(e) => {
-            // Do not leak internals (bad SPN, keytab mismatch, crypto detail) to the client.
-            tracing::warn!("AD SSO accept failed: {e}");
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({ "error": "Не удалось подтвердить вход через Active Directory" })),
-            )
-                .into_response()
-        }
     }
 }
 
