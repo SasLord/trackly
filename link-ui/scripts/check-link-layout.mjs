@@ -129,7 +129,9 @@ export function check(root) {
   for (const f of svelte) {
     checks++;
     if (stripComments(fs.readFileSync(f, 'utf8')).includes('Доверять'))
-      violations.push(`[L6] ${path.relative(root, f)}: «Доверять» (принятие сертификата запрещено)`);
+      violations.push(
+        `[L6] ${path.relative(root, f)}: «Доверять» (принятие сертификата запрещено)`,
+      );
   }
 
   for (const f of files.filter((x) => /\.(svelte|ts)$/.test(x))) {

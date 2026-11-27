@@ -81,7 +81,7 @@
       formError = (e as { message: string }).message;
       password = '';
       // фокус в «Пароль» после снятия disabled
-      queueMicrotask(() => document.getElementById('link-password')?.focus());
+      window.queueMicrotask(() => document.getElementById('link-password')?.focus());
     } finally {
       loading = false;
     }

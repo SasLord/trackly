@@ -16,7 +16,8 @@
 //   [B3] ровно один `Button.svelte` вне `node_modules`/`dist` (ui/src, packages, link-ui):
 //        дубль означает, что переезд оставил копию;
 //   [B4] `link-ui/src` не импортирует `ui/` (ни `$lib`, ни `ui/src`, ни относительный выход
-//        из `link-ui`), а из `@tauri-apps/*` допускается только `@tauri-apps/api/core`;
+//        из `link-ui`), а из `@tauri-apps/*` допускаются только `@tauri-apps/api/core` и `@tauri-apps/api/event`
+//        (invoke команд и listen('link-event') — Фаза 44, план 10);
 //   [B6] lint link-ui (check-link-layout) реально запускается: скрипт `lint` в link-ui/package.json
 //        зовёт check-link-layout.mjs, а ci-fast.yml и ci-full.yml содержат шаг
 //        `pnpm --dir link-ui lint` (WR-01: гейт был нигде не подключён);
@@ -48,6 +49,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './_strip.mjs';
+
+const LINK_UI_TAURI_ALLOWED = new Set(['@tauri-apps/api/core', '@tauri-apps/api/event']);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..');
@@ -170,8 +173,10 @@ export function check(root) {
             `[B4] ${relFile}: link-ui импортирует ui/ или выходит из своего каталога: '${spec}'`,
           );
         }
-        if (spec.startsWith('@tauri-apps/') && spec !== '@tauri-apps/api/core') {
-          v.push(`[B4] ${relFile}: из @tauri-apps/* разрешён только api/core, найдено '${spec}'`);
+        if (spec.startsWith('@tauri-apps/') && !LINK_UI_TAURI_ALLOWED.has(spec)) {
+          v.push(
+            `[B4] ${relFile}: из @tauri-apps/* разрешены только api/core и api/event, найдено '${spec}'`,
+          );
         }
       }
     }

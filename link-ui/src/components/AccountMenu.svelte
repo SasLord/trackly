@@ -16,8 +16,13 @@
     showQuit?: boolean;
   }
 
-  const { displayName = null, method = null, server, connection, showQuit = false }: Props =
-    $props();
+  const {
+    displayName = null,
+    method = null,
+    server,
+    connection,
+    showQuit = false,
+  }: Props = $props();
 
   let menu = $state<{ openAt: (x: number, y: number) => void } | null>(null);
   let btn = $state<HTMLButtonElement | null>(null);
