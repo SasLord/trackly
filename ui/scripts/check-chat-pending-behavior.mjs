@@ -19,6 +19,7 @@
 //   [P9/P10] отказ/ошибка на ПОВТОРЕ оставляют запись 'failed' (CR-02);
 //   [P11] discardUnheldDrafts не чистит черновики, удерживаемые очередью;
 //   [P12] returnToDraft; [P13] restoreText; [P14] первичный отказ снимает запись;
+//   [P15/b/c] reconcileWithFeed (WR-04); [C5] вызов сверки в load();
 //   [C1-C4] структурные правила ChatComposer/ChatPendingMessage.
 //
 // Usage: node scripts/check-chat-pending-behavior.mjs [--selftest]
@@ -299,6 +300,52 @@ async function runCases(overrides) {
     );
   });
 
+  // P15: сверка очереди с лентой по clientMsgId (WR-04, D-11, D-12)
+  const failFor = async (requestId, text) => {
+    H.queue = ['net', 'net', 'net', 'net'];
+    await st.submitMessage(requestId, text, [], noSleep);
+    return st.pending.items[st.pending.items.length - 1].clientMsgId;
+  };
+  await guard('P15', async () => {
+    reset();
+    const a = await failFor(1, 'a');
+    const b = await failFor(1, 'b');
+    const c = await failFor(2, 'c');
+    st.reconcileWithFeed(1, [a, c, 'zzz']);
+    const left = st.pending.items.map((p) => p.clientMsgId);
+    expect(
+      'P15',
+      left.length === 2 && left.includes(b) && left.includes(c) && !left.includes(a),
+      `P15: осталось ${JSON.stringify(st.pending.items)}`,
+    );
+  });
+  await guard('P15b', async () => {
+    reset();
+    const d = await failFor(1, 'd');
+    let release;
+    H.gate = new Promise((res) => (release = res));
+    H.queue = [];
+    const p = st.retryMessage(d, noSleep);
+    st.reconcileWithFeed(1, [d]);
+    const kept = st.pending.items.length === 1 && st.pending.items[0].status === 'sending';
+    release();
+    await p;
+    expect('P15b', kept, 'P15b: запись «Отправляется» снята сверкой');
+  });
+  await guard('P15c', async () => {
+    reset();
+    const e = await failFor(1, 'e');
+    const before = st.pending.items;
+    st.reconcileWithFeed(1, []);
+    st.reconcileWithFeed(1, ['nope']);
+    expect(
+      'P15c',
+      st.pending.items.length === 1 && st.pending.items[0].clientMsgId === e,
+      'P15c: лишнее снятие',
+    );
+    expect('P15c', st.pending.items === before, 'P15c: массив переприсвоен без изменений');
+  });
+
   // C1-C4: структурные правила компонентов
   // Мутанты применяются и к структурным правилам: те же правки, что получает загрузчик модулей.
   const rd = (f) => {
@@ -323,6 +370,12 @@ async function runCases(overrides) {
     const j = comp.indexOf('</script>', i);
     const body = i >= 0 ? comp.slice(i, j) : '';
     expect('C3', i >= 0 && !body.includes('clearDraft('), 'C3: send() вызывает clearDraft(');
+    const rc = rd('RequestChat.svelte');
+    const li = rc.indexOf('async function load(');
+    const body5 = li >= 0 ? rc.slice(li, rc.indexOf('\n  }\n', li)) : '';
+    const fi = body5.indexOf('feed = res;');
+    const ri = body5.indexOf('reconcileWithFeed(');
+    expect('C5', fi >= 0 && ri > fi, 'C5: load() не зовёт reconcileWithFeed( после feed = res');
     expect(
       'C4',
       rd('ChatPendingMessage.svelte').includes('onToDraft(item.clientMsgId)'),
@@ -431,6 +484,34 @@ const MUTANTS = [
     from: 'onclick={() => onToDraft(item.clientMsgId)}',
     to: 'disabled',
     expect: 'C4',
+  },
+  {
+    name: 'load() не сверяет очередь с лентой',
+    file: CHAT + 'RequestChat.svelte',
+    from: 'reconcileWithFeed(requestId, ownIds);',
+    to: '',
+    expect: 'C5',
+  },
+  {
+    name: 'сверка снимает записи любого статуса',
+    file: PS,
+    from: "p.status === 'failed' && seen.has(",
+    to: 'seen.has(',
+    expect: 'P15b',
+  },
+  {
+    name: 'сверка игнорирует заявку',
+    file: PS,
+    from: 'p.requestId === requestId && p.status === ',
+    to: 'p.status === ',
+    expect: 'P15',
+  },
+  {
+    name: 'сверка переприсваивает без изменений',
+    file: PS,
+    from: 'if (keep.length !== pending.items.length) pending.items = keep;',
+    to: 'pending.items = [...pending.items];',
+    expect: 'P15c',
   },
 ];
 

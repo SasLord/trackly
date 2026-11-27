@@ -115,6 +115,20 @@ export function returnToDraft(clientMsgId: string): string | null {
   return item.text;
 }
 
+/**
+ * Сверка очереди с лентой (WR-04, D-11, D-12): если сервер сохранил сообщение, хотя ответ потерялся,
+ * запись «Не отправлено» с тем же clientMsgId снимается. Сверка только по clientMsgId, не по тексту;
+ * записи «Отправляется…» не трогаем — их завершает dispatch.
+ */
+export function reconcileWithFeed(requestId: number, clientMsgIds: Iterable<string>): void {
+  const seen = new Set(clientMsgIds);
+  if (seen.size === 0) return;
+  const keep = pending.items.filter(
+    (p) => !(p.requestId === requestId && p.status === 'failed' && seen.has(p.clientMsgId)),
+  );
+  if (keep.length !== pending.items.length) pending.items = keep;
+}
+
 registerUserScopedReset(() => {
   pending.items = [];
 });
