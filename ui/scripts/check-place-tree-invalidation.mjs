@@ -110,6 +110,14 @@
 //           `reloadSeqNow` в сторе возвращает `placeContentEventsStore.reloadSeq`.
 //           (В плане quick — «INV-10»; номер занят инвентарём 41.12, отсюда 11.)
 //
+//   INV-12 (WR-05 ревью фазы 43, план 43-18) — РЕСИНК СБРАСЫВАЕТ КЭШ СЧЁТЧИКОВ.
+//           Потерянное при обрыве событие `entities_changed` не донесло `placeIds`, поэтому
+//           `Layout.handleResync` обязан звать `notifyEntitiesChanged([], { all: true })`:
+//           стор поднимает `resetSeq` (только при флаге), `reloadSeqNow`-соседом читается
+//           `resetSeqNow()` в ЕДИНСТВЕННОМ эффекте загрузки PlaceTree, а тот зовёт
+//           `resetStatsCache()` (statsGen += 1, statsInFlight.clear(), statsCache = {}).
+//           Новых `$effect` нет (INV-1/INV-11).
+//
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
 // доказывает отсутствие цикла в рантайме — это по-прежнему проверяется живым
@@ -133,6 +141,7 @@ const TAG = '[check-place-tree-invalidation]';
 
 const TREE = 'src/features/places/PlaceTree.svelte';
 const STORE = 'src/lib/stores/placeContentEvents.svelte.ts';
+const LAYOUT = 'src/features/layout/Layout.svelte';
 // INV-7 (registry-driven, 40.1 exhaustive sweep) scans this whole subtree —
 // see `checkCompleteness` below — instead of a fixed file list.
 const FEATURES_DIR = 'src/features';
@@ -624,6 +633,41 @@ function checkTree(treeSrc, violations) {
     });
   }
 
+  // INV-12 (в) — resetStatsCache очищает кэш и вызывается из refreshTree.
+  const resetBody = functionBody(code, 'resetStatsCache');
+  if (
+    resetBody === null ||
+    !/statsGen\s*\+=\s*1/.test(resetBody) ||
+    !/statsInFlight\.clear\(\)/.test(resetBody) ||
+    !/statsCache\s*=\s*\{\s*\}/.test(resetBody)
+  ) {
+    violations.push({
+      file: TREE,
+      inv: 'INV-12',
+      message: 'resetStatsCache отсутствует или не делает statsGen += 1 / statsInFlight.clear() / statsCache = {}',
+      hint: 'Ресинк после обрыва обязан обнулять кэш счётчиков (D-08), иначе они остаются устаревшими до ручного «Обновить».',
+    });
+  }
+  const refreshBody = functionBody(code, 'refreshTree');
+  if (refreshBody === null || !refreshBody.includes('resetStatsCache(')) {
+    violations.push({
+      file: TREE,
+      inv: 'INV-12',
+      message: 'refreshTree не вызывает resetStatsCache()',
+      hint: 'Кнопка «Обновить» и ресинк должны делить один сброс кэша.',
+    });
+  }
+  // INV-12 (г) — ровно один эффект с resetSeqNow( и в нём resetStatsCache(.
+  const resetEffects = effects.filter((e) => e.includes('resetSeqNow('));
+  if (resetEffects.length !== 1 || !resetEffects[0].includes('resetStatsCache(')) {
+    violations.push({
+      file: TREE,
+      inv: 'INV-12',
+      message: `ожидался ровно один $effect с resetSeqNow( и вызовом resetStatsCache(, найдено ${resetEffects.length}`,
+      hint: 'Сброс по resetSeq живёт внутри эффекта загрузки; отдельный эффект запрещён INV-1/INV-11.',
+    });
+  }
+
   // INV-5 — соседний ленивый эффект сохраняет свой сходящийся гейт.
   const lazy = effects.filter((e) => e.includes('places_subtree_stats'));
   if (lazy.length !== 1) {
@@ -642,6 +686,19 @@ function checkTree(treeSrc, violations) {
         'Этот эффект тоже читает и пишет один и тот же $state и сходится ТОЛЬКО благодаря гейту: запись добавляет ' +
         'ключ, которого раньше не было, поэтому повторный проход его пропускает. Без гейта — тот же бесконечный ' +
         'цикл effect_update_depth_exceeded, что и в UAT3-03a.',
+    });
+  }
+}
+
+function checkLayout(layoutSrc, violations) {
+  const code = stripComments(layoutSrc);
+  const body = functionBody(code, 'handleResync');
+  if (body === null || !/notifyEntitiesChanged\(\s*\[\]\s*,\s*\{\s*all:\s*true\s*\}\s*\)/.test(body)) {
+    violations.push({
+      file: LAYOUT,
+      inv: 'INV-12',
+      message: 'Layout.handleResync не вызывает notifyEntitiesChanged([], { all: true })',
+      hint: 'Ресинк без флага перечитывает дерево, но не сбрасывает кэш счётчиков (WR-05).',
     });
   }
 }
@@ -665,6 +722,34 @@ function checkStore(storeSrc, violations) {
       hint:
         'Подмена поля (например .seq) переводит эффект загрузки дерева на чужой счётчик: перезагрузка по ' +
         'событию другого клиента (D-17) молча умирает или срабатывает на каждое локальное notify.',
+    });
+  }
+  // INV-12 (а, б) — resetSeq в сторе.
+  const resetNow = functionBody(code, 'resetSeqNow');
+  const entities = functionBody(code, 'notifyEntitiesChanged');
+  const userReset = code.slice(code.indexOf('registerUserScopedReset('));
+  if (
+    resetNow === null ||
+    !/^\s*return\s+placeContentEventsStore\.resetSeq\s*;?\s*$/.test(resetNow) ||
+    !/placeContentEventsStore\.resetSeq\s*=\s*0/.test(userReset)
+  ) {
+    violations.push({
+      file: STORE,
+      inv: 'INV-12',
+      message: 'resetSeqNow отсутствует/возвращает не resetSeq либо resetSeq не обнуляется в registerUserScopedReset',
+      hint: 'Без resetSeq ресинк не может сообщить PlaceTree о полном сбросе кэша.',
+    });
+  }
+  if (
+    entities === null ||
+    !/resetSeq\s*\+=\s*1/.test(entities) ||
+    !/opts\??\.all/.test(entities)
+  ) {
+    violations.push({
+      file: STORE,
+      inv: 'INV-12',
+      message: 'notifyEntitiesChanged не поднимает resetSeq по флагу all',
+      hint: 'Полный сброс — только по флагу; обычное событие с placeIds остаётся точечным (D-10).',
     });
   }
   const body = functionBody(code, 'notifyPlaceContentChanged');
@@ -1574,6 +1659,7 @@ function collectViolations(read, srcFiles, featureFiles = featureSvelteFiles(src
   const codeFiles = srcFiles.filter(isCodeFile);
   checkTree(read(TREE), violations);
   checkStore(read(STORE), violations);
+  checkLayout(read(LAYOUT), violations);
   checkSrcInventory(srcFiles, violations);
   checkCompleteness(codeFiles, violations, read);
   checkServerCommands(codeFiles, violations, read);
@@ -2201,6 +2287,51 @@ function selftest() {
         ),
       expectInv: ['INV-11'],
       exact: 1,
+    },
+    {
+      name: 'INV-12: store — resetSeq не поднимается',
+      run: () =>
+        run(swap(STORE, 'resetSeq += 1', 'void 0', 'resetSeq += 1 снят')),
+      expectInv: ['INV-12'],
+    },
+    {
+      name: 'INV-12: PlaceTree — resetStatsCache не вызывается из эффекта загрузки',
+      run: () =>
+        run(
+          swap(
+            TREE,
+            'if (seenResetSeq !== rs) {',
+            'if (seenResetSeq !== rs && false) {',
+            'сброс в эффекте отключён',
+          ),
+        ),
+      expectInv: ['INV-12'],
+    },
+    {
+      name: 'INV-12: PlaceTree — resetStatsCache не очищает statsCache',
+      run: () =>
+        run(
+          swap(
+            TREE,
+            'function resetStatsCache(): void {\n    statsGen += 1;\n    statsInFlight.clear();\n    statsCache = {};',
+            'function resetStatsCache(): void {\n    statsGen += 1;\n    statsInFlight.clear();',
+            'statsCache = {} снят',
+          ),
+        ),
+      expectInv: ['INV-12'],
+    },
+    {
+      name: 'INV-12: Layout.handleResync без флага all',
+      run: () =>
+        run(
+          swap(
+            LAYOUT,
+            'notifyEntitiesChanged([], { all: true });',
+            'notifyEntitiesChanged([]);',
+            'флаг all снят',
+          ),
+        ),
+      expectInv: ['INV-12'],
     },
     {
       name: 'INV-11: store — reloadSeqNow возвращает .seq вместо .reloadSeq',
