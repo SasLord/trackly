@@ -5,6 +5,7 @@ members = [
     "crates/trackly-infra",
     "crates/trackly-app",
     "crates/link-app",
+    "crates/link-proto",
     "tools/procmon-check",
 ]
 
@@ -85,6 +86,11 @@ windows = { version = "0.62", default-features = false, features = ["UI_Notifica
 tauri-plugin-fs = "2"
 tauri-plugin-window-state = "2.5.0"
 snmp2 = { version = "0.5", features = ["crypto-rust", "tokio"] }
+# Phase 44: общий протокол клиента Link и сервера (SPKI-отпечаток, код-приглашение, DTO).
+link-proto = { path = "crates/link-proto" }
+# Phase 44: разбор SPKI листового сертификата (0.18.1 уже в Cargo.lock; одобрен в 44-01).
+x509-parser = "0.18"
+base64 = "0.22"
 
 [workspace.lints.clippy]
 disallowed_methods = "deny"

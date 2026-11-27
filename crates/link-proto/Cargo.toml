@@ -1,0 +1,22 @@
+[package]
+name = "link-proto"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Общий протокол Trackly Link: SPKI-отпечаток, код-приглашение, DTO входа."
+
+[lints]
+workspace = true
+
+[dependencies]
+x509-parser = { workspace = true }
+sha2 = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+rcgen = { workspace = true }
+serde_json = { workspace = true }
