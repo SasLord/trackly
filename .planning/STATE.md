@@ -4,7 +4,7 @@ milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
 status: executing
 last_updated: "2026-11-27T03:03:42.232Z"
-last_activity: 2026-11-27 -- Phase 43 plan 14 complete (CR-03)
+last_activity: 2026-11-27 -- Phase 43 plan 16 complete (CR-02, WR-03)
 progress:
   total_phases: 11
   completed_phases: 1
