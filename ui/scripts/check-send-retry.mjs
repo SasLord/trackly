@@ -12,6 +12,10 @@
 //   [S2] TypeError дважды, затем успех: 3 вызова, паузы [1000, 2000], одно замыкание/один id;
 //   [S3] постоянный TypeError: 4 вызова, паузы [1000, 2000, 4000], бросается последняя ошибка;
 //   [S4] доменный отказ (FORBIDDEN, VALIDATION): 1 вызов, без повторов, ошибка проброшена;
+//   [S7] HTTP_422/HTTP_413 (ответ без формы AppError): 1 вызов, без повторов (WR-07);
+//   [S8] HTTP_502/503/504: повторяются, паузы [1000, 2000];
+//   [S9] программный TypeError не повторяется; «Failed to fetch»/«Load failed» повторяются;
+//   [S10] {code:'NETWORK_ERROR'} (отказ fetch в apiCall) повторяется;
 //   [S5] newClientId проходит ^[A-Za-z0-9_-]{1,64}$ при randomUUID, без него и без crypto;
 //   [S6] два вызова newClientId различны.
 //
@@ -91,7 +95,7 @@ async function runCases(overrides) {
       res = await mod.sendWithRetry(
         async () => {
           n += 1;
-          throw new TypeError(`fail${n}`);
+          throw new TypeError(`Failed to fetch ${n}`);
         },
         { sleep },
       );
@@ -102,7 +106,7 @@ async function runCases(overrides) {
     expect('S3', J(sleeps) === J([1000, 2000, 4000]), `S3: паузы ${J(sleeps)}`);
     expect(
       'S3',
-      thrown && thrown.message === 'fail4' && res === undefined,
+      thrown && thrown.message === 'Failed to fetch 4' && res === undefined,
       `S3: брошено ${thrown}`,
     );
   });
@@ -126,6 +130,93 @@ async function runCases(overrides) {
     expect('S4', n === 1 && sleeps.length === 0, `S4 ${code}: вызовов ${n}, пауз ${J(sleeps)}`);
     expect('S4', thrown === err, `S4 ${code}: ошибка не проброшена как есть`);
   }
+  // S7: HTTP-ответ без формы AppError — не сетевой сбой
+  for (const code of ['HTTP_422', 'HTTP_413']) {
+    await guard('S7', async () => {
+      const { sleeps, sleep } = mk();
+      let n = 0;
+      const err = { code, message: 'Сервер вернул ошибку' };
+      let thrown = null;
+      try {
+        await mod.sendWithRetry(
+          async () => {
+            n += 1;
+            throw err;
+          },
+          { sleep },
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect('S7', n === 1 && sleeps.length === 0, `S7 ${code}: вызовов ${n}, пауз ${J(sleeps)}`);
+      expect('S7', thrown === err, `S7 ${code}: ошибка не проброшена как есть`);
+    });
+  }
+  // S8: шлюзовые отказы повторяются
+  for (const code of ['HTTP_502', 'HTTP_503', 'HTTP_504']) {
+    await guard('S8', async () => {
+      const { sleeps, sleep } = mk();
+      let n = 0;
+      const r = await mod.sendWithRetry(
+        async () => {
+          n += 1;
+          if (n <= 2) throw { code, message: 'шлюз' };
+          return 'ok';
+        },
+        { sleep },
+      );
+      expect('S8', r === 'ok' && n === 3, `S8 ${code}: результат ${r}, вызовов ${n}`);
+      expect('S8', J(sleeps) === J([1000, 2000]), `S8 ${code}: паузы ${J(sleeps)}`);
+    });
+  }
+  // S9: программная ошибка не повторяется, отказы fetch повторяются
+  await guard('S9', async () => {
+    const { sleeps, sleep } = mk();
+    let n = 0;
+    let thrown = null;
+    try {
+      await mod.sendWithRetry(
+        async () => {
+          n += 1;
+          throw new TypeError('x is not a function');
+        },
+        { sleep },
+      );
+    } catch (e) {
+      thrown = e;
+    }
+    expect('S9', n === 1 && sleeps.length === 0, `S9: вызовов ${n}, пауз ${J(sleeps)}`);
+    expect('S9', thrown instanceof TypeError, `S9: ошибка не проброшена`);
+  });
+  for (const msg of ['Failed to fetch', 'Load failed']) {
+    await guard('S9', async () => {
+      const { sleeps, sleep } = mk();
+      let n = 0;
+      await mod.sendWithRetry(
+        async () => {
+          n += 1;
+          if (n === 1) throw new TypeError(msg);
+          return 1;
+        },
+        { sleep },
+      );
+      expect('S9', n === 2 && J(sleeps) === J([1000]), `S9 «${msg}»: вызовов ${n}, паузы ${J(sleeps)}`);
+    });
+  }
+  // S10
+  await guard('S10', async () => {
+    const { sleeps, sleep } = mk();
+    let n = 0;
+    const r = await mod.sendWithRetry(
+      async () => {
+        n += 1;
+        if (n === 1) throw { code: 'NETWORK_ERROR', message: 'Нет связи с сервером' };
+        return 'ok';
+      },
+      { sleep },
+    );
+    expect('S10', r === 'ok' && n === 2 && J(sleeps) === J([1000]), `S10: вызовов ${n}, паузы ${J(sleeps)}`);
+  });
   // S5 / S6
   const real = globalThis.crypto;
   const variants = {
@@ -150,6 +241,13 @@ async function runCases(overrides) {
 }
 
 const MUTANTS = [
+  {
+    name: 'isNetworkFailure вернулся к «любое без формы AppError» (WR-07)',
+    file: FILE,
+    from: 'return RETRYABLE_CODES.has(code) || (e instanceof TypeError && FETCH_FAILURE_RE.test(e.message));',
+    to: "return parseAppError(e).code === 'UnknownError' || RETRYABLE_CODES.has(code);",
+    expect: 'S7',
+  },
   {
     name: 'повторы не выполняются',
     file: FILE,
