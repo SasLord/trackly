@@ -22,7 +22,13 @@
 //   [R9]  online при ws===null -> сокет сразу; visibilitychange в hidden -> ничего;
 //   [R10] visibilitychange при OPEN: ping, при молчании 5 с сокет рвётся и открывается новый;
 //         любой кадр до истечения отменяет разрыв;
-//   [R11] после release слушатели online/visibilitychange сняты.
+//   [R11] после release слушатели online/visibilitychange сняты;
+//   [R12] onclose сокета ВО ВРЕМЯ пробы (CR-03): после всех таймеров открыт ровно один сокет, кадр
+//         через onmessage каждого созданного сокета даёт ровно один вызов WsEvent-обработчика;
+//   [R13] onclose во время пробы, новый сокет уже открывается — проба его НЕ убивает;
+//   [R12b] запоздалый onclose замещённого сокета не обнуляет ws живого: следующая проба шлёт
+//         ping в живой сокет, а не открывает второй;
+//   [R2]  (IN-06) hello с protocol 2 — один console.warn, ни dispatch, ни ресинка.
 //
 // Usage: node scripts/check-ws-resync.mjs [--selftest]
 
@@ -184,6 +190,27 @@ async function runCases(overrides) {
   expect('R2', h.events.length === 1, 'обычное событие не дошло до обработчика');
   c.done();
 
+  // R2 (IN-06): версия протокола hello
+  {
+    const origWarn = console.warn;
+    let warns = 0;
+    console.warn = () => {
+      warns += 1;
+    };
+    try {
+      c = await fresh();
+      c.s.recv({ type: 'hello', protocol: 1, pingIntervalSecs: 25, idleTimeoutSecs: 60 });
+      expect('R2', warns === 0, `hello protocol 1 вызвал предупреждение (${warns})`);
+      c.s.recv({ type: 'hello', protocol: 2, pingIntervalSecs: 25, idleTimeoutSecs: 60 });
+      expect('R2', warns === 1, `hello protocol 2: предупреждений ${warns}, нужно ровно 1`);
+      expect('R2', h.events.length === 0, 'hello protocol 2 попал в обработчики WsEvent');
+      expect('R2', h.resyncs === 0, 'hello protocol 2 вызвал ресинк');
+      c.done();
+    } finally {
+      console.warn = origWarn;
+    }
+  }
+
   // R3
   c = await fresh();
   expect('R3', h.resyncs === 0, `первое открытие вызвало ресинк (${h.resyncs})`);
@@ -302,6 +329,62 @@ async function runCases(overrides) {
     win.count('online') === 0 && doc.count('visibilitychange') === 0,
     'слушатели online/visibilitychange не сняты после release',
   );
+
+  // R12: onclose во время пробы, когда reconnectTimer ещё висит в момент срабатывания пробы
+  // (onclose на 4500 мс пробы -> reconnectTimer на 5500, проба истекает на 5000).
+  c = await fresh();
+  doc.fire('visibilitychange');
+  advance(4500);
+  c.s.drop();
+  advance(2 * 5000 + 30000 + 1000);
+  const live12 = sockets.filter((s) => s.readyState !== 3);
+  expect('R12', live12.length === 1, `открыто сокетов ${live12.length}, нужен ровно 1 (двойной сокет)`);
+  h.events.length = 0;
+  for (const s of sockets) {
+    s.onmessage?.({
+      data: JSON.stringify({ type: 'entities_changed', placeIds: [], deviceIds: [], groupIds: [] }),
+    });
+  }
+  expect(
+    'R12',
+    h.events.length === 1,
+    `кадр через onmessage каждого сокета: обработчик вызван ${h.events.length} раз, нужен 1 (дубли)`,
+  );
+  c.done();
+
+  // R13: onclose во время пробы на 3000 мс; backoff 1000 -> новый сокет на 4000 мс (CONNECTING);
+  // проба истекает на 5000 мс и не должна его убить.
+  c = await fresh();
+  doc.fire('visibilitychange');
+  advance(3000);
+  c.s.drop();
+  advance(1000);
+  expect('R13', sockets.length === 2, `после backoff сокетов ${sockets.length}, нужно 2`);
+  advance(1000);
+  expect('R13', sockets[1]?.readyState !== 3, 'проба убила сокет, созданный переподключением');
+  expect('R13', sockets.length === 2, `число сокетов выросло до ${sockets.length}, нужно 2`);
+  c.done();
+
+  // R12b: запоздалый onclose замещённого сокета не обнуляет ws живого.
+  c = await fresh();
+  const stale = c.s;
+  stale.drop();
+  advance(1000);
+  sockets[1].open();
+  stale.onclose?.();
+  advance(30000);
+  doc.fire('visibilitychange');
+  expect(
+    'R12b',
+    sockets.length === 2,
+    `запоздалый onclose породил второй сокет (${sockets.length})`,
+  );
+  expect(
+    'R12b',
+    sockets[1].sent.some((m) => JSON.parse(m).type === 'ping'),
+    'после запоздалого onclose ping не ушёл в живой сокет',
+  );
+  c.done();
 
   return bad;
 }
