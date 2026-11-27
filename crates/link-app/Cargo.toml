@@ -6,19 +6,57 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-description = "Trackly Link: отдельное Tauri-приложение сотрудника (каркас окна)."
+description = "Trackly Link: отдельное Tauri-приложение сотрудника."
 
 [lints]
 workspace = true
+
+[lib]
+name = "link_app"
+path = "src/lib.rs"
 
 [[bin]]
 name = "trackly-link"
 path = "src/main.rs"
 
 [dependencies]
-tauri = { workspace = true }
+# tray-icon только здесь: серверное приложение трея не получает.
+tauri = { workspace = true, features = ["tray-icon", "image-png"] }
 tauri-plugin-window-state = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+link-proto = { workspace = true }
+reqwest = { workspace = true }
+tokio-tungstenite = { workspace = true }
+rustls = { workspace = true }
+# Свои features: у workspace-записи включён aws-lc-rs (Pitfall 2).
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+sha2 = { workspace = true }
+uuid = { workspace = true }
+toml = { workspace = true }
+tokio = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+auto-launch = { workspace = true }
+keyring-core = { workspace = true }
+tracing = { workspace = true }
+zeroize = { workspace = true }
+base64 = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.1"
+cross-krb5 = "0.5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0.3", features = ["keychain"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = { version = "1.0.1", features = ["rt-tokio-crypto-rust"] }
 
 [build-dependencies]
 tauri-build = { workspace = true }
+
+[dev-dependencies]
+rcgen = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

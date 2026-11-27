@@ -1,0 +1,33 @@
+{
+  "states": {
+    "starting": { "kind": "starting" },
+    "needs_setup": { "kind": "needs_setup" },
+    "pin_mismatch": {
+      "kind": "pin_mismatch",
+      "server": "trackly.example.local",
+      "expected": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+      "got": "99:88:77:66:55:44:33:22:11:00:FF:EE:DD:CC:BB:AA:99:88:77:66:55:44:33:22:11:00:FF:EE:DD:CC:BB:AA"
+    },
+    "needs_login": {
+      "kind": "needs_login",
+      "reason": "kerberos",
+      "can_retry_sso": true,
+      "after_logout": false,
+      "server": "trackly.example.local"
+    },
+    "revoked": { "kind": "revoked", "server": "trackly.example.local" },
+    "connected": {
+      "kind": "connected",
+      "user": { "display_name": "Иванов И.И.", "login": "ivanov" },
+      "method": "sso",
+      "server": "trackly.example.local"
+    },
+    "offline": { "kind": "offline", "server": "trackly.example.local" }
+  },
+  "event": {
+    "state": { "kind": "offline", "server": "trackly.example.local" },
+    "tray_available": true,
+    "secrets_persistent": false,
+    "platform": "windows"
+  }
+}

@@ -91,6 +91,13 @@ link-proto = { path = "crates/link-proto" }
 # Phase 44: разбор SPKI листового сертификата (0.18.1 уже в Cargo.lock; одобрен в 44-01).
 x509-parser = "0.18"
 base64 = "0.22"
+# Phase 44 (план 05): зависимости клиента Link, все одобрены в 44-01.
+# reqwest без aws-lc-rs: провайдер rustls задаётся явно (ring), Pitfall 2.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "cookies", "json"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+keyring-core = "1.1"
+auto-launch = "0.6"
 
 [workspace.lints.clippy]
 disallowed_methods = "deny"
