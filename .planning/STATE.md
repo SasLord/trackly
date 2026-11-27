@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Trackly Link — клиент и Чат
 status: executing
-last_updated: "2026-11-26T16:40:06.377Z"
-last_activity: 2026-11-27 -- Phase 43 plan 11 complete
+last_updated: "2026-11-27T03:03:42.232Z"
+last_activity: 2026-11-27 -- Phase 43 planning complete
 progress:
   total_phases: 11
   completed_phases: 1
-  total_plans: 31
-  completed_plans: 23
+  total_plans: 40
+  completed_plans: 31
   percent: 9
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-11-25 — start of v1.5)
 ## Current Position
 
 Phase: 43 (reliable-event-delivery) — EXECUTING
-Plan: 12 of 12 complete (живая проверка 43-12 пройдена на Windows-черновике 1.5.0-phase43)
-Status: Executing Phase 43 — планы выполнены, идут ревью и верификация
-Last activity: 2026-11-27 -- 43-12 (UAT approved, DLV-01..04 Complete)
+Plan: 12 of 21 complete — планы 43-13..43-21 (gap closure CR-01..03 + WR-01..07) готовы к исполнению
+Status: Ready to execute
+Last activity: 2026-11-27 -- Phase 43 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
