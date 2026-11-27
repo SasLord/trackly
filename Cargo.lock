@@ -7737,6 +7737,7 @@ dependencies = [
  "infer",
  "krilla",
  "libheif-rs",
+ "link-proto",
  "minijinja",
  "pdf-extract",
  "percent-encoding",

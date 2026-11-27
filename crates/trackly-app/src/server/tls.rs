@@ -39,12 +39,24 @@ pub struct TlsBundle {
     ///
     /// Отображается пользователю в UI для верификации подключения браузера.
     pub fingerprint_hex: String,
+    /// SHA-256 от SubjectPublicKeyInfo листа (95 символов, XX:XX:...).
+    ///
+    /// Не меняется при перевыпуске сертификата на том же ключе (D-06): именно
+    /// его пинят клиенты Link. Считается общей `link_proto::spki_sha256`.
+    pub spki_fingerprint_hex: String,
     /// PEM-encoded сертификат — для сохранения на диск при первом запуске.
     pub cert_pem: String,
     /// PEM-encoded приватный ключ — для сохранения на диск (перезагрузка).
     ///
     /// **Никогда не отправлять клиенту и не логировать.**
     pub key_pem: String,
+}
+
+/// SPKI-отпечаток листа тем же кодом, что и в клиенте Link.
+fn compute_spki_fingerprint(cert_der: &[u8]) -> anyhow::Result<String> {
+    let h = link_proto::spki_sha256(cert_der)
+        .map_err(|e| anyhow::anyhow!("SPKI сертификата не разобран: {e}"))?;
+    Ok(link_proto::fmt_colon_upper(&h))
 }
 
 /// Вычисляет SHA-256 fingerprint DER-байт в формате XX:XX:XX:...
@@ -227,11 +239,27 @@ fn collect_subject_alt_names(host: &str) -> Vec<String> {
 pub fn generate_self_signed(host: &str) -> anyhow::Result<TlsBundle> {
     let subject_alt_names = collect_subject_alt_names(host);
     let rcgen::CertifiedKey { cert, signing_key } = generate_simple_self_signed(subject_alt_names)?;
+    bundle_from_rcgen(&cert, &signing_key)
+}
 
+/// Выпустить сертификат с новым набором SAN на УЖЕ существующем ключе (D-06).
+///
+/// Параметры те же, что у `generate_simple_self_signed` (`CertificateParams::new`).
+fn generate_on_key(host: &str, key_pair: &rcgen::KeyPair) -> anyhow::Result<TlsBundle> {
+    let params = rcgen::CertificateParams::new(collect_subject_alt_names(host))?;
+    let cert = params.self_signed(key_pair)?;
+    bundle_from_rcgen(&cert, key_pair)
+}
+
+fn bundle_from_rcgen(
+    cert: &rcgen::Certificate,
+    signing_key: &rcgen::KeyPair,
+) -> anyhow::Result<TlsBundle> {
     let cert_der = cert.der().to_vec();
     let key_der = signing_key.serialize_der();
 
     let fingerprint_hex = compute_fingerprint(&cert_der);
+    let spki_fingerprint_hex = compute_spki_fingerprint(&cert_der)?;
     let cert_pem = cert.pem();
     let key_pem = signing_key.serialize_pem();
 
@@ -240,6 +268,7 @@ pub fn generate_self_signed(host: &str) -> anyhow::Result<TlsBundle> {
     Ok(TlsBundle {
         acceptor: TlsAcceptor::from(Arc::new(config)),
         fingerprint_hex,
+        spki_fingerprint_hex,
         cert_pem,
         key_pem,
     })
@@ -292,6 +321,26 @@ pub fn load_or_generate_self_signed(
             "TLS: переиспользован сохранённый самоподписанный сертификат"
         );
         return Ok(bundle);
+    }
+
+    // D-06: ключ переживает перевыпуск — SPKI (и пин клиентов Link) не меняется.
+    let existing_key = std::fs::read_to_string(&key_path)
+        .ok()
+        .and_then(|pem| rcgen::KeyPair::from_pem(&pem).ok());
+    if let Some(key_pair) = existing_key {
+        match generate_on_key(host, &key_pair) {
+            Ok(bundle) => {
+                save_cert_only(&cert_path, &sans_path, &bundle, &wanted);
+                tracing::info!(
+                    path = %cert_path.display(),
+                    "TLS: сертификат перевыпущен на сохранённом ключе"
+                );
+                return Ok(bundle);
+            }
+            Err(e) => {
+                tracing::warn!("TLS: перевыпуск на сохранённом ключе не удался, новый ключ: {e}");
+            }
+        }
     }
 
     let bundle = generate_self_signed(host)?;
@@ -367,6 +416,30 @@ fn write_private_key(path: &std::path::Path, data: &str) -> std::io::Result<()> 
     #[cfg(not(unix))]
     {
         std::fs::write(path, data)
+    }
+}
+
+/// Перезаписать сертификат и sidecar SAN; `server.key` не трогается (D-06).
+fn save_cert_only(
+    cert_path: &std::path::Path,
+    sans_path: &std::path::Path,
+    bundle: &TlsBundle,
+    sans: &[String],
+) {
+    if sans_path.exists() {
+        if let Err(e) = std::fs::remove_file(sans_path) {
+            tracing::warn!(path = %sans_path.display(), "TLS: не удаляется старый sidecar SAN: {e}");
+            return;
+        }
+    }
+    if let Err(e) = std::fs::write(cert_path, &bundle.cert_pem) {
+        tracing::warn!(path = %cert_path.display(), "TLS: сертификат не сохранён, при следующем старте будет выпущен новый: {e}");
+        return;
+    }
+    let mut body = sans.join("\n");
+    body.push('\n');
+    if let Err(e) = std::fs::write(sans_path, body) {
+        tracing::warn!(path = %sans_path.display(), "TLS: sidecar SAN не сохранён, при следующем старте будет выпущен новый: {e}");
     }
 }
 
@@ -457,6 +530,7 @@ pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle>
 
     // Fingerprint from first cert
     let fingerprint_hex = compute_fingerprint(cert_ders[0].as_ref());
+    let spki_fingerprint_hex = compute_spki_fingerprint(cert_ders[0].as_ref())?;
 
     // Parse private key
     let key_der = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())
@@ -470,6 +544,7 @@ pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle>
     Ok(TlsBundle {
         acceptor: TlsAcceptor::from(Arc::new(config)),
         fingerprint_hex,
+        spki_fingerprint_hex,
         cert_pem: cert_pem.to_string(),
         key_pem: key_pem.to_string(),
     })
@@ -478,6 +553,7 @@ pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustls::pki_types::pem::PemObject;
 
     /// Регрессия: `ServerConfig::builder()` ранее паниковал в runtime, потому
     /// что одновременно в графе зависимостей есть `ring` и `aws-lc-rs`, и
@@ -489,6 +565,71 @@ mod tests {
         let bundle = generate_self_signed("127.0.0.1").expect("tls bundle");
         assert_eq!(bundle.fingerprint_hex.len(), 95);
         assert!(bundle.cert_pem.contains("BEGIN CERTIFICATE"));
+    }
+
+    #[test]
+    fn spki_matches_shared_function() {
+        let b = generate_self_signed("127.0.0.1").unwrap();
+        assert_eq!(b.spki_fingerprint_hex.len(), 95);
+        let der = rustls::pki_types::CertificateDer::from_pem_slice(b.cert_pem.as_bytes()).unwrap();
+        let want = link_proto::fmt_colon_upper(&link_proto::spki_sha256(der.as_ref()).unwrap());
+        assert_eq!(b.spki_fingerprint_hex, want);
+    }
+
+    #[test]
+    fn san_change_keeps_spki_changes_der() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = load_or_generate_self_signed(dir.path(), "host-a.example.local").unwrap();
+        let b = load_or_generate_self_signed(dir.path(), "host-b.example.local").unwrap();
+        assert_eq!(a.spki_fingerprint_hex, b.spki_fingerprint_hex);
+        assert_ne!(a.fingerprint_hex, b.fingerprint_hex);
+        let sans = std::fs::read_to_string(dir.path().join(SELF_SIGNED_SANS_FILE)).unwrap();
+        assert!(sans.contains("host-b.example.local"));
+        assert!(!sans.contains("host-a.example.local"));
+    }
+
+    #[test]
+    fn corrupt_key_generates_new_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = load_or_generate_self_signed(dir.path(), "host-a.example.local").unwrap();
+        std::fs::write(dir.path().join(SELF_SIGNED_KEY_FILE), "garbage").unwrap();
+        let b = load_or_generate_self_signed(dir.path(), "host-b.example.local").unwrap();
+        assert_ne!(a.spki_fingerprint_hex, b.spki_fingerprint_hex);
+    }
+
+    #[test]
+    fn missing_key_generates_new_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = load_or_generate_self_signed(dir.path(), "host-a.example.local").unwrap();
+        std::fs::remove_file(dir.path().join(SELF_SIGNED_KEY_FILE)).unwrap();
+        let b = load_or_generate_self_signed(dir.path(), "host-a.example.local").unwrap();
+        assert_ne!(a.spki_fingerprint_hex, b.spki_fingerprint_hex);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_stays_owner_only_after_reissue() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        load_or_generate_self_signed(dir.path(), "host-a.example.local").unwrap();
+        load_or_generate_self_signed(dir.path(), "host-b.example.local").unwrap();
+        let mode = std::fs::metadata(dir.path().join(SELF_SIGNED_KEY_FILE))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn user_cert_files_fill_spki() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = load_or_generate_self_signed(dir.path(), "host-a.example.local").unwrap();
+        let b = load_from_files(
+            &dir.path().join(SELF_SIGNED_CERT_FILE).to_string_lossy(),
+            &dir.path().join(SELF_SIGNED_KEY_FILE).to_string_lossy(),
+        )
+        .unwrap();
+        assert_eq!(a.spki_fingerprint_hex, b.spki_fingerprint_hex);
     }
 
     fn saved_files(dir: &std::path::Path) -> [std::path::PathBuf; 3] {

@@ -81,6 +81,7 @@ argon2 = { workspace = true }
 tower-sessions = { workspace = true }
 tokio-rustls = { workspace = true }
 rcgen = { workspace = true }
+link-proto = { workspace = true }
 # LAN-IP SAN detection for self-signed certs when bind host is wildcard (0.0.0.0/::).
 if-addrs = { workspace = true }
 hostname = { workspace = true }
