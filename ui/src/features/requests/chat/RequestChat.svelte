@@ -21,7 +21,12 @@
   import { dayKey, dayLabel, sameGroup } from './chatDates';
   import { chat } from './api';
   import { clearDraft, draft, useDraftFor } from './draftStore.svelte';
-  import { pendingFor, retryMessage, returnToDraft } from './pendingStore.svelte';
+  import {
+    pendingFor,
+    reconcileWithFeed,
+    retryMessage,
+    returnToDraft,
+  } from './pendingStore.svelte';
   import { restoreText } from './draftPolicy';
   import { rejectText } from './sendOutcomeText';
   import { dismissChatToast } from './chatNotifications.svelte';
@@ -179,6 +184,12 @@
       // firstUnreadId берётся из ПЕРВОГО ответа, до отметки прочтения (D-18).
       if (initial) firstUnreadId = res.firstUnreadId ?? null;
       feed = res;
+      // WR-04, D-11/D-12: сервер уже сохранил сообщение, а ответ потерялся, — снимаем «Не отправлено».
+      const ownIds: string[] = [];
+      for (const i of res.items) {
+        if (i.kind === 'message' && i.clientMsgId) ownIds.push(i.clientMsgId);
+      }
+      reconcileWithFeed(requestId, ownIds);
       loadError = null;
       loading = false;
       void loadFiles(gen);
