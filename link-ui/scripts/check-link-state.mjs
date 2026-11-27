@@ -146,7 +146,9 @@ function copyTree(root) {
 function selftest() {
   const base = check(REPO);
   if (base.violations.length) {
-    console.error('[check-link-state] selftest: чистое дерево красное:\n' + base.violations.join('\n'));
+    console.error(
+      '[check-link-state] selftest: чистое дерево красное:\n' + base.violations.join('\n'),
+    );
     process.exit(1);
   }
   const mutants = [
@@ -157,12 +159,7 @@ function selftest() {
     ['S2', FILES.states, '"secrets_persistent": false', '"secrets_persistent_new": false'],
     ['S3', FILES.commands, '"link_quit"', '"link_quit_new"'],
     ['S3', FILES.api, "'link_retry_now'", "'link_retry_later'"],
-    [
-      'S4',
-      FILES.api,
-      "export const quit",
-      "const leak = () => fetch('/x');\nexport const quit",
-    ],
+    ['S4', FILES.api, 'export const quit', "const leak = () => fetch('/x');\nexport const quit"],
   ];
   let bad = 0;
   for (const [code, rel, from, to] of mutants) {
@@ -175,9 +172,14 @@ function selftest() {
       bad++;
       continue;
     }
-    fs.writeFileSync(p, src.replace(from, () => to));
+    fs.writeFileSync(
+      p,
+      src.replace(from, () => to),
+    );
     const hit = check(tmp).violations.some((v) => v.startsWith(`[${code}]`));
-    console.log(`  ${hit ? 'ok  ' : 'FAIL'} мутант [${code}] ${path.basename(rel)}: «${from.trim()}»`);
+    console.log(
+      `  ${hit ? 'ok  ' : 'FAIL'} мутант [${code}] ${path.basename(rel)}: «${from.trim()}»`,
+    );
     if (!hit) bad++;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
