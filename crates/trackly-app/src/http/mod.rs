@@ -91,7 +91,8 @@ async fn refresh_session_role(
 /// проверяются на КАЖДОМ запросе, а не только при выдаче сессии.
 ///
 /// Браузерная сессия (без `link_login_id`) выходит рано, не трогая link-таблицы.
-/// Публичные маршруты Link (`/api/v1/link_*`) не проверяются: устаревшая cookie не
+/// Публичные маршруты Link (`link::PUBLIC_ROUTES`) не проверяются; админ-маршруты
+/// `link_*`/`users_*link*` идут под guard как обычные: устаревшая cookie не
 /// должна ломать повторный вход. Ошибка чтения БД сессию НЕ сбрасывает (как в
 /// `refresh_session_role`): сбой диска не должен выкидывать всех сотрудников.
 async fn link_guard(
@@ -104,7 +105,7 @@ async fn link_guard(
         .uri()
         .path()
         .strip_prefix("/api/v1/")
-        .is_some_and(|name| name.starts_with("link_"))
+        .is_some_and(|name| link::PUBLIC_ROUTES.contains(&name))
     {
         return next.run(req).await;
     }

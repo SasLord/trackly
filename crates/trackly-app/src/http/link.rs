@@ -27,16 +27,31 @@ use trackly_core::error::AppError;
 
 use crate::context::AppCtx;
 use crate::dto::auth::{LoginRequest, UserDto};
-use crate::http::auth::establish_session;
+use crate::dto::link::{
+    BannedDeviceDto, CreateInviteRequest, InviteIssuedDto, InviteRowDto, LinkLoginRowDto,
+    RevokeResultDto, UserLinkStatusDto,
+};
+use crate::error_axum::AppErrorResponse;
+use crate::http::auth::{establish_session, session_identity};
 use crate::http::sso::{negotiate_header, negotiate_identity, SsoFailure};
 use crate::services::link_service::{
     DeviceError, DeviceMeta, EnrollError, LoginMethod, ResumeError,
 };
+use crate::tauri_cmds::link as link_cmds;
 
 /// Ключ сессии: устройство Link, с которого выполнен вход.
 pub const SESSION_DEVICE_KEY: &str = "link_device_id";
 /// Ключ сессии: запись входа Link (для выхода и отзыва).
 pub const SESSION_LOGIN_KEY: &str = "link_login_id";
+
+/// Имена публичных маршрутов Link (вне session-гейта). Остальные `link_*` — админ-API.
+pub const PUBLIC_ROUTES: [&str; 5] = [
+    "link_enroll",
+    "link_auth_login",
+    "link_auth_sso",
+    "link_resume",
+    "link_logout",
+];
 
 const LINK_BAD_REQUEST: &str = "LINK_BAD_REQUEST";
 const LINK_DEVICE_UNKNOWN: &str = "LINK_DEVICE_UNKNOWN";
@@ -511,6 +526,145 @@ pub async fn handler_logout(State(ctx): State<AppCtx>, session: Session) -> Resp
 }
 
 // ---------------------------------------------------------------------------
+// Админ-API Link (Phase 44-16): под сессией, роль Admin проверяют `build_link_*`
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, serde::Deserialize)]
+struct CreateInvitePayload {
+    req: CreateInviteRequest,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct IdPayload {
+    id: i64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LoginIdPayload {
+    login_id: i64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceIdPayload {
+    device_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserIdPayload {
+    user_id: i64,
+}
+
+async fn admin_invites_create(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<CreateInvitePayload>,
+) -> Result<Json<InviteIssuedDto>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    Ok(Json(
+        link_cmds::build_link_invites_create(&ctx, &caller, p.req).await?,
+    ))
+}
+
+async fn admin_invites_list(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<Vec<InviteRowDto>>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    Ok(Json(
+        link_cmds::build_link_invites_list(&ctx, &caller).await?,
+    ))
+}
+
+async fn admin_invites_revoke(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<IdPayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    link_cmds::build_link_invites_revoke(&ctx, &caller, p.id).await?;
+    Ok(Json(()))
+}
+
+async fn admin_logins_list(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<Vec<LinkLoginRowDto>>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    Ok(Json(
+        link_cmds::build_link_logins_list(&ctx, &caller).await?,
+    ))
+}
+
+async fn admin_logins_revoke(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<LoginIdPayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    link_cmds::build_link_logins_revoke(&ctx, &caller, p.login_id).await?;
+    Ok(Json(()))
+}
+
+async fn admin_devices_list(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<Vec<BannedDeviceDto>>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    Ok(Json(
+        link_cmds::build_link_devices_list(&ctx, &caller).await?,
+    ))
+}
+
+async fn admin_devices_allow(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<DeviceIdPayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    link_cmds::build_link_devices_allow(&ctx, &caller, p.device_id).await?;
+    Ok(Json(()))
+}
+
+async fn admin_users_link_status(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<UserIdPayload>,
+) -> Result<Json<UserLinkStatusDto>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    Ok(Json(
+        link_cmds::build_users_link_status(&ctx, &caller, p.user_id).await?,
+    ))
+}
+
+async fn admin_users_revoke_link(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<UserIdPayload>,
+) -> Result<Json<RevokeResultDto>, AppErrorResponse> {
+    let caller = session_identity(&session).await?;
+    Ok(Json(
+        link_cmds::build_users_revoke_link(&ctx, &caller, p.user_id).await?,
+    ))
+}
+
+/// Админ-маршруты Link: сессия обязательна (401), роль Admin — в `build_link_*` (403).
+fn admin_router() -> Router<AppCtx> {
+    Router::new()
+        .route("/api/v1/link_invites_create", post(admin_invites_create))
+        .route("/api/v1/link_invites_list", post(admin_invites_list))
+        .route("/api/v1/link_invites_revoke", post(admin_invites_revoke))
+        .route("/api/v1/link_logins_list", post(admin_logins_list))
+        .route("/api/v1/link_logins_revoke", post(admin_logins_revoke))
+        .route("/api/v1/link_devices_list", post(admin_devices_list))
+        .route("/api/v1/link_devices_allow", post(admin_devices_allow))
+        .route("/api/v1/users_link_status", post(admin_users_link_status))
+        .route("/api/v1/users_revoke_link", post(admin_users_revoke_link))
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -537,6 +691,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/link_auth_login", post(handler_login))
         .route_layer(own_governor!());
     Router::new()
+        .merge(admin_router())
         .merge(enroll)
         .merge(login)
         .route("/api/v1/link_auth_sso", get(handler_sso))

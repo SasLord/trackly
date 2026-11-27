@@ -128,6 +128,16 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::users::users_update,
         crate::tauri_cmds::users::users_delete,
         crate::tauri_cmds::users::users_change_password,
+        // Phase 44-16 — админ-API Link
+        crate::tauri_cmds::link::link_invites_create,
+        crate::tauri_cmds::link::link_invites_list,
+        crate::tauri_cmds::link::link_invites_revoke,
+        crate::tauri_cmds::link::link_logins_list,
+        crate::tauri_cmds::link::link_logins_revoke,
+        crate::tauri_cmds::link::link_devices_list,
+        crate::tauri_cmds::link::link_devices_allow,
+        crate::tauri_cmds::link::users_link_status,
+        crate::tauri_cmds::link::users_revoke_link,
         // Phase 5 — Settings / Server (Plan 03)
         crate::tauri_cmds::auth::server_toggle,
         crate::tauri_cmds::auth::server_status,

@@ -7206,6 +7206,16 @@ const ROUTE_MATRIX_EXEMPT: &[(&str, &str)] = &[
     ("link_auth_sso", "публичный маршрут аутентификации Link (вне session-гейта; link_* защищены проверкой устройства, не ролью; enroll/login лимитируются Governor)"),
     ("link_resume", "публичный маршрут аутентификации Link (вне session-гейта; link_* защищены проверкой устройства, не ролью; enroll/login лимитируются Governor)"),
     ("link_logout", "публичный маршрут аутентификации Link (вне session-гейта; link_* защищены проверкой устройства, не ролью; enroll/login лимитируются Governor)"),
+    // Phase 44-16: админ-API Link, все 9 маршрутов закрыты ролью Admin (ManageUsers)
+    ("link_invites_create", "мутирующий, роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403, гейт ManageUsers в build_link_*)"),
+    ("link_invites_list", "read-only: гейт ManageUsers (Admin) в build_link_*; роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403)"),
+    ("link_invites_revoke", "мутирующий, роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403, гейт ManageUsers в build_link_*)"),
+    ("link_logins_list", "read-only: гейт ManageUsers (Admin) в build_link_*; роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403)"),
+    ("link_logins_revoke", "мутирующий, роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403, гейт ManageUsers в build_link_*)"),
+    ("link_devices_list", "read-only: гейт ManageUsers (Admin) в build_link_*; роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403)"),
+    ("link_devices_allow", "мутирующий, роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403, гейт ManageUsers в build_link_*)"),
+    ("users_link_status", "read-only: гейт ManageUsers (Admin) в build_link_*; роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403)"),
+    ("users_revoke_link", "мутирующий, роль-тест в профильном файле tests/: link_admin.rs (без сессии → 401, Manager/Employee → 403, гейт ManageUsers в build_link_*)"),
     ("health", "служебный пинг: build_health без данных пользователя и без записи (health.rs)"),
     ("ws", "поток WebSocket (GET-upgrade): ws_auth_middleware требует сессию (401 без неё), мутаций нет"),
     // мутирующий, роль-тест в профильном файле tests/: acts_delete_choice_http.rs
