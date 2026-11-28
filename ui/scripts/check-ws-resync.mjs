@@ -59,6 +59,9 @@ async function runCases(overrides) {
   const h = { toasts: [], removed: [], resyncs: 0, events: [] };
   globalThis.__h = h;
 
+  // Настоящие таймеры — до подмены: flush ждёт ими загрузчик модулей.
+  const realSetTimeout = globalThis.setTimeout;
+
   // Управляемые часы.
   let now = 0;
   let seq = 0;
@@ -84,7 +87,18 @@ async function runCases(overrides) {
     }
     now = target;
   };
-  const flush = () => new Promise((r) => setImmediate(r));
+  // ws.ts показывает и снимает тост через ленивый import(). В Node 20 хуки
+  // загрузчика (installHarness) работают в отдельном потоке, и ответ на
+  // import() приходит через несколько витков цикла событий, а не за один
+  // setImmediate (в Node 22+ хуки синхронны — там хватало одного). Поэтому
+  // flush чередует настоящую паузу и проход очереди: так кадр загрузчика
+  // гарантированно доходит, и проверки R5/R7/R8 не зависят от версии Node.
+  const flush = async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((r) => realSetTimeout(r, 5));
+      await new Promise((r) => setImmediate(r));
+    }
+  };
 
   // Фейковый WebSocket.
   const sockets = [];
